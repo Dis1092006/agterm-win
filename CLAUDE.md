@@ -37,7 +37,7 @@ Current parity pin: agterm `7df70fe` (66 commands, 41 builtin actions). Machine 
 ## Layout
 
 ```
-AgTerm.sln
+AgTerm.slnx
 src/AgTerm.Core/            host-free core library (net8.0, zero UI deps — analogue of agtermCore)
 tests/AgTerm.Core.Tests/    xUnit tests
 docs/agterm-windows-spec.md the spec (ТЗ)
@@ -49,8 +49,8 @@ tools/extract_surface.py    surface extractor
 ## Build & test
 
 ```
-dotnet build AgTerm.sln
-dotnet test AgTerm.sln
+dotnet build AgTerm.slnx
+dotnet test AgTerm.slnx
 ```
 
 Phase 1 scope: AgTerm.Core library + tests only. Transport (named pipe) and CLI are NOT in this phase.
