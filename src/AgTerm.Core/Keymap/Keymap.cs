@@ -53,9 +53,16 @@ public sealed class KeymapStore
     {
         try
         {
-            return KeymapParser.Parse(File.ReadAllText(Path));
+            // strict UTF-8 (no BOM sniffing, invalid bytes throw), matching Swift's
+            // String(contentsOf:encoding:) — an unreadable file must become a line-0 diagnostic,
+            // not silently decode with replacement characters.
+            var strictUtf8 = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true);
+            using var reader = new StreamReader(Path, strictUtf8, detectEncodingFromByteOrderMarks: false);
+            return KeymapParser.Parse(reader.ReadToEnd());
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                      or System.Text.DecoderFallbackException)
         {
             if (!File.Exists(Path))
                 return (Keymap.Empty, new List<KeymapDiagnostic>());
