@@ -1,0 +1,1228 @@
+{
+  "agtermRevision": "7df70fee7041a275127db22f244c628bd870cffe",
+  "counts": {
+    "commands": 66,
+    "builtinActions": 41
+  },
+  "control": {
+    "commands": [
+      {
+        "swift": "tree",
+        "wire": "tree"
+      },
+      {
+        "swift": "eventsRead",
+        "wire": "events.read"
+      },
+      {
+        "swift": "workspaceNew",
+        "wire": "workspace.new"
+      },
+      {
+        "swift": "workspaceRename",
+        "wire": "workspace.rename"
+      },
+      {
+        "swift": "workspaceDelete",
+        "wire": "workspace.delete"
+      },
+      {
+        "swift": "workspaceSelect",
+        "wire": "workspace.select"
+      },
+      {
+        "swift": "sessionNew",
+        "wire": "session.new"
+      },
+      {
+        "swift": "sessionDuplicate",
+        "wire": "session.duplicate"
+      },
+      {
+        "swift": "sessionClose",
+        "wire": "session.close"
+      },
+      {
+        "swift": "sessionSelect",
+        "wire": "session.select"
+      },
+      {
+        "swift": "sessionGo",
+        "wire": "session.go"
+      },
+      {
+        "swift": "sessionRename",
+        "wire": "session.rename"
+      },
+      {
+        "swift": "sessionReveal",
+        "wire": "session.reveal"
+      },
+      {
+        "swift": "sessionMove",
+        "wire": "session.move"
+      },
+      {
+        "swift": "workspaceMove",
+        "wire": "workspace.move"
+      },
+      {
+        "swift": "workspaceFocus",
+        "wire": "workspace.focus"
+      },
+      {
+        "swift": "workspaceCollapse",
+        "wire": "workspace.collapse"
+      },
+      {
+        "swift": "workspaceExpand",
+        "wire": "workspace.expand"
+      },
+      {
+        "swift": "sessionType",
+        "wire": "session.type"
+      },
+      {
+        "swift": "sessionStatus",
+        "wire": "session.status"
+      },
+      {
+        "swift": "sessionFlag",
+        "wire": "session.flag"
+      },
+      {
+        "swift": "sessionSeen",
+        "wire": "session.seen"
+      },
+      {
+        "swift": "sessionRestore",
+        "wire": "session.restore"
+      },
+      {
+        "swift": "sessionBackground",
+        "wire": "session.background"
+      },
+      {
+        "swift": "sessionSplit",
+        "wire": "session.split"
+      },
+      {
+        "swift": "sessionScratch",
+        "wire": "session.scratch"
+      },
+      {
+        "swift": "sessionFocus",
+        "wire": "session.focus"
+      },
+      {
+        "swift": "sessionResize",
+        "wire": "session.resize"
+      },
+      {
+        "swift": "surfaceZoom",
+        "wire": "surface.zoom"
+      },
+      {
+        "swift": "dashboard",
+        "wire": "dashboard"
+      },
+      {
+        "swift": "sessionCopy",
+        "wire": "session.copy"
+      },
+      {
+        "swift": "sessionPaste",
+        "wire": "session.paste"
+      },
+      {
+        "swift": "sessionSelectAll",
+        "wire": "session.selectall"
+      },
+      {
+        "swift": "sessionText",
+        "wire": "session.text"
+      },
+      {
+        "swift": "sessionSearch",
+        "wire": "session.search"
+      },
+      {
+        "swift": "sessionOverlayOpen",
+        "wire": "session.overlay.open"
+      },
+      {
+        "swift": "sessionOverlayClose",
+        "wire": "session.overlay.close"
+      },
+      {
+        "swift": "sessionOverlayResize",
+        "wire": "session.overlay.resize"
+      },
+      {
+        "swift": "sessionOverlayResult",
+        "wire": "session.overlay.result"
+      },
+      {
+        "swift": "quick",
+        "wire": "quick"
+      },
+      {
+        "swift": "quickType",
+        "wire": "quick.type"
+      },
+      {
+        "swift": "quickText",
+        "wire": "quick.text"
+      },
+      {
+        "swift": "sidebar",
+        "wire": "sidebar"
+      },
+      {
+        "swift": "sidebarMode",
+        "wire": "sidebar.mode"
+      },
+      {
+        "swift": "sidebarExpand",
+        "wire": "sidebar.expand"
+      },
+      {
+        "swift": "sidebarCollapse",
+        "wire": "sidebar.collapse"
+      },
+      {
+        "swift": "notify",
+        "wire": "notify"
+      },
+      {
+        "swift": "fontInc",
+        "wire": "font.inc"
+      },
+      {
+        "swift": "fontDec",
+        "wire": "font.dec"
+      },
+      {
+        "swift": "fontReset",
+        "wire": "font.reset"
+      },
+      {
+        "swift": "windowNew",
+        "wire": "window.new"
+      },
+      {
+        "swift": "windowList",
+        "wire": "window.list"
+      },
+      {
+        "swift": "windowSelect",
+        "wire": "window.select"
+      },
+      {
+        "swift": "windowClose",
+        "wire": "window.close"
+      },
+      {
+        "swift": "windowRename",
+        "wire": "window.rename"
+      },
+      {
+        "swift": "windowDelete",
+        "wire": "window.delete"
+      },
+      {
+        "swift": "windowResize",
+        "wire": "window.resize"
+      },
+      {
+        "swift": "windowMove",
+        "wire": "window.move"
+      },
+      {
+        "swift": "windowZoom",
+        "wire": "window.zoom"
+      },
+      {
+        "swift": "windowFullscreen",
+        "wire": "window.fullscreen"
+      },
+      {
+        "swift": "keymapReload",
+        "wire": "keymap.reload"
+      },
+      {
+        "swift": "configReload",
+        "wire": "config.reload"
+      },
+      {
+        "swift": "themeSet",
+        "wire": "theme.set"
+      },
+      {
+        "swift": "themeList",
+        "wire": "theme.list"
+      },
+      {
+        "swift": "restoreClear",
+        "wire": "restore.clear"
+      },
+      {
+        "swift": "debugAppearance",
+        "wire": "debug.appearance"
+      }
+    ],
+    "args": [
+      {
+        "name": "name",
+        "type": "String?"
+      },
+      {
+        "name": "cwd",
+        "type": "String?"
+      },
+      {
+        "name": "targets",
+        "type": "[String]?"
+      },
+      {
+        "name": "workspace",
+        "type": "String?"
+      },
+      {
+        "name": "workspaceName",
+        "type": "String?"
+      },
+      {
+        "name": "createWorkspace",
+        "type": "Bool?"
+      },
+      {
+        "name": "collapsed",
+        "type": "Bool?"
+      },
+      {
+        "name": "noSelect",
+        "type": "Bool?"
+      },
+      {
+        "name": "text",
+        "type": "String?"
+      },
+      {
+        "name": "select",
+        "type": "Bool?"
+      },
+      {
+        "name": "mode",
+        "type": "String?"
+      },
+      {
+        "name": "path",
+        "type": "String?"
+      },
+      {
+        "name": "color",
+        "type": "String?"
+      },
+      {
+        "name": "shape",
+        "type": "String?"
+      },
+      {
+        "name": "opacity",
+        "type": "Double?"
+      },
+      {
+        "name": "fit",
+        "type": "String?"
+      },
+      {
+        "name": "position",
+        "type": "String?"
+      },
+      {
+        "name": "repeats",
+        "type": "Bool?"
+      },
+      {
+        "name": "pane",
+        "type": "String?"
+      },
+      {
+        "name": "paneID",
+        "type": "String?"
+      },
+      {
+        "name": "ratio",
+        "type": "Double?"
+      },
+      {
+        "name": "ratioDelta",
+        "type": "Double?"
+      },
+      {
+        "name": "all",
+        "type": "Bool?"
+      },
+      {
+        "name": "lines",
+        "type": "Int?"
+      },
+      {
+        "name": "to",
+        "type": "String?"
+      },
+      {
+        "name": "after",
+        "type": "String?"
+      },
+      {
+        "name": "before",
+        "type": "String?"
+      },
+      {
+        "name": "run",
+        "type": "String?"
+      },
+      {
+        "name": "kinds",
+        "type": "[String]?"
+      },
+      {
+        "name": "limit",
+        "type": "Int?"
+      },
+      {
+        "name": "title",
+        "type": "String?"
+      },
+      {
+        "name": "body",
+        "type": "String?"
+      },
+      {
+        "name": "command",
+        "type": "String?"
+      },
+      {
+        "name": "wait",
+        "type": "Bool?"
+      },
+      {
+        "name": "sizePercent",
+        "type": "Int?"
+      },
+      {
+        "name": "full",
+        "type": "Bool?"
+      },
+      {
+        "name": "follow",
+        "type": "Bool?"
+      },
+      {
+        "name": "window",
+        "type": "String?"
+      },
+      {
+        "name": "width",
+        "type": "Int?"
+      },
+      {
+        "name": "height",
+        "type": "Int?"
+      },
+      {
+        "name": "x",
+        "type": "Int?"
+      },
+      {
+        "name": "y",
+        "type": "Int?"
+      },
+      {
+        "name": "display",
+        "type": "Int?"
+      },
+      {
+        "name": "status",
+        "type": "String?"
+      },
+      {
+        "name": "blink",
+        "type": "Bool?"
+      },
+      {
+        "name": "autoReset",
+        "type": "Bool?"
+      },
+      {
+        "name": "sound",
+        "type": "String?"
+      },
+      {
+        "name": "light",
+        "type": "String?"
+      },
+      {
+        "name": "dark",
+        "type": "String?"
+      },
+      {
+        "name": "close",
+        "type": "Bool?"
+      },
+      {
+        "name": "fontSize",
+        "type": "Double?"
+      },
+      {
+        "name": "autoSize",
+        "type": "Bool?"
+      },
+      {
+        "name": "mru",
+        "type": "Bool?"
+      }
+    ],
+    "result": [
+      {
+        "name": "id",
+        "type": "String?"
+      },
+      {
+        "name": "tree",
+        "type": "ControlTree?"
+      },
+      {
+        "name": "text",
+        "type": "String?"
+      },
+      {
+        "name": "windows",
+        "type": "[ControlWindowNode]?"
+      },
+      {
+        "name": "exitCode",
+        "type": "Int?"
+      },
+      {
+        "name": "count",
+        "type": "Int?"
+      },
+      {
+        "name": "affected",
+        "type": "Int?"
+      },
+      {
+        "name": "theme",
+        "type": "String?"
+      },
+      {
+        "name": "themes",
+        "type": "[String]?"
+      },
+      {
+        "name": "ratio",
+        "type": "Double?"
+      },
+      {
+        "name": "sync",
+        "type": "Bool?"
+      },
+      {
+        "name": "light",
+        "type": "String?"
+      },
+      {
+        "name": "dark",
+        "type": "String?"
+      },
+      {
+        "name": "events",
+        "type": "ControlEventBatch?"
+      }
+    ],
+    "sessionNode": [
+      {
+        "name": "id",
+        "type": "String"
+      },
+      {
+        "name": "name",
+        "type": "String"
+      },
+      {
+        "name": "cwd",
+        "type": "String"
+      },
+      {
+        "name": "title",
+        "type": "String?"
+      },
+      {
+        "name": "active",
+        "type": "Bool"
+      },
+      {
+        "name": "split",
+        "type": "Bool"
+      },
+      {
+        "name": "splitRatio",
+        "type": "Double?"
+      },
+      {
+        "name": "splitFocused",
+        "type": "Bool?"
+      },
+      {
+        "name": "overlay",
+        "type": "Bool"
+      },
+      {
+        "name": "overlaySizePercent",
+        "type": "Int?"
+      },
+      {
+        "name": "scratch",
+        "type": "Bool"
+      },
+      {
+        "name": "flagged",
+        "type": "Bool"
+      },
+      {
+        "name": "commandWait",
+        "type": "Bool?"
+      },
+      {
+        "name": "foreground",
+        "type": "[String]?"
+      },
+      {
+        "name": "splitForeground",
+        "type": "[String]?"
+      },
+      {
+        "name": "restoreCommand",
+        "type": "String?"
+      },
+      {
+        "name": "splitRestoreCommand",
+        "type": "String?"
+      },
+      {
+        "name": "status",
+        "type": "String?"
+      },
+      {
+        "name": "statusPane",
+        "type": "String?"
+      },
+      {
+        "name": "statusBlink",
+        "type": "Bool?"
+      },
+      {
+        "name": "statusColor",
+        "type": "String?"
+      },
+      {
+        "name": "statusShape",
+        "type": "String?"
+      },
+      {
+        "name": "background",
+        "type": "BackgroundWatermark?"
+      },
+      {
+        "name": "unseen",
+        "type": "Int?"
+      },
+      {
+        "name": "fontSize",
+        "type": "Double?"
+      },
+      {
+        "name": "splitFontSize",
+        "type": "Double?"
+      },
+      {
+        "name": "scratchFontSize",
+        "type": "Double?"
+      },
+      {
+        "name": "surfaces",
+        "type": "[ControlSurfaceNode]?"
+      }
+    ],
+    "workspaceNode": [
+      {
+        "name": "id",
+        "type": "String"
+      },
+      {
+        "name": "name",
+        "type": "String"
+      },
+      {
+        "name": "active",
+        "type": "Bool"
+      },
+      {
+        "name": "focused",
+        "type": "Bool?"
+      },
+      {
+        "name": "collapsed",
+        "type": "Bool?"
+      },
+      {
+        "name": "sessions",
+        "type": "[ControlSessionNode]"
+      }
+    ],
+    "windowNode": [
+      {
+        "name": "id",
+        "type": "String"
+      },
+      {
+        "name": "name",
+        "type": "String"
+      },
+      {
+        "name": "open",
+        "type": "Bool"
+      },
+      {
+        "name": "active",
+        "type": "Bool"
+      },
+      {
+        "name": "autoFollowMs",
+        "type": "Int?"
+      },
+      {
+        "name": "sidebarVisible",
+        "type": "Bool?"
+      },
+      {
+        "name": "geometry",
+        "type": "ControlWindowFrame?"
+      },
+      {
+        "name": "fullscreen",
+        "type": "Bool?"
+      },
+      {
+        "name": "zoomed",
+        "type": "Bool?"
+      }
+    ]
+  },
+  "keymap": {
+    "actions": [
+      {
+        "swift": "newWindow",
+        "wire": "new_window",
+        "defaultChord": "command+option+n"
+      },
+      {
+        "swift": "renameWindow",
+        "wire": "rename_window",
+        "defaultChord": null
+      },
+      {
+        "swift": "deleteWindow",
+        "wire": "delete_window",
+        "defaultChord": null
+      },
+      {
+        "swift": "newWorkspace",
+        "wire": "new_workspace",
+        "defaultChord": "command+shift+n"
+      },
+      {
+        "swift": "renameWorkspace",
+        "wire": "rename_workspace",
+        "defaultChord": null
+      },
+      {
+        "swift": "deleteWorkspace",
+        "wire": "delete_workspace",
+        "defaultChord": null
+      },
+      {
+        "swift": "newSession",
+        "wire": "new_session",
+        "defaultChord": "command+n"
+      },
+      {
+        "swift": "openDirectory",
+        "wire": "open_directory",
+        "defaultChord": "command+o"
+      },
+      {
+        "swift": "renameSession",
+        "wire": "rename_session",
+        "defaultChord": null
+      },
+      {
+        "swift": "duplicateSession",
+        "wire": "duplicate_session",
+        "defaultChord": null
+      },
+      {
+        "swift": "closeSession",
+        "wire": "close_session",
+        "defaultChord": "command+w"
+      },
+      {
+        "swift": "reopenRecent",
+        "wire": "reopen_recent",
+        "defaultChord": "command+shift+t"
+      },
+      {
+        "swift": "undoClose",
+        "wire": "undo_close",
+        "defaultChord": "command+z"
+      },
+      {
+        "swift": "clearStatus",
+        "wire": "clear_status",
+        "defaultChord": null
+      },
+      {
+        "swift": "increaseFontSize",
+        "wire": "increase_font_size",
+        "defaultChord": "command++"
+      },
+      {
+        "swift": "decreaseFontSize",
+        "wire": "decrease_font_size",
+        "defaultChord": "command+-"
+      },
+      {
+        "swift": "resetFontSize",
+        "wire": "reset_font_size",
+        "defaultChord": "command+0"
+      },
+      {
+        "swift": "toggleSplit",
+        "wire": "toggle_split",
+        "defaultChord": "command+d"
+      },
+      {
+        "swift": "toggleScratch",
+        "wire": "toggle_scratch",
+        "defaultChord": "command+j"
+      },
+      {
+        "swift": "toggleTerminalZoom",
+        "wire": "toggle_terminal_zoom",
+        "defaultChord": "command+shift+return"
+      },
+      {
+        "swift": "toggleSearch",
+        "wire": "toggle_search",
+        "defaultChord": "command+f"
+      },
+      {
+        "swift": "toggleSidebar",
+        "wire": "toggle_sidebar",
+        "defaultChord": "command+control+s"
+      },
+      {
+        "swift": "selectTheme",
+        "wire": "select_theme",
+        "defaultChord": null
+      },
+      {
+        "swift": "toggleFullscreen",
+        "wire": "toggle_fullscreen",
+        "defaultChord": "command+control+f"
+      },
+      {
+        "swift": "toggleFlaggedView",
+        "wire": "toggle_flagged_view",
+        "defaultChord": null
+      },
+      {
+        "swift": "toggleFlag",
+        "wire": "toggle_flag",
+        "defaultChord": "command+shift+f"
+      },
+      {
+        "swift": "focusWorkspace",
+        "wire": "focus_workspace",
+        "defaultChord": null
+      },
+      {
+        "swift": "focusLeftPane",
+        "wire": "focus_left_pane",
+        "defaultChord": "command+option+left"
+      },
+      {
+        "swift": "focusRightPane",
+        "wire": "focus_right_pane",
+        "defaultChord": "command+option+right"
+      },
+      {
+        "swift": "previousSession",
+        "wire": "previous_session",
+        "defaultChord": "command+option+up"
+      },
+      {
+        "swift": "nextSession",
+        "wire": "next_session",
+        "defaultChord": "command+option+down"
+      },
+      {
+        "swift": "previousAttentionSession",
+        "wire": "previous_attention_session",
+        "defaultChord": "control+option+up"
+      },
+      {
+        "swift": "nextAttentionSession",
+        "wire": "next_attention_session",
+        "defaultChord": "control+option+down"
+      },
+      {
+        "swift": "firstSession",
+        "wire": "first_session",
+        "defaultChord": null
+      },
+      {
+        "swift": "lastSession",
+        "wire": "last_session",
+        "defaultChord": null
+      },
+      {
+        "swift": "quickTerminal",
+        "wire": "quick_terminal",
+        "defaultChord": "control+`"
+      },
+      {
+        "swift": "sessionPalette",
+        "wire": "session_palette",
+        "defaultChord": "control+p"
+      },
+      {
+        "swift": "commandPalette",
+        "wire": "command_palette",
+        "defaultChord": "control+shift+p"
+      },
+      {
+        "swift": "customCommandPalette",
+        "wire": "custom_command_palette",
+        "defaultChord": "control+shift+o"
+      },
+      {
+        "swift": "showAttention",
+        "wire": "show_attention",
+        "defaultChord": "control+shift+i"
+      },
+      {
+        "swift": "dashboard",
+        "wire": "dashboard",
+        "defaultChord": "command+shift+d"
+      }
+    ],
+    "tokens": [
+      "AGT_SESSION_ID",
+      "AGT_SESSION_NAME",
+      "AGT_SESSION_PWD",
+      "AGT_WORKSPACE_ID",
+      "AGT_WORKSPACE_NAME",
+      "AGT_WINDOW_ID",
+      "AGT_WINDOW_NAME",
+      "AGT_PANE",
+      "AGT_SELECTION",
+      "AGT_SOCKET"
+    ]
+  },
+  "settings": [
+    {
+      "name": "timeout",
+      "type": "TimeInterval? {"
+    },
+    {
+      "name": "fontFamily",
+      "type": "String?"
+    },
+    {
+      "name": "fontSize",
+      "type": "Double?"
+    },
+    {
+      "name": "theme",
+      "type": "String?"
+    },
+    {
+      "name": "darkTheme",
+      "type": "String?"
+    },
+    {
+      "name": "followSystemAppearance",
+      "type": "Bool?"
+    },
+    {
+      "name": "backgroundOpacity",
+      "type": "Double?"
+    },
+    {
+      "name": "backgroundBlur",
+      "type": "Int?"
+    },
+    {
+      "name": "notificationsEnabled",
+      "type": "Bool?"
+    },
+    {
+      "name": "notificationBadgeEnabled",
+      "type": "Bool?"
+    },
+    {
+      "name": "toolbarMode",
+      "type": "String?"
+    },
+    {
+      "name": "compactToolbar",
+      "type": "Bool?"
+    },
+    {
+      "name": "activeStatusColorHex",
+      "type": "String?"
+    },
+    {
+      "name": "blockedStatusColorHex",
+      "type": "String?"
+    },
+    {
+      "name": "completedStatusColorHex",
+      "type": "String?"
+    },
+    {
+      "name": "activeStatusShape",
+      "type": "String?"
+    },
+    {
+      "name": "blockedStatusShape",
+      "type": "String?"
+    },
+    {
+      "name": "completedStatusShape",
+      "type": "String?"
+    },
+    {
+      "name": "configDirectory",
+      "type": "String?"
+    },
+    {
+      "name": "mouseScrollMultiplier",
+      "type": "Double?"
+    },
+    {
+      "name": "inactivePaneMuteStrength",
+      "type": "Int?"
+    },
+    {
+      "name": "sidebarBackgroundShift",
+      "type": "Int?"
+    },
+    {
+      "name": "restoreRunningCommand",
+      "type": "Bool?"
+    },
+    {
+      "name": "inheritGlobalGhosttyConfig",
+      "type": "Bool?"
+    },
+    {
+      "name": "attentionButtonEnabled",
+      "type": "Bool?"
+    },
+    {
+      "name": "dockBounce",
+      "type": "String?"
+    },
+    {
+      "name": "notificationSoundName",
+      "type": "String?"
+    },
+    {
+      "name": "blockedStatusSoundName",
+      "type": "String?"
+    },
+    {
+      "name": "rightClickPaste",
+      "type": "Bool?"
+    },
+    {
+      "name": "newSessionDirectory",
+      "type": "String?"
+    },
+    {
+      "name": "newSessionCustomDirectory",
+      "type": "String?"
+    },
+    {
+      "name": "confirmCloseSession",
+      "type": "Bool?"
+    },
+    {
+      "name": "closeGraceUndoEnabled",
+      "type": "Bool?"
+    },
+    {
+      "name": "autoFollowAttention",
+      "type": "String?"
+    },
+    {
+      "name": "autoFollowStayOnActive",
+      "type": "Bool?"
+    },
+    {
+      "name": "sidebarFontSize",
+      "type": "Double?"
+    },
+    {
+      "name": "hiddenInterfaceElements",
+      "type": "[String]?"
+    },
+    {
+      "name": "autoHideSidebarInactiveWindows",
+      "type": "Bool?"
+    },
+    {
+      "name": "resolvedHiddenInterfaceElements",
+      "type": "Set<InterfaceElement> {"
+    },
+    {
+      "name": "effectiveToolbarMode",
+      "type": "ToolbarMode {"
+    },
+    {
+      "name": "effectiveDockBounce",
+      "type": "DockBounce {"
+    }
+  ],
+  "persistence": {
+    "snapshot": [
+      {
+        "name": "version",
+        "type": "Int"
+      },
+      {
+        "name": "selectedSessionID",
+        "type": "UUID?"
+      },
+      {
+        "name": "workspaces",
+        "type": "[WorkspaceSnapshot]"
+      },
+      {
+        "name": "sidebarWidth",
+        "type": "Double?"
+      },
+      {
+        "name": "sidebarVisible",
+        "type": "Bool?"
+      },
+      {
+        "name": "sidebarMode",
+        "type": "SidebarMode?"
+      },
+      {
+        "name": "focusedWorkspaceID",
+        "type": "UUID?"
+      },
+      {
+        "name": "sessionRecency",
+        "type": "[UUID]?"
+      }
+    ],
+    "workspaceSnapshot": [
+      {
+        "name": "id",
+        "type": "UUID"
+      },
+      {
+        "name": "name",
+        "type": "String"
+      },
+      {
+        "name": "sessions",
+        "type": "[SessionSnapshot]"
+      },
+      {
+        "name": "collapsed",
+        "type": "Bool?"
+      }
+    ],
+    "sessionSnapshot": [
+      {
+        "name": "id",
+        "type": "UUID"
+      },
+      {
+        "name": "customName",
+        "type": "String?"
+      },
+      {
+        "name": "cwd",
+        "type": "String"
+      },
+      {
+        "name": "isSplit",
+        "type": "Bool?"
+      },
+      {
+        "name": "fontSize",
+        "type": "Double?"
+      },
+      {
+        "name": "splitCwd",
+        "type": "String?"
+      },
+      {
+        "name": "splitRatio",
+        "type": "Double?"
+      },
+      {
+        "name": "flagged",
+        "type": "Bool?"
+      },
+      {
+        "name": "foregroundCommand",
+        "type": "[String]?"
+      },
+      {
+        "name": "splitForegroundCommand",
+        "type": "[String]?"
+      },
+      {
+        "name": "initialCommand",
+        "type": "String?"
+      },
+      {
+        "name": "commandWait",
+        "type": "Bool?"
+      },
+      {
+        "name": "backgroundWatermark",
+        "type": "BackgroundWatermark?"
+      },
+      {
+        "name": "restoreCommand",
+        "type": "String?"
+      },
+      {
+        "name": "splitRestoreCommand",
+        "type": "String?"
+      }
+    ]
+  }
+}
