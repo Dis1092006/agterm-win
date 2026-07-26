@@ -57,6 +57,29 @@
   Swift `JSONEncoder` по умолчанию) для кросс-читаемости; upstream пишет
   prettyPrinted+sortedKeys, мы — компактно и атомарно (как `PersistenceStore`).
 
+- **Headless-хост (`HeadlessHost`/`HeadlessControlActions`).** Полная реализация
+  `IControlActions` поверх ОДНОГО `AppStore` (single-window; upstream-резолвер целей
+  свёрнут на один стор, wire-строки ошибок не тронуты). Расхождения, продиктованные
+  отсутствием окон/терминального движка:
+  - `window.new/close/resize/move/zoom/fullscreen` → `"window management is not
+    available in the headless host"` (после резолюции цели — `no such window`/prefix-
+    ошибки закреплены); `window.select` единственного окна → ok+id; `window.rename`
+    работает; `window.delete` → upstream-точное `"cannot delete last window"`.
+    `window.list`: `geometry`/`fullscreen`/`zoomed` опущены.
+  - Терминальные армы идут через шов `IHeadlessSurface` (фейковые поверхности E2E);
+    realize-поллинги (~360 мс) заменены одиночной проверкой; строки ошибок
+    (`session not realized; use select`, `quick terminal not open`, `no selection`
+    и т.д.) — из upstream.
+  - `session.status --sound` принимается, но не проигрывается и не валидируется;
+    `notify` всегда идёт banners-off путём (`result.text` = BannersOffNote);
+    `session.search` считает совпадения по буферу фейка синхронно;
+    `session.reveal` выбирает сессию (без файлового менеджера), gate на
+    существование cwd сохранён; `config.reload` — инжектируемый счётчик (движка
+    нет); батч-грейс `session.close` по умолчанию выключен (таймер финализации
+    жил бы вне диспетчер-лока), включается опцией.
+  - Бутстрап как у приложения: загрузка снапшота из state dir (armed
+    launchRestore), пустой стейт → дефолтный воркспейс + сессия в home.
+
 - **`agtermctl` (AgTerm.Cli).** Субкоманды/флаги/валидация/вывод — 1:1 с
   agtermctlKit; парсер — System.CommandLine вместо swift-argument-parser
   (шов `ParseAsRoot`/`MakeRequest`/`Validate` сохранён для портированных тестов).
