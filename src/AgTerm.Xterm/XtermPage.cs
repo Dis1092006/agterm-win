@@ -58,6 +58,20 @@ public sealed class XtermPage
         await _host.ExecuteScriptAsync($"agterm.closePane({PaneLiteral(paneId)})").ConfigureAwait(false);
     }
 
+    /// <summary>A key press one of the panes intercepted against the pushed chord table — the
+    /// window's hotkey dispatcher handles it (the shell never saw the key).</summary>
+    public event Action<string, Core.Keymap.PhysicalChord>? ChordPressed;
+
+    /// <summary>Push the hotkey table every pane intercepts (replaces the previous table; empty
+    /// clears the interception). Call after keymap load/reload, on the WebView2 UI thread — a
+    /// script call, so nothing dispatched afterwards can outrun the table.</summary>
+    public Task SetInterceptChordsAsync(IEnumerable<Core.Keymap.PhysicalChord> chords)
+    {
+        var items = chords.Select(c => new { ctrl = c.Ctrl, alt = c.Alt, shift = c.Shift, key = c.Key });
+        return _host.ExecuteScriptAsync(
+            $"agterm.setChords({JsonSerializer.Serialize(items, XtermTerminal.ScriptLiteral)})");
+    }
+
     internal Task<string> ExecuteScriptAsync(string script) => _host.ExecuteScriptAsync(script);
 
     internal void PostJson(string json) => _host.PostJson(json);
@@ -81,6 +95,12 @@ public sealed class XtermPage
             _ready.TrySetResult();
             return;
         }
+        if (msg is { Type: "chord", PaneId: { } chordPane, Key: { } key })
+        {
+            ChordPressed?.Invoke(chordPane,
+                new Core.Keymap.PhysicalChord(msg.Ctrl ?? false, msg.Alt ?? false, msg.Shift ?? false, key));
+            return;
+        }
         if (msg?.PaneId is { } paneId && _terminals.TryGetValue(paneId, out var terminal))
             terminal.HandleMessage(msg);
     }
@@ -102,4 +122,8 @@ internal sealed record BridgeMessage
     [JsonPropertyName("rows")] public int? Rows { get; init; }
     [JsonPropertyName("title")] public string? Title { get; init; }
     [JsonPropertyName("uri")] public string? Uri { get; init; }
+    [JsonPropertyName("ctrl")] public bool? Ctrl { get; init; }
+    [JsonPropertyName("alt")] public bool? Alt { get; init; }
+    [JsonPropertyName("shift")] public bool? Shift { get; init; }
+    [JsonPropertyName("key")] public string? Key { get; init; }
 }

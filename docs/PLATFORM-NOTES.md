@@ -157,3 +157,36 @@
   и `--no-select`-создания, бутстрап после рестора зовёт `RealizeAllSessions()`.
   Headless-хост флаг НЕ включает: там поверхности навешиваются тестами извне, и
   паритетная ошибка `"session not realized; use select"` сохраняется как есть.
+
+- **`AppStore.SidebarChanged` (Observation-замена для сайдбара).** Коарсовое C#-событие
+  «что-то в строках сайдбара изменилось» по прецеденту `SelectionChanged` (фаза 3):
+  эмитится из `Save()` (любая персистируемая мутация) плюс из несохраняющих путей
+  (selection до дебаунса, индикаторы, unseen). Публичный `NotifySidebar()` — для
+  OOB-инвалидаций хоста (живые OSC title/cwd, unseen-бамп notify-арма). Кольцо событий
+  НЕ тронуто: flag/collapse/focus/mode по-прежнему не эмитят `tree.changed` (паритет wire).
+  UI-слой: `SidebarController` снимает `SidebarProjection`-снапшот ПОД гейтом и
+  маршалит в UI; жесты сайдбара зовут те же мутаторы стора, что socket-армы
+  (третий вызывающий, как upstream toolbar/menu/control).
+
+- **Маппинг модификаторов keymap на Windows (спец. §9: «cmd → Win/Ctrl по вкусу»).**
+  Принято: `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift. Так как два
+  keymap-модификатора делят одну физическую клавишу, нажатие декодируется в КАНДИДАТОВ
+  по приоритету: cmd-интерпретация → ctrl → свёртка ctrl+cmd; побеждает первый, знакомый
+  матчеру (`WindowsChordDecoder` + `HotkeyRouter`). Следствие — коллизии дефолтов
+  (затенённое действие достижимо через `map` в keymap.conf):
+  | Физически | Побеждает | Затенён |
+  |---|---|---|
+  | Ctrl+F | `toggle_search` (⌘F) | `toggle_fullscreen` (⌃⌘F) |
+  | Ctrl+Alt+↑ | `previous_session` (⌘⌥↑) | `previous_attention_session` (⌃⌥↑) |
+  | Ctrl+Alt+↓ | `next_session` (⌘⌥↓) | `next_attention_session` (⌃⌥↓) |
+  Перехват в терминале: страница получает таблицу активных физ-чордов
+  (`agterm.setChords`); совпавший keydown НЕ уходит в шелл, а возвращается хосту
+  `{type:'chord',…}` (xterm `attachCustomKeyEventHandler`). Плата за cmd→Ctrl: забиндённые
+  Ctrl-чорды (Ctrl+N/W/F/…) не доходят до шелла — как и было бы в Windows Terminal с
+  такими биндами; лечится `map`-ом. Кастом-команды и палитры — фаза 5 (их чорды пока
+  не перехватываются). Полная таблица действий — README.
+
+- **Сайдбар: не портированное в фазе 4.** Finder-folder-drop (перетаскивание каталогов
+  из Explorer в сайдбар) не реализован; спринг-раскрытие свёрнутого воркспейса под
+  драгом — нет (WinUI DnD не даёт hover-таймера бесплатно); подтверждение Clear Flagged
+  и confirm-close-session модалки — фаза 5 (настройки уже читаются из AppSettings).

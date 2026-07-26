@@ -8,16 +8,35 @@
 //                                              {type:'resize', paneId, cols, rows}
 //                                              {type:'title', paneId, title}     OSC 0/1/2
 //                                              {type:'cwd', paneId, uri}         OSC 7 / OSC 9;9
+//                                              {type:'chord', paneId, ctrl, alt, shift, key}
 //   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize}) → {cols,rows},
 //     agterm.showPane(paneId), agterm.closePane(paneId), and the per-pane reads/writes:
 //     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
-//     each takes paneId first; every call on an unknown paneId returns null.
+//     each takes paneId first; every call on an unknown paneId returns null. Page-global:
+//     agterm.setChords([{ctrl,alt,shift,key}]) — the hotkey table the panes intercept.
 // The FIRST opened pane is shown automatically; window resizes refit only the visible pane.
 'use strict';
 
 const panes = new Map(); // paneId → {term, fitAddon, searchAddon, serializeAddon, lastSearch, el}
 let visiblePaneId = null;
+let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
 const container = document.getElementById('panes');
+
+// e.key → the keymap key name (lowercased char or a named key); null = not interceptable
+function normalizeKey(key) {
+    if (typeof key !== 'string') return null;
+    if (key.length === 1) return key === ' ' ? 'space' : key.toLowerCase();
+    switch (key) {
+        case 'Tab': return 'tab';
+        case 'Enter': return 'return';
+        case 'Backspace': return 'delete';
+        case 'ArrowLeft': return 'left';
+        case 'ArrowRight': return 'right';
+        case 'ArrowUp': return 'up';
+        case 'ArrowDown': return 'down';
+        default: return null;
+    }
+}
 
 const post = (msg) => window.chrome.webview.postMessage(msg);
 
@@ -56,6 +75,20 @@ function openPane(paneId, opts) {
     // only toggled after open — xterm needs a laid-out element, so flip on, open+fit, restore.
     el.style.display = 'block';
     term.open(el);
+
+    // app hotkeys never reach the shell: a keydown matching the host-pushed chord table goes
+    // back as a chord message instead (the host's KeybindMatcher dispatches it)
+    term.attachCustomKeyEventHandler((ev) => {
+        if (ev.type !== 'keydown') return true;
+        const key = normalizeKey(ev.key);
+        if (key === null) return true;
+        const hit = interceptChords.some((c) =>
+            c.ctrl === ev.ctrlKey && c.alt === ev.altKey && c.shift === ev.shiftKey && c.key === key);
+        if (!hit) return true;
+        post({ type: 'chord', paneId, ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key });
+        if (ev.preventDefault) ev.preventDefault();
+        return false;
+    });
 
     // user input → pty (xterm already encodes Enter as CR, arrows as VT sequences, etc.)
     term.onData((data) => post({ type: 'data', paneId, data }));
@@ -142,6 +175,7 @@ window.chrome.webview.addEventListener('message', (e) => {
     }
 });
 
+
 // plain-text buffer read (session.text): default = the visible screen, all = screen + scrollback,
 // lines = the last N lines of screen + scrollback. Lines are right-trimmed like the upstream read.
 function bufferText(term, all, lines) {
@@ -202,6 +236,19 @@ window.agterm = {
     }),
     getFontSize: (paneId) => withPane(paneId, (p) => p.term.options.fontSize),
     focus: (paneId) => withPane(paneId, (p) => { p.term.focus(); return true; }),
+    // page-global hotkey table (host-invoked so a following dispatch cannot outrun it)
+    setChords: (items) => { interceptChords = items || []; return interceptChords.length; },
+    // test-only: run a synthetic keydown through the real xterm key path (chord interception)
+    dispatchKey: (paneId, opts) => withPane(paneId, (p) => {
+        p.term.textarea.dispatchEvent(new KeyboardEvent('keydown', {
+            key: opts.key,
+            ctrlKey: !!opts.ctrlKey,
+            altKey: !!opts.altKey,
+            shiftKey: !!opts.shiftKey,
+            cancelable: true,
+        }));
+        return true;
+    }),
 };
 
 post({ type: 'ready' });

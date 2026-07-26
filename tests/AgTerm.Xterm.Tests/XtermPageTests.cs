@@ -109,6 +109,25 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task SetInterceptChords_posts_the_chord_table_and_chord_messages_raise_the_event()
+    {
+        var page = await InitializedAsync();
+        await page.OpenTerminalAsync("p1");
+        await page.SetInterceptChordsAsync(
+            new[] { new AgTerm.Core.Keymap.PhysicalChord(true, false, false, "n") });
+        var script = Assert.Single(_host.Scripts, s => s.Contains("agterm.setChords"));
+        Assert.Contains("\"ctrl\":true", script);
+        Assert.Contains("\"key\":\"n\"", script);
+
+        var pressed = new List<(string PaneId, AgTerm.Core.Keymap.PhysicalChord Chord)>();
+        page.ChordPressed += (paneId, chord) => pressed.Add((paneId, chord));
+        _host.RaiseMessage("""{"type":"chord","paneId":"p1","ctrl":true,"alt":false,"shift":false,"key":"n"}""");
+        var hit = Assert.Single(pressed);
+        Assert.Equal("p1", hit.PaneId);
+        Assert.Equal(new AgTerm.Core.Keymap.PhysicalChord(true, false, false, "n"), hit.Chord);
+    }
+
+    [Fact]
     public async Task ClosePane_runs_the_close_script_and_unroutes_the_terminal()
     {
         var page = await InitializedAsync();

@@ -138,6 +138,36 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void Hotkey_variants_act_on_the_active_session_and_workspace()
+    {
+        var initial = Latest.SelectedSessionId!.Value;
+        _controller.NewSessionInActiveWorkspace();
+        var created = Latest.SelectedSessionId!.Value;
+        Assert.NotEqual(initial, created);
+
+        _controller.ToggleActiveFlag();
+        Assert.True(Latest.Rows.Single(r => r.Id == created).Flagged);
+        _controller.ToggleActiveFlag();
+        Assert.False(Latest.Rows.Single(r => r.Id == created).Flagged);
+
+        _controller.Navigate(SessionNavigation.First);
+        Assert.Equal(initial, Latest.SelectedSessionId);
+        _controller.Navigate(SessionNavigation.Last);
+        Assert.Equal(created, Latest.SelectedSessionId);
+
+        _controller.FocusActiveWorkspaceToggle();
+        Assert.NotNull(Latest.FocusedWorkspaceId);
+        _controller.FocusActiveWorkspaceToggle();
+        Assert.Null(Latest.FocusedWorkspaceId);
+
+        _controller.DuplicateActiveSession();
+        var duplicated = Latest.SelectedSessionId!.Value;
+        Assert.NotEqual(created, duplicated);
+        _controller.CloseActiveSession();
+        Assert.DoesNotContain(Latest.Rows, r => r.Id == duplicated);
+    }
+
+    [Fact]
     public void Width_and_visibility_persist_through_the_store()
     {
         _controller.SetSidebarWidth(300);

@@ -197,6 +197,45 @@ public sealed class SidebarController : IDisposable
         });
     }
 
+    // MARK: - hotkey-driven variants (BuiltinAction dispatch targets the ACTIVE session/workspace)
+
+    public void NewSessionInActiveWorkspace(string? cwd = null) => Mutate(store =>
+    {
+        if (store.CurrentWorkspaceId is { } workspace)
+            store.AddSession(workspace, cwd ?? _homeDirectory);
+    });
+
+    public void CloseActiveSession() => Mutate(store =>
+    {
+        if (store.SelectedSessionId is { } id) store.CloseSession(id);
+    });
+
+    public void DuplicateActiveSession() => Mutate(store =>
+    {
+        if (store.SelectedSessionId is { } id) store.DuplicateSession(id);
+    });
+
+    public void ToggleActiveFlag() => Mutate(store =>
+    {
+        if (store.ActiveSession is { } session) store.SetFlag(!session.Flagged, session.Id);
+    });
+
+    public void ClearActiveStatus() => Mutate(store =>
+    {
+        if (store.SelectedSessionId is { } id) store.SetAgentIndicator(new AgentIndicator(), id);
+    });
+
+    public void Navigate(SessionNavigation direction) =>
+        Mutate(store => store.NavigateSession(direction));
+
+    public void FocusActiveWorkspaceToggle() => Mutate(store =>
+    {
+        if (store.CurrentWorkspaceId is { } workspace)
+            store.SetFocusedWorkspace(store.FocusedWorkspaceId == workspace ? null : workspace);
+    });
+
+    public void UndoClose() => Mutate(store => store.UndoPendingClose());
+
     private void Mutate(Action<AppStore> action) =>
         _runOffUi(() => _host.RunLocked(() => action(_host.Store)));
 

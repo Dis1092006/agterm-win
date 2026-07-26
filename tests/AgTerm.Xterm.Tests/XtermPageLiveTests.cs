@@ -18,7 +18,7 @@ public class XtermPageLiveTests
         _webView = webView;
     }
 
-    private async Task<(XtermPage Page, Func<Func<Task<object?>>, Task<object?>> OnUi)> BootPageAsync()
+    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootPageAsync()
     {
         var view = await _webView.CreateWebViewAsync();
         var page = await _webView.RunAsync(async _ =>
@@ -27,7 +27,7 @@ public class XtermPageLiveTests
             await p.InitializeAsync();
             return p;
         });
-        return (page, null!);
+        return (page, view);
     }
 
     private static async Task<string> WaitForTextAsync(XtermTerminal terminal, string contains,
@@ -100,13 +100,51 @@ public class XtermPageLiveTests
     }
 
     [Fact]
+    public async Task Intercepted_chords_come_back_as_chord_messages_and_skip_the_shell()
+    {
+        var (page, view) = await BootPageAsync();
+        var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-chord1"));
+        var data = new List<string>();
+        var chords = new List<(string, AgTerm.Core.Keymap.PhysicalChord)>();
+        one.DataReceived += data.Add;
+        page.ChordPressed += (paneId, chord) => chords.Add((paneId, chord));
+
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.SetInterceptChordsAsync(
+                new[] { new AgTerm.Core.Keymap.PhysicalChord(true, false, false, "n") });
+            return null;
+        });
+        // synthetic keydowns through the real xterm key path (test-only page hook), on the
+        // page's OWN WebView2 (the fixture's first view hosts a different page)
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"live-chord1\", {key:'n', ctrlKey:true})"));
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"live-chord1\", {key:'u', ctrlKey:true})"));
+
+        var deadline = Environment.TickCount64 + 30000;
+        while (chords.Count == 0 && Environment.TickCount64 < deadline) await Task.Delay(50);
+        var hit = Assert.Single(chords);
+        Assert.Equal("live-chord1", hit.Item1);
+        Assert.Equal(new AgTerm.Core.Keymap.PhysicalChord(true, false, false, "n"), hit.Item2);
+        // the intercepted Ctrl+N must NOT have reached the pty as ^N (0x0E); the uncaptured
+        // Ctrl+U may (that's the point of the allowlist)
+        Assert.DoesNotContain(data, d => d.Contains('\x0E'));
+    }
+
+    [Fact]
     public async Task ClosePane_disposes_the_terminal_so_reads_report_null()
     {
-        var (page, _) = await BootPageAsync();
+        var (page, view) = await BootPageAsync();
         var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-close1"));
+        // the pane answers before the close...
+        var before = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync("agterm.text(\"live-close1\", true, null)"));
+        Assert.NotEqual("null", before);
         await _webView.RunAsync<object?>(async _ => { await page.ClosePaneAsync("live-close1"); return null; });
-        var raw = await _webView.RunAsync(async v =>
-            await v.CoreWebView2.ExecuteScriptAsync("agterm.text(\"live-close1\", true, null)"));
+        // ...and reads report null after it (the pane and its terminal are gone)
+        var raw = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync("agterm.text(\"live-close1\", true, null)"));
         Assert.Equal("null", raw);
         _ = one;
     }

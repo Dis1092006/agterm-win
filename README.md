@@ -72,3 +72,35 @@ docs/                       (planned) agterm-windows-spec.md — the portable da
 
 See the portable spec (`agterm-windows-spec.md`) for the full data model, protocol, and keymap format
 that drive the implementation.
+
+## Hotkeys on Windows
+
+Keymap modifiers map as `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift (spec §9 leaves the
+mapping to the platform; rationale and the candidate-priority rule are in
+`docs/PLATFORM-NOTES.md`). Default chords, pinned to upstream and translated:
+
+| Action | macOS default | Windows | Action | macOS default | Windows |
+|---|---|---|---|---|---|
+| `new_window` | ⌘⌥N | Ctrl+Alt+N | `toggle_split` | ⌘D | Ctrl+D |
+| `new_workspace` | ⌘⇧N | Ctrl+Shift+N | `toggle_scratch` | ⌘J | Ctrl+J |
+| `new_session` | ⌘N | Ctrl+N | `toggle_terminal_zoom` | ⌘⇧↩ | Ctrl+Shift+Enter |
+| `open_directory` | ⌘O | Ctrl+O | `toggle_search` | ⌘F | Ctrl+F |
+| `close_session` | ⌘W | Ctrl+W | `toggle_sidebar` | ⌃⌘S | Ctrl+S |
+| `reopen_recent` | ⌘⇧T | Ctrl+Shift+T | `toggle_fullscreen` | ⌃⌘F | *(shadowed — remap)* |
+| `undo_close` | ⌘Z | Ctrl+Z | `toggle_flag` | ⌘⇧F | Ctrl+Shift+F |
+| `increase_font_size` | ⌘+ | Ctrl+Plus | `focus_left_pane` | ⌘⌥← | Ctrl+Alt+← |
+| `decrease_font_size` | ⌘- | Ctrl+Minus | `focus_right_pane` | ⌘⌥→ | Ctrl+Alt+→ |
+| `reset_font_size` | ⌘0 | Ctrl+0 | `previous_session` | ⌘⌥↑ | Ctrl+Alt+↑ |
+| `quick_terminal` | ⌃\` | Ctrl+\` | `next_session` | ⌘⌥↓ | Ctrl+Alt+↓ |
+| `session_palette` | ⌃P | Ctrl+P | `previous_attention_session` | ⌃⌥↑ | *(shadowed — remap)* |
+| `command_palette` | ⌃⇧P | Ctrl+Shift+P | `next_attention_session` | ⌃⌥↓ | *(shadowed — remap)* |
+| `custom_command_palette` | ⌃⇧O | Ctrl+Shift+O | `dashboard` | ⌘⇧D | Ctrl+Shift+D |
+| `show_attention` | ⌃⇧I | Ctrl+Shift+I | | | |
+
+Keyless actions (`rename_*`, `delete_*`, `duplicate_session`, `clear_status`, `select_theme`,
+`toggle_flagged_view`, `focus_workspace`, `first_session`, `last_session`) bind via `map` in
+`keymap.conf`. *Shadowed*: `cmd` and `ctrl` fold onto the same physical key, and the cmd
+interpretation wins — `⌃⌘F` loses to `⌘F`, `⌃⌥↑↓` lose to `⌘⌥↑↓`; `map` them to free chords
+(e.g. `map ctrl+shift+down next_attention_session`). F2 additionally renames the selected
+sidebar row (a UI gesture, not a keymap bind). Palettes/split/scratch/zoom/fullscreen/quick/
+dashboard hotkeys dispatch from phase 5.

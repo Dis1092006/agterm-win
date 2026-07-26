@@ -164,6 +164,13 @@ public sealed partial class SidebarView : UserControl
         }
     }
 
+    /// <summary>The rename_session hotkey: inline-rename the selected session row.</summary>
+    public void BeginRenameSelected()
+    {
+        if (_items.FirstOrDefault(i => i.IsSession && i.Id == _snapshot?.SelectedSessionId) is { } row)
+            BeginRename(row);
+    }
+
     private void BeginRename(SidebarRowViewModel row)
     {
         CancelRename();

@@ -1,7 +1,9 @@
+using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.System;
 
 namespace AgTerm.App;
 
@@ -77,6 +79,7 @@ public sealed partial class MainWindow : Window
             sidebar.Start();
         });
         host.Start();
+        _ = ArmHotkeysAsync(host);
         DispatcherQueue.TryEnqueue(() => ShowPane(host.Host.Store.SelectedSessionId));
     }
 
@@ -121,10 +124,120 @@ public sealed partial class MainWindow : Window
         _sidebar?.SetSidebarWidth(SidebarColumn.Width.Value);
     }
 
-    // MARK: - hotkeys (wired fully in the keymap step; F5 of the phase plan)
+    // MARK: - hotkeys (keymap → HotkeyRouter → the same store/controller paths as the socket)
+
+    private HotkeyRouter? _hotkeys;
+
+    /// <summary>Load keymap.conf, arm the router, and push the interception table into the page
+    /// (in-terminal presses come back as chord messages). keymap.reload re-arms both.</summary>
+    private async Task ArmHotkeysAsync(LiveControlHost host)
+    {
+        var page = await _pageTask;
+        void Arm(Keymap keymap)
+        {
+            _hotkeys = new HotkeyRouter(keymap);
+            _ = page.SetInterceptChordsAsync(_hotkeys.InterceptChords);
+        }
+        Arm(host.Host.Actions.LoadKeymap());
+        page.ChordPressed += (_, chord) => DispatcherQueue.TryEnqueue(() => HandleChord(chord));
+        host.Host.Actions.KeymapReloaded += keymap => DispatcherQueue.TryEnqueue(() => Arm(keymap));
+    }
 
     private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
+        if (PhysicalFromKey(e.Key) is { } physical && HandleChord(physical)) e.Handled = true;
+    }
+
+    /// <summary>A WinUI key event as a keymap-space physical chord (null = not hotkey material).</summary>
+    private static PhysicalChord? PhysicalFromKey(VirtualKey key)
+    {
+        static bool Down(VirtualKey k) =>
+            Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(k)
+                .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        var name = key switch
+        {
+            >= VirtualKey.A and <= VirtualKey.Z => char.ToLowerInvariant((char)key).ToString(),
+            >= VirtualKey.Number0 and <= VirtualKey.Number9 => ((char)('0' + (key - VirtualKey.Number0))).ToString(),
+            VirtualKey.Tab => "tab",
+            VirtualKey.Space => "space",
+            VirtualKey.Enter => "return",
+            VirtualKey.Back => "delete",
+            VirtualKey.Left => "left",
+            VirtualKey.Right => "right",
+            VirtualKey.Up => "up",
+            VirtualKey.Down => "down",
+            (VirtualKey)0xBB => "+",   // VK_OEM_PLUS
+            (VirtualKey)0xBD => "-",   // VK_OEM_MINUS
+            (VirtualKey)0xC0 => "`",   // VK_OEM_3
+            _ => null,
+        };
+        if (name is null) return null;
+        return new PhysicalChord(Down(VirtualKey.Control), Down(VirtualKey.Menu),
+            Down(VirtualKey.Shift), name);
+    }
+
+    /// <summary>Dispatch a physical chord through the router to the same mutators the control
+    /// socket drives. Returns whether an action fired.</summary>
+    private bool HandleChord(PhysicalChord physical)
+    {
+        if (_hotkeys?.Handle(physical) is not { } action) return false;
+        var sidebar = _sidebar;
+        var host = _host;
+        if (sidebar is null || host is null) return false;
+        switch (action)
+        {
+            case BuiltinAction.NewSession: sidebar.NewSessionInActiveWorkspace(); break;
+            case BuiltinAction.CloseSession: sidebar.CloseActiveSession(); break;
+            case BuiltinAction.DuplicateSession: sidebar.DuplicateActiveSession(); break;
+            case BuiltinAction.RenameSession: Sidebar.BeginRenameSelected(); break;
+            case BuiltinAction.NewWorkspace: sidebar.NewWorkspace(NextWorkspaceName()); break;
+            case BuiltinAction.ToggleFlag: sidebar.ToggleActiveFlag(); break;
+            case BuiltinAction.ToggleFlaggedView: sidebar.ToggleFlaggedView(); break;
+            case BuiltinAction.ToggleSidebar: sidebar.ToggleSidebarVisible(); break;
+            case BuiltinAction.FocusWorkspace: sidebar.FocusActiveWorkspaceToggle(); break;
+            case BuiltinAction.ClearStatus: sidebar.ClearActiveStatus(); break;
+            case BuiltinAction.UndoClose: sidebar.UndoClose(); break;
+            case BuiltinAction.PreviousSession: sidebar.Navigate(SessionNavigation.Previous); break;
+            case BuiltinAction.NextSession: sidebar.Navigate(SessionNavigation.Next); break;
+            case BuiltinAction.FirstSession: sidebar.Navigate(SessionNavigation.First); break;
+            case BuiltinAction.LastSession: sidebar.Navigate(SessionNavigation.Last); break;
+            case BuiltinAction.PreviousAttentionSession: sidebar.Navigate(SessionNavigation.PreviousAttention); break;
+            case BuiltinAction.NextAttentionSession: sidebar.Navigate(SessionNavigation.NextAttention); break;
+            case BuiltinAction.OpenDirectory: _ = OpenDirectoryIntoActiveAsync(); break;
+            case BuiltinAction.IncreaseFontSize: FontAction("increase_font_size:1"); break;
+            case BuiltinAction.DecreaseFontSize: FontAction("decrease_font_size:1"); break;
+            case BuiltinAction.ResetFontSize: FontAction("reset_font_size"); break;
+            default:
+                // palettes / split / scratch / zoom / fullscreen / quick / dashboard / theme /
+                // window management arrive with phase 5 — swallow the chord (it IS bound), log it
+                System.Diagnostics.Debug.WriteLine($"hotkey {action} is not implemented yet (phase 5)");
+                break;
+        }
+        return true;
+    }
+
+    private string NextWorkspaceName()
+    {
+        var count = 0;
+        if (_host is { } host) host.Host.RunLocked(() => count = host.Host.Store.Workspaces.Count);
+        return $"workspace {count + 1}";
+    }
+
+    private void FontAction(string action)
+    {
+        var host = _host;
+        if (host is null) return;
+        Task.Run(() => host.Host.RunLocked(() => host.Host.Actions.Font(null, null, null, action)));
+    }
+
+    private async Task OpenDirectoryIntoActiveAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FolderPicker();
+        picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker,
+            WinRT.Interop.WindowNative.GetWindowHandle(this));
+        if (await picker.PickSingleFolderAsync() is { } folder)
+            _sidebar?.NewSessionInActiveWorkspace(folder.Path);
     }
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session

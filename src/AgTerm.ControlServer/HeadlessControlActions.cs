@@ -1307,9 +1307,18 @@ public sealed class HeadlessControlActions : IControlActions
 
     // MARK: - app commands (keymap / config / notify / theme / sidebar / quick / restore.clear)
 
+    /// <summary>The parsed keymap after a keymap.reload (fired under the dispatch gate) — the
+    /// live window re-arms its hotkey router from it (headless has no key handling).</summary>
+    public event Action<Keymap>? KeymapReloaded;
+
+    /// <summary>The current keymap for the window's hotkey bootstrap (same file the reload arm
+    /// reads; diagnostics are the arm's concern).</summary>
+    public Keymap LoadKeymap() => _keymap.Load().Keymap;
+
     public ControlResponse ReloadKeymap()
     {
-        var (_, diagnostics) = _keymap.Load();
+        var (keymap, diagnostics) = _keymap.Load();
+        KeymapReloaded?.Invoke(keymap);
         return new ControlResponse { Ok = true, Result = new ControlResult { Count = diagnostics.Count } };
     }
 
