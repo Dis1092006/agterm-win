@@ -4,6 +4,7 @@
     <Project Path="src/AgTerm.ControlServer/AgTerm.ControlServer.csproj" />
     <Project Path="src/AgTerm.Core/AgTerm.Core.csproj" />
     <Project Path="src/AgTerm.Terminal/AgTerm.Terminal.csproj" />
+    <Project Path="src/AgTerm.Xterm/AgTerm.Xterm.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AgTerm.Cli.Tests/AgTerm.Cli.Tests.csproj" />
@@ -11,5 +12,6 @@
     <Project Path="tests/AgTerm.Core.Tests/AgTerm.Core.Tests.csproj" />
     <Project Path="tests/AgTerm.E2E/AgTerm.E2E.csproj" />
     <Project Path="tests/AgTerm.Terminal.Tests/AgTerm.Terminal.Tests.csproj" />
+    <Project Path="tests/AgTerm.Xterm.Tests/AgTerm.Xterm.Tests.csproj" />
   </Folder>
 </Solution>
