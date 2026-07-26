@@ -8,6 +8,15 @@ namespace AgTerm.Core.Model;
 public interface ITerminalSurface
 {
     string? PaneToken { get; }
+
+    /// <summary>Frees the underlying terminal surface and shell. Called when the owning session
+    /// (or pane) is closed.</summary>
+    void Teardown();
+
+    /// <summary>Reassigns this surface from the split (right) pane role to the primary pane, so its
+    /// live pwd/title reports flow to the session's main fields instead of the split fields. Called
+    /// when the primary pane's shell exits and the surviving split pane is promoted.</summary>
+    void PromoteToPrimaryPane();
 }
 
 /// <summary>

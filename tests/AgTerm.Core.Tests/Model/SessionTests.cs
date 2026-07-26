@@ -5,6 +5,14 @@ namespace AgTerm.Core.Tests.Model;
 file sealed class FakeSurface : ITerminalSurface
 {
     public string? PaneToken { get; init; }
+
+    public void Teardown()
+    {
+    }
+
+    public void PromoteToPrimaryPane()
+    {
+    }
 }
 
 public class SessionTests
