@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>agtermctl</AssemblyName>
+    <RootNamespace>AgTerm.Cli</RootNamespace>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgTerm.Core\AgTerm.Core.csproj" />
+    <ProjectReference Include="..\AgTerm.ControlServer\AgTerm.ControlServer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the ported agtermctlKit tests drive @testable-visible (internal) seams 1:1 -->
+    <InternalsVisibleTo Include="AgTerm.Cli.Tests" />
+    <InternalsVisibleTo Include="AgTerm.E2E" />
+  </ItemGroup>
+
+</Project>

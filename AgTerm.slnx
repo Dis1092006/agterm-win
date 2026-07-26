@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/AgTerm.Cli/AgTerm.Cli.csproj" />
     <Project Path="src/AgTerm.ControlServer/AgTerm.ControlServer.csproj" />
     <Project Path="src/AgTerm.Core/AgTerm.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AgTerm.Cli.Tests/AgTerm.Cli.Tests.csproj" />
     <Project Path="tests/AgTerm.ControlServer.Tests/AgTerm.ControlServer.Tests.csproj" />
     <Project Path="tests/AgTerm.Core.Tests/AgTerm.Core.Tests.csproj" />
   </Folder>
