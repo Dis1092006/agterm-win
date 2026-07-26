@@ -4,7 +4,8 @@ namespace AgTerm.App;
 
 public partial class App : Application
 {
-    private MainWindow? _window;
+    /// <summary>The single main window (pickers need its HWND for InitializeWithWindow).</summary>
+    public static Window? Window { get; private set; }
 
     public App()
     {
@@ -13,7 +14,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        _window = new MainWindow();
-        _window.Activate();
+        Window = new MainWindow();
+        Window.Activate();
     }
 }

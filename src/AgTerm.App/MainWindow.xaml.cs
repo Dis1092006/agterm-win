@@ -19,7 +19,10 @@ public sealed partial class MainWindow : Window
 {
     private readonly Dictionary<Guid, XtermPaneSurface> _surfaces = new(); // UI-thread confined
     private readonly Task<XtermPage> _pageTask;
+    private readonly AppSettings _settings = new SettingsStore().Load();
     private LiveControlHost? _host;
+    private SidebarController? _sidebar;
+    private bool _draggingDivider;
 
     public MainWindow()
     {
@@ -54,8 +57,74 @@ public sealed partial class MainWindow : Window
             var selected = host.Host.Store.SelectedSessionId;
             DispatcherQueue.TryEnqueue(() => ShowPane(selected));
         };
+        // live OSC title/cwd reports change displayName — nudge the sidebar rows (host OOB hook)
+        host.SurfaceRealized += (_, surface) =>
+        {
+            surface.Pane.TitleChanged += _ => Task.Run(() =>
+                host.Host.RunLocked(host.Host.Store.NotifySidebar));
+            surface.Pane.CwdChanged += _ => Task.Run(() =>
+                host.Host.RunLocked(host.Host.Store.NotifySidebar));
+        };
+        var sidebar = new SidebarController(host.Host,
+            runOnUi: work => DispatcherQueue.TryEnqueue(() => work()),
+            runOffUi: work => Task.Run(work));
+        _sidebar = sidebar;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            Sidebar.Attach(sidebar, _settings);
+            Sidebar.RowActivated += FocusActiveTerminal;
+            sidebar.SnapshotChanged += ApplyChrome;
+            sidebar.Start();
+        });
         host.Start();
         DispatcherQueue.TryEnqueue(() => ShowPane(host.Host.Store.SelectedSessionId));
+    }
+
+    /// <summary>Window-level chrome from a sidebar snapshot: column width and visibility.</summary>
+    private void ApplyChrome(SidebarSnapshot snapshot)
+    {
+        if (!_draggingDivider)
+            SidebarColumn.Width = new GridLength(snapshot.SidebarVisible ? snapshot.SidebarWidth : 0);
+        Sidebar.Visibility = snapshot.SidebarVisible ? Visibility.Visible : Visibility.Collapsed;
+        SidebarDivider.Visibility = Sidebar.Visibility;
+    }
+
+    /// <summary>Keyboard focus never lives in the sidebar (upstream): after a row gesture, return
+    /// it to the visible terminal pane.</summary>
+    private void FocusActiveTerminal()
+    {
+        TerminalView.Focus(FocusState.Programmatic);
+        if (_host?.Host.Store.SelectedSessionId is { } id && _surfaces.TryGetValue(id, out var surface))
+            _ = surface.Pane.Terminal.FocusAsync();
+    }
+
+    // MARK: - sidebar divider drag (persist on release, clamp 160…560 in the controller)
+
+    private void OnDividerPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        _draggingDivider = true;
+        SidebarDivider.CapturePointer(e.Pointer);
+    }
+
+    private void OnDividerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (!_draggingDivider) return;
+        var x = e.GetCurrentPoint(RootGrid).Position.X;
+        SidebarColumn.Width = new GridLength(Math.Clamp(x, 160, 560));
+    }
+
+    private void OnDividerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if (!_draggingDivider) return;
+        _draggingDivider = false;
+        SidebarDivider.ReleasePointerCapture(e.Pointer);
+        _sidebar?.SetSidebarWidth(SidebarColumn.Width.Value);
+    }
+
+    // MARK: - hotkeys (wired fully in the keymap step; F5 of the phase plan)
+
+    private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
     }
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session
