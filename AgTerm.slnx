@@ -8,5 +8,6 @@
     <Project Path="tests/AgTerm.Cli.Tests/AgTerm.Cli.Tests.csproj" />
     <Project Path="tests/AgTerm.ControlServer.Tests/AgTerm.ControlServer.Tests.csproj" />
     <Project Path="tests/AgTerm.Core.Tests/AgTerm.Core.Tests.csproj" />
+    <Project Path="tests/AgTerm.E2E/AgTerm.E2E.csproj" />
   </Folder>
 </Solution>

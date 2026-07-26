@@ -28,9 +28,15 @@ public static class Agtermctl
 
     private static IRequestCommand Bind(ParseResult result, CommandBindings bindings)
     {
-        if (result.Errors.Count > 0)
+        // a group with a DEFAULT subcommand (quick/sidebar visibility) binds on the group command
+        // itself; System.CommandLine still emits "Required command was not provided." for it, so
+        // that one error is ignored exactly when a binder exists for the parsed command.
+        var errors = bindings.For(result.CommandResult.Command) is null
+            ? result.Errors
+            : result.Errors.Where(e => e.Message != "Required command was not provided.").ToList();
+        if (errors.Count > 0)
         {
-            throw new CliParseException(string.Join("\n", result.Errors.Select(e => e.Message)));
+            throw new CliParseException(string.Join("\n", errors.Select(e => e.Message)));
         }
         var binder = bindings.For(result.CommandResult.Command)
             ?? throw new CliParseException(

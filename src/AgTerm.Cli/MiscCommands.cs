@@ -499,10 +499,8 @@ internal static class DashboardCommand
             Arity = ArgumentArity.ZeroOrMore,
             DefaultValueFactory = _ => Array.Empty<string>(),
         };
-        var fontSize = new Option<double?>("--font-size")
-        {
-            Description = "Absolute cell font size in points (mutually exclusive with --auto-size).",
-        };
+        var fontSize = CliOptions.LenientDouble("--font-size",
+            "Absolute cell font size in points (mutually exclusive with --auto-size).");
         var autoSize = new Option<bool>("--auto-size")
         {
             Description = "Size cells relative to the Settings default font, shrinking as the grid grows.",

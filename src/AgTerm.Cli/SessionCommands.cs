@@ -707,18 +707,12 @@ internal static class SessionCommands
     {
         var cmd = new System.CommandLine.Command("resize",
             "Resize a split session's divider (set or nudge the left-pane fraction).");
-        var splitRatio = new Option<double?>("--split-ratio")
-        {
-            Description = "Absolute left-pane fraction 0..1 (e.g. 0.7). Clamped to 0.05..0.95.",
-        };
-        var growLeft = new Option<double?>("--grow-left")
-        {
-            Description = "Grow the left pane by this fraction (e.g. 0.05); shrinks the right.",
-        };
-        var growRight = new Option<double?>("--grow-right")
-        {
-            Description = "Grow the right pane by this fraction (e.g. 0.05); shrinks the left.",
-        };
+        var splitRatio = CliOptions.LenientDouble("--split-ratio",
+            "Absolute left-pane fraction 0..1 (e.g. 0.7). Clamped to 0.05..0.95.");
+        var growLeft = CliOptions.LenientDouble("--grow-left",
+            "Grow the left pane by this fraction (e.g. 0.05); shrinks the right.");
+        var growRight = CliOptions.LenientDouble("--grow-right",
+            "Grow the right pane by this fraction (e.g. 0.05); shrinks the left.");
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Options.Add(splitRatio);

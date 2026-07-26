@@ -42,6 +42,39 @@ public sealed class CliEnvironment
     public Action<TimeSpan> Sleep { get; init; } = delay => Thread.Sleep(delay);
 }
 
+internal static class CliOptions
+{
+    /// <summary>A Double option that parses like Swift ArgumentParser: the special spellings
+    /// (inf/Infinity/nan, and overflow like 1e999) PARSE into non-finite values so the command's
+    /// Validate() stays the rejection point with the pinned upstream message — System.CommandLine's
+    /// stock converter would reject them at tokenize time with its own wording.</summary>
+    public static Option<double?> LenientDouble(string name, string description)
+    {
+        var option = new Option<double?>(name) { Description = description };
+        option.CustomParser = result =>
+        {
+            var token = result.Tokens[^1].Value;
+            if (double.TryParse(token, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var value))
+            {
+                return value;
+            }
+            if (token.Equals("inf", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("+inf", StringComparison.OrdinalIgnoreCase))
+            {
+                return double.PositiveInfinity;
+            }
+            if (token.Equals("-inf", StringComparison.OrdinalIgnoreCase))
+            {
+                return double.NegativeInfinity;
+            }
+            result.AddError($"Cannot parse argument '{token}' for option '{name}' as expected type Double.");
+            return null;
+        };
+        return option;
+    }
+}
+
 /// <summary>The connection/print surface every subcommand shares: where to connect and how to
 /// print. The default Execute drives only these.</summary>
 internal interface IConnectionOptions
