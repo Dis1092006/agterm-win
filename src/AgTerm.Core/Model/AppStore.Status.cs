@@ -36,6 +36,7 @@ public sealed partial class AppStore
         // a fresh block episode (entering blocked from a non-blocked status) re-arms idle
         // auto-follow for this session; a re-asserted blocked-over-blocked is not a new episode.
         if (!wasBlocked && indicator.Status == AgentStatus.Blocked) session.AutoFollowConsumed = false;
+        NotifySidebar(); // ephemeral (never saved), so the glyph refresh needs its own invalidation
         if (previous == indicator)
         {
             RearmAutoFollowOnAttentionChange();

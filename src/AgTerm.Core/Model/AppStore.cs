@@ -128,6 +128,19 @@ public sealed partial class AppStore
     /// visible). Same precedent as AutoFollowed / SidebarVisibilityChanged (PLATFORM-NOTES).</summary>
     public event Action? SelectionChanged;
 
+    /// <summary>Coarse sidebar invalidation: SOMETHING a sidebar row renders (structure, names,
+    /// selection, flags, collapse/focus/mode/visibility, indicators, unseen counts) changed — the
+    /// C# event replacing upstream's per-field Observation for the sidebar view (same precedent as
+    /// SelectionChanged, PLATFORM-NOTES). Fired by every sidebar-relevant mutator; the view snaps a
+    /// row projection under the host gate and diffs. Deliberately NOT tied to the event ring —
+    /// flag/collapse/focus/mode do not emit tree.changed (wire parity).</summary>
+    public event Action? SidebarChanged;
+
+    /// <summary>Raise SidebarChanged — public so the HOST can invalidate for out-of-band row
+    /// changes the store never sees as mutators (live OSC title/cwd reports feeding displayName,
+    /// the notify arm's unseen bump).</summary>
+    public void NotifySidebar() => SidebarChanged?.Invoke();
+
     /// <summary>Realize the shown session's main pane through the host seam, once.</summary>
     private void RealizeIfShown(Session session)
     {
@@ -415,6 +428,7 @@ public sealed partial class AppStore
         RecordRecency();
         ScheduleSave(); // selection fires on every click/keystroke — coalesce the writes
         SelectionChanged?.Invoke();
+        NotifySidebar(); // the debounced save must not delay the row-highlight refresh
     }
 
     /// <summary>Clears focus when the newly selected session lives outside the focused workspace, so
@@ -440,7 +454,9 @@ public sealed partial class AppStore
     /// unknown id. Not persisted (the count is ephemeral), so it never triggers a Save.</summary>
     public void ClearUnseen(Guid sessionId)
     {
-        if (SessionWithId(sessionId) is { } session) session.UnseenCount = 0;
+        if (SessionWithId(sessionId) is not { } session) return;
+        session.UnseenCount = 0;
+        NotifySidebar();
     }
 
     /// <summary>Pushes the current selection to the front of the recency stack (the Ctrl-Tab
@@ -998,7 +1014,13 @@ public sealed partial class AppStore
     /// <summary>Persists the current state eagerly. Called after every structural mutation and on
     /// terminate. Cancels any pending debounced save first. A write failure is logged and
     /// swallowed — a transient disk error must not bring down the model.</summary>
-    public void Save() => SaveChecked();
+    public void Save()
+    {
+        SaveChecked();
+        // every persisted mutation is (at least potentially) a sidebar-visible change; the event
+        // is a coarse invalidation and the view's diff makes over-notification cheap
+        NotifySidebar();
+    }
 
     /// <summary>Save that REPORTS whether the write landed instead of swallowing the failure, for a
     /// caller whose acknowledgement must not outrun the disk (SetRestoreCommand). A failed save is
