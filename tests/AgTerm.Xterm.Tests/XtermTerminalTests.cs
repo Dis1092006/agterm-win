@@ -3,149 +3,96 @@ using AgTerm.Xterm;
 
 namespace AgTerm.Xterm.Tests;
 
-/// <summary>Records every host call and lets a test play the page's side of the protocol.</summary>
-internal sealed class FakeScriptHost : IWebViewScriptHost
-{
-    public readonly List<(string Host, string Folder)> Mapped = new();
-    public readonly List<string> Navigated = new();
-    public readonly List<string> PostedJson = new();
-    public readonly List<string> Scripts = new();
-
-    /// <summary>Script → JSON-encoded result the fake returns (ExecuteScriptAsync semantics).</summary>
-    public Func<string, string> ScriptResult { get; set; } = _ => "null";
-
-    public event Action<string>? JsonMessageReceived;
-
-    public void MapVirtualHostToFolder(string hostName, string folderPath) =>
-        Mapped.Add((hostName, folderPath));
-
-    public void Navigate(string url) => Navigated.Add(url);
-
-    public Task<string> ExecuteScriptAsync(string script)
-    {
-        Scripts.Add(script);
-        return Task.FromResult(ScriptResult(script));
-    }
-
-    public void PostJson(string json) => PostedJson.Add(json);
-
-    public void RaiseMessage(string json) => JsonMessageReceived?.Invoke(json);
-}
-
+/// <summary>Per-pane XtermTerminal behavior over the shared page (bridge v2): every host→page
+/// message and every script call is addressed by the terminal's pane id.</summary>
 public class XtermTerminalTests
 {
     private readonly FakeScriptHost _host = new();
 
-    private async Task<XtermTerminal> InitializedAsync()
+    private async Task<XtermTerminal> OpenedAsync(string paneId = "p1")
     {
-        var terminal = new XtermTerminal(_host);
-        var init = terminal.InitializeAsync();
-        _host.RaiseMessage("""{"type":"ready","cols":80,"rows":24}""");
+        var page = new XtermPage(_host);
+        var init = page.InitializeAsync();
+        _host.RaiseMessage("""{"type":"ready"}""");
         await init;
-        return terminal;
+        return await page.OpenTerminalAsync(paneId);
     }
 
     [Fact]
-    public async Task Initialize_maps_assets_navigates_and_awaits_ready()
+    public async Task FeedOutput_posts_base64_output_addressed_to_the_pane()
     {
-        var terminal = new XtermTerminal(_host);
-        var init = terminal.InitializeAsync();
-        Assert.False(init.IsCompleted);
-        Assert.Equal(("agterm.assets", XtermAssets.Directory), Assert.Single(_host.Mapped));
-        Assert.Equal("https://agterm.assets/terminal.html", Assert.Single(_host.Navigated));
-
-        _host.RaiseMessage("""{"type":"ready","cols":80,"rows":24}""");
-        await init;
-        Assert.Equal(80, terminal.Cols);
-        Assert.Equal(24, terminal.Rows);
-    }
-
-    [Fact]
-    public async Task FeedOutput_posts_base64_output_message()
-    {
-        var terminal = await InitializedAsync();
+        var terminal = await OpenedAsync();
         terminal.FeedOutput(Encoding.UTF8.GetBytes("hi"));
         var expected = Convert.ToBase64String(Encoding.UTF8.GetBytes("hi"));
         var json = Assert.Single(_host.PostedJson);
         Assert.Contains("\"output\"", json);
+        Assert.Contains("\"p1\"", json);
         Assert.Contains(expected, json);
     }
 
     [Fact]
-    public async Task Data_message_raises_DataReceived_verbatim()
+    public async Task SetFontSize_posts_options_addressed_to_the_pane()
     {
-        var terminal = await InitializedAsync();
-        var received = new List<string>();
-        terminal.DataReceived += received.Add;
-        _host.RaiseMessage("""{"type":"data","data":"ls\r"}""");
-        Assert.Equal("ls\r", Assert.Single(received));
+        var terminal = await OpenedAsync();
+        terminal.SetFontSize(18);
+        var json = Assert.Single(_host.PostedJson);
+        Assert.Contains("\"options\"", json);
+        Assert.Contains("\"p1\"", json);
+        Assert.Contains("18", json);
     }
 
     [Fact]
-    public async Task Resize_message_raises_Resized_and_updates_size()
+    public async Task ReadText_addresses_the_buffer_read_by_pane_id()
     {
-        var terminal = await InitializedAsync();
-        var sizes = new List<(int, int)>();
-        terminal.Resized += (c, r) => sizes.Add((c, r));
-        _host.RaiseMessage("""{"type":"resize","cols":132,"rows":43}""");
-        Assert.Equal((132, 43), Assert.Single(sizes));
-        Assert.Equal(132, terminal.Cols);
-        Assert.Equal(43, terminal.Rows);
-    }
-
-    [Fact]
-    public async Task Title_message_raises_TitleChanged()
-    {
-        var terminal = await InitializedAsync();
-        var titles = new List<string>();
-        terminal.TitleChanged += titles.Add;
-        _host.RaiseMessage("""{"type":"title","title":"user@host: ~"}""");
-        Assert.Equal("user@host: ~", Assert.Single(titles));
-    }
-
-    [Fact]
-    public async Task Cwd_message_raises_CwdChanged_with_the_parsed_path()
-    {
-        var terminal = await InitializedAsync();
-        var cwds = new List<string>();
-        terminal.CwdChanged += cwds.Add;
-        _host.RaiseMessage("""{"type":"cwd","uri":"file:///C:/git/proj"}""");
-        _host.RaiseMessage("""{"type":"cwd","uri":"file://foreign/x"}"""); // unparseable → dropped
-        Assert.Equal("C:\\git\\proj", Assert.Single(cwds));
-    }
-
-    [Fact]
-    public async Task ReadText_executes_the_buffer_read_and_decodes_the_json_string()
-    {
-        var terminal = await InitializedAsync();
-        _host.ScriptResult = script => script.Contains("agterm.text") ? "\"line1\\nline2\"" : "null";
+        var terminal = await OpenedAsync();
+        _host.ScriptResult = s => s.Contains("agterm.text") ? "\"line1\\nline2\"" : "null";
         Assert.Equal("line1\nline2", await terminal.ReadTextAsync(all: true, lines: null));
-        Assert.Contains("agterm.text(true, null)", _host.Scripts[^1]);
+        Assert.Contains("agterm.text(\"p1\", true, null)", _host.Scripts[^1]);
 
         await terminal.ReadTextAsync(all: false, lines: 5);
-        Assert.Contains("agterm.text(false, 5)", _host.Scripts[^1]);
+        Assert.Contains("agterm.text(\"p1\", false, 5)", _host.Scripts[^1]);
     }
 
     [Fact]
     public async Task GetSelection_decodes_the_selection_string()
     {
-        var terminal = await InitializedAsync();
-        _host.ScriptResult = script => script.Contains("agterm.selection") ? "\"picked\"" : "null";
+        var terminal = await OpenedAsync();
+        _host.ScriptResult = s => s.Contains("agterm.selection") ? "\"picked\"" : "null";
         Assert.Equal("picked", await terminal.GetSelectionAsync());
+        Assert.Contains("agterm.selection(\"p1\")", _host.Scripts[^1]);
     }
 
     [Fact]
     public async Task Search_escapes_the_needle_and_parses_the_outcome()
     {
-        var terminal = await InitializedAsync();
-        _host.ScriptResult = script => script.Contains("agterm.search")
+        var terminal = await OpenedAsync();
+        _host.ScriptResult = s => s.Contains("agterm.search")
             ? """{"found":true,"index":1,"count":3}"""
             : "null";
         var outcome = await terminal.SearchAsync("say \"hi\"", SearchDirection.Next);
         Assert.True(outcome.Found);
         Assert.Equal(1, outcome.Index);
         Assert.Equal(3, outcome.Count);
-        // the needle travels as a JS string literal — quotes must be escaped, direction is 'next'
-        Assert.Contains("agterm.search(\"say \\\"hi\\\"\", \"next\")", _host.Scripts[^1]);
+        Assert.Contains("agterm.search(\"p1\", \"say \\\"hi\\\"\", \"next\")", _host.Scripts[^1]);
+    }
+
+    [Fact]
+    public async Task Remaining_script_calls_are_addressed_by_pane_id()
+    {
+        var terminal = await OpenedAsync();
+        _host.ScriptResult = s => s.Contains("setFontSize") ? "15" : "null";
+
+        await terminal.SelectAllAsync();
+        Assert.Contains("agterm.selectAll(\"p1\")", _host.Scripts[^1]);
+        await terminal.SerializeAsync();
+        Assert.Contains("agterm.serialize(\"p1\")", _host.Scripts[^1]);
+        await terminal.SearchCloseAsync();
+        Assert.Contains("agterm.searchClose(\"p1\")", _host.Scripts[^1]);
+        await terminal.PasteAsync("x");
+        Assert.Contains("agterm.paste(\"p1\", \"x\")", _host.Scripts[^1]);
+        Assert.Equal(15, await terminal.SetFontSizeAsync(15));
+        Assert.Contains("agterm.setFontSize(\"p1\", 15)", _host.Scripts[^1]);
+        await terminal.FocusAsync();
+        Assert.Contains("agterm.focus(\"p1\")", _host.Scripts[^1]);
     }
 }

@@ -20,11 +20,15 @@ public class TerminalPaneIntegrationTests
         _webView = webView;
     }
 
-    private Task<TerminalPane> OpenAsync(params string[] argv) =>
-        _webView.RunAsync(async v =>
+    private async Task<TerminalPane> OpenAsync(params string[] argv)
+    {
+        var page = await _webView.CreatePageAsync();
+        return await _webView.RunAsync(async _ =>
             await TerminalPane.OpenAsync(
-                new Win32ScriptHost(v.CoreWebView2),
+                page,
+                Guid.NewGuid().ToString("N"),
                 new TerminalPaneOptions { Argv = argv }));
+    }
 
     private async Task<string> WaitForTextAsync(TerminalPane pane, string contains, int timeoutMs = 30000)
     {

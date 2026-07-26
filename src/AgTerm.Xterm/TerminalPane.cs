@@ -25,8 +25,9 @@ public sealed class TerminalPane : IDisposable
     private readonly SynchronizationContext _ui;
     private bool _disposed;
 
-    private TerminalPane(XtermTerminal terminal, ConPtySession pty, SynchronizationContext ui)
+    private TerminalPane(XtermPage page, XtermTerminal terminal, ConPtySession pty, SynchronizationContext ui)
     {
+        Page = page;
         Terminal = terminal;
         Pty = pty;
         _ui = ui;
@@ -35,6 +36,9 @@ public sealed class TerminalPane : IDisposable
         terminal.TitleChanged += t => TitleChanged?.Invoke(t);
         terminal.CwdChanged += c => CwdChanged?.Invoke(c);
     }
+
+    /// <summary>The shared page hosting this pane's renderer (show/close address it by pane id).</summary>
+    public XtermPage Page { get; }
 
     public XtermTerminal Terminal { get; }
 
@@ -49,14 +53,13 @@ public sealed class TerminalPane : IDisposable
     /// <summary>OSC 7 / OSC 9;9, parsed → Session.CurrentCwd (host wires it).</summary>
     public event Action<string>? CwdChanged;
 
-    /// <summary>Boot the renderer, then spawn the child at the renderer's fitted size.
-    /// Must run on the WebView2 UI thread.</summary>
-    public static async Task<TerminalPane> OpenAsync(IWebViewScriptHost host, TerminalPaneOptions options)
+    /// <summary>Open a renderer pane on the (already booted) shared page, then spawn the child at
+    /// the pane's fitted size. Must run on the WebView2 UI thread.</summary>
+    public static async Task<TerminalPane> OpenAsync(XtermPage page, string paneId, TerminalPaneOptions options)
     {
         var ui = SynchronizationContext.Current
             ?? throw new InvalidOperationException("TerminalPane.OpenAsync requires the WebView2 UI thread");
-        var terminal = new XtermTerminal(host);
-        await terminal.InitializeAsync();
+        var terminal = await page.OpenTerminalAsync(paneId);
         TerminalPane? pane = null;
         var pty = ConPtySession.Start(new ConPtyStartInfo
         {
@@ -71,7 +74,7 @@ public sealed class TerminalPane : IDisposable
                 if (pane is not { _disposed: true }) terminal.FeedOutput(chunk);
             }, null),
         });
-        pane = new TerminalPane(terminal, pty, ui);
+        pane = new TerminalPane(page, terminal, pty, ui);
         return pane;
     }
 

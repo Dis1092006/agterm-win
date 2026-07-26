@@ -41,6 +41,8 @@ public sealed class LiveControlHostTests : IDisposable
 
     private (LiveControlHost Host, ControlPipeClient Client) StartHost()
     {
+        // one page per host — the app's one-WebView2-per-window shape; every surface opens a pane on it
+        var page = new Lazy<Task<XtermPage>>(() => _webView.CreatePageAsync());
         var host = new LiveControlHost(new LiveControlHostOptions
         {
             StateDir = _stateDir,
@@ -50,9 +52,9 @@ public sealed class LiveControlHostTests : IDisposable
             HomeDirectory = _stateDir,
             OpenSurface = async (_, surfaceOptions) =>
             {
-                var view = await _webView.CreateWebViewAsync();
-                return await _webView.RunAsync(async v2 =>
-                    await XtermPaneSurface.OpenAsync(new Win32ScriptHost(view.CoreWebView2), surfaceOptions));
+                var shared = await page.Value;
+                return await _webView.RunAsync(async _ =>
+                    await XtermPaneSurface.OpenAsync(shared, surfaceOptions));
             },
         });
         _hosts.Add(host);

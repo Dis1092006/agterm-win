@@ -51,11 +51,12 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
     /// <summary>The pane's live font size (the tree read-back's fontSize source).</summary>
     public double FontSize { get; private set; }
 
-    /// <summary>Spawn the child with the pane token baked in, on the WebView2 UI thread.</summary>
-    public static async Task<XtermPaneSurface> OpenAsync(IWebViewScriptHost host, XtermSurfaceOptions options)
+    /// <summary>Spawn the child with the pane token baked in, on the WebView2 UI thread. The pane
+    /// token doubles as the bridge pane id — one identifier addresses the pane end to end.</summary>
+    public static async Task<XtermPaneSurface> OpenAsync(XtermPage page, XtermSurfaceOptions options)
     {
         var token = Guid.NewGuid().ToString("N");
-        var pane = await TerminalPane.OpenAsync(host, new TerminalPaneOptions
+        var pane = await TerminalPane.OpenAsync(page, token, new TerminalPaneOptions
         {
             Argv = options.Argv,
             Cwd = options.Cwd,
@@ -66,6 +67,10 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
             FireAndForget(pane.Terminal.SetFontSizeAsync(options.BaseFontSize));
         return surface;
     }
+
+    /// <summary>Bring this pane's renderer on screen (show it, hide the page's other panes).
+    /// Must run on the WebView2 UI thread.</summary>
+    public Task ShowAsync() => Pane.Page.ShowPaneAsync(PaneToken!);
 
     public bool Inject(string text)
     {
@@ -112,6 +117,13 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
     {
         _torndown = true;
         Pane.Dispose();
+        // best-effort renderer removal: dispose the xterm instance and its div in the shared page
+        // (fire-and-forget on the UI thread; a dead page just means the whole window is going away)
+        FireAndForget(Pane.RunOnUiAsync<object?>(async () =>
+        {
+            await Pane.Page.ClosePaneAsync(PaneToken!);
+            return null;
+        }));
     }
 
     /// <summary>Split-pane promotion has no live wiring yet (phase 3 is single-pane; the split

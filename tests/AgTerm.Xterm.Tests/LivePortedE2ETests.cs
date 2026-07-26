@@ -20,10 +20,13 @@ public sealed class LivePortedE2ETests : IDisposable
     private readonly string _stateDir =
         Directory.CreateTempSubdirectory("agterm-live-e2e-").FullName;
     private readonly LiveControlHost _host;
+    private readonly Lazy<Task<XtermPage>> _page;
 
     public LivePortedE2ETests(WebView2Fixture webView)
     {
         _webView = webView;
+        // one page per host — the app's one-WebView2-per-window shape
+        _page = new Lazy<Task<XtermPage>>(() => _webView.CreatePageAsync());
         _host = new LiveControlHost(new LiveControlHostOptions
         {
             StateDir = _stateDir,
@@ -33,9 +36,9 @@ public sealed class LivePortedE2ETests : IDisposable
             HomeDirectory = _stateDir,
             OpenSurface = async (_, surfaceOptions) =>
             {
-                var view = await _webView.CreateWebViewAsync();
+                var shared = await _page.Value;
                 return await _webView.RunAsync(async _ =>
-                    await XtermPaneSurface.OpenAsync(new Win32ScriptHost(view.CoreWebView2), surfaceOptions));
+                    await XtermPaneSurface.OpenAsync(shared, surfaceOptions));
             },
         });
         _host.Start();

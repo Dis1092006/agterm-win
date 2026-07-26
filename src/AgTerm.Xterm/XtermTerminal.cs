@@ -15,29 +15,34 @@ public enum SearchDirection
 public readonly record struct SearchOutcome(bool Found, int Index, int Count);
 
 /// <summary>
-/// The C# half of the terminal bridge (bridge.js is the page half). Owns the message protocol over
-/// an IWebViewScriptHost: pty output feeds in, keystrokes/resizes/OSC reports come out as events,
-/// and buffer reads (text/selection/search) run as script evaluations. Thread-affine to the
-/// WebView2 UI thread, like the seam itself.
+/// One pane's handle on the shared terminal page (bridge v2): pty output feeds in, keystrokes/
+/// resizes/OSC reports come out as events, and buffer reads (text/selection/search) run as script
+/// evaluations — all addressed by this pane's id. Created by XtermPage.OpenTerminalAsync; thread-
+/// affine to the WebView2 UI thread, like the seam itself.
 /// </summary>
 public sealed class XtermTerminal
 {
-    private const string AssetsHost = "agterm.assets";
-
-    /// <summary>For strings embedded in scripts: plain \" instead of " — both are valid JS,
+    /// <summary>For strings embedded in scripts: plain \" instead of &#92;u0022 — both are valid JS,
     /// this one stays readable in logs/tests.</summary>
-    private static readonly JsonSerializerOptions ScriptLiteral = new()
+    internal static readonly JsonSerializerOptions ScriptLiteral = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    private readonly IWebViewScriptHost _host;
-    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly XtermPage _page;
+    private readonly string _pane;
 
-    public XtermTerminal(IWebViewScriptHost host)
+    internal XtermTerminal(XtermPage page, string paneId, int cols, int rows)
     {
-        _host = host;
+        _page = page;
+        _pane = JsonSerializer.Serialize(paneId, ScriptLiteral); // pre-quoted script literal
+        PaneId = paneId;
+        Cols = cols;
+        Rows = rows;
     }
+
+    /// <summary>The pane id addressing this terminal in the page (also the surface's spawn token).</summary>
+    public string PaneId { get; }
 
     public int Cols { get; private set; }
 
@@ -55,85 +60,67 @@ public sealed class XtermTerminal
     /// <summary>OSC 7 / OSC 9;9 cwd report, already parsed to a local path.</summary>
     public event Action<string>? CwdChanged;
 
-    /// <summary>Maps the asset folder, loads terminal.html and completes when the page's xterm
-    /// is up (its ready message). Call on the WebView2 UI thread after the core is created.</summary>
-    public Task InitializeAsync()
-    {
-        _host.JsonMessageReceived += OnMessage;
-        _host.MapVirtualHostToFolder(AssetsHost, XtermAssets.Directory);
-        _host.Navigate($"https://{AssetsHost}/terminal.html");
-        return _ready.Task;
-    }
-
     /// <summary>Raw VT output from the pty → xterm.write (base64 over the message channel;
     /// xterm decodes UTF-8 itself, so chunk boundaries inside a rune are safe).</summary>
     public void FeedOutput(byte[] chunk) =>
-        _host.PostJson(JsonSerializer.Serialize(new { type = "output", data = Convert.ToBase64String(chunk) }));
+        _page.PostJson(JsonSerializer.Serialize(new
+        {
+            type = "output",
+            paneId = PaneId,
+            data = Convert.ToBase64String(chunk),
+        }));
 
     public void SetFontSize(double px) =>
-        _host.PostJson(JsonSerializer.Serialize(new { type = "options", fontSize = px }));
+        _page.PostJson(JsonSerializer.Serialize(new { type = "options", paneId = PaneId, fontSize = px }));
 
     public async Task<string> ReadTextAsync(bool all, int? lines)
     {
-        var result = await _host.ExecuteScriptAsync(
-            $"agterm.text({(all ? "true" : "false")}, {(lines?.ToString() ?? "null")})").ConfigureAwait(false);
+        var result = await _page.ExecuteScriptAsync(
+            $"agterm.text({_pane}, {(all ? "true" : "false")}, {(lines?.ToString() ?? "null")})")
+            .ConfigureAwait(false);
         return DecodeString(result) ?? "";
     }
 
     public async Task<string> GetSelectionAsync() =>
-        DecodeString(await _host.ExecuteScriptAsync("agterm.selection()").ConfigureAwait(false)) ?? "";
+        DecodeString(await _page.ExecuteScriptAsync($"agterm.selection({_pane})").ConfigureAwait(false)) ?? "";
 
-    public Task SelectAllAsync() => _host.ExecuteScriptAsync("agterm.selectAll()");
+    public Task SelectAllAsync() => _page.ExecuteScriptAsync($"agterm.selectAll({_pane})");
 
     /// <summary>The full buffer as VT sequences (serialize addon) — the restore/persistence read.</summary>
     public async Task<string> SerializeAsync() =>
-        DecodeString(await _host.ExecuteScriptAsync("agterm.serialize()").ConfigureAwait(false)) ?? "";
+        DecodeString(await _page.ExecuteScriptAsync($"agterm.serialize({_pane})").ConfigureAwait(false)) ?? "";
 
     public async Task<SearchOutcome> SearchAsync(string needle, SearchDirection direction)
     {
-        var script = $"agterm.search({JsonSerializer.Serialize(needle, ScriptLiteral)}, " +
+        var script = $"agterm.search({_pane}, {JsonSerializer.Serialize(needle, ScriptLiteral)}, " +
                      $"{JsonSerializer.Serialize(direction == SearchDirection.Prev ? "prev" : "next", ScriptLiteral)})";
-        var result = await _host.ExecuteScriptAsync(script).ConfigureAwait(false);
+        var result = await _page.ExecuteScriptAsync(script).ConfigureAwait(false);
         var outcome = JsonSerializer.Deserialize<SearchResultDto>(result);
         return new SearchOutcome(outcome?.Found ?? false, outcome?.Index ?? -1, outcome?.Count ?? 0);
     }
 
-    public Task SearchCloseAsync() => _host.ExecuteScriptAsync("agterm.searchClose()");
+    public Task SearchCloseAsync() => _page.ExecuteScriptAsync($"agterm.searchClose({_pane})");
 
     /// <summary>Paste text through xterm (bracketed-paste aware — the terminal-mode-correct route,
     /// unlike raw pty writes).</summary>
     public Task PasteAsync(string text) =>
-        _host.ExecuteScriptAsync($"agterm.paste({JsonSerializer.Serialize(text, ScriptLiteral)})");
+        _page.ExecuteScriptAsync($"agterm.paste({_pane}, {JsonSerializer.Serialize(text, ScriptLiteral)})");
 
     /// <summary>Apply a font size and refit; returns the size xterm actually holds.</summary>
     public async Task<double> SetFontSizeAsync(double px)
     {
-        var result = await _host.ExecuteScriptAsync(
-            $"agterm.setFontSize({px.ToString(System.Globalization.CultureInfo.InvariantCulture)})")
+        var result = await _page.ExecuteScriptAsync(
+            $"agterm.setFontSize({_pane}, {px.ToString(System.Globalization.CultureInfo.InvariantCulture)})")
             .ConfigureAwait(false);
-        return JsonSerializer.Deserialize<double>(result);
+        return result == "null" ? 0 : JsonSerializer.Deserialize<double>(result);
     }
 
-    public Task FocusAsync() => _host.ExecuteScriptAsync("agterm.focus()");
+    public Task FocusAsync() => _page.ExecuteScriptAsync($"agterm.focus({_pane})");
 
-    private void OnMessage(string json)
+    internal void HandleMessage(BridgeMessage msg)
     {
-        BridgeMessage? msg;
-        try
+        switch (msg.Type)
         {
-            msg = JsonSerializer.Deserialize<BridgeMessage>(json);
-        }
-        catch (JsonException)
-        {
-            return; // not a bridge message
-        }
-        switch (msg?.Type)
-        {
-            case "ready":
-                Cols = msg.Cols ?? 0;
-                Rows = msg.Rows ?? 0;
-                _ready.TrySetResult();
-                break;
             case "data" when msg.Data is not null:
                 DataReceived?.Invoke(msg.Data);
                 break;
@@ -154,16 +141,6 @@ public sealed class XtermTerminal
     /// <summary>ExecuteScriptAsync returns the value JSON-encoded; a JS string arrives quoted.</summary>
     private static string? DecodeString(string jsonResult) =>
         jsonResult == "null" ? null : JsonSerializer.Deserialize<string>(jsonResult);
-
-    private sealed record BridgeMessage
-    {
-        [JsonPropertyName("type")] public string? Type { get; init; }
-        [JsonPropertyName("data")] public string? Data { get; init; }
-        [JsonPropertyName("cols")] public int? Cols { get; init; }
-        [JsonPropertyName("rows")] public int? Rows { get; init; }
-        [JsonPropertyName("title")] public string? Title { get; init; }
-        [JsonPropertyName("uri")] public string? Uri { get; init; }
-    }
 
     private sealed record SearchResultDto
     {

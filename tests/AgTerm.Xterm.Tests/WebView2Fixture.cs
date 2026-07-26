@@ -73,6 +73,19 @@ public sealed class WebView2Fixture : IDisposable
         return await done.Task;
     }
 
+    /// <summary>A fresh WebView2 with a booted XtermPage on it — the app's one-page-per-window
+    /// shape. Panes for many surfaces open on this single page.</summary>
+    public async Task<AgTerm.Xterm.XtermPage> CreatePageAsync()
+    {
+        var view = await CreateWebViewAsync();
+        return await RunAsync(async _ =>
+        {
+            var page = new AgTerm.Xterm.XtermPage(new Win32ScriptHost(view.CoreWebView2));
+            await page.InitializeAsync();
+            return page;
+        });
+    }
+
     /// <summary>Run work on the WebView2 UI thread; the WebView2 is initialized when this returns.</summary>
     public async Task<T> RunAsync<T>(Func<WebView2, Task<T>> work)
     {

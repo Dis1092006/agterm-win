@@ -22,12 +22,12 @@ public class XtermPaneSurfaceTests
         _webView = webView;
     }
 
-    private Task<XtermPaneSurface> OpenAsync(Action<XtermSurfaceOptions>? mutate = null)
+    private async Task<XtermPaneSurface> OpenAsync(Action<XtermSurfaceOptions>? mutate = null)
     {
         var options = new XtermSurfaceOptions { Argv = new[] { Cmd } };
         mutate?.Invoke(options);
-        return _webView.RunAsync(async v =>
-            await XtermPaneSurface.OpenAsync(new Win32ScriptHost(v.CoreWebView2), options));
+        var page = await _webView.CreatePageAsync();
+        return await _webView.RunAsync(async _ => await XtermPaneSurface.OpenAsync(page, options));
     }
 
     private static string WaitForScreen(XtermPaneSurface surface, string contains, int timeoutMs = 30000)
