@@ -1,30 +1,41 @@
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace AgTerm.App;
 
 /// <summary>
-/// The phase-3 window: the LIVE control host (named-pipe control plane over a real AppStore) with
-/// one WebView2 pane per realized session — the selected session's pane is visible, the rest stay
-/// mounted (keep-alive, like upstream). All control/host logic lives in AgTerm.Xterm /
-/// AgTerm.ControlServer and is covered by tests; this shell owns only WinUI wiring.
+/// The phase-4 window: the LIVE control host (named-pipe control plane over a real AppStore) with
+/// ONE WebView2 hosting every session's xterm.js pane (bridge v2) — the selected session's pane is
+/// shown, the rest stay mounted in the shared page (keep-alive, like upstream). All control/host
+/// logic lives in AgTerm.Xterm / AgTerm.ControlServer and is covered by tests; this shell owns
+/// only WinUI wiring.
 ///
 /// Threading: the host is constructed and disposed OFF the UI thread — realization blocks its
 /// calling thread while the pane is created on the UI thread, so those calls must never run there.
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    private readonly Dictionary<Guid, WebView2> _views = new(); // UI-thread confined
+    private readonly Dictionary<Guid, XtermPaneSurface> _surfaces = new(); // UI-thread confined
+    private readonly Task<XtermPage> _pageTask;
     private LiveControlHost? _host;
 
     public MainWindow()
     {
         InitializeComponent();
+        _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
         Closed += (_, _) => Task.Run(() => _host?.Dispose()); // teardown blocks; keep it off the UI thread
         _ = StartHostAsync();
+    }
+
+    /// <summary>Boot the window's single terminal page: one WebView2, one terminal.html, N panes.</summary>
+    private async Task<XtermPage> BootPageAsync()
+    {
+        await TerminalView.EnsureCoreWebView2Async();
+        var page = new XtermPage(new WinRtScriptHost(TerminalView.CoreWebView2));
+        await page.InitializeAsync();
+        return page;
     }
 
     private async Task StartHostAsync()
@@ -47,8 +58,8 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() => ShowPane(host.Host.Store.SelectedSessionId));
     }
 
-    /// <summary>The UI half of surface realization: mount a WebView2 for the session, open the
-    /// surface over it, and unmount when its shell exits. Called from the host's dispatch thread.</summary>
+    /// <summary>The UI half of surface realization: open a pane on the shared page for the session
+    /// and drop the handle when its shell exits. Called from the host's dispatch thread.</summary>
     private Task<XtermPaneSurface> OpenSurfaceAsync(Session session, XtermSurfaceOptions options)
     {
         var done = new TaskCompletionSource<XtermPaneSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -56,15 +67,12 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                var view = new WebView2 { Visibility = Visibility.Collapsed };
-                RootGrid.Children.Add(view);
-                await view.EnsureCoreWebView2Async();
-                var surface = await XtermPaneSurface.OpenAsync(
-                    new WinRtScriptHost(view.CoreWebView2), options);
-                _views[session.Id] = view;
+                var page = await _pageTask;
+                var surface = await XtermPaneSurface.OpenAsync(page, options);
+                _surfaces[session.Id] = surface;
                 ShowPane(_host?.Host.Store.SelectedSessionId ?? session.Id);
                 WireTitle(session, surface);
-                _ = UnmountOnExitAsync(session.Id, view, surface);
+                _ = UnmountOnExitAsync(session.Id, surface);
                 done.TrySetResult(surface);
             }
             catch (Exception ex)
@@ -75,17 +83,13 @@ public sealed partial class MainWindow : Window
         return done.Task;
     }
 
-    /// <summary>Show exactly the selected session's pane. UI thread only.</summary>
+    /// <summary>Show exactly the selected session's pane in the shared page. UI thread only.</summary>
     private void ShowPane(Guid? selected)
     {
-        foreach (var (id, view) in _views)
-            view.Visibility = id == selected ? Visibility.Visible : Visibility.Collapsed;
-        if (selected is { } id2 && _views.TryGetValue(id2, out var pane) &&
-            _host?.Host.Store.SessionWithId(id2) is { } session)
-        {
+        if (selected is not { } id || !_surfaces.TryGetValue(id, out var surface)) return;
+        _ = surface.ShowAsync();
+        if (_host?.Host.Store.SessionWithId(id) is { } session)
             Title = $"{session.DisplayName} — agterm";
-            _ = pane.EnsureCoreWebView2Async(); // no-op when ready; keeps focus behavior sane
-        }
     }
 
     private void WireTitle(Session session, XtermPaneSurface surface)
@@ -97,7 +101,7 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private async Task UnmountOnExitAsync(Guid sessionId, WebView2 view, XtermPaneSurface surface)
+    private async Task UnmountOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
         try
         {
@@ -109,10 +113,10 @@ public sealed partial class MainWindow : Window
         }
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_views.TryGetValue(sessionId, out var current) && ReferenceEquals(current, view))
-                _views.Remove(sessionId);
-            RootGrid.Children.Remove(view);
-            view.Close();
+            // the surface's Teardown (host close path) removes the page pane; here we only drop
+            // the window's handle so ShowPane stops addressing it
+            if (_surfaces.TryGetValue(sessionId, out var current) && ReferenceEquals(current, surface))
+                _surfaces.Remove(sessionId);
         });
     }
 
