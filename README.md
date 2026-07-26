@@ -73,6 +73,44 @@ docs/                       (planned) agterm-windows-spec.md — the portable da
 See the portable spec (`agterm-windows-spec.md`) for the full data model, protocol, and keymap format
 that drive the implementation.
 
+## Running
+
+`AgTerm.App` is a WinUI 3 app, **unpackaged + self-contained** (`WindowsPackageType=None`,
+`WindowsAppSDKSelfContained=true`): a plain exe, no MSIX and no Windows App SDK runtime install
+(WebView2 Evergreen ships with Windows 11).
+
+**Build.** The app declares `Platforms=x64;ARM64` (no AnyCPU), which is a trap for direct builds:
+
+```powershell
+dotnet build AgTerm.slnx                              # solution build — works on any platform
+                                                      # (the .slnx maps AgTerm.App to x64)
+dotnet build src/AgTerm.App -p:Platform=x64           # direct project build — the -p:Platform=x64
+                                                      # is REQUIRED, or WindowsAppSDKSelfContained
+                                                      # fails with "requires a supported Windows
+                                                      # architecture" (AnyCPU default)
+```
+
+**Run (manual).** The exe lands at
+`src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe`.
+A bare launch uses the real state (`%LOCALAPPDATA%\agterm`). For experiments, run an **isolated
+instance** — a separate state dir also derives a separate control pipe, so it never touches your
+real workspaces:
+
+```powershell
+$env:AGTERM_STATE_DIR = "$env:TEMP\agterm-dev"
+& ".\src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe"
+```
+
+`agtermctl` finds the app only when both derive the same pipe: run it from a shell with the same
+`AGTERM_STATE_DIR` (or pass `--socket` explicitly). One app instance per state dir — the pipe is
+shared. The CLI exe: `src\AgTerm.Cli\bin\Debug\net8.0\agtermctl.exe`.
+
+**Run (Rider).** Open `AgTerm.slnx`, pick the **`Debug | x64`** solution configuration (the same
+AnyCPU trap), and use the auto-created “.NET Project” run configuration for `AgTerm.App`. Keep two
+copies: `App (dev)` with `AGTERM_STATE_DIR=%TEMP%\agterm-dev` in its environment variables, and
+`App (real)` with none. C# debugging is ordinary .NET; the xterm.js side lives in WebView2 —
+inspect it with WebView2 DevTools, not the C# debugger.
+
 ## Hotkeys on Windows
 
 Keymap modifiers map as `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift (spec §9 leaves the
