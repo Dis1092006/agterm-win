@@ -105,11 +105,14 @@ $env:AGTERM_STATE_DIR = "$env:TEMP\agterm-dev"
 `AGTERM_STATE_DIR` (or pass `--socket` explicitly). One app instance per state dir — the pipe is
 shared. The CLI exe: `src\AgTerm.Cli\bin\Debug\net8.0\agtermctl.exe`.
 
-**Run (Rider).** Open `AgTerm.slnx`, pick the **`Debug | x64`** solution configuration (the same
-AnyCPU trap), and use the auto-created “.NET Project” run configuration for `AgTerm.App`. Keep two
-copies: `App (dev)` with `AGTERM_STATE_DIR=%TEMP%\agterm-dev` in its environment variables, and
-`App (real)` with none. C# debugging is ordinary .NET; the xterm.js side lives in WebView2 —
-inspect it with WebView2 DevTools, not the C# debugger.
+**Run (Rider).** Open `AgTerm.slnx` and pick the **`Debug | x64`** solution configuration (the same
+AnyCPU trap). Rider detects WinUI 3 as **UWP** and its auto-created UWP run configuration has no
+environment-variables support — don't use it. Instead add a **“.NET Executable”** configuration:
+exe path = `src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe`, Before launch =
+Build Project `AgTerm.App` (with `Debug | x64` active). Keep two copies: `App (dev)` with
+`AGTERM_STATE_DIR=<explicit temp path>\agterm-dev` (Rider does not expand `%TEMP%`) and `App (real)`
+with none. C# debugging is ordinary .NET; the xterm.js side lives in WebView2 — inspect it with
+WebView2 DevTools, not the C# debugger.
 
 ## Hotkeys on Windows
 
