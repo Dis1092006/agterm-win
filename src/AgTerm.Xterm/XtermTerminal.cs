@@ -100,6 +100,20 @@ public sealed class XtermTerminal
 
     public Task SearchCloseAsync() => _host.ExecuteScriptAsync("agterm.searchClose()");
 
+    /// <summary>Paste text through xterm (bracketed-paste aware — the terminal-mode-correct route,
+    /// unlike raw pty writes).</summary>
+    public Task PasteAsync(string text) =>
+        _host.ExecuteScriptAsync($"agterm.paste({JsonSerializer.Serialize(text, ScriptLiteral)})");
+
+    /// <summary>Apply a font size and refit; returns the size xterm actually holds.</summary>
+    public async Task<double> SetFontSizeAsync(double px)
+    {
+        var result = await _host.ExecuteScriptAsync(
+            $"agterm.setFontSize({px.ToString(System.Globalization.CultureInfo.InvariantCulture)})")
+            .ConfigureAwait(false);
+        return JsonSerializer.Deserialize<double>(result);
+    }
+
     public Task FocusAsync() => _host.ExecuteScriptAsync("agterm.focus()");
 
     private void OnMessage(string json)

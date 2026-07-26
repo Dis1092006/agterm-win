@@ -23,6 +23,10 @@ public sealed record ConPtyStartInfo
     /// <summary>Raw VT output chunks from the pty, invoked on the reader thread. Wired at start so
     /// no output can race a later event subscription.</summary>
     public Action<byte[]>? OnOutput { get; init; }
+
+    /// <summary>Variables added on top of the host's inherited environment (e.g. the surface's
+    /// AGTERM_PANE_ID spawn token). Null = plain inheritance.</summary>
+    public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
 }
 
 /// <summary>
@@ -80,6 +84,7 @@ public sealed class ConPtySession : IDisposable
                     console, new IntPtr(IntPtr.Size), IntPtr.Zero, IntPtr.Zero))
                 throw new Win32Exception();
 
+            var environmentBlock = BuildEnvironmentBlock(info.ExtraEnvironment);
             var startup = new ConPtyNative.StartupInfoEx
             {
                 // STARTF_USESTDHANDLES with null handles: without it CreateProcessW duplicates the
@@ -94,14 +99,25 @@ public sealed class ConPtySession : IDisposable
                 },
                 AttributeList = attributeList,
             };
-            if (!ConPtyNative.CreateProcessW(
+            bool created;
+            int createError;
+            ConPtyNative.ProcessInformation processInfo;
+            try
+            {
+                created = ConPtyNative.CreateProcessW(
                     null, commandLine, IntPtr.Zero, IntPtr.Zero, inheritHandles: false,
                     ConPtyNative.ExtendedStartupInfoPresent | ConPtyNative.CreateUnicodeEnvironment,
-                    IntPtr.Zero, info.Cwd, ref startup, out var processInfo))
+                    environmentBlock, info.Cwd, ref startup, out processInfo);
+                createError = Marshal.GetLastWin32Error();
+            }
+            finally
             {
-                var error = Marshal.GetLastWin32Error();
+                if (environmentBlock != IntPtr.Zero) Marshal.FreeHGlobal(environmentBlock);
+            }
+            if (!created)
+            {
                 ConPtyNative.ClosePseudoConsole(console);
-                throw new Win32Exception(error, $"CreateProcessW failed for: {commandLine}");
+                throw new Win32Exception(createError, $"CreateProcessW failed for: {commandLine}");
             }
             ConPtyNative.CloseHandle(processInfo.Thread);
 
@@ -119,6 +135,25 @@ public sealed class ConPtySession : IDisposable
                 Marshal.FreeHGlobal(attributeList);
             }
         }
+    }
+
+    /// <summary>A CREATE_UNICODE_ENVIRONMENT block: the inherited process environment with the
+    /// extras overlaid (case-insensitive keys, like the environment itself), sorted per the
+    /// CreateProcessW contract, double-NUL-terminated. Zero when there is nothing to add
+    /// (null = plain inheritance, cheaper and identical).</summary>
+    private static IntPtr BuildEnvironmentBlock(IReadOnlyDictionary<string, string>? extra)
+    {
+        if (extra is null || extra.Count == 0) return IntPtr.Zero;
+        var merged = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+            merged[(string)entry.Key] = (string?)entry.Value ?? "";
+        foreach (var (key, value) in extra)
+            merged[key] = value;
+        var block = new StringBuilder();
+        foreach (var (key, value) in merged)
+            block.Append(key).Append('=').Append(value).Append('\0');
+        block.Append('\0');
+        return Marshal.StringToHGlobalUni(block.ToString());
     }
 
     private void StartReader(SafeFileHandle outputRead, Action<byte[]>? onOutput)

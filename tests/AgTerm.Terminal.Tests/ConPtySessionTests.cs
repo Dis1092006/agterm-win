@@ -17,12 +17,13 @@ public class ConPtySessionTests : IDisposable
 
     private ConPtySession Start(params string[] argv) => StartIn(null, argv);
 
-    private ConPtySession StartIn(string? cwd, params string[] argv)
+    private ConPtySession StartIn(string? cwd, params string[] argv) =>
+        StartWith(new ConPtyStartInfo { Argv = argv, Cwd = cwd });
+
+    private ConPtySession StartWith(ConPtyStartInfo info)
     {
-        _pty = ConPtySession.Start(new ConPtyStartInfo
+        _pty = ConPtySession.Start(info with
         {
-            Argv = argv,
-            Cwd = cwd,
             Cols = 120,
             Rows = 30,
             OnOutput = chunk =>
@@ -109,6 +110,20 @@ public class ConPtySessionTests : IDisposable
         var text = WaitForOutput("Lines:");
         Assert.Contains("97", text);
         Assert.Contains("41", text);
+    }
+
+    [Fact]
+    public async Task Extra_environment_reaches_the_child_on_top_of_the_inherited_one()
+    {
+        var pty = StartWith(new ConPtyStartInfo
+        {
+            // PATH must still be inherited (cmd itself resolves through it), AGTERM_PANE_ID added
+            Argv = new[] { Cmd, "/c", "echo token=%AGTERM_PANE_ID% comspec=%COMSPEC%" },
+            ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_PANE_ID"] = "pane-abc123" },
+        });
+        await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+        WaitForOutput("token=pane-abc123");
+        WaitForOutput("comspec=C:\\"); // an inherited variable survived
     }
 
     [Fact]

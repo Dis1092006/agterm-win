@@ -90,8 +90,9 @@ function bufferText(all, lines) {
     const buf = term.buffer.active;
     let start, end;
     if (lines != null && lines > 0) {
+        // last N CONTENT lines of screen + scrollback: scan everything, trim, then tail-slice
+        start = 0;
         end = buf.length;
-        start = Math.max(0, end - lines);
     } else if (all) {
         start = 0;
         end = buf.length;
@@ -102,11 +103,15 @@ function bufferText(all, lines) {
     const out = [];
     for (let i = start; i < end; i++) {
         const line = buf.getLine(i);
-        out.push(line ? line.translateToString(true) : '');
+        if (!line) { out.push(''); continue; }
+        const text = line.translateToString(true);
+        // a soft-wrapped row continues its predecessor: one logical line, not two
+        if (line.isWrapped && out.length > 0) out[out.length - 1] += text;
+        else out.push(text);
     }
     // drop trailing blank rows (an idle screen read otherwise ends in dozens of empty lines)
     while (out.length > 0 && out[out.length - 1] === '') out.pop();
-    return out.join('\n');
+    return (lines != null && lines > 0 ? out.slice(-lines) : out).join('\n');
 }
 
 window.agterm = {
@@ -122,6 +127,7 @@ window.agterm = {
         return { found, index: lastSearch.index, count: lastSearch.count };
     },
     searchClose: () => { searchAddon.clearDecorations(); term.clearSelection(); return true; },
+    paste: (text) => { term.paste(text); return true; },
     setFontSize: (px) => { term.options.fontSize = px; fitAndReport(); return term.options.fontSize; },
     getFontSize: () => term.options.fontSize,
     focus: () => { term.focus(); return true; },

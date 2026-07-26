@@ -1,0 +1,157 @@
+using System.Globalization;
+using AgTerm.ControlServer;
+
+namespace AgTerm.Xterm;
+
+/// <summary>How a live surface spawns. Argv per the §6 --command contract (a plain shell is
+/// argv = [shell]); clipboard access is injected because the surface itself is UI-framework-free.</summary>
+public sealed class XtermSurfaceOptions
+{
+    public required IReadOnlyList<string> Argv { get; set; }
+
+    public string? Cwd { get; set; }
+
+    /// <summary>What reset_font_size returns to (upstream: the engine config's font size).</summary>
+    public double BaseFontSize { get; set; } = 14;
+
+    /// <summary>System clipboard reader for session.paste; null = paste is a no-op.</summary>
+    public Func<string?>? ReadClipboard { get; set; }
+}
+
+/// <summary>
+/// The REAL terminal surface: IHeadlessSurface (the contract every control arm drives) over a live
+/// TerminalPane (ConPTY child ↔ xterm.js renderer). The interface is synchronous and called from
+/// the control host's dispatch thread; every renderer touch marshals onto the WebView2 UI thread
+/// and blocks (bounded) — a timeout or a torn-down pane reports as "not realized" (false/null),
+/// which the arms map to the pinned wire errors, never a crash.
+/// </summary>
+public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
+{
+    private static readonly TimeSpan UiCallBudget = TimeSpan.FromSeconds(10);
+
+    private readonly Func<string?>? _readClipboard;
+    private readonly double _baseFontSize;
+    private volatile bool _torndown;
+
+    private XtermPaneSurface(TerminalPane pane, string paneToken, XtermSurfaceOptions options)
+    {
+        Pane = pane;
+        PaneToken = paneToken;
+        _readClipboard = options.ReadClipboard;
+        _baseFontSize = options.BaseFontSize;
+        FontSize = options.BaseFontSize;
+    }
+
+    public TerminalPane Pane { get; }
+
+    /// <summary>The stable spawn token baked into the shell as AGTERM_PANE_ID (session.status /
+    /// session.restore resolve panes by it).</summary>
+    public string? PaneToken { get; }
+
+    /// <summary>The pane's live font size (the tree read-back's fontSize source).</summary>
+    public double FontSize { get; private set; }
+
+    /// <summary>Spawn the child with the pane token baked in, on the WebView2 UI thread.</summary>
+    public static async Task<XtermPaneSurface> OpenAsync(IWebViewScriptHost host, XtermSurfaceOptions options)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        var pane = await TerminalPane.OpenAsync(host, new TerminalPaneOptions
+        {
+            Argv = options.Argv,
+            Cwd = options.Cwd,
+            ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_PANE_ID"] = token },
+        });
+        var surface = new XtermPaneSurface(pane, token, options);
+        if (Math.Abs(options.BaseFontSize - 14) > 0.001) // bridge default is 14
+            FireAndForget(pane.Terminal.SetFontSizeAsync(options.BaseFontSize));
+        return surface;
+    }
+
+    public bool Inject(string text)
+    {
+        if (_torndown) return false;
+        Pane.Pty.WriteText(KeystrokeText.ToPtyInput(text));
+        return true;
+    }
+
+    public string? ReadScreenText(bool all, int? lines) =>
+        OnUi(() => Pane.Terminal.ReadTextAsync(all, lines));
+
+    public string? SelectedText =>
+        OnUi(() => Pane.Terminal.GetSelectionAsync()) is { Length: > 0 } text ? text : null;
+
+    public void SelectAll() =>
+        OnUi(async () => { await Pane.Terminal.SelectAllAsync(); return true; });
+
+    public bool Paste()
+    {
+        if (_torndown) return false;
+        if (_readClipboard?.Invoke() is not { Length: > 0 } text) return true; // realized, empty clipboard
+        return OnUi(async () => { await Pane.Terminal.PasteAsync(text); return true; });
+    }
+
+    public bool PerformBindingAction(string action)
+    {
+        if (_torndown) return false;
+        double target;
+        if (action == "reset_font_size")
+            target = _baseFontSize;
+        else if (ParseFontStep(action, "increase_font_size:") is { } up)
+            target = FontSize + up;
+        else if (ParseFontStep(action, "decrease_font_size:") is { } down)
+            target = FontSize - down;
+        else
+            return false; // not an action this surface knows — reads as unrealized upstream too
+        var applied = OnUi(async () => (double?)await Pane.Terminal.SetFontSizeAsync(target));
+        if (applied is not { } size) return false;
+        FontSize = size;
+        return true;
+    }
+
+    public void Teardown()
+    {
+        _torndown = true;
+        Pane.Dispose();
+    }
+
+    /// <summary>Split-pane promotion has no live wiring yet (phase 3 is single-pane; the split
+    /// subsystem arrives with the multi-pane host). State-only, like the model expects.</summary>
+    public void PromoteToPrimaryPane()
+    {
+    }
+
+    public void Dispose() => Teardown();
+
+    private static double? ParseFontStep(string action, string prefix) =>
+        action.StartsWith(prefix, StringComparison.Ordinal) &&
+        double.TryParse(action.AsSpan(prefix.Length), CultureInfo.InvariantCulture, out var step)
+            ? step
+            : null;
+
+    /// <summary>Run a renderer call on the UI thread and wait, bounded. Teardown, a dead renderer
+    /// or a blown budget all surface as null — the arms' "session not realized" shape.</summary>
+    private T? OnUi<T>(Func<Task<T>> work)
+    {
+        if (_torndown) return default;
+        try
+        {
+            return Pane.RunOnUiAsync(work).WaitAsync(UiCallBudget).GetAwaiter().GetResult();
+        }
+        catch (Exception)
+        {
+            return default;
+        }
+    }
+
+    private static async void FireAndForget(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // best-effort initial font apply; the reset action re-applies it on demand
+        }
+    }
+}

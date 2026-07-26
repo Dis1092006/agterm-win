@@ -11,6 +11,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AgTerm.ControlServer\AgTerm.ControlServer.csproj" />
     <ProjectReference Include="..\AgTerm.Terminal\AgTerm.Terminal.csproj" />
   </ItemGroup>
 

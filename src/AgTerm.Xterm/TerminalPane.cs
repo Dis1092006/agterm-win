@@ -9,6 +9,9 @@ public sealed record TerminalPaneOptions
     public required IReadOnlyList<string> Argv { get; init; }
 
     public string? Cwd { get; init; }
+
+    /// <summary>Extra child environment (e.g. the surface's AGTERM_PANE_ID token).</summary>
+    public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
 }
 
 /// <summary>
@@ -59,6 +62,7 @@ public sealed class TerminalPane : IDisposable
         {
             Argv = options.Argv,
             Cwd = options.Cwd,
+            ExtraEnvironment = options.ExtraEnvironment,
             Cols = terminal.Cols > 0 ? terminal.Cols : 80,
             Rows = terminal.Rows > 0 ? terminal.Rows : 24,
             // reader-thread chunks marshal to the UI thread; drop what arrives after teardown
@@ -69,6 +73,26 @@ public sealed class TerminalPane : IDisposable
         });
         pane = new TerminalPane(terminal, pty, ui);
         return pane;
+    }
+
+    /// <summary>Marshal work onto the WebView2 UI thread (all XtermTerminal calls are thread-affine
+    /// there). Callers off the UI thread may block on the returned task; blocking ON the UI thread
+    /// would deadlock its own queue.</summary>
+    public Task<T> RunOnUiAsync<T>(Func<Task<T>> work)
+    {
+        var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ui.Post(async void (_) =>
+        {
+            try
+            {
+                done.TrySetResult(await work());
+            }
+            catch (Exception ex)
+            {
+                done.TrySetException(ex);
+            }
+        }, null);
+        return done.Task;
     }
 
     public void Dispose()
