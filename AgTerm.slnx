@@ -1,5 +1,13 @@
 <Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
   <Folder Name="/src/">
+    <Project Path="src/AgTerm.App/AgTerm.App.csproj">
+      <Platform Solution="*|Any CPU" Project="x64" />
+      <Platform Solution="*|x64" Project="x64" />
+    </Project>
     <Project Path="src/AgTerm.Cli/AgTerm.Cli.csproj" />
     <Project Path="src/AgTerm.ControlServer/AgTerm.ControlServer.csproj" />
     <Project Path="src/AgTerm.Core/AgTerm.Core.csproj" />
