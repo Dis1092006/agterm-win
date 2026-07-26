@@ -22,9 +22,12 @@ public static class Agtermctl
     /// unknown commands/options/missing arguments and CliValidationException for a validate failure.</summary>
     internal static IRequestCommand ParseAsRoot(string[] argv)
     {
-        var bindings = new CommandBindings();
-        var root = BuildRoot(bindings);
-        var result = root.Parse(argv);
+        var (root, bindings) = Build();
+        return Bind(root.Parse(argv), bindings);
+    }
+
+    private static IRequestCommand Bind(ParseResult result, CommandBindings bindings)
+    {
         if (result.Errors.Count > 0)
         {
             throw new CliParseException(string.Join("\n", result.Errors.Select(e => e.Message)));
@@ -46,10 +49,17 @@ public static class Agtermctl
     public static int Run(string[] argv, CliEnvironment? env = null)
     {
         env ??= new CliEnvironment();
+        var (root, bindings) = Build();
+        var result = root.Parse(argv);
+        // --help / --version parse to a built-in action — let System.CommandLine render it.
+        if (result.Action is not null && result.Errors.Count == 0)
+        {
+            return result.Invoke();
+        }
         IRequestCommand command;
         try
         {
-            command = ParseAsRoot(argv);
+            command = Bind(result, bindings);
         }
         catch (Exception e) when (e is CliParseException or CliValidationException)
         {
@@ -65,6 +75,12 @@ public static class Agtermctl
             env.Error.WriteLine("error: " + Message(e));
             return 1;
         }
+    }
+
+    private static (RootCommand Root, CommandBindings Bindings) Build()
+    {
+        var bindings = new CommandBindings();
+        return (BuildRoot(bindings), bindings);
     }
 
     private static RootCommand BuildRoot(CommandBindings bindings)

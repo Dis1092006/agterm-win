@@ -56,3 +56,14 @@
   `closedAt` кодируется как double секунд от reference date 2001-01-01 (формат
   Swift `JSONEncoder` по умолчанию) для кросс-читаемости; upstream пишет
   prettyPrinted+sortedKeys, мы — компактно и атомарно (как `PersistenceStore`).
+
+- **`agtermctl` (AgTerm.Cli).** Субкоманды/флаги/валидация/вывод — 1:1 с
+  agtermctlKit; парсер — System.CommandLine вместо swift-argument-parser
+  (шов `ParseAsRoot`/`MakeRequest`/`Validate` сохранён для портированных тестов).
+  Разрешение socket-пути: `--socket` → `%AGTERM_STATE_DIR%\agterm.sock` →
+  `%LOCALAPPDATA%\agterm\agterm.sock` → `<temp>\agterm\agterm.sock` (аналог
+  upstream `$HOME/Library/Application Support` → `/tmp`); из пути выводится имя
+  пайпа (см. запись о транспорте). `session type --stdin`: .NET-декодер stdin
+  заменяет невалидный UTF-8 замещающими символами (Swift даёт nil/пусто) — на
+  wire уходит то, что прочиталось. Help-текст `window fullscreen` не упоминает
+  macOS (help — не часть wire-контракта).
