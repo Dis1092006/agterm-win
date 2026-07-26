@@ -39,7 +39,13 @@ Current parity pin: agterm `7df70fe` (66 commands, 41 builtin actions). Machine 
 ```
 AgTerm.slnx
 src/AgTerm.Core/            host-free core library (net8.0, zero UI deps — analogue of agtermCore)
-tests/AgTerm.Core.Tests/    xUnit tests
+src/AgTerm.ControlServer/   named-pipe control server + headless host (HeadlessControlActions)
+src/AgTerm.Cli/             agtermctl (System.CommandLine)
+src/AgTerm.Terminal/        ConPTY backend (P/Invoke, no UI deps)
+src/AgTerm.Xterm/           WebView2/xterm.js bridge + real surfaces + LiveControlHost
+src/AgTerm.App/             WinUI 3 app shell (thin; logic lives below)
+tests/*/                    xUnit suites per project; AgTerm.E2E = headless wire E2E;
+                            AgTerm.Xterm.Tests hosts the LIVE (ConPTY+WebView2) integration/E2E
 docs/agterm-windows-spec.md the spec (ТЗ)
 docs/PLATFORM-NOTES.md      documented adaptations/divergences
 parity/surface.json         extracted upstream surface (pin 7df70fe)
@@ -50,7 +56,9 @@ tools/extract_surface.py    surface extractor
 
 ```
 dotnet build AgTerm.slnx
-dotnet test AgTerm.slnx
+dotnet test AgTerm.slnx                          # WinUI app builds separately:
+dotnet build src/AgTerm.App -p:Platform=x64
 ```
 
-Phase 1 scope: AgTerm.Core library + tests only. Transport (named pipe) and CLI are NOT in this phase.
+Phases 1–3 done: Core, control plane (pipe + agtermctl), real terminal (ConPTY + WinUI 3 +
+WebView2/xterm.js, live control server, persistence across restarts).

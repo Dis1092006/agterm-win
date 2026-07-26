@@ -482,7 +482,9 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
 
     // a control session.new (frontmost window) FOCUSES the new session, so real keystrokes reach it.
     [Fact(Skip = "PORT-GAP: needs live terminal/UI — real keyboard first-responder focus and " +
-                 "app.typeText have no headless analogue (the headless host has no keystroke path)")]
+                 "app.typeText have no headless analogue (the headless host has no keystroke path). " +
+                 "The control half is live-ported: AgTerm.Xterm.Tests LivePortedE2ETests." +
+                 "Session_new_with_command_focuses_the_new_session_for_typed_input")]
     public void SessionNewWithCommandFocusesTheNewSession()
     {
         // Swift body:
