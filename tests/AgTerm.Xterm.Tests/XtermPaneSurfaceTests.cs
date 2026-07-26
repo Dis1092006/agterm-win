@@ -45,6 +45,31 @@ public class XtermPaneSurfaceTests
     }
 
     [Fact]
+    public async Task Two_surfaces_on_one_page_have_independent_shells_and_teardown()
+    {
+        var page = await _webView.CreatePageAsync();
+        var options = new XtermSurfaceOptions { Argv = new[] { Cmd } };
+        using var one = await _webView.RunAsync(async _ => await XtermPaneSurface.OpenAsync(page, options));
+        using var two = await _webView.RunAsync(async _ => await XtermPaneSurface.OpenAsync(page, options));
+        Assert.NotEqual(one.PaneToken, two.PaneToken);
+
+        WaitForScreen(one, ">");
+        WaitForScreen(two, ">");
+        Assert.True(one.Inject("echo pane-one-marker\n"));
+        Assert.True(two.Inject("echo pane-two-marker\n"));
+        var oneText = WaitForScreen(one, "pane-one-marker");
+        var twoText = WaitForScreen(two, "pane-two-marker");
+        Assert.DoesNotContain("pane-two-marker", oneText);
+        Assert.DoesNotContain("pane-one-marker", twoText);
+
+        // tearing one down must not touch its sibling
+        one.Teardown();
+        Assert.Null(one.ReadScreenText(all: true, lines: null));
+        Assert.True(two.Inject("echo survivor-ok\n"));
+        WaitForScreen(two, "survivor-ok");
+    }
+
+    [Fact]
     public async Task Inject_types_keystrokes_with_Enter_as_CR()
     {
         using var surface = await OpenAsync();
