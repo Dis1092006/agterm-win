@@ -87,6 +87,38 @@ public class AppStoreSurfaceRealizerTests : IDisposable
     }
 
     [Fact]
+    public void Eager_realization_realizes_a_background_add_without_moving_selection()
+    {
+        _store.EagerSurfaceRealization = true;
+        var workspace = _store.AddWorkspace("w");
+        var selected = _store.AddSession(workspace.Id, "C:\\")!;
+        var background = _store.AddSession(workspace.Id, "C:\\", select: false)!;
+
+        Assert.Contains(background.Id, _realized);
+        Assert.NotNull(background.Surface);
+        Assert.Equal(selected.Id, _store.SelectedSessionId);
+    }
+
+    [Fact]
+    public void RealizeAllSessions_realizes_every_main_pane_once()
+    {
+        _store.SurfaceRealizer = null;
+        var w1 = _store.AddWorkspace("w1");
+        var w2 = _store.AddWorkspace("w2");
+        var a = _store.AddSession(w1.Id, "C:\\", select: false)!;
+        var b = _store.AddSession(w2.Id, "C:\\", select: false)!;
+
+        _store.SurfaceRealizer = s => { _realized.Add(s.Id); return new StubSurface(); };
+        _store.RealizeAllSessions();
+        Assert.Equal(new[] { a.Id, b.Id }, _realized.OrderBy(id => id == b.Id).ToArray());
+        Assert.NotNull(a.Surface);
+        Assert.NotNull(b.Surface);
+
+        _store.RealizeAllSessions(); // already realized — the realizer must not run again
+        Assert.Equal(2, _realized.Count);
+    }
+
+    [Fact]
     public void Selecting_null_or_unknown_does_not_touch_the_realizer()
     {
         var workspace = _store.AddWorkspace("w");

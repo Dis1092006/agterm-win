@@ -63,6 +63,9 @@ public sealed class LiveControlHost : IDisposable
             HomeDirectory = options.HomeDirectory,
             Log = options.Log,
             SurfaceRealizer = Realize,
+            // the live app's eager deck: every session's pane exists from creation/restore, so
+            // session.type works into background sessions without a select (phase 4 DoD)
+            EagerSurfaceRealization = true,
         });
     }
 

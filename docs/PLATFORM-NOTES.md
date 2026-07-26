@@ -139,3 +139,21 @@
   берётся из buffer API (`translateToString`), НЕ из serialize-аддона: тот эмитит
   VT/SGR-последовательности, а wire-контракт `session.text` — plain text (serialize-аддон
   забандлен и используется хостом для сериализации экрана, не для session.text).
+
+## Фаза 4 (сайдбар и мультисессии)
+
+- **Один WebView2 на окно, много xterm.js-пейнов (мост v2).** Фаза 3 держала WebView2 на
+  каждую сессию (~100+ МБ рантайма и медленный `EnsureCoreWebView2Async` на каждую).
+  Теперь окно грузит `terminal.html` один раз; `bridge.js` держит реестр пейнов по
+  `paneId`, каждое сообщение обеих сторон и каждый `agterm.*`-вызов адресованы пейном
+  (`XtermPage` — C#-владелец страницы, `XtermTerminal` — per-pane хэндл). Переключение
+  сессий = show/hide div-ов (`agterm.showPane`), а не Visibility WebView2. `PaneToken`
+  поверхности (`AGTERM_PANE_ID`) и `paneId` моста — один и тот же идентификатор.
+  На wire не влияет.
+
+- **Eager deck в live-хосте.** Upstream-приложение реализует вью каждой сессии с момента
+  её появления в деке, поэтому `session.type` попадает в фоновую сессию без `select`.
+  Порт: `AppStore.EagerSurfaceRealization` (включает live-хост) — `AddSession` реализует
+  и `--no-select`-создания, бутстрап после рестора зовёт `RealizeAllSessions()`.
+  Headless-хост флаг НЕ включает: там поверхности навешиваются тестами извне, и
+  паритетная ошибка `"session not realized; use select"` сохраняется как есть.

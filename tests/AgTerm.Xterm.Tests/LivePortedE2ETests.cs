@@ -106,6 +106,49 @@ public sealed class LivePortedE2ETests : IDisposable
         Assert.Contains("ctl-dod-marker", copied);
     }
 
+    // The phase-4 eager deck: in the LIVE app every session is realized at creation (upstream:
+    // each deck member's view exists from the start), so session.type reaches a background
+    // (--no-select) session WITHOUT a select. Headless keeps the pinned "session not realized;
+    // use select" error — this test is the live half of that split.
+    [Fact]
+    public void Session_type_reaches_a_background_session_without_select()
+    {
+        WaitForCtlText(">");
+        var activeBefore = ActiveSessionId();
+        var id = CtlOk("session", "new", "--no-select").Trim();
+        Assert.NotEqual(activeBefore, id);
+
+        CtlOk("session", "type", "--target", id, "echo eager-deck-marker\n");
+        var deadline = Environment.TickCount64 + 30000;
+        var text = "";
+        while (Environment.TickCount64 < deadline)
+        {
+            text = Ctl("session", "text", "--all", "--target", id).Out;
+            if (text.Contains("eager-deck-marker")) break;
+            Thread.Sleep(100);
+        }
+        Assert.Contains("eager-deck-marker", text);
+        // ...and the background type must not have moved the selection
+        Assert.Equal(activeBefore, ActiveSessionId());
+    }
+
+    /// <summary>The id of the tree's active session (agtermctl tree → JSON).</summary>
+    private string ActiveSessionId()
+    {
+        var response = System.Text.Json.Nodes.JsonNode.Parse(CtlOk("tree", "--json"))!;
+        var tree = response["result"]!["tree"]!;
+        foreach (var workspace in tree["workspaces"]!.AsArray())
+        {
+            foreach (var session in workspace!["sessions"]!.AsArray())
+            {
+                if (session!["active"]?.GetValue<bool>() == true)
+                    return session["id"]!.GetValue<string>();
+            }
+        }
+        Assert.Fail("tree has no active session");
+        return "";
+    }
+
     // Port of agtermUITests SessionNewWithCommandFocusesTheNewSession (PORT-GAP-skipped headless):
     // upstream types on the REAL keyboard to prove the new command session took keyboard focus.
     // The keystroke path here is the control channel (no UI automation), so the ported invariant

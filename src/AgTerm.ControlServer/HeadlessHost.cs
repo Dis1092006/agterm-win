@@ -52,6 +52,12 @@ public sealed record HeadlessHostOptions
     /// bootstrap so the default first session realizes too. Null = headless default (surfaces
     /// attach externally). Invoked under the host gate; implementations must not RunLocked back.</summary>
     public Func<Session, ITerminalSurface?>? SurfaceRealizer { get; init; }
+
+    /// <summary>The live app's eager deck (phase 4): realize EVERY session at creation and every
+    /// restored session at bootstrap, so session.type reaches background sessions without a
+    /// select. Default false = headless parity — background sessions stay unrealized and the
+    /// pinned "session not realized; use select" error survives (PLATFORM-NOTES).</summary>
+    public bool EagerSurfaceRealization { get; init; }
 }
 
 /// <summary>
@@ -91,6 +97,7 @@ public sealed class HeadlessHost : IDisposable
             // installed before the bootstrap: the default first session is created SELECTED and
             // must realize like any control-driven show
             SurfaceRealizer = options.SurfaceRealizer,
+            EagerSurfaceRealization = options.EagerSurfaceRealization,
         };
         // the app-launch bootstrap: restore the persisted window snapshot (arming the persisted
         // session.restore overrides, like a real launch); an empty/fresh state dir seeds the same
@@ -100,8 +107,11 @@ public sealed class HeadlessHost : IDisposable
         {
             Store.Restore(snapshot, launchRestore: true);
             // the restored selection is shown immediately (upstream: the window's first draw
-            // realizes it); Restore() itself bypasses SelectSession, so realize explicitly
-            Store.RealizeActiveSession();
+            // realizes it); Restore() itself bypasses SelectSession, so realize explicitly.
+            // The eager deck realizes the WHOLE restored tree instead (every deck member's
+            // view exists from launch).
+            if (options.EagerSurfaceRealization) Store.RealizeAllSessions();
+            else Store.RealizeActiveSession();
         }
         else
         {

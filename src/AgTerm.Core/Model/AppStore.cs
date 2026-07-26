@@ -117,6 +117,12 @@ public sealed partial class AppStore
     /// </summary>
     public Func<Session, ITerminalSurface?>? SurfaceRealizer;
 
+    /// <summary>The live app's "eager deck": every session gets its surface AT CREATION (upstream:
+    /// each session's view exists from the moment it appears in the deck), so session.type reaches
+    /// background sessions without a select. Default false = headless behavior, which preserves
+    /// the pinned "session not realized; use select" parity error (PLATFORM-NOTES, phase 4).</summary>
+    public bool EagerSurfaceRealization { get; set; }
+
     /// <summary>Selection moved (select, deselect, or a session created selected) — the C# event
     /// replacing upstream's Observation of selectedSessionID for the window chrome (which pane is
     /// visible). Same precedent as AutoFollowed / SidebarVisibilityChanged (PLATFORM-NOTES).</summary>
@@ -136,6 +142,17 @@ public sealed partial class AppStore
     public void RealizeActiveSession()
     {
         if (ActiveSession is { } shown) RealizeIfShown(shown);
+    }
+
+    /// <summary>Realize EVERY session's main pane (the eager-deck bootstrap: the live host calls
+    /// this after a snapshot restore instead of RealizeActiveSession). Already-realized panes are
+    /// left alone; a null realizer makes this a no-op.</summary>
+    public void RealizeAllSessions()
+    {
+        foreach (var workspace in Workspaces)
+        {
+            foreach (var session in workspace.Sessions) RealizeIfShown(session);
+        }
     }
 
     public AppStore(List<Workspace>? workspaces = null, Guid? selectedSessionId = null,
@@ -351,7 +368,8 @@ public sealed partial class AppStore
             Workspaces[wsIndex].Sessions.Add(session);
         }
         // a background add (session.new --no-select) leaves selection/focus/recency untouched —
-        // and stays UNREALIZED (upstream: no view is shown, so no surface exists until a select).
+        // and, headless, stays UNREALIZED (upstream: no view is shown, so no surface exists until
+        // a select). The live host's eager deck realizes it right here instead.
         if (select)
         {
             SelectedSessionId = session.Id;
@@ -359,6 +377,10 @@ public sealed partial class AppStore
             RecordRecency();
             RealizeIfShown(session);
             SelectionChanged?.Invoke();
+        }
+        else if (EagerSurfaceRealization)
+        {
+            RealizeIfShown(session);
         }
         EmitSessionCreated(session, toWorkspace);
         Save();
