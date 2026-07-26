@@ -90,3 +90,24 @@
   заменяет невалидный UTF-8 замещающими символами (Swift даёт nil/пусто) — на
   wire уходит то, что прочиталось. Help-текст `window fullscreen` не упоминает
   macOS (help — не часть wire-контракта).
+
+## Фаза 3 (терминальный движок)
+
+- **Дефолтный шелл вместо login-shell.** На Windows нет `$SHELL` и login-shell-семантики
+  (upstream спавнит login-шелл пользователя). Политика порта (`ShellResolver`): явная
+  настройка → вербатим; иначе PowerShell 7 (`pwsh.exe` с PATH); иначе `%COMSPEC%`;
+  иначе литеральный `cmd.exe`. На wire не влияет.
+
+- **Токенизация `session.new --command`.** Upstream отдаёт строку конфиг-парсеру libghostty.
+  Здесь токенайзер свой (`CommandTokenizer`), контракт §6 сохранён (кавычко-aware split,
+  argv[0] exec-ится напрямую, операторы шелла НЕ интерпретируются): whitespace разделяет,
+  `'...'` группирует литерально, `"..."` группирует с эскейпами `\"` и `\`, backslash вне
+  кавычек эскейпит следующий символ, незакрытая кавычка берёт хвост литерально. Argv →
+  командная строка CreateProcessW — точная инверсия правил CommandLineToArgvW
+  (`WindowsCommandLine`).
+
+- **ConPTY-спавн и std-хэндлы.** `CreateProcessW` без `STARTF_USESTDHANDLES` дублирует
+  (возможно перенаправленные) std-хэндлы хоста в ребёнка, и вывод ребёнка обходит
+  псевдоконсоль (уходит в stdout хоста). Порт передаёт `STARTF_USESTDHANDLES` с нулевыми
+  хэндлами (воркараунд Windows Terminal ConptyConnection) — conhost подменяет их хэндлами
+  самой псевдоконсоли.

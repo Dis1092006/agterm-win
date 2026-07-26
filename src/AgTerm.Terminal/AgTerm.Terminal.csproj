@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- ConPTY is Windows-only by definition; the library still targets plain net8.0 so the
+         host-free Core/tests stack keeps one TFM. Analyzer enforces the platform guard. -->
+    <SupportedOSPlatform>windows</SupportedOSPlatform>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgTerm.Terminal.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgTerm.Core\AgTerm.Core.csproj" />
+  </ItemGroup>
+
+</Project>

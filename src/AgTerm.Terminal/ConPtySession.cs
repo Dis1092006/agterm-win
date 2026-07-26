@@ -1,0 +1,217 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace AgTerm.Terminal;
+
+/// <summary>How to spawn a pseudoconsole child (§10: shell in cwd, or a --command argv directly).</summary>
+public sealed record ConPtyStartInfo
+{
+    /// <summary>The child's argv. argv[0] is the program (execed directly — no shell wrapping,
+    /// per the §6 --command contract); the list is turned into a CreateProcessW command line with
+    /// CommandLineToArgvW-inverse quoting.</summary>
+    public required IReadOnlyList<string> Argv { get; init; }
+
+    /// <summary>Working directory for the child; null = inherit the host's.</summary>
+    public string? Cwd { get; init; }
+
+    public int Cols { get; init; } = 80;
+
+    public int Rows { get; init; } = 24;
+
+    /// <summary>Raw VT output chunks from the pty, invoked on the reader thread. Wired at start so
+    /// no output can race a later event subscription.</summary>
+    public Action<byte[]>? OnOutput { get; init; }
+}
+
+/// <summary>
+/// One live pseudoconsole: a ConPTY pair + a spawned child process. Owns the reader thread
+/// (pty output → OnOutput), the input stream (WriteText — keystroke bytes, Enter is CR),
+/// resize, and the exit watcher (Exited completes with the child's exit code).
+/// </summary>
+public sealed class ConPtySession : IDisposable
+{
+    private readonly object _writeGate = new();
+    private readonly TaskCompletionSource<int> _exited =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly FileStream _input;
+    private readonly IntPtr _console;
+    private readonly IntPtr _process;
+    private int _consoleClosed;
+    private bool _disposed;
+
+    private ConPtySession(IntPtr console, IntPtr process, FileStream input)
+    {
+        _console = console;
+        _process = process;
+        _input = input;
+    }
+
+    /// <summary>Task that completes with the child's exit code.</summary>
+    public Task<int> Exited => _exited.Task;
+
+    public static ConPtySession Start(ConPtyStartInfo info)
+    {
+        var commandLine = WindowsCommandLine.FromArgv(info.Argv);
+
+        if (!ConPtyNative.CreatePipe(out var ptyInputRead, out var ourInputWrite, IntPtr.Zero, 0))
+            throw new Win32Exception();
+        if (!ConPtyNative.CreatePipe(out var ourOutputRead, out var ptyOutputWrite, IntPtr.Zero, 0))
+            throw new Win32Exception();
+
+        var size = new ConPtyNative.Coord { X = (short)info.Cols, Y = (short)info.Rows };
+        var hr = ConPtyNative.CreatePseudoConsole(size, ptyInputRead, ptyOutputWrite, 0, out var console);
+        if (hr != 0) throw new Win32Exception(hr, "CreatePseudoConsole failed");
+        // the pseudoconsole holds its own duplicates of the child-side pipe ends
+        ptyInputRead.Dispose();
+        ptyOutputWrite.Dispose();
+
+        var attributeList = IntPtr.Zero;
+        try
+        {
+            var listSize = IntPtr.Zero;
+            ConPtyNative.InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref listSize);
+            attributeList = Marshal.AllocHGlobal(listSize);
+            if (!ConPtyNative.InitializeProcThreadAttributeList(attributeList, 1, 0, ref listSize))
+                throw new Win32Exception();
+            if (!ConPtyNative.UpdateProcThreadAttribute(
+                    attributeList, 0, ConPtyNative.ProcThreadAttributePseudoConsole,
+                    console, new IntPtr(IntPtr.Size), IntPtr.Zero, IntPtr.Zero))
+                throw new Win32Exception();
+
+            var startup = new ConPtyNative.StartupInfoEx
+            {
+                // STARTF_USESTDHANDLES with null handles: without it CreateProcessW duplicates the
+                // host's own (possibly redirected) std handles into the child, and child output
+                // bypasses the pseudoconsole into the host's stdout (the Windows Terminal
+                // ConptyConnection workaround). Null std handles are replaced by conhost with
+                // handles to the pseudoconsole itself.
+                StartupInfo =
+                {
+                    Cb = Marshal.SizeOf<ConPtyNative.StartupInfoEx>(),
+                    Flags = ConPtyNative.StartfUseStdHandles,
+                },
+                AttributeList = attributeList,
+            };
+            if (!ConPtyNative.CreateProcessW(
+                    null, commandLine, IntPtr.Zero, IntPtr.Zero, inheritHandles: false,
+                    ConPtyNative.ExtendedStartupInfoPresent | ConPtyNative.CreateUnicodeEnvironment,
+                    IntPtr.Zero, info.Cwd, ref startup, out var processInfo))
+            {
+                var error = Marshal.GetLastWin32Error();
+                ConPtyNative.ClosePseudoConsole(console);
+                throw new Win32Exception(error, $"CreateProcessW failed for: {commandLine}");
+            }
+            ConPtyNative.CloseHandle(processInfo.Thread);
+
+            var input = new FileStream(ourInputWrite, FileAccess.Write);
+            var session = new ConPtySession(console, processInfo.Process, input);
+            session.StartReader(ourOutputRead, info.OnOutput);
+            session.StartExitWatcher();
+            return session;
+        }
+        finally
+        {
+            if (attributeList != IntPtr.Zero)
+            {
+                ConPtyNative.DeleteProcThreadAttributeList(attributeList);
+                Marshal.FreeHGlobal(attributeList);
+            }
+        }
+    }
+
+    private void StartReader(SafeFileHandle outputRead, Action<byte[]>? onOutput)
+    {
+        var reader = new Thread(() =>
+        {
+            using var output = new FileStream(outputRead, FileAccess.Read);
+            var buffer = new byte[4096];
+            try
+            {
+                while (true)
+                {
+                    var read = output.Read(buffer, 0, buffer.Length);
+                    if (read <= 0) break;
+                    if (onOutput is null) continue;
+                    var chunk = new byte[read];
+                    Array.Copy(buffer, chunk, read);
+                    onOutput(chunk);
+                }
+            }
+            catch (IOException)
+            {
+                // pipe broken — the pseudoconsole was closed; treated as EOF
+            }
+        })
+        { IsBackground = true, Name = "conpty-output" };
+        reader.Start();
+    }
+
+    private void StartExitWatcher()
+    {
+        var watcher = new Thread(() =>
+        {
+            ConPtyNative.WaitForSingleObject(_process, ConPtyNative.Infinite);
+            ConPtyNative.GetExitCodeProcess(_process, out var code);
+            // closing the pseudoconsole releases conhost, which EOFs the reader after the
+            // remaining buffered output has been drained
+            CloseConsoleOnce();
+            _exited.TrySetResult(unchecked((int)code));
+        })
+        { IsBackground = true, Name = "conpty-exit" };
+        watcher.Start();
+    }
+
+    /// <summary>Send text to the child as keystrokes (raw bytes into the pty input; the caller
+    /// maps Enter to CR per session.type semantics).</summary>
+    public void WriteText(string text) => Write(Encoding.UTF8.GetBytes(text));
+
+    public void Write(byte[] data)
+    {
+        lock (_writeGate)
+        {
+            if (_disposed) return;
+            try
+            {
+                _input.Write(data, 0, data.Length);
+                _input.Flush();
+            }
+            catch (IOException)
+            {
+                // child gone mid-write — the exit watcher reports it
+            }
+        }
+    }
+
+    public void Resize(int cols, int rows)
+    {
+        if (Volatile.Read(ref _consoleClosed) != 0) return;
+        ConPtyNative.ResizePseudoConsole(
+            _console, new ConPtyNative.Coord { X = (short)cols, Y = (short)rows });
+    }
+
+    private void CloseConsoleOnce()
+    {
+        if (Interlocked.Exchange(ref _consoleClosed, 1) == 0)
+            ConPtyNative.ClosePseudoConsole(_console);
+    }
+
+    /// <summary>Kills the child (if still alive), closes the pseudoconsole and the input pipe.</summary>
+    public void Dispose()
+    {
+        lock (_writeGate)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
+        if (!_exited.Task.IsCompleted)
+            ConPtyNative.TerminateProcess(_process, 1);
+        // the exit watcher observes the kill, closes the console, and completes Exited;
+        // closing here too covers the already-exited path (both are once-guarded)
+        ConPtyNative.WaitForSingleObject(_process, 5000);
+        CloseConsoleOnce();
+        _input.Dispose();
+        ConPtyNative.CloseHandle(_process);
+    }
+}

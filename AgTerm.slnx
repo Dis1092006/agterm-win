@@ -3,11 +3,13 @@
     <Project Path="src/AgTerm.Cli/AgTerm.Cli.csproj" />
     <Project Path="src/AgTerm.ControlServer/AgTerm.ControlServer.csproj" />
     <Project Path="src/AgTerm.Core/AgTerm.Core.csproj" />
+    <Project Path="src/AgTerm.Terminal/AgTerm.Terminal.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AgTerm.Cli.Tests/AgTerm.Cli.Tests.csproj" />
     <Project Path="tests/AgTerm.ControlServer.Tests/AgTerm.ControlServer.Tests.csproj" />
     <Project Path="tests/AgTerm.Core.Tests/AgTerm.Core.Tests.csproj" />
     <Project Path="tests/AgTerm.E2E/AgTerm.E2E.csproj" />
+    <Project Path="tests/AgTerm.Terminal.Tests/AgTerm.Terminal.Tests.csproj" />
   </Folder>
 </Solution>
