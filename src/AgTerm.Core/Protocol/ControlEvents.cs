@@ -14,6 +14,20 @@ public enum ControlEventKind
     TreeChanged,
 }
 
+public static class ControlEventKinds
+{
+    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static ControlEventKind? FromWire(string wire) => wire switch
+    {
+        "status" => ControlEventKind.Status,
+        "notify" => ControlEventKind.Notify,
+        "session.created" => ControlEventKind.SessionCreated,
+        "session.closed" => ControlEventKind.SessionClosed,
+        "tree.changed" => ControlEventKind.TreeChanged,
+        _ => null,
+    };
+}
+
 public sealed class ControlEventKindConverter : WireEnumConverter<ControlEventKind>
 {
     public ControlEventKindConverter() : base(

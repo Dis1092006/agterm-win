@@ -1,0 +1,699 @@
+using System.Globalization;
+using AgTerm.Core.Model;
+
+namespace AgTerm.Core.Protocol;
+
+/// <summary>
+/// Routes control commands through a host-provided action seam. The dispatcher owns command parsing
+/// and response shape; host actions keep target resolution, window state, and terminal-surface side
+/// effects. The 1:1 port of the Swift ControlDispatcher.
+/// </summary>
+public sealed class ControlDispatcher
+{
+    private readonly IControlActions _actions;
+
+    public ControlDispatcher(IControlActions actions)
+    {
+        _actions = actions;
+    }
+
+    public async Task<ControlResponse?> Dispatch(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.Tree:
+                return _actions.ControlTree(request.Args?.Window);
+            case Command.EventsRead:
+                return DispatchEventsRead(request);
+            case Command.SessionNew or Command.SessionDuplicate or Command.SessionSelect
+                or Command.SessionGo or Command.SessionClose or Command.SessionRename
+                or Command.SessionReveal or Command.SessionMove or Command.SessionFlag
+                or Command.SessionSeen or Command.SessionStatus or Command.SessionRestore:
+                return DispatchSessionCommand(request);
+            case Command.SessionSplit or Command.SessionScratch or Command.SessionFocus
+                or Command.SessionResize or Command.SurfaceZoom or Command.SessionType
+                or Command.SessionCopy or Command.SessionPaste or Command.SessionSelectAll
+                or Command.SessionSearch or Command.SessionOverlayOpen or Command.SessionOverlayClose
+                or Command.SessionOverlayResize or Command.SessionOverlayResult
+                or Command.SessionBackground or Command.SessionText:
+                return await DispatchSessionSurfaceCommand(request);
+            case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
+                or Command.WorkspaceDelete or Command.WorkspaceMove or Command.WorkspaceFocus
+                or Command.WorkspaceCollapse or Command.WorkspaceExpand:
+                return DispatchWorkspaceCommand(request);
+            case Command.Quick or Command.FontInc or Command.FontDec or Command.FontReset
+                or Command.KeymapReload or Command.ConfigReload or Command.Notify
+                or Command.ThemeSet or Command.ThemeList or Command.Sidebar or Command.SidebarMode
+                or Command.SidebarExpand or Command.SidebarCollapse or Command.RestoreClear:
+                return DispatchAppCommand(request);
+            case Command.QuickType or Command.QuickText:
+                return await DispatchQuickCommand(request);
+            case Command.WindowNew or Command.WindowList or Command.WindowSelect or Command.WindowClose
+                or Command.WindowRename or Command.WindowDelete or Command.WindowResize
+                or Command.WindowMove or Command.WindowZoom or Command.WindowFullscreen:
+                return await DispatchWindowCommand(request);
+            case Command.Dashboard:
+                return DispatchDashboard(request);
+            case Command.DebugAppearance:
+                // UI-test-only seam handled host-side (out of the parity surface on Windows).
+                return null;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(request), $"unexpected command: {request.Cmd}");
+        }
+    }
+
+    private static ControlResponse Err(string error) => new() { Ok = false, Error = error };
+
+    private ControlResponse DispatchEventsRead(ControlRequest request)
+    {
+        var args = request.Args;
+        ControlEventCursor? cursor;
+        switch (args?.Run, args?.After)
+        {
+            case (null, null):
+                cursor = null;
+                break;
+            case (not null, null) or (null, not null):
+                return Err(ControlEventRequestError.CursorPair);
+            case ({ } runText, { } afterText):
+                if (!Guid.TryParseExact(runText, "D", out var run))
+                    return Err(ControlEventRequestError.InvalidRun);
+                if (!ulong.TryParse(afterText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture,
+                        out var after))
+                    return Err(ControlEventRequestError.InvalidCursor);
+                cursor = new ControlEventCursor(run, after);
+                break;
+        }
+
+        var limit = args?.Limit ?? 100;
+        if (limit is < 1 or > 1_000)
+            return Err(ControlEventRequestError.InvalidLimit);
+
+        var parsedKinds = new HashSet<ControlEventKind>();
+        foreach (var field in args?.Kinds ?? Array.Empty<string>())
+        {
+            foreach (var component in field.Split(','))
+            {
+                var rawKind = component.Trim();
+                var kind = ControlEventKinds.FromWire(rawKind);
+                if (kind is null)
+                    return Err(ControlEventRequestError.InvalidKind(rawKind));
+                parsedKinds.Add(kind.Value);
+            }
+        }
+        var kinds = parsedKinds.Count == 0 ? null : parsedKinds;
+        return _actions.ReadEvents(new ControlEventReadOptions(cursor, kinds, limit));
+    }
+
+    private ControlResponse DispatchSessionCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.SessionNew:
+            {
+                var args = request.Args;
+                if (args?.After is not null && args?.Before is not null)
+                    return Err("use either --after or --before, not both");
+                // The anchor sid carries its own workspace, so placement can't also name one.
+                if ((args?.After is not null || args?.Before is not null)
+                    && (args?.Workspace is not null || args?.WorkspaceName is not null))
+                    return Err("session.new takes --after/--before or a workspace, not both");
+                if (args?.Workspace is not null && args?.WorkspaceName is not null)
+                    return Err("use either --workspace or --workspace-name, not both");
+                if (args?.CreateWorkspace == true && args?.WorkspaceName is null)
+                    return Err("--create-workspace requires --workspace-name");
+                // --wait holds the surface after the command exits, so it is meaningless without a command.
+                if (args?.Wait == true && args?.Command is null)
+                    return Err("--wait requires --command");
+                return _actions.CreateSession(new ControlSessionCreateOptions(
+                    Window: args?.Window,
+                    Cwd: args?.Cwd,
+                    Workspace: args?.Workspace,
+                    WorkspaceName: args?.WorkspaceName,
+                    CreateWorkspace: args?.CreateWorkspace,
+                    Command: args?.Command,
+                    Wait: args?.Wait,
+                    Name: args?.Name,
+                    After: args?.After,
+                    Before: args?.Before,
+                    NoSelect: args?.NoSelect == true));
+            }
+            case Command.SessionDuplicate:
+                // no options: the source session names its own workspace AND its cwd, so a duplicate is
+                // fully described by the target.
+                return _actions.DuplicateSession(request.Target, request.Args?.Window);
+            case Command.SessionSelect:
+                return _actions.SelectSession(request.Target, request.Args?.Window);
+            case Command.SessionGo:
+            {
+                // unknown/missing to is a structured error.
+                var dir = request.Args?.To is { } to ? SessionNavigations.FromWire(to) : null;
+                if (dir is null)
+                    return Err("session.go requires --to next|prev|first|last|next-attention|prev-attention");
+                return _actions.GoSession(request.Args?.Window, dir.Value);
+            }
+            case Command.SessionClose:
+            {
+                if (request.Args?.Targets is { } targets)
+                {
+                    if (targets.Length == 0)
+                        return Err("session.close requires at least one --target");
+                    return _actions.CloseSessions(targets, request.Args?.Window);
+                }
+                return _actions.CloseSession(request.Target, request.Args?.Window);
+            }
+            case Command.SessionRename:
+            {
+                if (request.Args?.Name is not { } name)
+                    return Err("session.rename requires a name");
+                return _actions.RenameSession(request.Target, request.Args?.Window, name);
+            }
+            case Command.SessionReveal:
+                return _actions.RevealSession(request.Target, request.Args?.Window);
+            case Command.SessionMove:
+                return DispatchSessionMoveCommand(request);
+            case Command.SessionFlag:
+                return _actions.SetSessionFlag(request.Target, request.Args?.Window, request.Args?.Mode);
+            case Command.SessionSeen:
+                return _actions.MarkSessionSeen(request.Target, request.Args?.Window);
+            case Command.SessionStatus:
+                return DispatchSessionStatus(request);
+            case Command.SessionRestore:
+                return DispatchSessionRestore(request);
+            default:
+                throw new InvalidOperationException($"unexpected session command: {request.Cmd}");
+        }
+    }
+
+    private ControlResponse DispatchSessionMoveCommand(ControlRequest request)
+    {
+        var args = request.Args;
+        if (args?.After is not null && args?.Before is not null)
+            return Err("use either --after or --before, not both");
+        // Placement mode: the anchor sid self-identifies the destination workspace, so it's mutually
+        // exclusive with --to and with a workspace parameter.
+        if ((args?.After ?? args?.Before) is { } anchor)
+        {
+            if (args?.To is not null)
+                return Err("session.move takes --after/--before or --to, not both");
+            if (args?.Workspace is not null)
+                return Err("session.move takes --after/--before or a workspace, not both");
+            var placeMove = new ControlSessionMove.Place(anchor, After: args?.After is not null);
+            if (args?.Targets is { } placeTargets)
+                return DispatchSessionMove(placeTargets, args?.Window, placeMove);
+            return _actions.MoveSession(request.Target, args?.Window, placeMove);
+        }
+        if (args?.To is not null && args?.Workspace is not null)
+            return Err("session.move takes either --to or a workspace, not both");
+        if (args?.To is { } to)
+        {
+            var direction = ReorderDirections.FromWire(to);
+            if (direction is null)
+                return Err("session.move --to must be up|down|top|bottom");
+            if (args?.Targets is not null)
+                return Err("session.move --target can be repeated only with a workspace or --after/--before");
+            return _actions.MoveSession(request.Target, args?.Window,
+                new ControlSessionMove.Reorder(direction.Value));
+        }
+        if (args?.Workspace is not { } workspace)
+            return Err("session.move requires --to or a workspace");
+        var move = new ControlSessionMove.Workspace(workspace);
+        if (args?.Targets is { } workspaceTargets)
+            return DispatchSessionMove(workspaceTargets, args?.Window, move);
+        return _actions.MoveSession(request.Target, args?.Window, move);
+    }
+
+    private ControlResponse DispatchSessionStatus(ControlRequest request)
+    {
+        var status = AgentStatuses.FromWire(request.Args?.Status ?? "");
+        if (status is null)
+            return Err("invalid status");
+        if (request.Args?.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
+            return Err("invalid color (expected #rrggbb)");
+        StatusShape? shape = null;
+        if (request.Args?.Shape is { } rawShape)
+        {
+            var parsed = StatusShapes.FromWire(rawShape);
+            if (parsed is null)
+                return Err($"invalid shape: {rawShape} ({StatusShapes.ValidNamesList})");
+            shape = parsed;
+        }
+        if (!TryParsePane(request.Args?.Pane, out var pane, out var rejection))
+            return rejection;
+        var update = new ControlSessionStatusUpdate(status.Value, Blink: request.Args?.Blink,
+            AutoReset: request.Args?.AutoReset,
+            Sound: request.Args?.Sound, Color: request.Args?.Color,
+            Shape: shape,
+            Pane: pane, PaneId: request.Args?.PaneId);
+        return _actions.SetSessionStatus(request.Target, request.Args?.Window, update);
+    }
+
+    /// <summary>
+    /// session.restore: parse the set|none|clear mode into a ControlRestoreOverride and the pane
+    /// selector into a StatusPane, then hand both to the host. A pinned command is validated but NEVER
+    /// rewritten — it is a shell line, so metacharacters are the point; it is rejected only for being
+    /// absent, carrying control characters, or exceeding the storage cap. An EMPTY command is the same
+    /// pinned-to-nothing state as none. paneID rides through opaquely (the dispatcher has no session
+    /// to resolve it against).
+    /// </summary>
+    private ControlResponse DispatchSessionRestore(ControlRequest request)
+    {
+        var args = request.Args;
+        ControlRestoreOverride pin;
+        switch (args?.Mode ?? "")
+        {
+            case "set":
+            {
+                if (args?.Command is not { } command)
+                    return Err("session.restore set requires a command");
+                // a control character would smuggle an extra line (or an escape sequence) into the
+                // shell the override is typed into, so the whole class is rejected — tab included.
+                if (command.Any(c => c < 0x20 || c == 0x7f))
+                    return Err("command must not contain control characters");
+                if (System.Text.Encoding.UTF8.GetByteCount(command) > ControlRestoreOverride.MaxCommandBytes)
+                    return Err($"command too long (max {ControlRestoreOverride.MaxCommandBytes} bytes)");
+                pin = new ControlRestoreOverride.Pin(command);
+                break;
+            }
+            case "none":
+                pin = new ControlRestoreOverride.PinNone();
+                break;
+            case "clear":
+                pin = new ControlRestoreOverride.Unpin();
+                break;
+            default:
+                return Err($"invalid restore mode: {args?.Mode ?? ""} (set|none|clear)");
+        }
+        if (!TryParsePane(args?.Pane, out var pane, out var rejection))
+            return rejection;
+        var update = new ControlSessionRestoreUpdate(pin, Pane: pane, PaneId: args?.PaneId);
+        return _actions.SetSessionRestore(request.Target, args?.Window, update);
+    }
+
+    /// <summary>
+    /// The shared --pane role selector (session.status, session.restore): pane is null when the
+    /// selector was absent, the parsed pane when valid; returns false with the pinned rejection when
+    /// the token names no pane.
+    /// </summary>
+    private static bool TryParsePane(string? raw, out StatusPane? pane,
+                                     out ControlResponse rejection)
+    {
+        rejection = Err("--pane must be left, right, or scratch");
+        pane = null;
+        if (raw is null) return true;
+        var parsed = StatusPanes.FromWire(raw);
+        if (parsed is null) return false;
+        pane = parsed;
+        return true;
+    }
+
+    private ControlResponse DispatchSessionMove(IReadOnlyList<string> targets, string? window,
+                                                ControlSessionMove move)
+    {
+        if (targets.Count == 0)
+            return Err("session.move requires at least one --target");
+        if (targets.Count == 1)
+            return _actions.MoveSession(targets[0], window, move);
+        return _actions.MoveSessions(targets, window, move);
+    }
+
+    private ControlResponse DispatchWorkspaceCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.WorkspaceNew:
+                return _actions.CreateWorkspace(request.Args?.Window, request.Args?.Name,
+                    request.Args?.Collapsed ?? false);
+            case Command.WorkspaceSelect:
+                return _actions.SelectWorkspace(request.Target, request.Args?.Window);
+            case Command.WorkspaceRename:
+            {
+                if (Session.TrimmedOrNull(request.Args?.Name) is not { } name)
+                    return Err("workspace.rename requires a name");
+                return _actions.RenameWorkspace(request.Target, request.Args?.Window, name);
+            }
+            case Command.WorkspaceDelete:
+                return _actions.DeleteWorkspace(request.Target, request.Args?.Window);
+            case Command.WorkspaceMove:
+            {
+                if (request.Args?.To is not { } to)
+                    return Err("workspace.move requires --to");
+                var direction = ReorderDirections.FromWire(to);
+                if (direction is null)
+                    return Err("workspace.move --to must be up|down|top|bottom");
+                return _actions.MoveWorkspace(request.Target, request.Args?.Window, direction.Value);
+            }
+            case Command.WorkspaceFocus:
+                return _actions.FocusWorkspace(request.Target, request.Args?.Window, request.Args?.Mode);
+            case Command.WorkspaceCollapse:
+                return _actions.SetWorkspaceExpansion(request.Target, request.Args?.Window, expanded: false);
+            case Command.WorkspaceExpand:
+                return _actions.SetWorkspaceExpansion(request.Target, request.Args?.Window, expanded: true);
+            default:
+                throw new InvalidOperationException($"unexpected workspace command: {request.Cmd}");
+        }
+    }
+
+    private async Task<ControlResponse> DispatchSessionSurfaceCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.SessionSplit:
+                return _actions.SplitSession(request.Target, request.Args?.Window, request.Args?.Mode);
+            case Command.SessionScratch:
+                return _actions.ScratchSession(request.Target, request.Args?.Window, request.Args?.Mode,
+                    request.Args?.Command);
+            case Command.SessionFocus:
+                return _actions.FocusSessionPane(request.Target, request.Args?.Window, request.Args?.Pane);
+            case Command.SessionResize:
+                return (request.Args?.Ratio, request.Args?.RatioDelta) switch
+                {
+                    (null, null) => Err("session.resize requires --split-ratio, --grow-left, or --grow-right"),
+                    (not null, not null) =>
+                        Err("session.resize: --split-ratio is mutually exclusive with --grow-left/--grow-right"),
+                    ({ } ratio, null) => _actions.ResizeSplit(request.Target, request.Args?.Window,
+                        new ControlSplitResize.Ratio(ratio)),
+                    (null, { } delta) => _actions.ResizeSplit(request.Target, request.Args?.Window,
+                        new ControlSplitResize.Delta(delta)),
+                };
+            case Command.SurfaceZoom:
+            {
+                var mode = ControlToggleModes.Parse(request.Args?.Mode, onToken: "show", offToken: "hide");
+                if (mode is null)
+                    return Err($"invalid surface zoom mode: {request.Args?.Mode ?? "toggle"}");
+                return _actions.SetSurfaceZoom(request.Target, request.Args?.Window, mode.Value);
+            }
+            case Command.SessionType:
+            {
+                if (request.Args?.Text is not { } text)
+                    return Err("session.type requires text");
+                return await _actions.TypeSession(request.Target, request.Args?.Window,
+                    new ControlSessionTypeOptions(text,
+                        Select: request.Args?.Select ?? false,
+                        Pane: request.Args?.Pane));
+            }
+            case Command.SessionCopy:
+                return _actions.CopySessionSelection(request.Target, request.Args?.Window);
+            case Command.SessionPaste:
+                return _actions.PasteSession(request.Target, request.Args?.Window);
+            case Command.SessionSelectAll:
+                return _actions.SelectAllSession(request.Target, request.Args?.Window);
+            case Command.SessionSearch:
+                return await _actions.SearchSession(request.Target, request.Args?.Window,
+                    request.Args?.Text, request.Args?.To);
+            case Command.SessionOverlayOpen:
+            {
+                if (request.Args?.Command is not { Length: > 0 } command)
+                    return Err("session.overlay.open requires a command");
+                if (request.Args?.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
+                    return Err($"invalid color: {color} (#rrggbb)");
+                return _actions.OpenSessionOverlay(request.Target, request.Args?.Window,
+                    new ControlSessionOverlayOpenOptions(command,
+                        Cwd: request.Args?.Cwd,
+                        Wait: request.Args?.Wait ?? false,
+                        SizePercent: request.Args?.SizePercent,
+                        BackgroundColor: request.Args?.Color,
+                        Follow: request.Args?.Follow ?? false));
+            }
+            case Command.SessionOverlayClose:
+                return _actions.CloseSessionOverlay(request.Target, request.Args?.Window);
+            case Command.SessionOverlayResize:
+            {
+                var wantsFull = request.Args?.Full == true;
+                var percent = request.Args?.SizePercent;
+                if (wantsFull && percent is not null)
+                    return Err("session.overlay.resize: --full is mutually exclusive with --size-percent");
+                if (!wantsFull && percent is null)
+                    return Err("session.overlay.resize requires --size-percent or --full");
+                if (percent is < 1 or > 100)
+                    return Err("session.overlay.resize: --size-percent must be 1...100");
+                return _actions.ResizeSessionOverlay(request.Target, request.Args?.Window,
+                    wantsFull ? null : percent);
+            }
+            case Command.SessionOverlayResult:
+                return _actions.SessionOverlayResult(request.Target, request.Args?.Window);
+            case Command.SessionBackground:
+                return DispatchSessionBackground(request);
+            case Command.SessionText:
+                return DispatchSessionText(request);
+            default:
+                throw new InvalidOperationException($"unexpected session surface command: {request.Cmd}");
+        }
+    }
+
+    private ControlResponse DispatchAppCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.FontInc:
+                return _actions.Font(request.Target, request.Args?.Window,
+                    request.Args?.Pane, "increase_font_size:1");
+            case Command.FontDec:
+                return _actions.Font(request.Target, request.Args?.Window,
+                    request.Args?.Pane, "decrease_font_size:1");
+            case Command.FontReset:
+                return _actions.Font(request.Target, request.Args?.Window,
+                    request.Args?.Pane, "reset_font_size");
+            case Command.Quick:
+                return _actions.SetQuickTerminal(request.Args?.Mode);
+            case Command.KeymapReload:
+                return _actions.ReloadKeymap();
+            case Command.ConfigReload:
+                return _actions.ReloadGhosttyConfig();
+            case Command.Notify:
+            {
+                if (request.Args?.Body is not { Length: > 0 } body)
+                    return Err("notify requires a body");
+                return _actions.SendNotification(request.Target, request.Args?.Window,
+                    request.Args?.Title, body);
+            }
+            case Command.ThemeSet:
+                return _actions.SetTheme(request.Args);
+            case Command.ThemeList:
+                return _actions.ListThemes();
+            case Command.Sidebar:
+            {
+                var mode = ControlToggleModes.Parse(request.Args?.Mode, onToken: "show", offToken: "hide");
+                if (mode is null)
+                    return Err($"invalid sidebar mode: {request.Args?.Mode ?? "toggle"}");
+                return _actions.SetSidebarVisibility(mode.Value);
+            }
+            case Command.SidebarMode:
+            {
+                var mode = ControlSidebarViewModes.Parse(request.Args?.Mode);
+                if (mode is null)
+                    return Err($"invalid sidebar mode: {request.Args?.Mode ?? "toggle"}");
+                return _actions.SetSidebarViewMode(mode.Value);
+            }
+            case Command.SidebarExpand:
+                return _actions.ExpandSidebar(request.Args?.Window);
+            case Command.SidebarCollapse:
+                return _actions.CollapseSidebar(request.Args?.Window);
+            case Command.RestoreClear:
+                return _actions.ClearRestoreCommands();
+            default:
+                throw new InvalidOperationException($"unexpected app command: {request.Cmd}");
+        }
+    }
+
+    /// <summary>The quick-terminal input/read commands, async because the app side polls briefly for
+    /// the surface to mount + realize after quick show (the twin of session.type/session.text).</summary>
+    private async Task<ControlResponse> DispatchQuickCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.QuickType:
+            {
+                if (request.Args?.Text is not { } text)
+                    return Err("quick.type requires text");
+                return await _actions.TypeQuick(text);
+            }
+            case Command.QuickText:
+            {
+                var all = request.Args?.All ?? false;
+                var lines = request.Args?.Lines;
+                if (all && lines is not null)
+                    return Err("use either --all or --lines, not both");
+                if (lines is <= 0)
+                    return Err("--lines must be greater than 0");
+                return await _actions.ReadQuickText(all, lines);
+            }
+            default:
+                throw new InvalidOperationException($"unexpected quick command: {request.Cmd}");
+        }
+    }
+
+    private ControlResponse DispatchSessionBackground(ControlRequest request)
+    {
+        // The args bag is normalized into the option struct here so the app-side adapter stays a small
+        // fixed-arity signature rather than a 10-parameter dispatch.
+        if (request.Args?.Fit is { } fit && !WatermarkConfig.IsValidFit(fit))
+            return Err($"invalid fit: {fit} (contain|cover|stretch|none)");
+        if (request.Args?.Position is { } position && !WatermarkConfig.IsValidPosition(position))
+            return Err($"invalid position: {position}");
+        if (request.Args?.Opacity is { } opacity && !WatermarkConfig.IsValidOpacity(opacity))
+            return Err($"invalid opacity: {SwiftDouble(opacity)} (0.0-1.0)");
+        BackgroundWatermark? watermark;
+        switch (request.Args?.Mode)
+        {
+            case "image":
+            {
+                if (request.Args?.Path is not { Length: > 0 } path)
+                    return Err("session.background image requires a path");
+                if (!WatermarkConfig.IsValidImagePath(path))
+                    return Err("image path must not contain control characters");
+                watermark = new BackgroundWatermark
+                {
+                    Kind = WatermarkKind.Image, ImagePath = path, Opacity = request.Args?.Opacity,
+                    Fit = request.Args?.Fit is { } f ? WatermarkFits.FromWire(f) : null,
+                    Position = request.Args?.Position is { } p ? WatermarkPositions.FromWire(p) : null,
+                    Repeats = request.Args?.Repeats,
+                };
+                break;
+            }
+            case "text":
+            {
+                if (request.Args?.Text is not { Length: > 0 } text)
+                    return Err("session.background text requires text");
+                if (WatermarkConfig.TextElementCount(text) > WatermarkConfig.MaxTextLength)
+                    return Err($"session.background text too long (max {WatermarkConfig.MaxTextLength} characters)");
+                if (request.Args?.Color is { } textColor && !WatermarkConfig.IsValidColorHex(textColor))
+                    return Err($"invalid color: {textColor} (#rrggbb)");
+                watermark = new BackgroundWatermark
+                {
+                    Kind = WatermarkKind.Text, Text = text, ColorHex = request.Args?.Color,
+                    Opacity = request.Args?.Opacity,
+                    Fit = request.Args?.Fit is { } f ? WatermarkFits.FromWire(f) : null,
+                    Position = request.Args?.Position is { } p ? WatermarkPositions.FromWire(p) : null,
+                };
+                break;
+            }
+            case "color":
+            {
+                // No per-call opacity: a solid color honors the window translucency set in Settings.
+                if (request.Args?.Color is not { Length: > 0 } color)
+                    return Err("session.background color requires a color");
+                if (!WatermarkConfig.IsValidColorHex(color))
+                    return Err($"invalid color: {color} (#rrggbb)");
+                watermark = new BackgroundWatermark { Kind = WatermarkKind.Color, ColorHex = color };
+                break;
+            }
+            case "clear":
+            case null:
+                watermark = null;
+                break;
+            default:
+                return Err($"invalid background mode: {request.Args?.Mode} (image|text|color|clear)");
+        }
+        return _actions.SetSessionBackground(request.Target, request.Args?.Window,
+            new ControlSessionBackgroundOptions(watermark));
+    }
+
+    private ControlResponse DispatchSessionText(ControlRequest request)
+    {
+        var all = request.Args?.All ?? false;
+        var lines = request.Args?.Lines;
+        if (all && lines is not null)
+            return Err("use either --all or --lines, not both");
+        if (lines is <= 0)
+            return Err("--lines must be greater than 0");
+        return _actions.ReadSessionText(request.Target, request.Args?.Window,
+            new ControlSessionTextOptions(request.Args?.Pane, all, lines));
+    }
+
+    private async Task<ControlResponse> DispatchWindowCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.WindowNew:
+                return _actions.WindowNew(request.Args?.Name);
+            case Command.WindowList:
+                return _actions.WindowList();
+            case Command.WindowSelect:
+                return await _actions.WindowSelect(request.Target);
+            case Command.WindowClose:
+                return await _actions.WindowClose(request.Target);
+            case Command.WindowRename:
+            {
+                if (Session.TrimmedOrNull(request.Args?.Name) is not { } name)
+                    return Err("window.rename requires a name");
+                return _actions.WindowRename(request.Target, name);
+            }
+            case Command.WindowDelete:
+                return _actions.WindowDelete(request.Target);
+            case Command.WindowResize:
+            {
+                if (request.Args?.Width is not { } width || request.Args?.Height is not { } height
+                    || width <= 0 || height <= 0)
+                    return Err("window.resize requires positive width and height");
+                return _actions.WindowResize(request.Target, width, height);
+            }
+            case Command.WindowMove:
+            {
+                if (request.Args?.X is not { } x || request.Args?.Y is not { } y)
+                    return Err("window.move requires x and y");
+                return _actions.WindowMove(request.Target, x, y, request.Args?.Display);
+            }
+            case Command.WindowZoom:
+                return _actions.WindowZoom(request.Target);
+            case Command.WindowFullscreen:
+                return _actions.WindowFullscreen(request.Target);
+            default:
+                throw new InvalidOperationException($"unexpected window command: {request.Cmd}");
+        }
+    }
+
+    /// <summary>
+    /// The dashboard overlay is host-free-validated here. The open path needs at least one id (or
+    /// --mru) and at most one font flag; --close takes no id, --mru, or font flag; a --font-size must
+    /// be finite and positive; --mru cannot be combined with explicit ids (but composes with the font
+    /// flags). The 9-cell cap is NOT applied here: the cap counts PANES, which needs the store, so it
+    /// lives host-side behind SetDashboard; this only forwards the raw ids.
+    /// </summary>
+    private ControlResponse DispatchDashboard(ControlRequest request)
+    {
+        var args = request.Args;
+        var targets = args?.Targets ?? Array.Empty<string>();
+        var fontSize = args?.FontSize;
+        var autoSize = args?.AutoSize ?? false;
+        var mru = args?.Mru ?? false;
+
+        if (args?.Close == true)
+        {
+            if (targets.Length != 0 || mru || fontSize is not null || autoSize)
+                return Err("dashboard --close takes no ids, --mru, or font options");
+            return _actions.SetDashboard(Array.Empty<string>(), args?.Window, close: true,
+                new DashboardFontMode.Untouched(), mru: false);
+        }
+
+        if (fontSize is not null && autoSize)
+            return Err("dashboard: --font-size is mutually exclusive with --auto-size");
+        if (fontSize is { } size && (!double.IsFinite(size) || size <= 0))
+            return Err("dashboard --font-size must be a positive number");
+        DashboardFontMode fontMode = autoSize
+            ? new DashboardFontMode.Auto()
+            : fontSize is { } fixedSize
+                ? new DashboardFontMode.Fixed(fixedSize)
+                : new DashboardFontMode.Untouched();
+        if (mru)
+        {
+            // --mru supplies the members host-side from the window's recency, so it takes no explicit
+            // ids; the font flags still apply.
+            if (targets.Length != 0)
+                return Err("dashboard --mru cannot be combined with explicit session ids");
+            return _actions.SetDashboard(Array.Empty<string>(), args?.Window, close: false, fontMode, mru: true);
+        }
+        if (targets.Length == 0)
+            return Err("dashboard requires at least one session id");
+        return _actions.SetDashboard(targets, args?.Window, close: false, fontMode, mru: false);
+    }
+
+    /// <summary>Swift's default Double interpolation for error messages: an integral value keeps a
+    /// trailing .0 (2 → "2.0"), a fractional one prints the shortest round-trip form.</summary>
+    private static string SwiftDouble(double value)
+    {
+        if (double.IsFinite(value) && value == Math.Truncate(value) && Math.Abs(value) < 1e15)
+            return ((long)value).ToString(CultureInfo.InvariantCulture) + ".0";
+        return value.ToString("R", CultureInfo.InvariantCulture);
+    }
+}

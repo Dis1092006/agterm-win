@@ -62,6 +62,19 @@ public sealed class WatermarkKindConverter : WireEnumConverter<WatermarkKind>
 [JsonConverter(typeof(WatermarkFitConverter))]
 public enum WatermarkFit { Contain, Cover, Stretch, None }
 
+public static class WatermarkFits
+{
+    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static WatermarkFit? FromWire(string wire) => wire switch
+    {
+        "contain" => WatermarkFit.Contain,
+        "cover" => WatermarkFit.Cover,
+        "stretch" => WatermarkFit.Stretch,
+        "none" => WatermarkFit.None,
+        _ => null,
+    };
+}
+
 public sealed class WatermarkFitConverter : WireEnumConverter<WatermarkFit>
 {
     public WatermarkFitConverter() : base(
@@ -78,6 +91,24 @@ public enum WatermarkPosition
     TopLeft, TopCenter, TopRight,
     CenterLeft, Center, CenterRight,
     BottomLeft, BottomCenter, BottomRight,
+}
+
+public static class WatermarkPositions
+{
+    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static WatermarkPosition? FromWire(string wire) => wire switch
+    {
+        "top-left" => WatermarkPosition.TopLeft,
+        "top-center" => WatermarkPosition.TopCenter,
+        "top-right" => WatermarkPosition.TopRight,
+        "center-left" => WatermarkPosition.CenterLeft,
+        "center" => WatermarkPosition.Center,
+        "center-right" => WatermarkPosition.CenterRight,
+        "bottom-left" => WatermarkPosition.BottomLeft,
+        "bottom-center" => WatermarkPosition.BottomCenter,
+        "bottom-right" => WatermarkPosition.BottomRight,
+        _ => null,
+    };
 }
 
 public sealed class WatermarkPositionConverter : WireEnumConverter<WatermarkPosition>

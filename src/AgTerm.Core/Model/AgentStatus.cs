@@ -19,6 +19,31 @@ public sealed class AgentStatusConverter : WireEnumConverter<AgentStatus>
     }
 }
 
+public static class AgentStatuses
+{
+    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static AgentStatus? FromWire(string wire) => wire switch
+    {
+        "idle" => AgentStatus.Idle,
+        "active" => AgentStatus.Active,
+        "completed" => AgentStatus.Completed,
+        "blocked" => AgentStatus.Blocked,
+        _ => null,
+    };
+}
+
+public static class StatusPanes
+{
+    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static StatusPane? FromWire(string wire) => wire switch
+    {
+        "left" => StatusPane.Left,
+        "right" => StatusPane.Right,
+        "scratch" => StatusPane.Scratch,
+        _ => null,
+    };
+}
+
 public static class AgentStatusExtensions
 {
     /// <summary>True for the states that need user attention (a blocked prompt or a completed run) —
@@ -102,6 +127,18 @@ public static class StatusShapes
 
     /// <summary>The accepted names comma-joined — the prose form the CLI help text uses.</summary>
     public static string ValidNamesPhrase => string.Join(", ", ValidNames);
+
+    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static StatusShape? FromWire(string wire) => wire switch
+    {
+        "circle" => StatusShape.Circle,
+        "square" => StatusShape.Square,
+        "triangle" => StatusShape.Triangle,
+        "diamond" => StatusShape.Diamond,
+        "capsule" => StatusShape.Capsule,
+        "star" => StatusShape.Star,
+        _ => null,
+    };
 }
 
 /// <summary>
