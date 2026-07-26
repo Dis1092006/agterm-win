@@ -50,6 +50,29 @@ public sealed class WebView2Fixture : IDisposable
         _uiThread.Start();
     }
 
+    /// <summary>A FRESH WebView2 control on the same hidden form (its own page instance) — one per
+    /// realized surface, the way the app hosts one WebView2 per session pane.</summary>
+    public async Task<WebView2> CreateWebViewAsync()
+    {
+        var (form, first) = await _started.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        var done = new TaskCompletionSource<WebView2>(TaskCreationOptions.RunContinuationsAsynchronously);
+        form.BeginInvoke(async () =>
+        {
+            try
+            {
+                var webView = new WebView2 { Dock = DockStyle.Fill };
+                form.Controls.Add(webView);
+                await webView.EnsureCoreWebView2Async(first.CoreWebView2.Environment);
+                done.TrySetResult(webView);
+            }
+            catch (Exception ex)
+            {
+                done.TrySetException(ex);
+            }
+        });
+        return await done.Task;
+    }
+
     /// <summary>Run work on the WebView2 UI thread; the WebView2 is initialized when this returns.</summary>
     public async Task<T> RunAsync<T>(Func<WebView2, Task<T>> work)
     {

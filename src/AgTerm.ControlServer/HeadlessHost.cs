@@ -46,6 +46,12 @@ public sealed record HeadlessHostOptions
 
     /// <summary>Diagnostics sink for the pipe server; null writes nowhere.</summary>
     public Action<string>? Log { get; init; }
+
+    /// <summary>The store's surface factory (AppStore.SurfaceRealizer): a session being SHOWN —
+    /// selected, or created selected — realizes its main pane through this. Installed before the
+    /// bootstrap so the default first session realizes too. Null = headless default (surfaces
+    /// attach externally). Invoked under the host gate; implementations must not RunLocked back.</summary>
+    public Func<Session, ITerminalSurface?>? SurfaceRealizer { get; init; }
 }
 
 /// <summary>
@@ -80,7 +86,12 @@ public sealed class HeadlessHost : IDisposable
         var persistence = new PersistenceStore(options.StateDir);
         Store = new AppStore(
             persistence: persistence,
-            controlEventSink: draft => Ring.Append(draft with { Window = windowTag }));
+            controlEventSink: draft => Ring.Append(draft with { Window = windowTag }))
+        {
+            // installed before the bootstrap: the default first session is created SELECTED and
+            // must realize like any control-driven show
+            SurfaceRealizer = options.SurfaceRealizer,
+        };
         // the app-launch bootstrap: restore the persisted window snapshot (arming the persisted
         // session.restore overrides, like a real launch); an empty/fresh state dir seeds the same
         // default the app creates — one workspace holding one session at the home directory.
@@ -88,6 +99,9 @@ public sealed class HeadlessHost : IDisposable
         if (snapshot.Workspaces.Length > 0)
         {
             Store.Restore(snapshot, launchRestore: true);
+            // the restored selection is shown immediately (upstream: the window's first draw
+            // realizes it); Restore() itself bypasses SelectSession, so realize explicitly
+            Store.RealizeActiveSession();
         }
         else
         {
@@ -136,6 +150,15 @@ public sealed class HeadlessHost : IDisposable
 
     /// <summary>Stop the listener; a connection currently being served finishes best-effort.</summary>
     public void Stop() => _server.Stop();
+
+    /// <summary>Serialize an out-of-band store/session mutation (surface-thread title/cwd/exit
+    /// reports) with the dispatch gate. NEVER call from a thread a realizer marshals work onto
+    /// (the WebView2 UI thread) — realization runs under this same gate and would deadlock;
+    /// surface callbacks hop to a worker first.</summary>
+    public void RunLocked(Action action)
+    {
+        lock (_gate) action();
+    }
 
     public void Dispose() => Stop();
 

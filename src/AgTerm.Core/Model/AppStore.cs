@@ -106,6 +106,38 @@ public sealed partial class AppStore
     /// <summary>Diagnostics sink for swallowed save failures; null writes nowhere.</summary>
     internal Action<string>? LogSink;
 
+    /// <summary>
+    /// The host's surface factory — the port's stand-in for "SwiftUI renders the shown pane and its
+    /// surface realizes" (upstream realizes on show via Observation; the port has no runloop, so
+    /// the two show paths call this directly — same pattern as the auto-follow re-arm seam,
+    /// PLATFORM-NOTES). Invoked when a session is SHOWN (selected, or created selected) and its
+    /// main pane has no surface yet; returning null leaves it unrealized (the arms report the
+    /// pinned "session not realized" errors). Null realizer = headless behavior: surfaces only
+    /// attach externally.
+    /// </summary>
+    public Func<Session, ITerminalSurface?>? SurfaceRealizer;
+
+    /// <summary>Selection moved (select, deselect, or a session created selected) — the C# event
+    /// replacing upstream's Observation of selectedSessionID for the window chrome (which pane is
+    /// visible). Same precedent as AutoFollowed / SidebarVisibilityChanged (PLATFORM-NOTES).</summary>
+    public event Action? SelectionChanged;
+
+    /// <summary>Realize the shown session's main pane through the host seam, once.</summary>
+    private void RealizeIfShown(Session session)
+    {
+        if (session.Surface is null && SurfaceRealizer is { } realize)
+            session.Surface = realize(session);
+    }
+
+    /// <summary>Realize the CURRENTLY selected session — the launch-bootstrap show: Restore()
+    /// installs the persisted selection without going through SelectSession, but the window
+    /// renders that session immediately (upstream realizes it on first draw). Host calls this
+    /// once after a snapshot restore.</summary>
+    public void RealizeActiveSession()
+    {
+        if (ActiveSession is { } shown) RealizeIfShown(shown);
+    }
+
     public AppStore(List<Workspace>? workspaces = null, Guid? selectedSessionId = null,
                     PersistenceStore? persistence = null,
                     RecentClosedStore? recentClosedStore = null,
@@ -318,12 +350,15 @@ public sealed partial class AppStore
         {
             Workspaces[wsIndex].Sessions.Add(session);
         }
-        // a background add (session.new --no-select) leaves selection/focus/recency untouched.
+        // a background add (session.new --no-select) leaves selection/focus/recency untouched —
+        // and stays UNREALIZED (upstream: no view is shown, so no surface exists until a select).
         if (select)
         {
             SelectedSessionId = session.Id;
             AutoUnfocusIfOutsideFocus(session.Id); // a control-driven add into another workspace must reveal it
             RecordRecency();
+            RealizeIfShown(session);
+            SelectionChanged?.Invoke();
         }
         EmitSessionCreated(session, toWorkspace);
         Save();
@@ -342,6 +377,7 @@ public sealed partial class AppStore
         if (sessionId is { } wanted && SessionWithId(wanted) is null) return;
         var previous = SelectedSessionId;
         SelectedSessionId = sessionId;
+        if (sessionId is { } shown && SessionWithId(shown) is { } visible) RealizeIfShown(visible);
         if (sidebarSelection is not null)
         {
             SetSidebarSelection(sidebarSelection);
@@ -356,6 +392,7 @@ public sealed partial class AppStore
         ClearAutoResetIndicator(previous);  // leave: a one-time status must not linger on the row you left
         RecordRecency();
         ScheduleSave(); // selection fires on every click/keystroke — coalesce the writes
+        SelectionChanged?.Invoke();
     }
 
     /// <summary>Clears focus when the newly selected session lives outside the focused workspace, so

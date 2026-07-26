@@ -6,8 +6,8 @@ namespace AgTerm.Terminal;
 /// Tokenizes a session.new --command string into argv (§6: quote-aware split, argv[0] execed
 /// directly, shell operators NOT interpreted). Upstream defers this to libghostty's config parser;
 /// the Windows engine owns its own rules (PLATFORM-NOTES): whitespace splits, single quotes group
-/// literally, double quotes group with \" and \\ escapes, a backslash outside quotes escapes the
-/// next character, an unterminated quote takes the rest of the line literally.
+/// literally, double quotes group with \" and \\ escapes, a backslash OUTSIDE quotes is a plain
+/// character (bare C:\paths must survive), an unterminated quote takes the rest literally.
 /// </summary>
 public static class CommandTokenizer
 {
@@ -51,10 +51,6 @@ public static class CommandTokenizer
                         token.Append(command[i++]);
                     }
                     i++;
-                    break;
-                case '\\' when i + 1 < command.Length:
-                    token.Append(command[i + 1]);
-                    i += 2;
                     break;
                 default:
                     token.Append(ch);

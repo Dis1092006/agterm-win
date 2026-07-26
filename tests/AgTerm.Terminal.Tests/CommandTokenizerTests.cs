@@ -20,8 +20,8 @@ public class CommandTokenizerTests
     [InlineData("app \"back\\\\slash\"", new[] { "app", "back\\slash" })]
     // single quotes group literally (backslash is a plain character inside)
     [InlineData("app 'a b' 'c\\d'", new[] { "app", "a b", "c\\d" })]
-    // backslash outside quotes escapes the next character
-    [InlineData("app a\\ b", new[] { "app", "a b" })]
+    // backslash OUTSIDE quotes is a plain character — bare Windows paths must survive
+    [InlineData("C:\\Windows\\system32\\cmd.exe /k echo hi", new[] { "C:\\Windows\\system32\\cmd.exe", "/k", "echo", "hi" })]
     // quotes can join adjacent runs into one token
     [InlineData("app pre\"fix mid\"post", new[] { "app", "prefix midpost" })]
     // an explicitly quoted empty token survives
