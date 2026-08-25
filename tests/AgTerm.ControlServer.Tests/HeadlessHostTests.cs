@@ -440,6 +440,287 @@ public sealed class HeadlessHostTests : IDisposable
         }
     }
 
+    // O2.1 — DeferBootstrap / Bootstrap: deferred construction, explicit bootstrap, repeated no-op.
+
+    [Fact]
+    public void Default_construction_seeds_one_selected_session()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-bootstrap-default-").FullName;
+        try
+        {
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+            });
+
+            var session = Assert.Single(host.Store.Workspaces.SelectMany(w => w.Sessions));
+            Assert.NotNull(host.Store.SelectedSessionId);
+            Assert.Equal(session.Id, host.Store.SelectedSessionId);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [Fact]
+    public void DeferBootstrap_leaves_store_empty_and_no_selection()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-bootstrap-deferred-").FullName;
+        try
+        {
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DeferBootstrap = true,
+            });
+
+            Assert.Empty(host.Store.Workspaces);
+            Assert.Null(host.Store.SelectedSessionId);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [Fact]
+    public void Bootstrap_after_deferred_construction_creates_default_selected_session()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-bootstrap-explicit-").FullName;
+        try
+        {
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DeferBootstrap = true,
+            });
+
+            Assert.Empty(host.Store.Workspaces);
+
+            host.Bootstrap();
+
+            var session = Assert.Single(host.Store.Workspaces.SelectMany(w => w.Sessions));
+            Assert.NotNull(host.Store.SelectedSessionId);
+            Assert.Equal(session.Id, host.Store.SelectedSessionId);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [Fact]
+    public void Repeated_Bootstrap_is_a_noop_preserving_ids_and_invoking_realizer_once()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-bootstrap-idempotent-").FullName;
+        var realizedIds = new List<Guid>();
+        try
+        {
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DeferBootstrap = true,
+                SurfaceRealizer = session =>
+                {
+                    realizedIds.Add(session.Id);
+                    return new FakeSurface { PaneToken = "tok-" + session.Id.ToString("N")[..8] };
+                },
+            });
+
+            host.Bootstrap();
+            var workspaceId = Assert.Single(host.Store.Workspaces).Id;
+            var sessionId = Assert.Single(host.Store.Workspaces.SelectMany(w => w.Sessions)).Id;
+
+            host.Bootstrap(); // second call must be a no-op
+
+            Assert.Single(host.Store.Workspaces);
+            Assert.Equal(workspaceId, Assert.Single(host.Store.Workspaces).Id);
+            Assert.Equal(sessionId, Assert.Single(host.Store.Workspaces.SelectMany(w => w.Sessions)).Id);
+            // realizer invoked exactly once across two Bootstrap calls
+            Assert.Equal(new[] { sessionId }, realizedIds);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    // O2.x — DeferBootstrap restore: a second host with DeferBootstrap=true pointed at a
+    // persisted state dir restores the same IDs and name after Bootstrap, and a second Bootstrap
+    // call is a no-op.
+    [Fact]
+    public void DeferBootstrap_restore_rebuilds_same_workspace_session_ids_and_second_call_is_noop()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-deferred-restore-").FullName;
+        try
+        {
+            Guid workspaceId;
+            Guid sessionId;
+            string workspaceName;
+
+            // Seed: eager default host creates and persists one workspace/session.
+            using (var seed = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+            }))
+            {
+                var seedWorkspace = Assert.Single(seed.Store.Workspaces);
+                workspaceId = seedWorkspace.Id;
+                workspaceName = seedWorkspace.Name;
+                sessionId = Assert.Single(seedWorkspace.Sessions).Id;
+                seed.Store.Save();
+            }
+
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DeferBootstrap = true,
+            });
+
+            // before Bootstrap: store is empty, no selection
+            Assert.Empty(host.Store.Workspaces);
+            Assert.Null(host.Store.SelectedSessionId);
+
+            // first Bootstrap: restores persisted workspace and session
+            host.Bootstrap();
+
+            var restoredWorkspace = Assert.Single(host.Store.Workspaces);
+            Assert.Equal(workspaceId, restoredWorkspace.Id);
+            Assert.Equal(workspaceName, restoredWorkspace.Name);
+            Assert.Equal(sessionId, Assert.Single(restoredWorkspace.Sessions).Id);
+            Assert.Equal(sessionId, host.Store.SelectedSessionId);
+
+            // second Bootstrap: no-op — IDs and count unchanged
+            host.Bootstrap();
+
+            Assert.Single(host.Store.Workspaces);
+            Assert.Equal(workspaceId, Assert.Single(host.Store.Workspaces).Id);
+            Assert.Equal(sessionId, Assert.Single(host.Store.Workspaces.SelectMany(w => w.Sessions)).Id);
+            Assert.Equal(sessionId, host.Store.SelectedSessionId);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [Fact]
+    public void DeferBootstrap_restore_realizes_selected_session_once_after_model_restore()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-deferred-realize-").FullName;
+        try
+        {
+            Guid sessionId;
+            using (var seed = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+            }))
+            {
+                sessionId = Assert.Single(seed.Store.Workspaces.SelectMany(w => w.Sessions)).Id;
+                seed.Store.Save();
+            }
+
+            var realizedIds = new List<Guid>();
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DeferBootstrap = true,
+                SurfaceRealizer = session =>
+                {
+                    realizedIds.Add(session.Id);
+                    return new FakeSurface { PaneToken = "tok-" + session.Id.ToString("N")[..8] };
+                },
+            });
+
+            host.Bootstrap();
+            host.Bootstrap();
+
+            var restored = Assert.Single(host.Store.Workspaces.SelectMany(w => w.Sessions));
+            Assert.Equal(sessionId, restored.Id);
+            Assert.NotNull(restored.Surface);
+            Assert.Equal(new[] { sessionId }, realizedIds);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    // O2.x — throwing realizer: a failed first realization must not cause a second seed when
+    // Bootstrap is retried. The workspace/session from the first attempt survive; the realizer
+    // is invoked exactly once. This was red before bootstrap split model setup from realization.
+    [Fact]
+    public void Bootstrap_throwing_realizer_does_not_reseed_on_retry()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-throw-realizer-").FullName;
+        var realizerCallCount = 0;
+        var thrownException = new InvalidOperationException("surface-unavailable");
+        try
+        {
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DeferBootstrap = true,
+                SurfaceRealizer = _ =>
+                {
+                    realizerCallCount++;
+                    if (realizerCallCount == 1) throw thrownException;
+                    return new FakeSurface();
+                },
+            });
+
+            // first Bootstrap: realizer throws on the first realization; Bootstrap propagates it
+            var caught = Assert.Throws<InvalidOperationException>(() => host.Bootstrap());
+            Assert.Same(thrownException, caught);
+
+            // capture the workspace/session created during the failed first attempt
+            var firstWorkspace = Assert.Single(host.Store.Workspaces);
+            var firstWorkspaceId = firstWorkspace.Id;
+            var firstSessionId = Assert.Single(firstWorkspace.Sessions).Id;
+
+            // second Bootstrap: must not re-seed — the session already exists
+            host.Bootstrap();
+
+            // exactly one workspace/session, with the IDs from the first attempt
+            Assert.Single(host.Store.Workspaces);
+            Assert.Equal(firstWorkspaceId, Assert.Single(host.Store.Workspaces).Id);
+            Assert.Equal(firstSessionId,
+                Assert.Single(host.Store.Workspaces.SelectMany(w => w.Sessions)).Id);
+
+            // realizer was invoked exactly once (the failed call from Bootstrap #1)
+            Assert.Equal(1, realizerCallCount);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
 }
 
 // Controllable dispatch scope factory for O1.1: signals when CompleteAsync is entered (gate free).

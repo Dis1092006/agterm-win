@@ -47,6 +47,10 @@ public sealed record HeadlessHostOptions
     /// <summary>Diagnostics sink for the pipe server; null writes nowhere.</summary>
     public Action<string>? Log { get; init; }
 
+    /// <summary>When true, construction skips restore/seed until <see cref="HeadlessHost.Bootstrap"/>
+    /// is called. Default false preserves eager bootstrap at construction.</summary>
+    public bool DeferBootstrap { get; init; }
+
     /// <summary>The store's surface factory (AppStore.SurfaceRealizer): a session being SHOWN —
     /// selected, or created selected — realizes its main pane through this. Installed before the
     /// bootstrap so the default first session realizes too. Null = headless default (surfaces
@@ -81,20 +85,25 @@ public sealed record HeadlessHostOptions
 public sealed class HeadlessHost : IDisposable
 {
     private readonly object _gate = new();
+    private readonly PersistenceStore _persistence;
+    private readonly HeadlessHostOptions _options;
     private readonly ControlDispatcher _dispatcher;
     private readonly ControlPipeServer _server;
+    private bool _bootstrapInProgress;
+    private bool _bootstrapped;
 
     public HeadlessHost(HeadlessHostOptions? options = null)
     {
         options ??= new HeadlessHostOptions();
+        _options = options;
         WindowId = Guid.NewGuid();
         Ring = new ControlEventRing();
         var windowTag = WindowId.ToString("D").ToUpperInvariant();
         // the store's control-event sink is the upstream WindowLibrary seam collapsed to one
         // window: stamp the window id (uppercase uuid string) and append to the app-run ring.
-        var persistence = new PersistenceStore(options.StateDir);
+        _persistence = new PersistenceStore(options.StateDir);
         Store = new AppStore(
-            persistence: persistence,
+            persistence: _persistence,
             controlEventSink: draft => Ring.Append(draft with { Window = windowTag }))
         {
             // installed before the bootstrap: the default first session is created SELECTED and
@@ -102,27 +111,6 @@ public sealed class HeadlessHost : IDisposable
             SurfaceRealizer = options.SurfaceRealizer,
             EagerSurfaceRealization = options.EagerSurfaceRealization,
         };
-        // the app-launch bootstrap: restore the persisted window snapshot (arming the persisted
-        // session.restore overrides, like a real launch); an empty/fresh state dir seeds the same
-        // default the app creates — one workspace holding one session at the home directory.
-        var snapshot = persistence.Load();
-        if (snapshot.Workspaces.Length > 0)
-        {
-            Store.Restore(snapshot, launchRestore: true);
-            // the restored selection is shown immediately (upstream: the window's first draw
-            // realizes it); Restore() itself bypasses SelectSession, so realize explicitly.
-            // The eager deck realizes the WHOLE restored tree instead (every deck member's
-            // view exists from launch).
-            if (options.EagerSurfaceRealization) Store.RealizeAllSessions();
-            else Store.RealizeActiveSession();
-        }
-        else
-        {
-            var home = options.HomeDirectory
-                ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var workspace = Store.AddWorkspace(Store.DefaultWorkspaceName);
-            Store.AddSession(workspace.Id, home);
-        }
         var configDir = options.ConfigDir ?? options.StateDir ?? PersistenceStore.DefaultDirectory;
         Actions = new HeadlessControlActions(Store, Ring, WindowId,
             windowName: options.WindowName,
@@ -145,6 +133,9 @@ public sealed class HeadlessHost : IDisposable
                 (request, cancellationToken) =>
                     DispatchWithScopeAsync(request, dispatchScopeFactory, cancellationToken),
                 options.Log);
+
+        // Preserve legacy behavior by default, but only after all host members are initialized.
+        if (!options.DeferBootstrap) Bootstrap();
     }
 
     /// <summary>The single window's stable identity (events carry it uppercase).</summary>
@@ -168,6 +159,58 @@ public sealed class HeadlessHost : IDisposable
 
     /// <summary>Stop the listener; a connection currently being served finishes best-effort.</summary>
     public void Stop() => _server.Stop();
+
+    /// <summary>Restore persisted state or seed the default session exactly once. Idempotent and
+    /// serialized by the host gate; concurrent/reentrant repeated calls are no-ops.</summary>
+    public void Bootstrap()
+    {
+        lock (_gate)
+        {
+            if (_bootstrapped || _bootstrapInProgress) return;
+            _bootstrapInProgress = true;
+            try
+            {
+                // Phase 1 (model): restore persisted snapshot or seed one default selected session.
+                // No realization in this phase; bootstrap must stay retryable if model setup throws.
+                var snapshot = _persistence.Load();
+                if (snapshot.Workspaces.Length > 0)
+                {
+                    Store.Restore(snapshot, launchRestore: true);
+                }
+                else
+                {
+                    var home = _options.HomeDirectory
+                        ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+                    // Fresh seed must persist a complete model exactly once before any external
+                    // realization callback can run.
+                    var previousRealizer = Store.SurfaceRealizer;
+                    Store.SurfaceRealizer = null;
+                    try
+                    {
+                        var workspace = Store.AddWorkspace(Store.DefaultWorkspaceName);
+                        Store.AddSession(workspace.Id, home);
+                    }
+                    finally
+                    {
+                        Store.SurfaceRealizer = previousRealizer;
+                    }
+                }
+
+                // Mark idempotence after model establishment succeeds, before realization.
+                _bootstrapped = true;
+
+                // Phase 2 (realization): same policy for restored and seeded models.
+                // Restore() bypasses SelectSession, and seeded model has one selected session.
+                if (_options.EagerSurfaceRealization) Store.RealizeAllSessions();
+                else Store.RealizeActiveSession();
+            }
+            finally
+            {
+                _bootstrapInProgress = false;
+            }
+        }
+    }
 
     /// <summary>Serialize an out-of-band store/session mutation (surface-thread title/cwd/exit
     /// reports) with the dispatch gate. NEVER call from a thread a realizer marshals work onto

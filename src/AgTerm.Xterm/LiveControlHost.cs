@@ -49,6 +49,7 @@ public sealed record LiveControlHostOptions
 public sealed class LiveControlHost : IDisposable
 {
     private readonly LiveControlHostOptions _options;
+    private HeadlessHost? _host;
 
     public LiveControlHost(LiveControlHostOptions options)
     {
@@ -66,10 +67,17 @@ public sealed class LiveControlHost : IDisposable
             // the live app's eager deck: every session's pane exists from creation/restore, so
             // session.type works into background sessions without a select (phase 4 DoD)
             EagerSurfaceRealization = true,
+            DeferBootstrap = true,
         });
+        Host.Bootstrap();
     }
 
-    public HeadlessHost Host { get; }
+    public HeadlessHost Host
+    {
+        get => _host ?? throw new InvalidOperationException(
+            "LiveControlHost invariant violated: Host is not initialized.");
+        private set => _host = value;
+    }
 
     public string PipeName => Host.PipeName;
 
@@ -84,6 +92,9 @@ public sealed class LiveControlHost : IDisposable
     /// thread never takes the gate (surface callbacks hop to the pool first).</summary>
     private ITerminalSurface? Realize(Session session)
     {
+        if (_host is null)
+            throw new InvalidOperationException(
+                "LiveControlHost invariant violated: Host is not initialized.");
         try
         {
             var argv = session.InitialCommand is { } command
