@@ -128,7 +128,16 @@ public sealed class LiveSidebarE2ETests : IDisposable
 
         // the UI seam observes through the SAME store the socket mutates
         var snapshots = new List<SidebarSnapshot>();
-        var controller = new SidebarController(_host.Host, runOnUi: work => work());
+        using var storeCoordinator = new LiveStoreCoordinator(
+            _host.Host,
+            isUiThread: () => false,
+            scheduler: (work, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                work();
+                return Task.CompletedTask;
+            });
+        var controller = new SidebarController(storeCoordinator, runOnUi: work => work());
         controller.SnapshotChanged += snapshots.Add;
         controller.Start();
         SidebarSnapshot Latest() => snapshots[^1];

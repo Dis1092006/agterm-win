@@ -14,6 +14,7 @@ public sealed class SidebarControllerTests : IDisposable
 {
     private readonly string _stateDir = Directory.CreateTempSubdirectory("agterm-sbc-").FullName;
     private readonly HeadlessHost _host;
+    private readonly LiveStoreCoordinator _coordinator;
     private readonly SidebarController _controller;
     private readonly List<SidebarSnapshot> _snapshots = new();
 
@@ -25,8 +26,13 @@ public sealed class SidebarControllerTests : IDisposable
             PipeName = "agterm-sbc-" + Guid.NewGuid().ToString("N"),
             HomeDirectory = _stateDir,
         });
+        // inline scheduler — coordinator runs store work synchronously on the calling thread
+        _coordinator = new LiveStoreCoordinator(
+            _host,
+            isUiThread: () => false,
+            scheduler: (work, ct) => { ct.ThrowIfCancellationRequested(); work(); return Task.CompletedTask; });
         // the "UI dispatcher" runs inline — tests observe snapshots synchronously
-        _controller = new SidebarController(_host, runOnUi: work => work());
+        _controller = new SidebarController(_coordinator, runOnUi: work => work());
         _controller.SnapshotChanged += _snapshots.Add;
         _controller.Start();
     }
@@ -34,6 +40,7 @@ public sealed class SidebarControllerTests : IDisposable
     public void Dispose()
     {
         _controller.Dispose();
+        _coordinator.Dispose();
         _host.Dispose();
         try
         {
@@ -46,7 +53,8 @@ public sealed class SidebarControllerTests : IDisposable
 
     private SidebarSnapshot Latest => _snapshots[^1];
 
-    private void Mutate(Action<AppStore> action) => _host.RunLocked(() => action(_host.Store));
+    private void Mutate(Action<AppStore> action) =>
+        _coordinator.MutateAsync(action).GetAwaiter().GetResult();
 
     [Fact]
     public void Start_broadcasts_the_bootstrap_snapshot()
@@ -168,7 +176,7 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
-    public void Width_and_visibility_persist_through_the_store()
+    public async Task Width_and_visibility_persist_through_the_store()
     {
         _controller.SetSidebarWidth(300);
         Assert.Equal(300, Latest.SidebarWidth);
@@ -176,7 +184,7 @@ public sealed class SidebarControllerTests : IDisposable
         Assert.False(Latest.SidebarVisible);
         // survives a restart from the same state dir
         _controller.Dispose();
-        _host.RunLocked(() => _host.Store.Save());
+        await _coordinator.MutateAsync(store => store.Save());
         using var second = new HeadlessHost(new HeadlessHostOptions
         {
             StateDir = _stateDir,
@@ -214,5 +222,134 @@ public sealed class SidebarControllerTests : IDisposable
 
         _controller.DropWorkspace(w2, rawIndex: 0);
         Assert.Equal(new[] { w2, w1 }, Latest.Workspaces.Select(w => w.Id));
+    }
+
+    // =========================================================================
+    // Lifecycle and async snapshot ordering — driven by a fake ILiveStoreCoordinator
+    // =========================================================================
+
+    [Fact]
+    public void Lifecycle_Start_requests_initial_ReadAsync_and_subscribes_SidebarInvalidated()
+    {
+        var fake = new FakeCoordinator();
+        fake.EnqueuePendingRead(); // consumed by Start
+        fake.EnqueuePendingRead(); // consumed by the SidebarInvalidated-triggered read
+
+        using var controller = new SidebarController(fake, runOnUi: work => work());
+        controller.Start();
+        Assert.Equal(1, fake.ReadAsyncCallCount);
+
+        fake.RaiseSidebarInvalidated();
+        Assert.Equal(2, fake.ReadAsyncCallCount);
+    }
+
+    [Fact]
+    public void Lifecycle_stale_generation_dropped_when_newer_read_completes_first()
+    {
+        var fake = new FakeCoordinator();
+        var snapshots = new List<SidebarSnapshot>();
+
+        using var controller = new SidebarController(fake, runOnUi: work => work());
+        controller.SnapshotChanged += snapshots.Add;
+
+        var tcsInit = fake.EnqueuePendingRead(); // generation 0 (Start's initial read)
+        var tcs1 = fake.EnqueuePendingRead();    // generation 1 (first SidebarInvalidated)
+        var tcs2 = fake.EnqueuePendingRead();    // generation 2 (second SidebarInvalidated)
+
+        controller.Start();
+        fake.RaiseSidebarInvalidated();
+        fake.RaiseSidebarInvalidated();
+
+        var snap2 = MakeFakeSnapshot();
+        var snap1 = MakeFakeSnapshot();
+
+        // Newest (gen 2) completes first; controller uses ContinueWith(ExecuteSynchronously)
+        // so SetResult drives the continuation synchronously on this thread.
+        tcs2.SetResult(snap2);
+        Assert.Single(snapshots);
+        Assert.Same(snap2, snapshots[0]);
+
+        // Oldest (gen 1) arrives late — generation check drops it
+        tcs1.SetResult(snap1);
+        Assert.Single(snapshots);
+
+        // Initial read (gen 0) also dropped
+        tcsInit.SetResult(MakeFakeSnapshot());
+        Assert.Single(snapshots);
+    }
+
+    [Fact]
+    public void Lifecycle_Dispose_suppresses_pending_read_delivery_and_unsubscribes()
+    {
+        var fake = new FakeCoordinator();
+        var snapshots = new List<SidebarSnapshot>();
+
+        using var controller = new SidebarController(fake, runOnUi: work => work());
+        controller.SnapshotChanged += snapshots.Add;
+
+        var tcsInit = fake.EnqueuePendingRead();
+        controller.Start();
+        Assert.Equal(1, fake.ReadAsyncCallCount);
+
+        controller.Dispose();
+
+        // Completing the pending read after Dispose must not deliver SnapshotChanged
+        tcsInit.SetResult(MakeFakeSnapshot());
+        Assert.Empty(snapshots);
+
+        // SidebarInvalidated is unsubscribed; raising it must not trigger ReadAsync
+        var callsBefore = fake.ReadAsyncCallCount;
+        fake.RaiseSidebarInvalidated();
+        Assert.Equal(callsBefore, fake.ReadAsyncCallCount);
+    }
+
+    private static SidebarSnapshot MakeFakeSnapshot() =>
+        new SidebarSnapshot
+        {
+            Rows = Array.Empty<SidebarRow>(),
+            ShapeKey = string.Empty,
+            Workspaces = Array.Empty<SidebarWorkspaceInfo>(),
+        };
+
+    /// <summary>
+    /// Minimal ILiveStoreCoordinator stub for lifecycle and async-ordering tests.
+    /// ReadAsync expects T == SidebarSnapshot and returns pre-staged controllable tasks;
+    /// MutateAsync records calls but is a no-op; events are manually raisable; Dispose is idempotent.
+    /// </summary>
+    private sealed class FakeCoordinator : ILiveStoreCoordinator
+    {
+        private int _disposed;
+        private readonly Queue<TaskCompletionSource<SidebarSnapshot>> _pendingReads = new();
+
+        public int ReadAsyncCallCount { get; private set; }
+        public int MutateAsyncCallCount { get; private set; }
+
+        public event Action? SidebarInvalidated;
+        public event Action<Guid?>? SelectionChanged;
+
+        public TaskCompletionSource<SidebarSnapshot> EnqueuePendingRead()
+        {
+            var tcs = new TaskCompletionSource<SidebarSnapshot>();
+            _pendingReads.Enqueue(tcs);
+            return tcs;
+        }
+
+        public Task<T> ReadAsync<T>(Func<AppStore, T> read, CancellationToken cancellationToken = default)
+        {
+            ReadAsyncCallCount++;
+            var tcs = _pendingReads.Dequeue();
+            return (Task<T>)(object)tcs.Task;
+        }
+
+        public Task MutateAsync(Action<AppStore> mutate, CancellationToken cancellationToken = default)
+        {
+            MutateAsyncCallCount++;
+            return Task.CompletedTask;
+        }
+
+        public void RaiseSidebarInvalidated() => SidebarInvalidated?.Invoke();
+        public void RaiseSelectionChanged(Guid? id) => SelectionChanged?.Invoke(id);
+
+        public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
     }
 }

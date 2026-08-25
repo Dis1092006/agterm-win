@@ -25,14 +25,19 @@ public sealed partial class MainWindow : Window
     private readonly AppSettings _settings = new SettingsStore().Load();
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
+    private Guid? _selectedSessionId; // UI-thread confined
     private bool _draggingDivider;
+
+    private sealed record StartupState(
+        Guid? SelectedSessionId,
+        IReadOnlyList<(Guid SessionId, XtermPaneSurface Surface)> CommittedMainSurfaces);
 
     public MainWindow()
     {
         InitializeComponent();
         _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
         Closed += (_, _) => Task.Run(() => _host?.Dispose()); // teardown blocks; keep it off the UI thread
-        _ = StartHostAsync();
+        ObserveTaskFault(StartHostAsync(), "StartHostAsync failed");
     }
 
     /// <summary>Boot the window's single terminal page: one WebView2, one terminal.html, N panes.</summary>
@@ -52,37 +57,43 @@ public sealed partial class MainWindow : Window
         {
             OpenSurface = OpenSurfaceAsync,
             ReadClipboard = ReadClipboardText,
+            IsUiThread = () => DispatcherQueue.HasThreadAccess,
         }));
         _host = host;
-        host.Host.Store.SelectionChanged += () =>
+        host.StoreCoordinator.SelectionChanged += selectedSessionId =>
         {
-            // fired under the host gate; capture the id there, hop to the UI thread to switch panes
-            var selected = host.Host.Store.SelectedSessionId;
-            DispatcherQueue.TryEnqueue(() => ShowPane(selected));
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _selectedSessionId = selectedSessionId;
+                ShowPane(selectedSessionId);
+            });
         };
-        // live OSC title/cwd reports change displayName — nudge the sidebar rows (host OOB hook)
+
         host.SurfaceRealized += (sessionId, surface) =>
-        {
-            surface.Pane.TitleChanged += _ => Task.Run(() =>
-                host.Host.RunLocked(host.Host.Store.NotifySidebar));
-            surface.Pane.CwdChanged += _ => Task.Run(() =>
-                host.Host.RunLocked(host.Host.Store.NotifySidebar));
             DispatcherQueue.TryEnqueue(() => MountSurface(sessionId, surface));
-        };
-        var committedSurfaces = new List<(Guid SessionId, XtermPaneSurface Surface)>();
-        host.Host.RunLocked(() => committedSurfaces.AddRange(
-            host.Host.Store.Workspaces
+
+        var startup = await host.StoreCoordinator.ReadAsync(store =>
+        {
+            var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
                 .Where(session => session.Surface is XtermPaneSurface)
-                .Select(session => (session.Id, (XtermPaneSurface)session.Surface!))));
+                .Select(session => (session.Id, (XtermPaneSurface)session.Surface!))
+                .ToList();
+            return new StartupState(store.SelectedSessionId, committedSurfaces);
+        });
+
         DispatcherQueue.TryEnqueue(() =>
         {
-            foreach (var (sessionId, surface) in committedSurfaces)
+            _selectedSessionId = startup.SelectedSessionId;
+            foreach (var (sessionId, surface) in startup.CommittedMainSurfaces)
                 MountSurface(sessionId, surface);
+            ShowPane(_selectedSessionId);
         });
-        var sidebar = new SidebarController(host.Host,
+
+        var sidebar = new SidebarController(
+            host.StoreCoordinator,
             runOnUi: work => DispatcherQueue.TryEnqueue(() => work()),
-            runOffUi: work => Task.Run(work));
+            log: message => System.Diagnostics.Debug.WriteLine(message));
         _sidebar = sidebar;
         DispatcherQueue.TryEnqueue(() =>
         {
@@ -93,7 +104,7 @@ public sealed partial class MainWindow : Window
         });
         host.Start();
         _ = ArmHotkeysAsync(host);
-        DispatcherQueue.TryEnqueue(() => ShowPane(host.Host.Store.SelectedSessionId));
+        DispatcherQueue.TryEnqueue(() => ShowPane(_selectedSessionId));
     }
 
     /// <summary>Window-level chrome from a sidebar snapshot: column width and visibility.</summary>
@@ -110,7 +121,7 @@ public sealed partial class MainWindow : Window
     private void FocusActiveTerminal()
     {
         TerminalView.Focus(FocusState.Programmatic);
-        if (_host?.Host.Store.SelectedSessionId is { } id && _surfaces.TryGetValue(id, out var surface))
+        if (_selectedSessionId is { } id && _surfaces.TryGetValue(id, out var surface))
             _ = surface.Pane.Terminal.FocusAsync();
     }
 
@@ -203,7 +214,7 @@ public sealed partial class MainWindow : Window
             case BuiltinAction.CloseSession: sidebar.CloseActiveSession(); break;
             case BuiltinAction.DuplicateSession: sidebar.DuplicateActiveSession(); break;
             case BuiltinAction.RenameSession: Sidebar.BeginRenameSelected(); break;
-            case BuiltinAction.NewWorkspace: sidebar.NewWorkspace(NextWorkspaceName()); break;
+            case BuiltinAction.NewWorkspace: sidebar.NewWorkspace(); break;
             case BuiltinAction.ToggleFlag: sidebar.ToggleActiveFlag(); break;
             case BuiltinAction.ToggleFlaggedView: sidebar.ToggleFlaggedView(); break;
             case BuiltinAction.ToggleSidebar: sidebar.ToggleSidebarVisible(); break;
@@ -229,18 +240,13 @@ public sealed partial class MainWindow : Window
         return true;
     }
 
-    private string NextWorkspaceName()
-    {
-        var count = 0;
-        if (_host is { } host) host.Host.RunLocked(() => count = host.Host.Store.Workspaces.Count);
-        return $"workspace {count + 1}";
-    }
-
     private void FontAction(string action)
     {
         var host = _host;
         if (host is null) return;
-        Task.Run(() => host.Host.RunLocked(() => host.Host.Actions.Font(null, null, null, action)));
+        ObserveTaskFault(
+            host.PerformFontActionAsync(action),
+            "Font action failed");
     }
 
     private async Task OpenDirectoryIntoActiveAsync()
@@ -308,7 +314,7 @@ public sealed partial class MainWindow : Window
         if (_surfaces.TryGetValue(sessionId, out var current) && ReferenceEquals(current, surface))
             return;
         _surfaces[sessionId] = surface;
-        ShowPane(_host?.Host.Store.SelectedSessionId ?? sessionId);
+        ShowPane(_selectedSessionId);
         WireTitle(sessionId, surface);
         _ = UnmountOnExitAsync(sessionId, surface);
     }
@@ -318,17 +324,46 @@ public sealed partial class MainWindow : Window
     {
         if (selected is not { } id || !_surfaces.TryGetValue(id, out var surface)) return;
         _ = surface.ShowAsync();
-        if (_host?.Host.Store.SessionWithId(id) is { } session)
-            Title = $"{session.DisplayName} — agterm";
+        _ = UpdateWindowTitleAsync(id);
     }
 
     private void WireTitle(Guid sessionId, XtermPaneSurface surface)
     {
-        surface.Pane.TitleChanged += title => DispatcherQueue.TryEnqueue(() =>
+        surface.Pane.TitleChanged += __ => DispatcherQueue.TryEnqueue(() =>
         {
-            if (_host?.Host.Store.SelectedSessionId == sessionId)
-                Title = $"{title} — agterm";
+            if (_selectedSessionId == sessionId)
+                _ = UpdateWindowTitleAsync(sessionId);
         });
+    }
+
+    private async Task UpdateWindowTitleAsync(Guid sessionId)
+    {
+        var host = _host;
+        if (host is null)
+            return;
+
+        try
+        {
+            var displayName = await host.StoreCoordinator.ReadAsync(
+                store => store.SessionWithId(sessionId)?.DisplayName).ConfigureAwait(false);
+
+            if (displayName is null)
+                return;
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (_selectedSessionId == sessionId)
+                    Title = $"{displayName} — agterm";
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // shutdown race: the coordinator may dispose while the title read is in flight
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"UpdateWindowTitleAsync failed: {ex}");
+        }
     }
 
     private async Task UnmountOnExitAsync(Guid sessionId, XtermPaneSurface surface)
@@ -377,5 +412,29 @@ public sealed partial class MainWindow : Window
         {
             return null;
         }
+    }
+
+    private static void ObserveTaskFault(Task task, string context)
+    {
+        if (task.IsCompleted)
+        {
+            if (task.IsFaulted && task.Exception is { } ex)
+                System.Diagnostics.Debug.WriteLine($"{context}: {ex.GetBaseException().Message}");
+            return;
+        }
+
+        _ = task.ContinueWith(
+            static (completedTask, state) =>
+            {
+                if (completedTask.IsFaulted && completedTask.Exception is { } ex)
+                {
+                    var message = (string)state!;
+                    System.Diagnostics.Debug.WriteLine($"{message}: {ex.GetBaseException().Message}");
+                }
+            },
+            context,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 }

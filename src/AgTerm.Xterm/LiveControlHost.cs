@@ -28,6 +28,9 @@ public sealed record LiveControlHostOptions
 
     public Action<string>? Log { get; init; }
 
+    /// <summary>Reports whether the current callback is running on the owning UI thread.</summary>
+    public Func<bool> IsUiThread { get; init; } = static () => false;
+
     /// <summary>The UI half of realization: create a renderer (a WebView2 pane) and open the
     /// surface over it, ON the WebView2 UI thread. The host calls it from the dispatch thread and
     /// blocks (bounded) — the implementation must marshal internally and must NOT touch the host
@@ -50,6 +53,7 @@ public sealed class LiveControlHost : IDisposable
 {
     private readonly LiveControlHostOptions _options;
     private readonly LiveDispatchScopeFactory _scopeFactory;
+    private readonly LiveStoreCoordinator _storeCoordinator;
     private readonly LiveSurfaceCoordinator? _coordinator;
     private HeadlessHost? _host;
     private int _disposed;
@@ -74,6 +78,7 @@ public sealed class LiveControlHost : IDisposable
             EagerSurfaceRealization = true,
             DeferBootstrap = true,
         });
+        _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
             _scopeFactory,
@@ -102,7 +107,14 @@ public sealed class LiveControlHost : IDisposable
 
     public string PipeName => Host.PipeName;
 
+    public ILiveStoreCoordinator StoreCoordinator => _storeCoordinator;
+
     public void Start() => Host.Start();
+
+    public Task PerformFontActionAsync(string action, CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(
+            _ => Host.Actions.Font(null, null, null, action),
+            cancellationToken);
 
     /// <summary>A surface realized after this host's own bootstrap (i.e. any control- or UI-driven
     /// show). The app uses it to mount the pane's view; fired on the realizing (dispatch) thread.</summary>
@@ -150,6 +162,7 @@ public sealed class LiveControlHost : IDisposable
             if (OwnsMainPane(live, surface))
             {
                 live!.OscTitle = title;
+                Host.Store.NotifySidebar();
             }
         }));
         surface.Pane.CwdChanged += cwd => Task.Run(() => Host.RunLocked(() =>
@@ -158,6 +171,7 @@ public sealed class LiveControlHost : IDisposable
             if (OwnsMainPane(live, surface))
             {
                 live!.CurrentCwd = cwd;
+                Host.Store.NotifySidebar();
             }
         }));
         _ = CloseOnExitAsync(sessionId, surface);
@@ -202,6 +216,7 @@ public sealed class LiveControlHost : IDisposable
         }
 
         Host.Stop();
+        _storeCoordinator.Dispose();
         _coordinator?.Dispose();
         Host.RunLocked(() =>
         {

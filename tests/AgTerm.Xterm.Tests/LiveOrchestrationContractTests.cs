@@ -268,4 +268,81 @@ public sealed class LiveOrchestrationContractTests : IDisposable
             host.Dispose();
         }
     }
+
+    [Fact]
+    public async Task StoreCoordinator_is_available_after_construction_and_reads_bootstrap_selection()
+    {
+        using var host = new LiveControlHost(new LiveControlHostOptions
+        {
+            StateDir = _stateDir,
+            ConfigDir = _stateDir,
+            HomeDirectory = _bootstrapDir,
+            PipeName = "agterm-o4-store-" + Guid.NewGuid().ToString("N"),
+            OpenSurface = (_, _) => Task.FromException<IHeadlessSurface>(
+                new InvalidOperationException("test bootstrap failure")),
+        });
+
+        Assert.IsAssignableFrom<ILiveStoreCoordinator>(host.StoreCoordinator);
+        var snapshot = await host.StoreCoordinator.ReadAsync(store => (
+            store.SelectedSessionId,
+            WorkspaceCount: store.Workspaces.Count,
+            SessionCount: store.Workspaces.Sum(workspace => workspace.Sessions.Count)));
+
+        Assert.NotNull(snapshot.SelectedSessionId);
+        Assert.Equal(1, snapshot.WorkspaceCount);
+        Assert.Equal(1, snapshot.SessionCount);
+    }
+
+    [Fact]
+    public async Task StoreCoordinator_forwards_control_selection_and_sidebar_invalidation()
+    {
+        using var host = new LiveControlHost(new LiveControlHostOptions
+        {
+            StateDir = _stateDir,
+            ConfigDir = _stateDir,
+            HomeDirectory = _bootstrapDir,
+            PipeName = "agterm-o4-events-" + Guid.NewGuid().ToString("N"),
+            OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
+        });
+        var selection = new TaskCompletionSource<Guid?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sidebar = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.StoreCoordinator.SelectionChanged += id => selection.TrySetResult(id);
+        host.StoreCoordinator.SidebarInvalidated += () => sidebar.TrySetResult();
+        host.Start();
+        var client = new ControlPipeClient(host.PipeName);
+
+        var response = client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionNew,
+            Args = new ControlArgs { Cwd = _stateDir },
+        });
+
+        Assert.True(response.Ok, response.Error);
+        var id = Guid.Parse(response.Result!.Id!);
+        Assert.Equal(id, await selection.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await sidebar.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task LiveHost_dispose_disposes_StoreCoordinator()
+    {
+        var host = new LiveControlHost(new LiveControlHostOptions
+        {
+            StateDir = _stateDir,
+            ConfigDir = _stateDir,
+            HomeDirectory = _bootstrapDir,
+            PipeName = "agterm-o4-dispose-" + Guid.NewGuid().ToString("N"),
+            OpenSurface = (_, _) => Task.FromException<IHeadlessSurface>(
+                new InvalidOperationException("test bootstrap failure")),
+        });
+        var coordinator = host.StoreCoordinator;
+
+        host.Dispose();
+        host.Dispose();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            coordinator.ReadAsync(store => store.Workspaces.Count));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() =>
+            coordinator.MutateAsync(store => store.NotifySidebar()));
+    }
 }

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
@@ -35,26 +34,30 @@ public sealed record SidebarSnapshot
 /// socket drives (the third caller — toolbar/menu/control in upstream terms). The view stays a
 /// thin XAML shell.
 ///
-/// Threading: snapshot composition happens on whatever thread mutated the store (already under
-/// the gate); gestures hop through runOffUi (the app passes Task.Run) because the UI thread must
-/// NEVER take the host gate (it would deadlock a blocking surface realization).
+/// Threading: snapshot composition runs through coordinator reads/mutations under the host gate;
+/// UI delivery is marshaled through runOnUi, and gesture calls never block waiting for gate work.
 /// </summary>
 public sealed class SidebarController : IDisposable
 {
-    private readonly HeadlessHost _host;
+    private readonly ILiveStoreCoordinator _coordinator;
     private readonly Action<Action> _runOnUi;
-    private readonly Action<Action> _runOffUi;
     private readonly string _homeDirectory;
-    private bool _started;
+    private readonly Action<string>? _log;
+    private int _started;
+    private int _disposed;
+    private long _latestRequestedGeneration;
 
-    public SidebarController(HeadlessHost host, Action<Action> runOnUi,
-                             Action<Action>? runOffUi = null, string? homeDirectory = null)
+    public SidebarController(
+        ILiveStoreCoordinator coordinator,
+        Action<Action> runOnUi,
+        string? homeDirectory = null,
+        Action<string>? log = null)
     {
-        _host = host;
-        _runOnUi = runOnUi;
-        _runOffUi = runOffUi ?? (work => work());
+        _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        _runOnUi = runOnUi ?? throw new ArgumentNullException(nameof(runOnUi));
         _homeDirectory = homeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        _log = log;
     }
 
     public event Action<SidebarSnapshot>? SnapshotChanged;
@@ -62,22 +65,34 @@ public sealed class SidebarController : IDisposable
     /// <summary>Subscribe to the store and broadcast the bootstrap snapshot.</summary>
     public void Start()
     {
-        if (_started) return;
-        _started = true;
-        _host.Store.SidebarChanged += Broadcast;
-        _host.Store.SidebarVisibilityChanged += Broadcast;
-        _host.RunLocked(Broadcast);
+        if (Volatile.Read(ref _disposed) != 0)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _started, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _coordinator.SidebarInvalidated += OnSidebarInvalidated;
+        RequestBroadcast();
     }
 
     public void Dispose()
     {
-        if (!_started) return;
-        _started = false;
-        _host.Store.SidebarChanged -= Broadcast;
-        _host.Store.SidebarVisibilityChanged -= Broadcast;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _started, 0) != 0)
+        {
+            _coordinator.SidebarInvalidated -= OnSidebarInvalidated;
+        }
     }
 
-    // MARK: - gestures (each hops off the UI thread and takes the host gate)
+    // MARK: - gestures (all mutations route through ILiveStoreCoordinator)
 
     public void Select(Guid sessionId, IReadOnlyList<Guid>? sidebarSelection = null) =>
         Mutate(store => store.SelectSession(sessionId, sidebarSelection));
@@ -125,6 +140,8 @@ public sealed class SidebarController : IDisposable
         if (store.CanRemoveWorkspace) store.RemoveWorkspace(workspaceId);
     });
 
+    public void NewWorkspace() => Mutate(store => store.AddWorkspace(store.DefaultWorkspaceName));
+
     public void NewWorkspace(string name) => Mutate(store => store.AddWorkspace(name));
 
     public void FocusWorkspaceToggle(Guid workspaceId) => Mutate(store =>
@@ -147,24 +164,6 @@ public sealed class SidebarController : IDisposable
         store.SidebarWidth = Math.Clamp(width, AppStore.SidebarWidthMin, AppStore.SidebarWidthMax);
         store.Save();
     });
-
-    /// <summary>Open the session's focused-pane cwd in Explorer (the Reveal menu item). The
-    /// existence gate matches the control arm; the process launch happens outside the gate.</summary>
-    public void RevealSession(Guid sessionId)
-    {
-        _runOffUi(() =>
-        {
-            string? path = null;
-            _host.RunLocked(() =>
-            {
-                if (_host.Store.SessionWithId(sessionId) is { } session &&
-                    session.FocusedCwd is { Length: > 0 } cwd && Directory.Exists(cwd))
-                    path = cwd;
-            });
-            if (path is not null)
-                Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = false });
-        });
-    }
 
     /// <summary>Apply a session drag-drop: raw (pre-removal) child index in, SidebarDrop math,
     /// then the store's remove-block/insert-block move. draggedIds must be in visual order.</summary>
@@ -237,19 +236,53 @@ public sealed class SidebarController : IDisposable
     public void UndoClose() => Mutate(store => store.UndoPendingClose());
 
     private void Mutate(Action<AppStore> action) =>
-        _runOffUi(() => _host.RunLocked(() => action(_host.Store)));
+        FireAndForget(
+            () => _coordinator.MutateAsync(action),
+            "SidebarController mutate failed");
 
-    /// <summary>Compose the snapshot (callers hold the gate — the store's events fire inside the
-    /// mutators) and hand it to the UI thread.</summary>
-    private void Broadcast()
+    /// <summary>Open the session's focused-pane cwd in Explorer. Store read is under the gate;
+    /// process launch runs outside the gate.</summary>
+    public void RevealSession(Guid sessionId) =>
+        FireAndForget(
+            () => RevealSessionAsync(sessionId),
+            "SidebarController reveal session failed");
+
+    private async Task RevealSessionAsync(Guid sessionId)
     {
-        var store = _host.Store;
-        var snapshot = new SidebarSnapshot
+        var path = await _coordinator.ReadAsync(store =>
+        {
+            if (store.SessionWithId(sessionId) is not { } session)
+            {
+                return (string?)null;
+            }
+
+            var cwd = session.FocusedCwd;
+            if (cwd.Length == 0 || !Directory.Exists(cwd))
+            {
+                return (string?)null;
+            }
+
+            return cwd;
+        }).ConfigureAwait(false);
+
+        if (path is null)
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = false });
+    }
+
+    /// <summary>Projects AppStore into immutable/materialized sidebar view state.</summary>
+    private static SidebarSnapshot Capture(AppStore store)
+    {
+        return new SidebarSnapshot
         {
             Rows = SidebarProjection.Project(store),
             ShapeKey = SidebarProjection.ShapeKey(store),
             Workspaces = store.Workspaces
-                .Select(w => new SidebarWorkspaceInfo(w.Id, w.Name)).ToList(),
+                .Select(w => new SidebarWorkspaceInfo(w.Id, w.Name))
+                .ToList(),
             SelectedSessionId = store.SelectedSessionId,
             CanRemoveWorkspace = store.CanRemoveWorkspace,
             SidebarVisible = store.SidebarVisible,
@@ -261,6 +294,186 @@ public sealed class SidebarController : IDisposable
                 : null,
             FlaggedCount = store.FlaggedSessions.Count,
         };
-        _runOnUi(() => SnapshotChanged?.Invoke(snapshot));
     }
+
+    private void OnSidebarInvalidated() => RequestBroadcast();
+
+    /// <summary>
+    /// Request a new snapshot generation. If multiple reads overlap, only the latest generation
+    /// may reach the UI; late completions are dropped.
+    /// </summary>
+    private void RequestBroadcast()
+    {
+        if (Volatile.Read(ref _started) == 0 || Volatile.Read(ref _disposed) != 0)
+        {
+            return;
+        }
+
+        var generation = Interlocked.Increment(ref _latestRequestedGeneration);
+
+        Task<SidebarSnapshot> readTask;
+        try
+        {
+            readTask = _coordinator.ReadAsync(Capture);
+        }
+        catch (Exception ex)
+        {
+            LogException("SidebarController snapshot read start failed", ex);
+            return;
+        }
+
+        if (readTask.IsCompleted)
+        {
+            CompleteBroadcast(readTask, generation);
+            return;
+        }
+
+        _ = readTask.ContinueWith(
+            static (task, state) =>
+            {
+                var payload = (CompletionState)state!;
+                payload.Controller.CompleteBroadcast(task, payload.Generation);
+            },
+            new CompletionState(this, generation),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private void CompleteBroadcast(Task<SidebarSnapshot> task, long generation)
+    {
+        if (task.IsCanceled)
+        {
+            Log("SidebarController snapshot read canceled");
+            return;
+        }
+
+        if (task.IsFaulted)
+        {
+            if (!ShouldSuppress(task.Exception))
+                LogException("SidebarController snapshot read failed", task.Exception);
+            return;
+        }
+
+        SidebarSnapshot snapshot;
+        try
+        {
+            snapshot = task.Result;
+        }
+        catch (Exception ex)
+        {
+            LogException("SidebarController snapshot read result failed", ex);
+            return;
+        }
+
+        if (Volatile.Read(ref _disposed) != 0 || Volatile.Read(ref _started) == 0)
+        {
+            return;
+        }
+
+        if (generation != Volatile.Read(ref _latestRequestedGeneration))
+        {
+            return;
+        }
+
+        _runOnUi(() =>
+        {
+            if (Volatile.Read(ref _disposed) != 0 || Volatile.Read(ref _started) == 0)
+            {
+                return;
+            }
+
+            if (generation != Volatile.Read(ref _latestRequestedGeneration))
+            {
+                return;
+            }
+
+            SnapshotChanged?.Invoke(snapshot);
+        });
+    }
+
+    private readonly record struct CompletionState(SidebarController Controller, long Generation);
+
+    private void FireAndForget(Func<Task> work, string context)
+    {
+        Task task;
+        try
+        {
+            task = work();
+        }
+        catch (Exception ex)
+        {
+            if (!ShouldSuppress(ex))
+            {
+                LogException(context, ex);
+            }
+            return;
+        }
+
+        if (task.IsCompleted)
+        {
+            ObserveFault(task, context);
+            return;
+        }
+
+        _ = task.ContinueWith(
+            static (completed, state) =>
+            {
+                var payload = (FaultState)state!;
+                payload.Controller.ObserveFault(completed, payload.Context);
+            },
+            new FaultState(this, context),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private void ObserveFault(Task task, string context)
+    {
+        if (task.IsCanceled)
+        {
+            Log($"{context}: canceled");
+            return;
+        }
+
+        if (!task.IsFaulted)
+        {
+            return;
+        }
+
+        if (!ShouldSuppress(task.Exception))
+        {
+            LogException(context, task.Exception);
+        }
+    }
+
+    private bool ShouldSuppress(Exception? exception)
+    {
+        if (Volatile.Read(ref _disposed) == 0)
+        {
+            return false;
+        }
+
+        return exception switch
+        {
+            ObjectDisposedException => true,
+            AggregateException aggregate => aggregate.Flatten().InnerExceptions.All(e => e is ObjectDisposedException),
+            _ => false,
+        };
+    }
+
+    private void LogException(string context, Exception? exception)
+    {
+        if (exception is null)
+        {
+            Log(context);
+            return;
+        }
+
+        Log($"{context}: {exception.GetBaseException().Message}");
+    }
+
+    private void Log(string message) => _log?.Invoke(message);
+
+    private readonly record struct FaultState(SidebarController Controller, string Context);
 }
