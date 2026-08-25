@@ -295,4 +295,46 @@ public sealed class HeadlessHostTests : IDisposable
         Assert.False(window.Ok);
         Assert.Equal("no such window: zz", window.Error);
     }
+
+    // O0.5 — headless host (no SurfaceRealizer): session model has null Surface, pinned wire
+    // errors on session.text / selected session.type, and the session node exists in the tree
+    // without live-surface fields.
+    [Fact]
+    public void No_surface_realizer_preserves_pinned_errors_and_omits_live_tree_fields()
+    {
+        var id = NewSession();
+        var guid = Guid.Parse(id);
+
+        // model surface is null — headless default, no SurfaceRealizer configured
+        var modelSession = _host.Store.SessionWithId(guid);
+        Assert.NotNull(modelSession);
+        Assert.Null(modelSession!.Surface);
+
+        var text = Send(new ControlRequest { Cmd = Command.SessionText, Target = id });
+        Assert.False(text.Ok);
+        Assert.Equal("session not realized", text.Error);
+
+        var type = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType,
+            Target = id,
+            Args = new ControlArgs { Text = "x", Select = true },
+        });
+        Assert.False(type.Ok);
+        Assert.Equal("session not realized", type.Error);
+
+        var tree = Send(new ControlRequest { Cmd = Command.Tree });
+        Assert.True(tree.Ok, tree.Error);
+        var node = tree.Result!.Tree!.Workspaces
+            .SelectMany(w => w.Sessions)
+            .Single(s => s.Id == id);
+        Assert.Null(node.Title);
+        Assert.Null(node.FontSize);
+        var surface = Assert.Single(node.Surfaces!);
+        Assert.Equal($"surface:{id}:left", surface.Id);
+        Assert.Equal("left", surface.Kind);
+        Assert.True(surface.Active);
+        Assert.True(surface.Visible);
+    }
+
 }
