@@ -34,11 +34,11 @@ public sealed class LivePortedE2ETests : IDisposable
             PipeName = "agterm-live-e2e-" + Guid.NewGuid().ToString("N"),
             DefaultShell = Cmd,
             HomeDirectory = _stateDir,
-            OpenSurface = async (_, surfaceOptions) =>
+            OpenSurface = async (request, cancellationToken) =>
             {
                 var shared = await _page.Value;
                 return await _webView.RunAsync(async _ =>
-                    await XtermPaneSurface.OpenAsync(shared, surfaceOptions));
+                    await XtermPaneSurface.OpenAsync(shared, request.Options, cancellationToken));
             },
         });
         _host.Start();

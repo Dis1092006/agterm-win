@@ -8,16 +8,19 @@ namespace AgTerm.Xterm.Tests;
 /// <summary>
 /// Contract pins for the live orchestration path (no WebView2 required): isolated temp state dir
 /// + unique named pipe per test; OpenSurface is a fake delegate backed by TaskCompletionSource.
-/// O0.3 is an intentional red test — it describes the desired post-O3 behavior and fails today
-/// because DispatchLocked holds the gate while OpenSurface awaits.
+/// O3 acceptance: after session.new moves OpenSurface outside the gate, RunLocked enters while
+/// the opener is pending, the gate resolves with a FakeSurface, and session.type reaches it
+/// immediately.
 /// </summary>
 public sealed class LiveOrchestrationContractTests : IDisposable
 {
     private readonly string _stateDir;
+    private readonly string _bootstrapDir;
 
     public LiveOrchestrationContractTests()
     {
         _stateDir = Directory.CreateTempSubdirectory("agterm-o0-").FullName;
+        _bootstrapDir = Directory.CreateDirectory(Path.Combine(_stateDir, "bootstrap")).FullName;
     }
 
     public void Dispose()
@@ -29,28 +32,29 @@ public sealed class LiveOrchestrationContractTests : IDisposable
 
     // ---------------------------------------------------------------------------
     // Helper: build a LiveControlHost whose OpenSurface:
-    //   - call 1 (bootstrap): throws immediately so construction does not block
-    //   - call 2+: signals enteredTcs, then awaits gateTcs
+    //   - bootstrap (Cwd == _bootstrapDir): fails immediately (no surface in test)
+    //   - session.new (Cwd == _stateDir): signals Entered, then awaits Gate
     // Returns the host, a pipe client, the entry signal, and the release gate.
     // ---------------------------------------------------------------------------
     private (LiveControlHost Host, ControlPipeClient Client,
-             Task Entered, TaskCompletionSource<XtermPaneSurface> Gate)
+             Task Entered, TaskCompletionSource<IHeadlessSurface> Gate)
         BuildHost()
     {
-        var callCount = 0;
         var enteredTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var gateTcs = new TaskCompletionSource<XtermPaneSurface>(
+        var gateTcs = new TaskCompletionSource<IHeadlessSurface>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         var host = new LiveControlHost(new LiveControlHostOptions
         {
             StateDir = _stateDir,
             ConfigDir = _stateDir,
+            HomeDirectory = _bootstrapDir,
             PipeName = "agterm-o0-" + Guid.NewGuid().ToString("N"),
-            OpenSurface = (_, _) =>
+            OpenSurface = (SurfaceOpenRequest request, CancellationToken ct) =>
             {
-                var n = Interlocked.Increment(ref callCount);
-                if (n == 1) throw new InvalidOperationException("bootstrap: no surface in test");
+                if (request.Options.Cwd == _bootstrapDir)
+                    return Task.FromException<IHeadlessSurface>(
+                        new InvalidOperationException("bootstrap: no surface in test"));
                 enteredTcs.TrySetResult();
                 return gateTcs.Task;
             },
@@ -102,11 +106,9 @@ public sealed class LiveOrchestrationContractTests : IDisposable
     }
 
     // ---------------------------------------------------------------------------
-    // O0.3 — RunLocked_can_enter_while_surface_attempt_is_pending
-    // INTENTIONAL RED TEST: describes the desired post-O3 behavior.
-    // Today DispatchLocked holds _gate while OpenSurface awaits, so RunLocked
-    // cannot enter within the short timeout → this test fails with TimeoutException.
-    // O1 adds the outside-gate scope; O3 moves OpenSurface work into that scope.
+    // O0.3 — O3 acceptance: RunLocked enters while OpenSurface is pending.
+    // After the gate opens, session.new returns the session id and session.type
+    // immediately reaches the realized surface.
     // ---------------------------------------------------------------------------
     [Fact]
     public async Task RunLocked_can_enter_while_surface_attempt_is_pending()
@@ -125,11 +127,23 @@ public sealed class LiveOrchestrationContractTests : IDisposable
 
             var ran = false;
             runLockedTask = Task.Run(() => host.Host.RunLocked(() => ran = true));
-
-            // Post-O3 assertion: RunLocked must complete within 200 ms while OpenSurface is pending.
-            // Currently fails with TimeoutException because the gate is held by DispatchLocked.
-            await runLockedTask.WaitAsync(TimeSpan.FromMilliseconds(200));
+            await runLockedTask.WaitAsync(TimeSpan.FromSeconds(2));
             Assert.True(ran, "RunLocked action must have executed");
+
+            var fake = new FakeSurface();
+            gate.TrySetResult(fake);
+
+            var response = await sessionNewTask.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.True(response.Ok, $"expected ok after gate opened, got: {response.Error}");
+
+            var typeResponse = client.Send(new ControlRequest
+            {
+                Cmd = Command.SessionType,
+                Target = response.Result!.Id,
+                Args = new ControlArgs { Text = "o3-immediate-type" },
+            });
+            Assert.True(typeResponse.Ok, $"expected session.type ok, got: {typeResponse.Error}");
+            Assert.Equal(new[] { "o3-immediate-type" }, fake.Injected);
         }
         finally
         {
@@ -155,9 +169,11 @@ public sealed class LiveOrchestrationContractTests : IDisposable
         {
             StateDir = _stateDir,
             ConfigDir = _stateDir,
+            HomeDirectory = _bootstrapDir,
             PipeName = "agterm-o0-" + Guid.NewGuid().ToString("N"),
-            OpenSurface = (_, _) => Task.FromException<XtermPaneSurface>(
-                new InvalidOperationException("test: always fault")),
+            OpenSurface = (SurfaceOpenRequest request, CancellationToken ct) =>
+                Task.FromException<IHeadlessSurface>(
+                    new InvalidOperationException("test: always fault")),
         });
         using (host)
         {
@@ -194,6 +210,62 @@ public sealed class LiveOrchestrationContractTests : IDisposable
 
             var tree = client.Send(new ControlRequest { Cmd = Command.Tree });
             Assert.True(tree.Ok, $"tree must be Ok after surface fault, got: {tree.Error}");
+        }
+    }
+
+    [Fact]
+    public async Task Dispose_cancels_pending_open_and_tears_down_late_surface()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<IHeadlessSurface>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken openerToken = default;
+        var host = new LiveControlHost(new LiveControlHostOptions
+        {
+            StateDir = _stateDir,
+            ConfigDir = _stateDir,
+            HomeDirectory = _bootstrapDir,
+            PipeName = "agterm-o3-shutdown-" + Guid.NewGuid().ToString("N"),
+            RealizeBudget = TimeSpan.FromSeconds(30),
+            OpenSurface = (request, cancellationToken) =>
+            {
+                if (request.Options.Cwd == _bootstrapDir)
+                    return Task.FromException<IHeadlessSurface>(new Exception("bootstrap failure"));
+                openerToken = cancellationToken;
+                entered.TrySetResult();
+                return gate.Task;
+            },
+        });
+        host.Start();
+        var client = new ControlPipeClient(host.PipeName);
+        var requestTask = Task.Run(() => client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionNew,
+            Args = new ControlArgs { Cwd = _stateDir },
+        }));
+
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            host.Dispose();
+
+            Assert.True(openerToken.IsCancellationRequested);
+            await requestTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var late = new FakeSurface();
+            gate.TrySetResult(late);
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (late.TeardownCount == 0 && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+            Assert.Equal(1, late.TeardownCount);
+        }
+        finally
+        {
+            gate.TrySetException(new Exception("test cleanup"));
+            await requestTask.WaitAsync(TimeSpan.FromSeconds(5))
+                .ContinueWith(_ => { }, TaskContinuationOptions.None);
+            host.Dispose();
         }
     }
 }

@@ -55,27 +55,63 @@ public sealed class TerminalPane : IDisposable
 
     /// <summary>Open a renderer pane on the (already booted) shared page, then spawn the child at
     /// the pane's fitted size. Must run on the WebView2 UI thread.</summary>
-    public static async Task<TerminalPane> OpenAsync(XtermPage page, string paneId, TerminalPaneOptions options)
+    public static async Task<TerminalPane> OpenAsync(
+        XtermPage page,
+        string paneId,
+        TerminalPaneOptions options,
+        CancellationToken cancellationToken = default)
     {
         var ui = SynchronizationContext.Current
             ?? throw new InvalidOperationException("TerminalPane.OpenAsync requires the WebView2 UI thread");
-        var terminal = await page.OpenTerminalAsync(paneId);
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        XtermTerminal? terminal = null;
         TerminalPane? pane = null;
-        var pty = ConPtySession.Start(new ConPtyStartInfo
+        ConPtySession? pty = null;
+
+        try
         {
-            Argv = options.Argv,
-            Cwd = options.Cwd,
-            ExtraEnvironment = options.ExtraEnvironment,
-            Cols = terminal.Cols > 0 ? terminal.Cols : 80,
-            Rows = terminal.Rows > 0 ? terminal.Rows : 24,
-            // reader-thread chunks marshal to the UI thread; drop what arrives after teardown
-            OnOutput = chunk => ui.Post(_ =>
+            terminal = await page.OpenTerminalAsync(paneId);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            pty = ConPtySession.Start(new ConPtyStartInfo
             {
-                if (pane is not { _disposed: true }) terminal.FeedOutput(chunk);
-            }, null),
-        });
-        pane = new TerminalPane(page, terminal, pty, ui);
-        return pane;
+                Argv = options.Argv,
+                Cwd = options.Cwd,
+                ExtraEnvironment = options.ExtraEnvironment,
+                Cols = terminal.Cols > 0 ? terminal.Cols : 80,
+                Rows = terminal.Rows > 0 ? terminal.Rows : 24,
+                // reader-thread chunks marshal to the UI thread; drop what arrives after teardown
+                OnOutput = chunk => ui.Post(_ =>
+                {
+                    if (pane is not { _disposed: true }) terminal.FeedOutput(chunk);
+                }, null),
+            });
+            pane = new TerminalPane(page, terminal, pty, ui);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            return pane;
+        }
+        catch (Exception)
+        {
+            if (pane is not null)
+            {
+                pane.Dispose();
+            }
+            else
+            {
+                pty?.Dispose();
+            }
+
+            if (terminal is not null)
+            {
+                await ClosePaneBestEffortAsync(page, paneId);
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Marshal work onto the WebView2 UI thread (all XtermTerminal calls are thread-affine
@@ -102,5 +138,16 @@ public sealed class TerminalPane : IDisposable
     {
         _disposed = true;
         Pty.Dispose();
+    }
+
+    private static async Task ClosePaneBestEffortAsync(XtermPage page, string paneId)
+    {
+        try
+        {
+            await page.ClosePaneAsync(paneId);
+        }
+        catch (Exception)
+        {
+        }
     }
 }

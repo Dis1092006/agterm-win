@@ -52,10 +52,10 @@ public sealed class LiveSidebarE2ETests : IDisposable
             PipeName = "agterm-live-sb-" + Guid.NewGuid().ToString("N"),
             DefaultShell = Cmd,
             HomeDirectory = _stateDir,
-            OpenSurface = async (_, options) =>
+            OpenSurface = async (request, cancellationToken) =>
             {
                 var shared = await page.Value;
-                return await _webView.RunAsync(async _ => await XtermPaneSurface.OpenAsync(shared, options));
+                return await _webView.RunAsync(async _ => await XtermPaneSurface.OpenAsync(shared, request.Options, cancellationToken));
             },
         });
         _hosts.Add(host);

@@ -50,11 +50,11 @@ public sealed class LiveControlHostTests : IDisposable
             PipeName = "agterm-live-" + Guid.NewGuid().ToString("N"),
             DefaultShell = Cmd,
             HomeDirectory = _stateDir,
-            OpenSurface = async (_, surfaceOptions) =>
+            OpenSurface = async (request, cancellationToken) =>
             {
                 var shared = await page.Value;
                 return await _webView.RunAsync(async _ =>
-                    await XtermPaneSurface.OpenAsync(shared, surfaceOptions));
+                    await XtermPaneSurface.OpenAsync(shared, request.Options, cancellationToken));
             },
         });
         _hosts.Add(host);

@@ -7,15 +7,15 @@ namespace AgTerm.Xterm;
 /// argv = [shell]); clipboard access is injected because the surface itself is UI-framework-free.</summary>
 public sealed class XtermSurfaceOptions
 {
-    public required IReadOnlyList<string> Argv { get; set; }
+    public required IReadOnlyList<string> Argv { get; init; }
 
-    public string? Cwd { get; set; }
+    public string? Cwd { get; init; }
 
     /// <summary>What reset_font_size returns to (upstream: the engine config's font size).</summary>
-    public double BaseFontSize { get; set; } = 14;
+    public double BaseFontSize { get; init; } = 14;
 
     /// <summary>System clipboard reader for session.paste; null = paste is a no-op.</summary>
-    public Func<string?>? ReadClipboard { get; set; }
+    public Func<string?>? ReadClipboard { get; init; }
 }
 
 /// <summary>
@@ -53,19 +53,52 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
 
     /// <summary>Spawn the child with the pane token baked in, on the WebView2 UI thread. The pane
     /// token doubles as the bridge pane id — one identifier addresses the pane end to end.</summary>
-    public static async Task<XtermPaneSurface> OpenAsync(XtermPage page, XtermSurfaceOptions options)
+    public static async Task<XtermPaneSurface> OpenAsync(
+        XtermPage page,
+        XtermSurfaceOptions options,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var token = Guid.NewGuid().ToString("N");
-        var pane = await TerminalPane.OpenAsync(page, token, new TerminalPaneOptions
+        TerminalPane? pane = null;
+        XtermPaneSurface? surface = null;
+        try
         {
-            Argv = options.Argv,
-            Cwd = options.Cwd,
-            ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_PANE_ID"] = token },
-        });
-        var surface = new XtermPaneSurface(pane, token, options);
-        if (Math.Abs(options.BaseFontSize - 14) > 0.001) // bridge default is 14
-            FireAndForget(pane.Terminal.SetFontSizeAsync(options.BaseFontSize));
-        return surface;
+            pane = await TerminalPane.OpenAsync(page, token, new TerminalPaneOptions
+            {
+                Argv = options.Argv,
+                Cwd = options.Cwd,
+                ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_PANE_ID"] = token },
+            }, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            surface = new XtermPaneSurface(pane, token, options);
+            if (Math.Abs(options.BaseFontSize - 14) > 0.001) // bridge default is 14
+                FireAndForget(pane.Terminal.SetFontSizeAsync(options.BaseFontSize));
+
+            cancellationToken.ThrowIfCancellationRequested();
+            return surface;
+        }
+        catch (Exception)
+        {
+            if (surface is not null)
+            {
+                surface.Teardown();
+            }
+            else if (pane is not null)
+            {
+                pane.Dispose();
+                FireAndForget(pane.RunOnUiAsync<object?>(async () =>
+                {
+                    await pane.Page.ClosePaneAsync(token);
+                    return null;
+                }));
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Bring this pane's renderer on screen (show it, hide the page's other panes).

@@ -22,10 +22,9 @@ public class XtermPaneSurfaceTests
         _webView = webView;
     }
 
-    private async Task<XtermPaneSurface> OpenAsync(Action<XtermSurfaceOptions>? mutate = null)
+    private async Task<XtermPaneSurface> OpenAsync(XtermSurfaceOptions? options = null)
     {
-        var options = new XtermSurfaceOptions { Argv = new[] { Cmd } };
-        mutate?.Invoke(options);
+        options ??= new XtermSurfaceOptions { Argv = new[] { Cmd } };
         var page = await _webView.CreatePageAsync();
         return await _webView.RunAsync(async _ => await XtermPaneSurface.OpenAsync(page, options));
     }
@@ -108,7 +107,11 @@ public class XtermPaneSurfaceTests
     [Fact]
     public async Task Font_binding_actions_step_and_reset_the_live_size()
     {
-        using var surface = await OpenAsync(o => o.BaseFontSize = 14);
+        using var surface = await OpenAsync(new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd },
+            BaseFontSize = 14,
+        });
         WaitForScreen(surface, ">");
         Assert.True(surface.PerformBindingAction("increase_font_size:1"));
         Assert.Equal(15, surface.FontSize);
@@ -133,7 +136,11 @@ public class XtermPaneSurfaceTests
     [Fact]
     public async Task Paste_types_the_clipboard_through_xterm()
     {
-        using var surface = await OpenAsync(o => o.ReadClipboard = () => "clip-payload-42");
+        using var surface = await OpenAsync(new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd },
+            ReadClipboard = () => "clip-payload-42",
+        });
         WaitForScreen(surface, ">");
         Assert.True(surface.Paste());
         WaitForScreen(surface, "clip-payload-42");
@@ -147,5 +154,21 @@ public class XtermPaneSurfaceTests
         surface.Teardown();
         await surface.Pane.Exited.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.False(surface.Inject("dead\n"));
+    }
+
+    // O3.5 — OpenAsync must respect a pre-canceled token and throw OperationCanceledException
+    // without leaving a pane registered on the page.
+    // NOTE: no public pane-count API exists on XtermPage, so the assertion is the exception alone.
+    [Fact]
+    public async Task OpenAsync_with_pre_canceled_token_throws()
+    {
+        var page = await _webView.CreatePageAsync();
+        var options = new XtermSurfaceOptions { Argv = new[] { Cmd } };
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await _webView.RunAsync(async _ =>
+                await XtermPaneSurface.OpenAsync(page, options, cts.Token)));
     }
 }

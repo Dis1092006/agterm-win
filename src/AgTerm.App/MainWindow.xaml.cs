@@ -1,5 +1,6 @@
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
+using AgTerm.ControlServer;
 using AgTerm.Xterm;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel.DataTransfer;
@@ -60,13 +61,25 @@ public sealed partial class MainWindow : Window
             DispatcherQueue.TryEnqueue(() => ShowPane(selected));
         };
         // live OSC title/cwd reports change displayName — nudge the sidebar rows (host OOB hook)
-        host.SurfaceRealized += (_, surface) =>
+        host.SurfaceRealized += (sessionId, surface) =>
         {
             surface.Pane.TitleChanged += _ => Task.Run(() =>
                 host.Host.RunLocked(host.Host.Store.NotifySidebar));
             surface.Pane.CwdChanged += _ => Task.Run(() =>
                 host.Host.RunLocked(host.Host.Store.NotifySidebar));
+            DispatcherQueue.TryEnqueue(() => MountSurface(sessionId, surface));
         };
+        var committedSurfaces = new List<(Guid SessionId, XtermPaneSurface Surface)>();
+        host.Host.RunLocked(() => committedSurfaces.AddRange(
+            host.Host.Store.Workspaces
+                .SelectMany(workspace => workspace.Sessions)
+                .Where(session => session.Surface is XtermPaneSurface)
+                .Select(session => (session.Id, (XtermPaneSurface)session.Surface!))));
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            foreach (var (sessionId, surface) in committedSurfaces)
+                MountSurface(sessionId, surface);
+        });
         var sidebar = new SidebarController(host.Host,
             runOnUi: work => DispatcherQueue.TryEnqueue(() => work()),
             runOffUi: work => Task.Run(work));
@@ -242,27 +255,62 @@ public sealed partial class MainWindow : Window
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session
     /// and drop the handle when its shell exits. Called from the host's dispatch thread.</summary>
-    private Task<XtermPaneSurface> OpenSurfaceAsync(Session session, XtermSurfaceOptions options)
+    private Task<IHeadlessSurface> OpenSurfaceAsync(SurfaceOpenRequest request, CancellationToken cancellationToken)
     {
-        var done = new TaskCompletionSource<XtermPaneSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
-        DispatcherQueue.TryEnqueue(async () =>
+        if (cancellationToken.IsCancellationRequested)
+            return Task.FromCanceled<IHeadlessSurface>(cancellationToken);
+        if (request.Kind == LiveSurfaceKind.Main && request.SessionId is null)
+            return Task.FromException<IHeadlessSurface>(
+                new InvalidOperationException("Main surface requires a session id."));
+
+        var done = new TaskCompletionSource<IHeadlessSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(async () =>
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var page = await _pageTask;
-                var surface = await XtermPaneSurface.OpenAsync(page, options);
-                _surfaces[session.Id] = surface;
-                ShowPane(_host?.Host.Store.SelectedSessionId ?? session.Id);
-                WireTitle(session, surface);
-                _ = UnmountOnExitAsync(session.Id, surface);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var surface = await XtermPaneSurface.OpenAsync(page, request.Options, cancellationToken);
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    surface.Teardown();
+                    done.TrySetCanceled(cancellationToken);
+                    return;
+                }
+
                 done.TrySetResult(surface);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                done.TrySetCanceled(cancellationToken);
             }
             catch (Exception ex)
             {
                 done.TrySetException(ex);
             }
-        });
+        }))
+        {
+            if (cancellationToken.IsCancellationRequested)
+                done.TrySetCanceled(cancellationToken);
+            else
+                done.TrySetException(new InvalidOperationException("Failed to enqueue surface open on the UI thread."));
+        }
+
         return done.Task;
+    }
+
+    private void MountSurface(Guid sessionId, XtermPaneSurface surface)
+    {
+        if (_surfaces.TryGetValue(sessionId, out var current) && ReferenceEquals(current, surface))
+            return;
+        _surfaces[sessionId] = surface;
+        ShowPane(_host?.Host.Store.SelectedSessionId ?? sessionId);
+        WireTitle(sessionId, surface);
+        _ = UnmountOnExitAsync(sessionId, surface);
     }
 
     /// <summary>Show exactly the selected session's pane in the shared page. UI thread only.</summary>
@@ -274,11 +322,11 @@ public sealed partial class MainWindow : Window
             Title = $"{session.DisplayName} — agterm";
     }
 
-    private void WireTitle(Session session, XtermPaneSurface surface)
+    private void WireTitle(Guid sessionId, XtermPaneSurface surface)
     {
         surface.Pane.TitleChanged += title => DispatcherQueue.TryEnqueue(() =>
         {
-            if (_host?.Host.Store.SelectedSessionId == session.Id)
+            if (_host?.Host.Store.SelectedSessionId == sessionId)
                 Title = $"{title} — agterm";
         });
     }

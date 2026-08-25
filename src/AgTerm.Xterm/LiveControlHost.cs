@@ -32,7 +32,7 @@ public sealed record LiveControlHostOptions
     /// surface over it, ON the WebView2 UI thread. The host calls it from the dispatch thread and
     /// blocks (bounded) — the implementation must marshal internally and must NOT touch the host
     /// gate (RunLocked) on the UI thread.</summary>
-    public required Func<Session, XtermSurfaceOptions, Task<XtermPaneSurface>> OpenSurface { get; init; }
+    public required Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> OpenSurface { get; init; }
 
     /// <summary>How long a realization may take before the show reports "session not realized".</summary>
     public TimeSpan RealizeBudget { get; init; } = TimeSpan.FromSeconds(15);
@@ -49,11 +49,15 @@ public sealed record LiveControlHostOptions
 public sealed class LiveControlHost : IDisposable
 {
     private readonly LiveControlHostOptions _options;
+    private readonly LiveDispatchScopeFactory _scopeFactory;
+    private readonly LiveSurfaceCoordinator? _coordinator;
     private HeadlessHost? _host;
+    private int _disposed;
 
     public LiveControlHost(LiveControlHostOptions options)
     {
         _options = options;
+        _scopeFactory = new LiveDispatchScopeFactory();
         Host = new HeadlessHost(new HeadlessHostOptions
         {
             StateDir = options.StateDir,
@@ -63,13 +67,30 @@ public sealed class LiveControlHost : IDisposable
             AvailableThemes = options.AvailableThemes,
             HomeDirectory = options.HomeDirectory,
             Log = options.Log,
-            SurfaceRealizer = Realize,
+            SurfaceRealizer = ReserveSurface,
+            DispatchScopeFactory = _scopeFactory,
             // the live app's eager deck: every session's pane exists from creation/restore, so
             // session.type works into background sessions without a select (phase 4 DoD)
             EagerSurfaceRealization = true,
             DeferBootstrap = true,
         });
+        _coordinator = new LiveSurfaceCoordinator(
+            Host,
+            _scopeFactory,
+            options.OpenSurface,
+            options.RealizeBudget,
+            (sessionId, realizedSurface) =>
+            {
+                if (realizedSurface is XtermPaneSurface paneSurface)
+                {
+                    Bind(sessionId, paneSurface);
+                    SurfaceRealized?.Invoke(sessionId, paneSurface);
+                }
+            },
+            options.Log);
+        using var bootstrapScope = _scopeFactory.Begin();
         Host.Bootstrap();
+        bootstrapScope.CompleteAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
     public HeadlessHost Host
@@ -85,66 +106,69 @@ public sealed class LiveControlHost : IDisposable
 
     /// <summary>A surface realized after this host's own bootstrap (i.e. any control- or UI-driven
     /// show). The app uses it to mount the pane's view; fired on the realizing (dispatch) thread.</summary>
-    public event Action<Session, XtermPaneSurface>? SurfaceRealized;
+    public event Action<Guid, XtermPaneSurface>? SurfaceRealized;
 
-    /// <summary>The dispatch-gate half of realization; the UI half is the injected OpenSurface.
-    /// Runs under the host gate on the dispatch thread — blocking here is safe because the UI
-    /// thread never takes the gate (surface callbacks hop to the pool first).</summary>
-    private ITerminalSurface? Realize(Session session)
+    /// <summary>Reserve a pending surface under the host gate. The coordinator opens and commits
+    /// the real surface asynchronously after bootstrap dispatch completes.</summary>
+    private ITerminalSurface? ReserveSurface(Session session)
     {
         if (_host is null)
             throw new InvalidOperationException(
                 "LiveControlHost invariant violated: Host is not initialized.");
-        try
+
+        var argv = session.InitialCommand is { } command
+            ? CommandTokenizer.Tokenize(command)
+            : new[] { ShellResolver.Resolve(_options.DefaultShell) };
+        if (argv.Count == 0)
         {
-            var argv = session.InitialCommand is { } command
-                ? CommandTokenizer.Tokenize(command)
-                : new[] { ShellResolver.Resolve(_options.DefaultShell) };
-            if (argv.Count == 0) return null;
-            var surface = _options.OpenSurface(session, new XtermSurfaceOptions
-                {
-                    Argv = argv,
-                    Cwd = ExistingDirectoryOrNull(session.EffectiveCwd),
-                    BaseFontSize = session.FontSize ?? 14,
-                    ReadClipboard = _options.ReadClipboard,
-                })
-                .WaitAsync(_options.RealizeBudget).GetAwaiter().GetResult();
-            Bind(session, surface);
-            SurfaceRealized?.Invoke(session, surface);
-            return surface;
-        }
-        catch (Exception ex)
-        {
-            // a failed realization is the upstream "surface never realized" shape: the arm
-            // reports the pinned wire error; the app stays alive
-            _options.Log?.Invoke($"surface realization failed for {session.Id}: {ex.Message}");
             return null;
         }
+
+        var request = new SurfaceOpenRequest(
+            session.Id,
+            LiveSurfaceKind.Main,
+            new XtermSurfaceOptions
+            {
+                Argv = argv.ToArray(),
+                Cwd = ExistingDirectoryOrNull(session.EffectiveCwd),
+                BaseFontSize = session.FontSize ?? 14,
+                ReadClipboard = _options.ReadClipboard,
+            });
+
+        var coordinator = _coordinator ?? throw new InvalidOperationException(
+            "LiveControlHost invariant violated: coordinator is not initialized.");
+        return coordinator.Reserve(request);
     }
 
     /// <summary>Live reports → session fields. Every mutation hops to the thread pool and takes
-    /// the host gate — NEVER the gate on the UI thread (deadlock against a blocking Realize).</summary>
-    private void Bind(Session session, XtermPaneSurface surface)
+    /// the host gate; the UI thread never enters RunLocked.</summary>
+    private void Bind(Guid sessionId, XtermPaneSurface surface)
     {
         surface.Pane.TitleChanged += title => Task.Run(() => Host.RunLocked(() =>
         {
-            if (OwnsMainPane(session, surface)) session.OscTitle = title;
+            var live = Host.Store.SessionWithId(sessionId);
+            if (OwnsMainPane(live, surface))
+            {
+                live!.OscTitle = title;
+            }
         }));
         surface.Pane.CwdChanged += cwd => Task.Run(() => Host.RunLocked(() =>
         {
-            if (OwnsMainPane(session, surface)) session.CurrentCwd = cwd;
+            var live = Host.Store.SessionWithId(sessionId);
+            if (OwnsMainPane(live, surface))
+            {
+                live!.CurrentCwd = cwd;
+            }
         }));
-        _ = CloseOnExitAsync(session, surface);
+        _ = CloseOnExitAsync(sessionId, surface);
     }
 
-    /// <summary>The surface still is the session's main pane (not torn down / replaced) and the
-    /// session is still in the tree. Surface null covers the realize window before the store
-    /// assigns the returned surface.</summary>
-    private bool OwnsMainPane(Session session, XtermPaneSurface surface) =>
-        Host.Store.SessionWithId(session.Id) is { } live &&
-        (ReferenceEquals(live.Surface, surface) || live.Surface is null);
+    /// <summary>The realized surface still is the session's current main pane.</summary>
+    private static bool OwnsMainPane(Session? live, XtermPaneSurface surface) =>
+        live is not null &&
+        ReferenceEquals(live.Surface, surface);
 
-    private async Task CloseOnExitAsync(Session session, XtermPaneSurface surface)
+    private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
         try
         {
@@ -156,10 +180,10 @@ public sealed class LiveControlHost : IDisposable
         }
         Host.RunLocked(() =>
         {
-            if (!OwnsMainPane(session, surface)) return; // closed via control, or pane replaced
-            if (Host.Store.SessionWithId(session.Id) is not { } live) return;
+            var live = Host.Store.SessionWithId(sessionId);
+            if (!OwnsMainPane(live, surface)) return; // closed via control, or pane replaced
             // session.new --command --wait: hold the pane open after the command exits
-            if (live.InitialCommand is not null && live.CommandWait) return;
+            if (live!.InitialCommand is not null && live.CommandWait) return;
             Host.Store.ClosePrimaryPane(live.Id);
         });
     }
@@ -172,7 +196,13 @@ public sealed class LiveControlHost : IDisposable
     /// children) — the app-exit path (§3: save on exit).</summary>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         Host.Stop();
+        _coordinator?.Dispose();
         Host.RunLocked(() =>
         {
             Host.Store.CancelPendingSave();
