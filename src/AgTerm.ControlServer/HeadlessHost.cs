@@ -58,6 +58,9 @@ public sealed record HeadlessHostOptions
     /// select. Default false = headless parity — background sessions stay unrealized and the
     /// pinned "session not realized; use select" error survives (PLATFORM-NOTES).</summary>
     public bool EagerSurfaceRealization { get; init; }
+
+    /// <summary>Optional per-request completion scope. Null preserves the legacy dispatch timing.</summary>
+    public IControlDispatchScopeFactory? DispatchScopeFactory { get; init; }
 }
 
 /// <summary>
@@ -136,7 +139,12 @@ public sealed class HeadlessHost : IDisposable
         PipeName = options.PipeName
             ?? ControlPipeName.Derive(ControlResolve.SocketPath(options.StateDir,
                 PersistenceStore.DefaultDirectory));
-        _server = new ControlPipeServer(PipeName, DispatchLocked, options.Log);
+        _server = options.DispatchScopeFactory is not { } dispatchScopeFactory
+            ? new ControlPipeServer(PipeName, DispatchLocked, options.Log)
+            : new ControlPipeServer(PipeName,
+                (request, cancellationToken) =>
+                    DispatchWithScopeAsync(request, dispatchScopeFactory, cancellationToken),
+                options.Log);
     }
 
     /// <summary>The single window's stable identity (events carry it uppercase).</summary>
@@ -173,13 +181,29 @@ public sealed class HeadlessHost : IDisposable
     public void Dispose() => Stop();
 
     /// <summary>The pipe server's dispatch delegate: every request runs under the host gate because
-    /// the AppStore/ring are confined, not thread-safe (the upstream server is @MainActor). Headless
-    /// arms never await anything real, so the dispatcher's Task is already complete when drained.</summary>
+    /// the AppStore/ring are confined, not thread-safe (the upstream server is @MainActor). With no
+    /// dispatch scope configured, this preserves the legacy fully synchronous path.</summary>
     private Task<ControlResponse?> DispatchLocked(ControlRequest request)
     {
         lock (_gate)
         {
             return Task.FromResult(_dispatcher.Dispatch(request).GetAwaiter().GetResult());
         }
+    }
+
+    private async Task<ControlResponse?> DispatchWithScopeAsync(
+        ControlRequest request,
+        IControlDispatchScopeFactory dispatchScopeFactory,
+        CancellationToken cancellationToken)
+    {
+        using var scope = dispatchScopeFactory.Begin();
+        ControlResponse? response;
+        lock (_gate)
+        {
+            response = _dispatcher.Dispatch(request).GetAwaiter().GetResult();
+        }
+
+        await scope.CompleteAsync(cancellationToken).ConfigureAwait(false);
+        return response;
     }
 }

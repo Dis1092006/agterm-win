@@ -32,7 +32,9 @@ public sealed class ControlPipeServer : IDisposable
     public const int WriteDeadlineSeconds = 10;
 
     private readonly string _pipeName;
-    private readonly Func<ControlRequest, Task<ControlResponse?>> _dispatch;
+    private readonly Func<ControlRequest, Task<ControlResponse?>>? _dispatch;
+    private readonly Func<ControlRequest, CancellationToken, Task<ControlResponse?>>?
+        _dispatchWithCancellation;
     private readonly Action<string>? _log;
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
@@ -42,6 +44,16 @@ public sealed class ControlPipeServer : IDisposable
     {
         _pipeName = pipeName;
         _dispatch = dispatch;
+        _log = log;
+    }
+
+    public ControlPipeServer(
+        string pipeName,
+        Func<ControlRequest, CancellationToken, Task<ControlResponse?>> dispatch,
+        Action<string>? log = null)
+    {
+        _pipeName = pipeName;
+        _dispatchWithCancellation = dispatch;
         _log = log;
     }
 
@@ -81,7 +93,7 @@ public sealed class ControlPipeServer : IDisposable
             {
                 pipe = Create();
                 await pipe.WaitForConnectionAsync(token).ConfigureAwait(false);
-                await HandleConnection(pipe).ConfigureAwait(false);
+                await HandleConnection(pipe, token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -114,7 +126,7 @@ public sealed class ControlPipeServer : IDisposable
         new(_pipeName, PipeDirection.InOut, maxNumberOfServerInstances: 1,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
-    private async Task HandleConnection(NamedPipeServerStream pipe)
+    private async Task HandleConnection(NamedPipeServerStream pipe, CancellationToken token)
     {
         var line = await ReadLine(pipe).ConfigureAwait(false);
         if (line is null)
@@ -150,7 +162,10 @@ public sealed class ControlPipeServer : IDisposable
         {
             // a null dispatcher result is the one declined command (debug.appearance, the UI-test-only
             // seam upstream handles app-side); answer with the pinned upstream refusal.
-            response = await _dispatch(request).ConfigureAwait(false)
+            var dispatched = _dispatchWithCancellation is not null
+                ? await _dispatchWithCancellation(request, token).ConfigureAwait(false)
+                : await _dispatch!(request).ConfigureAwait(false);
+            response = dispatched
                 ?? new ControlResponse { Ok = false, Error = "debug.appearance is a UI-test-only seam" };
         }
         catch (Exception e)

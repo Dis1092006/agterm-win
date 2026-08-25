@@ -337,4 +337,177 @@ public sealed class HeadlessHostTests : IDisposable
         Assert.True(surface.Visible);
     }
 
+    // O1.1 — IControlDispatchScopeFactory: gate is released before CompleteAsync is awaited;
+    // response stays pending until the scope is released; scope is opened and disposed once.
+    [Fact]
+    public async Task DispatchScope_gate_is_released_before_CompleteAsync_and_response_returns_unchanged()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-scope-").FullName;
+        var factory = new FakeScopeFactory();
+        try
+        {
+            using var scopedHost = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DispatchScopeFactory = factory,
+            });
+            scopedHost.Start();
+            var client = new ControlPipeClient(scopedHost.PipeName);
+
+            // dispatch is in-flight; the scope holds the response after the gate is released
+            var dispatchTask = Task.Run(() => client.Send(new ControlRequest
+            {
+                Cmd = Command.SessionNew,
+                Args = new ControlArgs { CreateWorkspace = true, WorkspaceName = "sc", Cwd = stateDir },
+            }));
+
+            // CompleteAsync is entered only after the gate is released; wait for that signal
+            await factory.GateReleasedTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+            // response is still pending while CompleteAsync has not resolved
+            Assert.False(dispatchTask.IsCompleted, "response returned before scope was released");
+
+            // gate is free — another task enters RunLocked without blocking
+            await Task.Run(() => scopedHost.RunLocked(() => { })).WaitAsync(TimeSpan.FromSeconds(5));
+
+            // releasing the scope delivers the original dispatch result, unchanged
+            factory.Release();
+            var response = await dispatchTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(response.Ok, response.Error);
+            Assert.NotNull(response.Result?.Id);
+
+            Assert.Equal(1, factory.BeginCount);
+            Assert.Equal(1, factory.DisposeCount);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    // O1.3 — Stop must propagate cancellation to CompleteAsync; dispatch must unblock promptly.
+    // Under O1.2 (CancellationToken.None), Stop cannot reach the in-flight CompleteAsync wait
+    // and the bounded WaitAsync times out — this is the expected RED.
+    [Fact]
+    public async Task Stop_cancels_active_dispatch_scope_CompleteAsync()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-stop-").FullName;
+        var factory = new FakeCancellableScopeFactory();
+        Task<ControlResponse>? dispatchTask = null;
+        try
+        {
+            using var scopedHost = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
+                DispatchScopeFactory = factory,
+            });
+            scopedHost.Start();
+            var client = new ControlPipeClient(scopedHost.PipeName);
+
+            // issue a request; CompleteAsync will block until the gate is released or token cancelled
+            dispatchTask = Task.Run(() => client.Send(new ControlRequest
+            {
+                Cmd = Command.SessionNew,
+                Args = new ControlArgs { CreateWorkspace = true, WorkspaceName = "stop", Cwd = stateDir },
+            }));
+
+            // wait for CompleteAsync to be entered (gate has been released by the dispatch)
+            await factory.EnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(dispatchTask.IsCompleted, "dispatch returned before Stop was called");
+
+            // stopping the host must cancel the in-flight CompleteAsync
+            scopedHost.Stop();
+
+            var response = await dispatchTask.WaitAsync(TimeSpan.FromSeconds(3));
+
+            Assert.False(response.Ok);
+            Assert.StartsWith("internal error:", response.Error);
+            Assert.Equal(1, factory.DisposeCount);
+        }
+        finally
+        {
+            // release the fake gate so the blocked CompleteAsync can return (cleanup after red)
+            factory.ReleaseGate();
+            if (dispatchTask is not null)
+                try { await dispatchTask.WaitAsync(TimeSpan.FromSeconds(10)); } catch { }
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+}
+
+// Controllable dispatch scope factory for O1.1: signals when CompleteAsync is entered (gate free).
+file sealed class FakeScopeFactory : IControlDispatchScopeFactory
+{
+    private readonly TaskCompletionSource _completeCalled =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _releaseGate =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public int BeginCount { get; private set; }
+    public int DisposeCount { get; private set; }
+
+    // Completes when CompleteAsync is entered — i.e., after the dispatch gate has been released.
+    public Task GateReleasedTask => _completeCalled.Task;
+
+    public IControlDispatchScope Begin()
+    {
+        BeginCount++;
+        return new FakeScope(_completeCalled, _releaseGate.Task, () => DisposeCount++);
+    }
+
+    public void Release() => _releaseGate.TrySetResult();
+
+    private sealed class FakeScope(
+        TaskCompletionSource completeCalled,
+        Task completion,
+        Action onDispose) : IControlDispatchScope
+    {
+        public Task CompleteAsync(CancellationToken cancellationToken)
+        {
+            completeCalled.TrySetResult();
+            return completion;
+        }
+
+        public void Dispose() => onDispose();
+    }
+}
+
+// Controllable dispatch scope for O1.3: signals entry, then waits on a gate that respects the
+// supplied cancellation token. On cancellation, OperationCanceledException propagates out.
+file sealed class FakeCancellableScopeFactory : IControlDispatchScopeFactory
+{
+    private readonly TaskCompletionSource _entered =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _releaseGate =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public int DisposeCount { get; private set; }
+
+    public Task EnteredTask => _entered.Task;
+
+    public void ReleaseGate() => _releaseGate.TrySetResult();
+
+    public IControlDispatchScope Begin() =>
+        new FakeCancellableScope(_entered, _releaseGate.Task, () => DisposeCount++);
+
+    private sealed class FakeCancellableScope(
+        TaskCompletionSource entered,
+        Task gate,
+        Action onDispose) : IControlDispatchScope
+    {
+        public async Task CompleteAsync(CancellationToken cancellationToken)
+        {
+            entered.TrySetResult();
+            await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public void Dispose() => onDispose();
+    }
 }
