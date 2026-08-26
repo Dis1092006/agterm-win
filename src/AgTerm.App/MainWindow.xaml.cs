@@ -22,21 +22,45 @@ public sealed partial class MainWindow : Window
 {
     private readonly Dictionary<Guid, XtermPaneSurface> _surfaces = new(); // UI-thread confined
     private readonly Task<XtermPage> _pageTask;
+    private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
     private readonly AppSettings _settings = new SettingsStore().Load();
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
+    private LiveSelectionSnapshot _selection = new(null, null); // UI-thread confined
     private Guid? _selectedSessionId; // UI-thread confined
+    private long _layoutGeneration; // UI-thread confined
     private bool _draggingDivider;
 
     private sealed record StartupState(
-        Guid? SelectedSessionId,
+        LiveSelectionSnapshot Selection,
         IReadOnlyList<(Guid SessionId, XtermPaneSurface Surface)> CommittedMainSurfaces);
 
     public MainWindow()
     {
         InitializeComponent();
         _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
-        Closed += (_, _) => Task.Run(() => _host?.Dispose()); // teardown blocks; keep it off the UI thread
+        _layoutCoordinator = new TerminalLayoutCoordinator(async layout =>
+        {
+            var page = await _pageTask;
+            return await page.ApplyLayoutAsync(layout);
+        });
+        _layoutCoordinator.LayoutAccepted += (_, layout) =>
+        {
+            switch (layout)
+            {
+                case TerminalLayout.Single single:
+                    Title = $"{single.Title} — agterm";
+                    break;
+                case TerminalLayout.Empty:
+                    Title = "agterm";
+                    break;
+            }
+        };
+        Closed += (_, _) =>
+        {
+            _layoutCoordinator.Dispose();
+            _ = Task.Run(() => _host?.Dispose()); // teardown blocks; keep it off the UI thread
+        };
         ObserveTaskFault(StartHostAsync(), "StartHostAsync failed");
     }
 
@@ -60,12 +84,16 @@ public sealed partial class MainWindow : Window
             IsUiThread = () => DispatcherQueue.HasThreadAccess,
         }));
         _host = host;
-        host.StoreCoordinator.SelectionChanged += selectedSessionId =>
+        host.StoreCoordinator.SelectionSnapshotChanged += snapshot =>
         {
             DispatcherQueue.TryEnqueue(() =>
             {
-                _selectedSessionId = selectedSessionId;
-                ShowPane(selectedSessionId);
+                if (snapshot == _selection)
+                    return;
+
+                _selection = snapshot;
+                _selectedSessionId = snapshot.SessionId;
+                SubmitLayout();
             });
         };
 
@@ -74,20 +102,27 @@ public sealed partial class MainWindow : Window
 
         var startup = await host.StoreCoordinator.ReadAsync(store =>
         {
+            var selectedSessionId = store.SelectedSessionId;
+            var selectedDisplayName = selectedSessionId is { } id
+                ? store.SessionWithId(id)?.DisplayName
+                : null;
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
                 .Where(session => session.Surface is XtermPaneSurface)
                 .Select(session => (session.Id, (XtermPaneSurface)session.Surface!))
                 .ToList();
-            return new StartupState(store.SelectedSessionId, committedSurfaces);
+            return new StartupState(
+                new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName),
+                committedSurfaces);
         });
 
         DispatcherQueue.TryEnqueue(() =>
         {
-            _selectedSessionId = startup.SelectedSessionId;
+            _selection = startup.Selection;
+            _selectedSessionId = startup.Selection.SessionId;
             foreach (var (sessionId, surface) in startup.CommittedMainSurfaces)
                 MountSurface(sessionId, surface);
-            ShowPane(_selectedSessionId);
+            SubmitLayout();
         });
 
         var sidebar = new SidebarController(
@@ -104,7 +139,6 @@ public sealed partial class MainWindow : Window
         });
         host.Start();
         _ = ArmHotkeysAsync(host);
-        DispatcherQueue.TryEnqueue(() => ShowPane(_selectedSessionId));
     }
 
     /// <summary>Window-level chrome from a sidebar snapshot: column width and visibility.</summary>
@@ -314,56 +348,23 @@ public sealed partial class MainWindow : Window
         if (_surfaces.TryGetValue(sessionId, out var current) && ReferenceEquals(current, surface))
             return;
         _surfaces[sessionId] = surface;
-        ShowPane(_selectedSessionId);
-        WireTitle(sessionId, surface);
+        SubmitLayout();
         _ = UnmountOnExitAsync(sessionId, surface);
     }
 
-    /// <summary>Show exactly the selected session's pane in the shared page. UI thread only.</summary>
-    private void ShowPane(Guid? selected)
+    private void SubmitLayout()
     {
-        if (selected is not { } id || !_surfaces.TryGetValue(id, out var surface)) return;
-        _ = surface.ShowAsync();
-        _ = UpdateWindowTitleAsync(id);
-    }
-
-    private void WireTitle(Guid sessionId, XtermPaneSurface surface)
-    {
-        surface.Pane.TitleChanged += __ => DispatcherQueue.TryEnqueue(() =>
+        var generation = ++_layoutGeneration;
+        if (_selection.SessionId is { } sessionId &&
+            _selection.DisplayName is { } displayName &&
+            _surfaces.TryGetValue(sessionId, out var surface) &&
+            surface.PaneToken is { } paneToken)
         {
-            if (_selectedSessionId == sessionId)
-                _ = UpdateWindowTitleAsync(sessionId);
-        });
-    }
-
-    private async Task UpdateWindowTitleAsync(Guid sessionId)
-    {
-        var host = _host;
-        if (host is null)
+            _layoutCoordinator.Submit(new TerminalLayout.Single(generation, paneToken, displayName));
             return;
-
-        try
-        {
-            var displayName = await host.StoreCoordinator.ReadAsync(
-                store => store.SessionWithId(sessionId)?.DisplayName).ConfigureAwait(false);
-
-            if (displayName is null)
-                return;
-
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                if (_selectedSessionId == sessionId)
-                    Title = $"{displayName} — agterm";
-            });
         }
-        catch (ObjectDisposedException)
-        {
-            // shutdown race: the coordinator may dispose while the title read is in flight
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"UpdateWindowTitleAsync failed: {ex}");
-        }
+
+        _layoutCoordinator.Submit(new TerminalLayout.Empty(generation));
     }
 
     private async Task UnmountOnExitAsync(Guid sessionId, XtermPaneSurface surface)
@@ -379,9 +380,12 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             // the surface's Teardown (host close path) removes the page pane; here we only drop
-            // the window's handle so ShowPane stops addressing it
+            // the window's handle and refresh layout selection state
             if (_surfaces.TryGetValue(sessionId, out var current) && ReferenceEquals(current, surface))
+            {
                 _surfaces.Remove(sessionId);
+                SubmitLayout();
+            }
         });
     }
 

@@ -10,245 +10,354 @@
 //                                              {type:'cwd', paneId, uri}         OSC 7 / OSC 9;9
 //                                              {type:'chord', paneId, ctrl, alt, shift, key}
 //   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize}) → {cols,rows},
-//     agterm.showPane(paneId), agterm.closePane(paneId), and the per-pane reads/writes:
+//     agterm.showPane(paneId), agterm.closePane(paneId), agterm.applyLayout(layout), and the per-pane reads/writes:
 //     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
 //     each takes paneId first; every call on an unknown paneId returns null. Page-global:
 //     agterm.setChords([{ctrl,alt,shift,key}]) — the hotkey table the panes intercept.
+//     layout schema: {type:'single', generation, paneId, title} | {type:'empty', generation}.
+//     applyLayout rejects stale generations (< highest accepted) with false and does no DOM changes.
 // The FIRST opened pane is shown automatically; window resizes refit only the visible pane.
-'use strict';
+"use strict";
 
 const panes = new Map(); // paneId → {term, fitAddon, searchAddon, serializeAddon, lastSearch, el}
 let visiblePaneId = null;
+let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
-const container = document.getElementById('panes');
+const container = document.getElementById("panes");
 
 // e.key → the keymap key name (lowercased char or a named key); null = not interceptable
 function normalizeKey(key) {
-    if (typeof key !== 'string') return null;
-    if (key.length === 1) return key === ' ' ? 'space' : key.toLowerCase();
-    switch (key) {
-        case 'Tab': return 'tab';
-        case 'Enter': return 'return';
-        case 'Backspace': return 'delete';
-        case 'ArrowLeft': return 'left';
-        case 'ArrowRight': return 'right';
-        case 'ArrowUp': return 'up';
-        case 'ArrowDown': return 'down';
-        default: return null;
-    }
+  if (typeof key !== "string") return null;
+  if (key.length === 1) return key === " " ? "space" : key.toLowerCase();
+  switch (key) {
+    case "Tab":
+      return "tab";
+    case "Enter":
+      return "return";
+    case "Backspace":
+      return "delete";
+    case "ArrowLeft":
+      return "left";
+    case "ArrowRight":
+      return "right";
+    case "ArrowUp":
+      return "up";
+    case "ArrowDown":
+      return "down";
+    default:
+      return null;
+  }
 }
 
 const post = (msg) => window.chrome.webview.postMessage(msg);
 
 const b64ToBytes = (b64) => {
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
 };
 
 function openPane(paneId, opts) {
-    if (panes.has(paneId)) return null;
-    const el = document.createElement('div');
-    el.className = 'pane';
-    el.style.display = 'none';
-    container.appendChild(el);
+  if (panes.has(paneId)) return null;
+  const el = document.createElement("div");
+  el.className = "pane";
+  el.dataset.paneId = paneId;
+  el.style.display = "none";
+  container.appendChild(el);
 
-    const term = new Terminal({
-        allowProposedApi: true,
-        cursorBlink: true,
-        fontFamily: 'Cascadia Mono, Consolas, monospace',
-        fontSize: (opts && typeof opts.fontSize === 'number') ? opts.fontSize : 14,
-        scrollback: 10000,
+  const term = new Terminal({
+    allowProposedApi: true,
+    cursorBlink: true,
+    fontFamily: "Cascadia Mono, Consolas, monospace",
+    fontSize: opts && typeof opts.fontSize === "number" ? opts.fontSize : 14,
+    scrollback: 10000,
+  });
+  const fitAddon = new FitAddon.FitAddon();
+  const searchAddon = new SearchAddon.SearchAddon();
+  const serializeAddon = new SerializeAddon.SerializeAddon();
+  term.loadAddon(fitAddon);
+  term.loadAddon(searchAddon);
+  term.loadAddon(serializeAddon);
+
+  const pane = {
+    term,
+    fitAddon,
+    searchAddon,
+    serializeAddon,
+    lastSearch: { index: -1, count: 0 },
+    el,
+  };
+  panes.set(paneId, pane);
+
+  // measure hidden panes too: render into the (visible-sized) container while display:none is
+  // only toggled after open — xterm needs a laid-out element, so flip on, open+fit, restore.
+  el.style.display = "block";
+  term.open(el);
+
+  // app hotkeys never reach the shell: a keydown matching the host-pushed chord table goes
+  // back as a chord message instead (the host's KeybindMatcher dispatches it)
+  term.attachCustomKeyEventHandler((ev) => {
+    if (ev.type !== "keydown") return true;
+    const key = normalizeKey(ev.key);
+    if (key === null) return true;
+    const hit = interceptChords.some(
+      (c) =>
+        c.ctrl === ev.ctrlKey &&
+        c.alt === ev.altKey &&
+        c.shift === ev.shiftKey &&
+        c.key === key,
+    );
+    if (!hit) return true;
+    post({
+      type: "chord",
+      paneId,
+      ctrl: ev.ctrlKey,
+      alt: ev.altKey,
+      shift: ev.shiftKey,
+      key,
     });
-    const fitAddon = new FitAddon.FitAddon();
-    const searchAddon = new SearchAddon.SearchAddon();
-    const serializeAddon = new SerializeAddon.SerializeAddon();
-    term.loadAddon(fitAddon);
-    term.loadAddon(searchAddon);
-    term.loadAddon(serializeAddon);
+    if (ev.preventDefault) ev.preventDefault();
+    return false;
+  });
 
-    const pane = { term, fitAddon, searchAddon, serializeAddon, lastSearch: { index: -1, count: 0 }, el };
-    panes.set(paneId, pane);
+  // user input → pty (xterm already encodes Enter as CR, arrows as VT sequences, etc.)
+  term.onData((data) => post({ type: "data", paneId, data }));
+  term.onBinary((data) => post({ type: "binary", paneId, data }));
 
-    // measure hidden panes too: render into the (visible-sized) container while display:none is
-    // only toggled after open — xterm needs a laid-out element, so flip on, open+fit, restore.
-    el.style.display = 'block';
-    term.open(el);
+  // OSC 0/1/2 → session title (manual VT parsing is banned; xterm's handler is the source)
+  term.onTitleChange((title) => post({ type: "title", paneId, title }));
 
-    // app hotkeys never reach the shell: a keydown matching the host-pushed chord table goes
-    // back as a chord message instead (the host's KeybindMatcher dispatches it)
-    term.attachCustomKeyEventHandler((ev) => {
-        if (ev.type !== 'keydown') return true;
-        const key = normalizeKey(ev.key);
-        if (key === null) return true;
-        const hit = interceptChords.some((c) =>
-            c.ctrl === ev.ctrlKey && c.alt === ev.altKey && c.shift === ev.shiftKey && c.key === key);
-        if (!hit) return true;
-        post({ type: 'chord', paneId, ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key });
-        if (ev.preventDefault) ev.preventDefault();
-        return false;
-    });
+  // OSC 7 → session cwd; forwarded verbatim, parsed on the C# side. Return false so xterm's own
+  // OSC 7 handling (if any) still runs.
+  term.parser.registerOscHandler(7, (uri) => {
+    post({ type: "cwd", paneId, uri });
+    return false;
+  });
 
-    // user input → pty (xterm already encodes Enter as CR, arrows as VT sequences, etc.)
-    term.onData((data) => post({ type: 'data', paneId, data }));
-    term.onBinary((data) => post({ type: 'binary', paneId, data }));
+  // OSC 9;9 — the ConEmu / Windows Terminal cwd convention (`ESC]9;9;"<path>"ESC\`); the handler
+  // for identifier 9 receives everything after "9;", so a cwd report starts with another "9;".
+  term.parser.registerOscHandler(9, (data) => {
+    if (data.startsWith("9;"))
+      post({ type: "cwd", paneId, uri: data.slice(2) });
+    return false;
+  });
 
-    // OSC 0/1/2 → session title (manual VT parsing is banned; xterm's handler is the source)
-    term.onTitleChange((title) => post({ type: 'title', paneId, title }));
+  // track search hits so a read-back after find can report "N of M"
+  searchAddon.onDidChangeResults((r) => {
+    pane.lastSearch = {
+      index: r ? r.resultIndex : -1,
+      count: r ? r.resultCount : 0,
+    };
+  });
 
-    // OSC 7 → session cwd; forwarded verbatim, parsed on the C# side. Return false so xterm's own
-    // OSC 7 handling (if any) still runs.
-    term.parser.registerOscHandler(7, (uri) => {
-        post({ type: 'cwd', paneId, uri });
-        return false;
-    });
+  fitAddon.fit();
+  const size = { cols: term.cols, rows: term.rows };
 
-    // OSC 9;9 — the ConEmu / Windows Terminal cwd convention (`ESC]9;9;"<path>"ESC\`); the handler
-    // for identifier 9 receives everything after "9;", so a cwd report starts with another "9;".
-    term.parser.registerOscHandler(9, (data) => {
-        if (data.startsWith('9;')) post({ type: 'cwd', paneId, uri: data.slice(2) });
-        return false;
-    });
-
-    // track search hits so a read-back after find can report "N of M"
-    searchAddon.onDidChangeResults((r) => {
-        pane.lastSearch = { index: r ? r.resultIndex : -1, count: r ? r.resultCount : 0 };
-    });
-
-    fitAddon.fit();
-    const size = { cols: term.cols, rows: term.rows };
-
-    if (visiblePaneId === null) {
-        visiblePaneId = paneId;
-        term.focus();
-    } else {
-        el.style.display = 'none';
-    }
-    return size;
+  if (visiblePaneId === null) {
+    visiblePaneId = paneId;
+    term.focus();
+  } else {
+    el.style.display = "none";
+  }
+  return size;
 }
 
 function showPane(paneId) {
-    const pane = panes.get(paneId);
-    if (!pane) return null;
-    for (const [id, p] of panes) p.el.style.display = id === paneId ? 'block' : 'none';
-    visiblePaneId = paneId;
-    fitAndReport(paneId);
-    pane.term.focus();
-    return true;
+  const pane = panes.get(paneId);
+  if (!pane) return null;
+  for (const [id, p] of panes)
+    p.el.style.display = id === paneId ? "block" : "none";
+  visiblePaneId = paneId;
+  fitAndReport(paneId);
+  pane.term.focus();
+  return true;
 }
 
 function closePane(paneId) {
-    const pane = panes.get(paneId);
-    if (!pane) return null;
-    panes.delete(paneId);
-    pane.term.dispose();
-    pane.el.remove();
-    if (visiblePaneId === paneId) visiblePaneId = null;
+  const pane = panes.get(paneId);
+  if (!pane) return null;
+  panes.delete(paneId);
+  pane.term.dispose();
+  pane.el.remove();
+  if (visiblePaneId === paneId) visiblePaneId = null;
+  return true;
+}
+
+function applyLayout(layout) {
+  if (!layout || typeof layout !== "object") return false;
+  if (typeof layout.type !== "string") return false;
+  if (
+    typeof layout.generation !== "number" ||
+    !Number.isInteger(layout.generation)
+  )
+    return false;
+
+  const generation = layout.generation;
+  if (
+    highestAcceptedLayoutGeneration !== null &&
+    generation < highestAcceptedLayoutGeneration
+  )
+    return false;
+
+  if (layout.type === "empty") {
+    for (const [, p] of panes) p.el.style.display = "none";
+    visiblePaneId = null;
+    highestAcceptedLayoutGeneration = generation;
     return true;
+  }
+
+  if (layout.type === "single") {
+    if (typeof layout.paneId !== "string" || typeof layout.title !== "string")
+      return false;
+    if (!panes.has(layout.paneId)) return false;
+    const shown = showPane(layout.paneId);
+    if (shown !== true) return false;
+    highestAcceptedLayoutGeneration = generation;
+    return true;
+  }
+
+  return false;
 }
 
 function fitAndReport(paneId) {
-    const pane = panes.get(paneId);
-    if (!pane) return null;
-    pane.fitAddon.fit();
-    post({ type: 'resize', paneId, cols: pane.term.cols, rows: pane.term.rows });
-    return { cols: pane.term.cols, rows: pane.term.rows };
+  const pane = panes.get(paneId);
+  if (!pane) return null;
+  pane.fitAddon.fit();
+  post({ type: "resize", paneId, cols: pane.term.cols, rows: pane.term.rows });
+  return { cols: pane.term.cols, rows: pane.term.rows };
 }
-window.addEventListener('resize', () => {
-    if (visiblePaneId !== null) fitAndReport(visiblePaneId);
+window.addEventListener("resize", () => {
+  if (visiblePaneId !== null) fitAndReport(visiblePaneId);
 });
 
-window.chrome.webview.addEventListener('message', (e) => {
-    const msg = e.data;
-    if (!msg || !msg.type) return;
-    const pane = panes.get(msg.paneId);
-    if (!pane) return;
-    switch (msg.type) {
-        case 'output':
-            pane.term.write(b64ToBytes(msg.data));
-            break;
-        case 'options':
-            if (typeof msg.fontSize === 'number') pane.term.options.fontSize = msg.fontSize;
-            fitAndReport(msg.paneId);
-            break;
-    }
+window.chrome.webview.addEventListener("message", (e) => {
+  const msg = e.data;
+  if (!msg || !msg.type) return;
+  const pane = panes.get(msg.paneId);
+  if (!pane) return;
+  switch (msg.type) {
+    case "output":
+      pane.term.write(b64ToBytes(msg.data));
+      break;
+    case "options":
+      if (typeof msg.fontSize === "number")
+        pane.term.options.fontSize = msg.fontSize;
+      fitAndReport(msg.paneId);
+      break;
+  }
 });
-
 
 // plain-text buffer read (session.text): default = the visible screen, all = screen + scrollback,
 // lines = the last N lines of screen + scrollback. Lines are right-trimmed like the upstream read.
 function bufferText(term, all, lines) {
-    const buf = term.buffer.active;
-    let start, end;
-    if (lines != null && lines > 0) {
-        // last N CONTENT lines of screen + scrollback: scan everything, trim, then tail-slice
-        start = 0;
-        end = buf.length;
-    } else if (all) {
-        start = 0;
-        end = buf.length;
-    } else {
-        start = buf.viewportY;
-        end = Math.min(buf.length, buf.viewportY + term.rows);
+  const buf = term.buffer.active;
+  let start, end;
+  if (lines != null && lines > 0) {
+    // last N CONTENT lines of screen + scrollback: scan everything, trim, then tail-slice
+    start = 0;
+    end = buf.length;
+  } else if (all) {
+    start = 0;
+    end = buf.length;
+  } else {
+    start = buf.viewportY;
+    end = Math.min(buf.length, buf.viewportY + term.rows);
+  }
+  const out = [];
+  for (let i = start; i < end; i++) {
+    const line = buf.getLine(i);
+    if (!line) {
+      out.push("");
+      continue;
     }
-    const out = [];
-    for (let i = start; i < end; i++) {
-        const line = buf.getLine(i);
-        if (!line) { out.push(''); continue; }
-        const text = line.translateToString(true);
-        // a soft-wrapped row continues its predecessor: one logical line, not two
-        if (line.isWrapped && out.length > 0) out[out.length - 1] += text;
-        else out.push(text);
-    }
-    // drop trailing blank rows (an idle screen read otherwise ends in dozens of empty lines)
-    while (out.length > 0 && out[out.length - 1] === '') out.pop();
-    return (lines != null && lines > 0 ? out.slice(-lines) : out).join('\n');
+    const text = line.translateToString(true);
+    // a soft-wrapped row continues its predecessor: one logical line, not two
+    if (line.isWrapped && out.length > 0) out[out.length - 1] += text;
+    else out.push(text);
+  }
+  // drop trailing blank rows (an idle screen read otherwise ends in dozens of empty lines)
+  while (out.length > 0 && out[out.length - 1] === "") out.pop();
+  return (lines != null && lines > 0 ? out.slice(-lines) : out).join("\n");
 }
 
 /// every entry answers null for an unknown paneId — the C# side's "not realized" shape
 const withPane = (paneId, fn) => {
-    const pane = panes.get(paneId);
-    return pane ? fn(pane) : null;
+  const pane = panes.get(paneId);
+  return pane ? fn(pane) : null;
 };
 
 window.agterm = {
-    openPane,
-    showPane,
-    closePane,
-    fit: (paneId) => fitAndReport(paneId),
-    text: (paneId, all, lines) => withPane(paneId, (p) => bufferText(p.term, all, lines)),
-    selection: (paneId) => withPane(paneId, (p) => p.term.getSelection()),
-    selectAll: (paneId) => withPane(paneId, (p) => { p.term.selectAll(); return true; }),
-    serialize: (paneId) => withPane(paneId, (p) => p.serializeAddon.serialize()),
-    search: (paneId, needle, dir) => withPane(paneId, (p) => {
-        const opts = { decorations: { matchOverviewRuler: '#888888', activeMatchColorOverviewRuler: '#ffffff' } };
-        const found = dir === 'prev' ? p.searchAddon.findPrevious(needle, opts)
-                                     : p.searchAddon.findNext(needle, opts);
-        return { found, index: p.lastSearch.index, count: p.lastSearch.count };
+  openPane,
+  showPane,
+  closePane,
+  applyLayout,
+  fit: (paneId) => fitAndReport(paneId),
+  text: (paneId, all, lines) =>
+    withPane(paneId, (p) => bufferText(p.term, all, lines)),
+  selection: (paneId) => withPane(paneId, (p) => p.term.getSelection()),
+  selectAll: (paneId) =>
+    withPane(paneId, (p) => {
+      p.term.selectAll();
+      return true;
     }),
-    searchClose: (paneId) => withPane(paneId, (p) => { p.searchAddon.clearDecorations(); p.term.clearSelection(); return true; }),
-    paste: (paneId, text) => withPane(paneId, (p) => { p.term.paste(text); return true; }),
-    setFontSize: (paneId, px) => withPane(paneId, (p) => {
-        p.term.options.fontSize = px;
-        fitAndReport(paneId);
-        return p.term.options.fontSize;
+  serialize: (paneId) => withPane(paneId, (p) => p.serializeAddon.serialize()),
+  search: (paneId, needle, dir) =>
+    withPane(paneId, (p) => {
+      const opts = {
+        decorations: {
+          matchOverviewRuler: "#888888",
+          activeMatchColorOverviewRuler: "#ffffff",
+        },
+      };
+      const found =
+        dir === "prev"
+          ? p.searchAddon.findPrevious(needle, opts)
+          : p.searchAddon.findNext(needle, opts);
+      return { found, index: p.lastSearch.index, count: p.lastSearch.count };
     }),
-    getFontSize: (paneId) => withPane(paneId, (p) => p.term.options.fontSize),
-    focus: (paneId) => withPane(paneId, (p) => { p.term.focus(); return true; }),
-    // page-global hotkey table (host-invoked so a following dispatch cannot outrun it)
-    setChords: (items) => { interceptChords = items || []; return interceptChords.length; },
-    // test-only: run a synthetic keydown through the real xterm key path (chord interception)
-    dispatchKey: (paneId, opts) => withPane(paneId, (p) => {
-        p.term.textarea.dispatchEvent(new KeyboardEvent('keydown', {
-            key: opts.key,
-            ctrlKey: !!opts.ctrlKey,
-            altKey: !!opts.altKey,
-            shiftKey: !!opts.shiftKey,
-            cancelable: true,
-        }));
-        return true;
+  searchClose: (paneId) =>
+    withPane(paneId, (p) => {
+      p.searchAddon.clearDecorations();
+      p.term.clearSelection();
+      return true;
+    }),
+  paste: (paneId, text) =>
+    withPane(paneId, (p) => {
+      p.term.paste(text);
+      return true;
+    }),
+  setFontSize: (paneId, px) =>
+    withPane(paneId, (p) => {
+      p.term.options.fontSize = px;
+      fitAndReport(paneId);
+      return p.term.options.fontSize;
+    }),
+  getFontSize: (paneId) => withPane(paneId, (p) => p.term.options.fontSize),
+  focus: (paneId) =>
+    withPane(paneId, (p) => {
+      p.term.focus();
+      return true;
+    }),
+  // page-global hotkey table (host-invoked so a following dispatch cannot outrun it)
+  setChords: (items) => {
+    interceptChords = items || [];
+    return interceptChords.length;
+  },
+  // test-only: run a synthetic keydown through the real xterm key path (chord interception)
+  dispatchKey: (paneId, opts) =>
+    withPane(paneId, (p) => {
+      p.term.textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: opts.key,
+          ctrlKey: !!opts.ctrlKey,
+          altKey: !!opts.altKey,
+          shiftKey: !!opts.shiftKey,
+          cancelable: true,
+        }),
+      );
+      return true;
     }),
 };
 
-post({ type: 'ready' });
+post({ type: "ready" });

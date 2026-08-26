@@ -148,4 +148,109 @@ public class XtermPageLiveTests
         Assert.Equal("null", raw);
         _ = one;
     }
+
+    [Fact]
+    public async Task ApplyLayout_generation_guard_rejects_stale_and_preserves_accepted_pane_visibility()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("apl-p1"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("apl-p2"));
+
+        var gen2Accepted = await _webView.RunAsync(_ =>
+            page.ApplyLayoutAsync(new TerminalLayout.Single(2L, "apl-p2", "shell")));
+        Assert.True(gen2Accepted);
+
+        var gen1Rejected = await _webView.RunAsync(_ =>
+            page.ApplyLayoutAsync(new TerminalLayout.Single(1L, "apl-p1", "shell")));
+        Assert.False(gen1Rejected);
+
+        var p2Display = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="apl-p2"]').style.display"""));
+        var p1Display = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="apl-p1"]').style.display"""));
+
+        Assert.Equal("\"block\"", p2Display);
+        Assert.Equal("\"none\"", p1Display);
+    }
+
+    [Fact]
+    public async Task Twenty_rapid_layout_submissions_end_on_generation_twenty()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("rapid-p1"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("rapid-p2"));
+
+        var accepted = new List<TerminalLayout>();
+
+        async Task<bool> Sink(TerminalLayout layout) =>
+            await _webView.RunAsync(_ => page.ApplyLayoutAsync(layout));
+
+        using var coordinator = new TerminalLayoutCoordinator(Sink);
+        coordinator.LayoutAccepted += (_, layout) => accepted.Add(layout);
+
+        for (var i = 1; i <= 20; i++)
+        {
+            var paneId = i % 2 == 0 ? "rapid-p2" : "rapid-p1";
+            coordinator.Submit(new TerminalLayout.Single(i, paneId, $"title-{i}"));
+        }
+
+        await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.NotEmpty(accepted);
+        var final = accepted[^1];
+        Assert.Equal(20L, final.Generation);
+        Assert.Equal("rapid-p2", ((TerminalLayout.Single)final).PaneId);
+
+        var p2Display = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="rapid-p2"]').style.display"""));
+        var p1Display = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="rapid-p1"]').style.display"""));
+
+        Assert.Equal("\"block\"", p2Display);
+        Assert.Equal("\"none\"", p1Display);
+    }
+
+    [Fact]
+    public async Task ApplyLayout_Empty_hides_all_panes_and_stale_Single_after_Empty_is_rejected()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("eht-p1"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("eht-p2"));
+
+        var gen1Accepted = await _webView.RunAsync(_ =>
+            page.ApplyLayoutAsync(new TerminalLayout.Single(1L, "eht-p2", "shell")));
+        Assert.True(gen1Accepted);
+
+        var gen2Accepted = await _webView.RunAsync(_ =>
+            page.ApplyLayoutAsync(new TerminalLayout.Empty(2L)));
+        Assert.True(gen2Accepted);
+
+        var p1AfterEmpty = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="eht-p1"]').style.display"""));
+        var p2AfterEmpty = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="eht-p2"]').style.display"""));
+
+        Assert.Equal("\"none\"", p1AfterEmpty);
+        Assert.Equal("\"none\"", p2AfterEmpty);
+
+        var staleRejected = await _webView.RunAsync(_ =>
+            page.ApplyLayoutAsync(new TerminalLayout.Single(1L, "eht-p2", "shell")));
+        Assert.False(staleRejected);
+
+        var p1AfterStale = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="eht-p1"]').style.display"""));
+        var p2AfterStale = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """document.querySelector('[data-pane-id="eht-p2"]').style.display"""));
+
+        Assert.Equal("\"none\"", p1AfterStale);
+        Assert.Equal("\"none\"", p2AfterStale);
+    }
 }

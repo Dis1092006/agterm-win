@@ -387,6 +387,48 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task SelectionSnapshotChanged_event_carries_session_id_and_display_name()
+    {
+        using var coordinator = BuildCoordinator();
+        var received = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.SelectionSnapshotChanged += snap => received.TrySetResult(snap);
+
+        Guid newId = default;
+        _host.RunLocked(() =>
+        {
+            var ws = _host.Store.Workspaces[0];
+            newId = _host.Store.AddSession(ws.Id, _stateDir, name: "selected-title", select: false)!.Id;
+            _host.Store.SelectSession(newId);
+        });
+
+        var snapshot = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(newId, snapshot.SessionId);
+        Assert.Equal("selected-title", snapshot.DisplayName);
+    }
+
+    [Fact]
+    public async Task Selection_snapshot_refreshes_after_sidebar_invalidation()
+    {
+        using var coordinator = BuildCoordinator();
+        var received = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.SelectionSnapshotChanged += snap => received.TrySetResult(snap);
+
+        Guid capturedId = default;
+        _host.RunLocked(() =>
+        {
+            var session = _host.Store.ActiveSession ?? throw new InvalidOperationException("No selected session");
+            session.CustomName = null;
+            session.OscTitle = "osc-layout-title";
+            capturedId = session.Id;
+            _host.Store.NotifySidebar();
+        });
+
+        var snapshot = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(capturedId, snapshot.SessionId);
+        Assert.Equal("osc-layout-title", snapshot.DisplayName);
+    }
+
+    [Fact]
     public async Task SidebarInvalidated_event_fires_when_workspace_is_added()
     {
         using var coordinator = BuildCoordinator();

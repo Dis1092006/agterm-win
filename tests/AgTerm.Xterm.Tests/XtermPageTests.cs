@@ -109,6 +109,34 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task ApplyLayout_Single_posts_discriminated_camelCase_json_and_returns_bridge_result()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+
+        var accepted = await page.ApplyLayoutAsync(new TerminalLayout.Single(7L, "p1", "shell"));
+
+        Assert.True(accepted);
+        var applyScript = Assert.Single(_host.Scripts, s => s.Contains("agterm.applyLayout"));
+        Assert.Contains("""{"type":"single","generation":7,"paneId":"p1","title":"shell"}""", applyScript);
+    }
+
+    [Fact]
+    public async Task ApplyLayout_Empty_returns_bridge_bool_and_exact_discriminated_camelCase_json()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+
+        var accepted = await page.ApplyLayoutAsync(new TerminalLayout.Empty(3L));
+
+        Assert.True(accepted);
+        var applyScript = Assert.Single(_host.Scripts, s => s.Contains("agterm.applyLayout"));
+        Assert.Contains("""{"type":"empty","generation":3}""", applyScript);
+        Assert.DoesNotContain("paneId", applyScript);
+        Assert.DoesNotContain("title", applyScript);
+    }
+
+    [Fact]
     public async Task SetInterceptChords_posts_the_chord_table_and_chord_messages_raise_the_event()
     {
         var page = await InitializedAsync();

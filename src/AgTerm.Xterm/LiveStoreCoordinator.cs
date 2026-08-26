@@ -3,6 +3,8 @@ using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
+public sealed record LiveSelectionSnapshot(Guid? SessionId, string? DisplayName);
+
 public interface ILiveStoreCoordinator : IDisposable
 {
     /// <summary>Safe to call from UI code; the store callback is scheduled off UI before it can
@@ -16,6 +18,8 @@ public interface ILiveStoreCoordinator : IDisposable
     event Action? SidebarInvalidated;
 
     event Action<Guid?>? SelectionChanged;
+
+    event Action<LiveSelectionSnapshot>? SelectionSnapshotChanged;
 }
 
 public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
@@ -30,11 +34,14 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     private readonly Action _onSelectionChanged;
     private int _disposed;
     private long _sidebarGeneration;
-    private long _selectionGeneration;
+    private long _selectionNotificationGeneration;
+    private long _selectionSnapshotGeneration;
 
     public event Action? SidebarInvalidated;
 
     public event Action<Guid?>? SelectionChanged;
+
+    public event Action<LiveSelectionSnapshot>? SelectionSnapshotChanged;
 
     public LiveStoreCoordinator(HeadlessHost host, Func<bool> isUiThread)
         : this(host, isUiThread, static (work, cancellationToken) => Task.Run(work, cancellationToken))
@@ -135,12 +142,16 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             return;
         }
 
+        var snapshot = CaptureSelectionSnapshot();
+
         var generation = Interlocked.Increment(ref _sidebarGeneration);
         QueueEvent(() =>
         {
             if (generation == Volatile.Read(ref _sidebarGeneration))
                 SidebarInvalidated?.Invoke();
         });
+
+        PublishSelectionSnapshot(snapshot);
     }
 
     private void OnSelectionChanged()
@@ -150,12 +161,39 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             return;
         }
 
-        var selectedSessionId = _host.Store.SelectedSessionId;
-        var generation = Interlocked.Increment(ref _selectionGeneration);
+        var snapshot = CaptureSelectionSnapshot();
+        var selectedSessionId = snapshot.SessionId;
+
+        var generation = Interlocked.Increment(ref _selectionNotificationGeneration);
         QueueEvent(() =>
         {
-            if (generation == Volatile.Read(ref _selectionGeneration))
+            if (generation == Volatile.Read(ref _selectionNotificationGeneration))
+            {
                 SelectionChanged?.Invoke(selectedSessionId);
+            }
+        });
+
+        PublishSelectionSnapshot(snapshot);
+    }
+
+    private LiveSelectionSnapshot CaptureSelectionSnapshot()
+    {
+        var selectedSessionId = _host.Store.SelectedSessionId;
+        var selectedDisplayName = selectedSessionId is { } id
+            ? _host.Store.SessionWithId(id)?.DisplayName
+            : null;
+        return new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName);
+    }
+
+    private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)
+    {
+        var generation = Interlocked.Increment(ref _selectionSnapshotGeneration);
+        QueueEvent(() =>
+        {
+            if (generation == Volatile.Read(ref _selectionSnapshotGeneration))
+            {
+                SelectionSnapshotChanged?.Invoke(snapshot);
+            }
         });
     }
 

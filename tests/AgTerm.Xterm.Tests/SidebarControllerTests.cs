@@ -326,6 +326,11 @@ public sealed class SidebarControllerTests : IDisposable
 
         public event Action? SidebarInvalidated;
         public event Action<Guid?>? SelectionChanged;
+        public event Action<LiveSelectionSnapshot>? SelectionSnapshotChanged
+        {
+            add { }
+            remove { }
+        }
 
         public TaskCompletionSource<SidebarSnapshot> EnqueuePendingRead()
         {

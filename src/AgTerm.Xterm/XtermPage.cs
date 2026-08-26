@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text;
 
 namespace AgTerm.Xterm;
 
@@ -51,6 +52,15 @@ public sealed class XtermPage
     public Task ShowPaneAsync(string paneId) =>
         _host.ExecuteScriptAsync($"agterm.showPane({PaneLiteral(paneId)})");
 
+    /// <summary>Apply a discriminated layout on the page and return whether the page accepted it.
+    /// Unknown layout variants throw so new variants cannot serialize silently.</summary>
+    public async Task<bool> ApplyLayoutAsync(TerminalLayout layout)
+    {
+        var payload = SerializeLayout(layout);
+        var raw = await _host.ExecuteScriptAsync($"agterm.applyLayout({payload})").ConfigureAwait(false);
+        return JsonSerializer.Deserialize<bool>(raw);
+    }
+
     /// <summary>Dispose the pane's terminal and div, and stop routing messages to its handle.</summary>
     public async Task ClosePaneAsync(string paneId)
     {
@@ -78,6 +88,34 @@ public sealed class XtermPage
 
     internal static string PaneLiteral(string paneId) =>
         JsonSerializer.Serialize(paneId, XtermTerminal.ScriptLiteral);
+
+    private static string SerializeLayout(TerminalLayout layout)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            switch (layout)
+            {
+                case TerminalLayout.Single single:
+                    writer.WriteString("type", "single");
+                    writer.WriteNumber("generation", single.Generation);
+                    writer.WriteString("paneId", single.PaneId);
+                    writer.WriteString("title", single.Title);
+                    break;
+                case TerminalLayout.Empty empty:
+                    writer.WriteString("type", "empty");
+                    writer.WriteNumber("generation", empty.Generation);
+                    break;
+                default:
+                    throw new NotSupportedException($"Unknown terminal layout variant: {layout.GetType().FullName}");
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
 
     private void OnMessage(string json)
     {
