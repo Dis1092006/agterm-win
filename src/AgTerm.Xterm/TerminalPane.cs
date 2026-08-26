@@ -24,6 +24,8 @@ public sealed class TerminalPane : IDisposable
 {
     private readonly SynchronizationContext _ui;
     private int _disposed;
+    private int _outputStopped;
+    private int _terminated;
     private readonly Task<int> _exited;
 
     private TerminalPane(
@@ -90,7 +92,7 @@ public sealed class TerminalPane : IDisposable
 
             outputPump = new TerminalOutputPump(
                 new TerminalOutputPumpOptions(),
-                chunk => PostBatchToUiAndFeedAsync(ui, terminal, chunk, () => pane is { IsDisposed: true }));
+                chunk => PostBatchToUiAndFeedAsync(ui, terminal, chunk, () => pane is { IsOutputStopped: true }));
 
             pty = ConPtySession.Start(new ConPtyStartInfo
             {
@@ -105,10 +107,10 @@ public sealed class TerminalPane : IDisposable
                     {
                         outputPump.WriteAsync(chunk).AsTask().GetAwaiter().GetResult();
                     }
-                    catch (OperationCanceledException) when (openTearingDown || pane is { IsDisposed: true })
+                    catch (OperationCanceledException) when (openTearingDown || pane is { IsOutputStopped: true })
                     {
                     }
-                    catch (ObjectDisposedException) when (openTearingDown || pane is { IsDisposed: true })
+                    catch (ObjectDisposedException) when (openTearingDown || pane is { IsOutputStopped: true })
                     {
                     }
                 },
@@ -168,11 +170,33 @@ public sealed class TerminalPane : IDisposable
             return;
         }
 
-        OutputPump.Dispose();
-        Pty.Dispose();
+        StopOutput();
+        Terminate();
     }
 
     internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    internal bool IsOutputStopped => Volatile.Read(ref _outputStopped) != 0;
+
+    internal void StopOutput()
+    {
+        if (Interlocked.Exchange(ref _outputStopped, 1) != 0)
+        {
+            return;
+        }
+
+        OutputPump.Dispose();
+    }
+
+    internal void Terminate()
+    {
+        if (Interlocked.Exchange(ref _terminated, 1) != 0)
+        {
+            return;
+        }
+
+        Pty.Dispose();
+    }
 
     private async Task<int> AwaitExitAndFlushAsync()
     {
@@ -183,10 +207,10 @@ public sealed class TerminalPane : IDisposable
         {
             await OutputPump.CompleteAsync().ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (IsDisposed)
+        catch (OperationCanceledException) when (IsOutputStopped)
         {
         }
-        catch (ObjectDisposedException) when (IsDisposed)
+        catch (ObjectDisposedException) when (IsOutputStopped)
         {
         }
 
@@ -197,7 +221,7 @@ public sealed class TerminalPane : IDisposable
         SynchronizationContext ui,
         XtermTerminal terminal,
         ReadOnlyMemory<byte> chunk,
-        Func<bool> isPaneDisposed)
+        Func<bool> isOutputStopped)
     {
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -208,7 +232,7 @@ public sealed class TerminalPane : IDisposable
                 var callbackState = (OutputFeedCallbackState)state!;
                 try
                 {
-                    if (!callbackState.IsPaneDisposed())
+                    if (!callbackState.IsOutputStopped())
                     {
                         callbackState.Terminal.FeedOutput(callbackState.Chunk);
                     }
@@ -219,7 +243,7 @@ public sealed class TerminalPane : IDisposable
                 {
                     callbackState.Done.TrySetException(ex);
                 }
-            }, new OutputFeedCallbackState(terminal, chunk, isPaneDisposed, done));
+                }, new OutputFeedCallbackState(terminal, chunk, isOutputStopped, done));
         }
         catch (Exception ex)
         {
@@ -232,7 +256,7 @@ public sealed class TerminalPane : IDisposable
     private sealed record OutputFeedCallbackState(
         XtermTerminal Terminal,
         ReadOnlyMemory<byte> Chunk,
-        Func<bool> IsPaneDisposed,
+        Func<bool> IsOutputStopped,
         TaskCompletionSource Done);
 
     private static async Task ClosePaneBestEffortAsync(XtermPage page, string paneId)

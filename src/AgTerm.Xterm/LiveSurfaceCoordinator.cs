@@ -139,15 +139,25 @@ internal sealed class LiveDispatchScopeFactory : IControlDispatchScopeFactory
 
 internal sealed class LiveSurfaceCoordinator : IDisposable
 {
+    private static readonly TimeSpan CanceledOpenDrainWindow = TimeSpan.FromSeconds(1);
+
+    private static Task ScheduleWithTaskRun(Func<Task> work)
+    {
+        return Task.Run(work);
+    }
+
     private readonly HeadlessHost _host;
     private readonly LiveDispatchScopeFactory _scopes;
     private readonly Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> _openSurface;
     private readonly TimeSpan _realizeBudget;
     private readonly Action<Guid, IHeadlessSurface>? _committed;
     private readonly Action<string>? _log;
+    private readonly Func<Func<Task>, Task> _schedule;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly object _activeGate = new();
     private readonly HashSet<PendingTerminalSurface> _active = new();
+    private TaskCompletionSource<object?>? _idleCompletion;
+    private int _activeRealizationCount;
     private int _disposed;
 
     public LiveSurfaceCoordinator(
@@ -156,7 +166,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> openSurface,
         TimeSpan realizeBudget,
         Action<Guid, IHeadlessSurface>? committed = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<Func<Task>, Task>? schedule = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _scopes = scopes ?? throw new ArgumentNullException(nameof(scopes));
@@ -164,6 +175,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         _realizeBudget = realizeBudget;
         _committed = committed;
         _log = log;
+        _schedule = schedule ?? ScheduleWithTaskRun;
     }
 
     public PendingTerminalSurface Reserve(SurfaceOpenRequest request)
@@ -187,44 +199,232 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         session.Surface = pending;
         Track(pending);
 
-        if (!_scopes.TryRegister(ct => RealizeAsync(request, pending, ct)))
+        if (!_scopes.TryRegister(ct => RunTrackedRealizeAsync(request, pending, ct)))
         {
-            var scheduled = Task.Run(() => RealizeAsync(request, pending, CancellationToken.None));
-            _ = scheduled.ContinueWith(
-                t =>
-                {
-                    _ = t.Exception;
-                    _log?.Invoke($"LiveSurfaceCoordinator unscoped operation faulted: {t.Exception}");
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            ObserveUnscopedFaults(RunUnscopedTrackedRealizeAsync(request, pending));
         }
 
         return pending;
     }
 
+    public async Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        var idleTask = BeginShutdown();
+        await idleTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        _ = BeginShutdown();
+    }
+
+    private Task BeginShutdown()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
+            _shutdown.Cancel();
+            // Active fire-and-forget operations may not have linked the shutdown token yet. Keep the
+            // source alive; cancellation is the lifetime signal and no WaitHandle is allocated.
+
+            PendingTerminalSurface[] pendingSnapshot;
+            lock (_activeGate)
+            {
+                pendingSnapshot = _active.ToArray();
+            }
+
+            foreach (var pending in pendingSnapshot)
+            {
+                pending.Teardown();
+            }
+        }
+
+        lock (_activeGate)
+        {
+            if (_activeRealizationCount == 0)
+            {
+                return Task.CompletedTask;
+            }
+
+            return _idleCompletion?.Task ?? Task.CompletedTask;
+        }
+    }
+
+    private Task RunTrackedRealizeAsync(
+        SurfaceOpenRequest request,
+        PendingTerminalSurface pending,
+        CancellationToken operationToken)
+    {
+        RegisterActiveRealization();
+        return RunTrackedRegisteredRealizeAsync(request, pending, operationToken);
+    }
+
+    private async Task RunTrackedRegisteredRealizeAsync(
+        SurfaceOpenRequest request,
+        PendingTerminalSurface pending,
+        CancellationToken operationToken)
+    {
+        try
+        {
+            await RunRealizeAsync(request, pending, operationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            CompleteActiveRealization();
+        }
+    }
+
+    private Task RunUnscopedTrackedRealizeAsync(SurfaceOpenRequest request, PendingTerminalSurface pending)
+    {
+        RegisterActiveRealization();
+
+        var workCompletion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseActiveOnce = 0;
+
+        void ReleaseActiveRegistration()
+        {
+            if (Interlocked.Exchange(ref releaseActiveOnce, 1) != 0)
+            {
+                return;
+            }
+
+            CompleteActiveRealization();
+        }
+
+        async Task RegisteredWorkAsync()
+        {
+            try
+            {
+                await RunRealizeAsync(request, pending, CancellationToken.None).ConfigureAwait(false);
+                workCompletion.TrySetResult(null);
+            }
+            catch (Exception ex)
+            {
+                workCompletion.TrySetException(ex);
+                throw;
+            }
+            finally
+            {
+                ReleaseActiveRegistration();
+            }
+        }
+
+        Task scheduled;
+        try
+        {
+            scheduled = _schedule(RegisteredWorkAsync);
+        }
+        catch (Exception ex)
+        {
+            CancelPendingBeforeOpen(request, pending);
+            workCompletion.TrySetException(ex);
+            ReleaseActiveRegistration();
+            return Task.FromException(ex);
+        }
+
+        return AwaitScheduledAndWorkAsync(scheduled, workCompletion.Task, request, pending, ReleaseActiveRegistration);
+    }
+
+    private async Task AwaitScheduledAndWorkAsync(
+        Task scheduled,
+        Task work,
+        SurfaceOpenRequest request,
+        PendingTerminalSurface pending,
+        Action releaseActiveRegistration)
+    {
+        try
+        {
+            await scheduled.ConfigureAwait(false);
+            await work.ConfigureAwait(false);
+        }
+        catch
+        {
+            if (!work.IsCompleted)
+            {
+                CancelPendingBeforeOpen(request, pending);
+                releaseActiveRegistration();
+            }
+
+            throw;
+        }
+    }
+
+    private void ObserveUnscopedFaults(Task scheduled)
+    {
+        _ = scheduled.ContinueWith(
+            t =>
+            {
+                _ = t.Exception;
+                _log?.Invoke($"LiveSurfaceCoordinator unscoped operation faulted: {t.Exception}");
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private void RegisterActiveRealization()
+    {
+        lock (_activeGate)
+        {
+            if (_activeRealizationCount == 0)
+            {
+                _idleCompletion = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            _activeRealizationCount++;
+        }
+    }
+
+    private void CompleteActiveRealization()
+    {
+        TaskCompletionSource<object?>? idleToComplete = null;
+        lock (_activeGate)
+        {
+            if (_activeRealizationCount <= 0)
+            {
+                return;
+            }
+
+            _activeRealizationCount--;
+            if (_activeRealizationCount == 0)
+            {
+                idleToComplete = _idleCompletion;
+                _idleCompletion = null;
+            }
+        }
+
+        idleToComplete?.TrySetResult(null);
+    }
+
+    private async Task RunRealizeAsync(
+        SurfaceOpenRequest request,
+        PendingTerminalSurface pending,
+        CancellationToken operationToken)
+    {
+        if (Volatile.Read(ref _disposed) != 0 ||
+            _shutdown.IsCancellationRequested ||
+            operationToken.IsCancellationRequested ||
+            pending.ReservationToken.IsCancellationRequested)
+        {
+            CancelPendingBeforeOpen(request, pending);
             return;
         }
 
-        _shutdown.Cancel();
-        // Active fire-and-forget operations may not have linked the shutdown token yet. Keep the
-        // source alive; cancellation is the lifetime signal and no WaitHandle is allocated.
+        await RealizeAsync(request, pending, operationToken).ConfigureAwait(false);
+    }
 
-        PendingTerminalSurface[] snapshot;
-        lock (_activeGate)
+    private void CancelPendingBeforeOpen(SurfaceOpenRequest request, PendingTerminalSurface pending)
+    {
+        if (request.SessionId is { } sessionId)
         {
-            snapshot = _active.ToArray();
+            ClearPendingSlot(sessionId, pending);
+            pending.Settle(null);
         }
-
-        foreach (var pending in snapshot)
+        else
         {
             pending.Teardown();
         }
+
+        Untrack(pending);
     }
 
     private async Task RealizeAsync(
@@ -310,21 +510,42 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
             pending.Settle(null);
             Untrack(pending);
 
-            _ = openTask.ContinueWith(
-                t =>
+            var completedTask = await Task.WhenAny(openTask, Task.Delay(CanceledOpenDrainWindow))
+                .ConfigureAwait(false);
+            if (ReferenceEquals(completedTask, openTask))
+            {
+                try
                 {
-                    if (t.Status == TaskStatus.RanToCompletion)
+                    var surface = await openTask.ConfigureAwait(false);
+                    TeardownSurfaceOnce(surface);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Already canceled. Observe and continue shutdown.
+                }
+                catch (Exception)
+                {
+                    _ = openTask.Exception;
+                }
+            }
+            else
+            {
+                _ = openTask.ContinueWith(
+                    t =>
                     {
-                        TeardownSurfaceOnce(t.Result);
-                    }
-                    else
-                    {
-                        _ = t.Exception;
-                    }
-                },
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+                        if (t.Status == TaskStatus.RanToCompletion)
+                        {
+                            TeardownSurfaceOnce(t.Result);
+                        }
+                        else
+                        {
+                            _ = t.Exception;
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
 
             return;
         }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using AgTerm.ControlServer;
 
 namespace AgTerm.Xterm;
@@ -25,13 +26,16 @@ public sealed class XtermSurfaceOptions
 /// and blocks (bounded) — a timeout or a torn-down pane reports as "not realized" (false/null),
 /// which the arms map to the pinned wire errors, never a crash.
 /// </summary>
-public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
+public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, IDisposable
 {
     private static readonly TimeSpan UiCallBudget = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(5);
 
     private readonly Func<string?>? _readClipboard;
     private readonly double _baseFontSize;
-    private volatile bool _torndown;
+    private readonly object _shutdownGate = new();
+    private int _stopOutputStarted;
+    private Task? _shutdownCoreTask;
 
     private XtermPaneSurface(TerminalPane pane, string paneToken, XtermSurfaceOptions options)
     {
@@ -107,7 +111,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
 
     public bool Inject(string text)
     {
-        if (_torndown) return false;
+        if (IsOutputStopped) return false;
         Pane.Pty.WriteText(KeystrokeText.ToPtyInput(text));
         return true;
     }
@@ -123,14 +127,14 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
 
     public bool Paste()
     {
-        if (_torndown) return false;
+        if (IsOutputStopped) return false;
         if (_readClipboard?.Invoke() is not { Length: > 0 } text) return true; // realized, empty clipboard
         return OnUi(async () => { await Pane.Terminal.PasteAsync(text); return true; });
     }
 
     public bool PerformBindingAction(string action)
     {
-        if (_torndown) return false;
+        if (IsOutputStopped) return false;
         double target;
         if (action == "reset_font_size")
             target = _baseFontSize;
@@ -148,15 +152,31 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
 
     public void Teardown()
     {
-        _torndown = true;
-        Pane.Dispose();
-        // best-effort renderer removal: dispose the xterm instance and its div in the shared page
-        // (fire-and-forget on the UI thread; a dead page just means the whole window is going away)
-        FireAndForget(Pane.RunOnUiAsync<object?>(async () =>
+        StopOutput();
+        ObserveFault(EnsureShutdownCoreTask());
+    }
+
+    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        var coreTask = EnsureShutdownCoreTask();
+        return cancellationToken.CanBeCanceled
+            ? coreTask.WaitAsync(cancellationToken)
+            : coreTask;
+    }
+
+    void ILiveShutdownSurface.StopOutput() => StopOutput();
+
+    Task ILiveShutdownSurface.ShutdownAsync(CancellationToken cancellationToken) =>
+        ShutdownAsync(cancellationToken);
+
+    internal void StopOutput()
+    {
+        if (Interlocked.Exchange(ref _stopOutputStarted, 1) != 0)
         {
-            await Pane.Page.ClosePaneAsync(PaneToken!);
-            return null;
-        }));
+            return;
+        }
+
+        Pane.StopOutput();
     }
 
     /// <summary>Split-pane promotion has no live wiring yet (phase 3 is single-pane; the split
@@ -166,6 +186,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
     }
 
     public void Dispose() => Teardown();
+
+    private bool IsOutputStopped => Volatile.Read(ref _stopOutputStarted) != 0;
 
     private static double? ParseFontStep(string action, string prefix) =>
         action.StartsWith(prefix, StringComparison.Ordinal) &&
@@ -177,7 +199,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
     /// or a blown budget all surface as null — the arms' "session not realized" shape.</summary>
     private T? OnUi<T>(Func<Task<T>> work)
     {
-        if (_torndown) return default;
+        if (IsOutputStopped) return default;
         try
         {
             return Pane.RunOnUiAsync(work).WaitAsync(UiCallBudget).GetAwaiter().GetResult();
@@ -186,6 +208,65 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IDisposable
         {
             return default;
         }
+    }
+
+    private Task EnsureShutdownCoreTask()
+    {
+        lock (_shutdownGate)
+        {
+            _shutdownCoreTask ??= Task.Run(ShutdownCoreAsync, CancellationToken.None);
+            return _shutdownCoreTask;
+        }
+    }
+
+    private async Task ShutdownCoreAsync()
+    {
+        StopOutput();
+        Pane.Terminate();
+
+        ExceptionDispatchInfo? exitFailure = null;
+        ExceptionDispatchInfo? closeFailure = null;
+
+        try
+        {
+            await Pane.Exited.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            exitFailure = ExceptionDispatchInfo.Capture(ex);
+        }
+
+        try
+        {
+            await Pane.RunOnUiAsync<object?>(async () =>
+            {
+                await Pane.Page.ClosePaneAsync(PaneToken!);
+                return null;
+            }).WaitAsync(ShutdownBudget).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            closeFailure = ExceptionDispatchInfo.Capture(ex);
+        }
+
+        if (exitFailure is not null && closeFailure is null)
+        {
+            exitFailure.Throw();
+        }
+
+        if (closeFailure is not null)
+        {
+            closeFailure.Throw();
+        }
+    }
+
+    private static void ObserveFault(Task task)
+    {
+        _ = task.ContinueWith(
+            static t => _ = t.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     private static async void FireAndForget(Task task)

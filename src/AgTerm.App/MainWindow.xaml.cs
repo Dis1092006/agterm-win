@@ -2,6 +2,7 @@ using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.ControlServer;
 using AgTerm.Xterm;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -21,8 +22,13 @@ namespace AgTerm.App;
 public sealed partial class MainWindow : Window
 {
     private readonly Dictionary<Guid, XtermPaneSurface> _surfaces = new(); // UI-thread confined
+    private readonly AppWindow _appWindow;
+    private readonly CancellationTokenSource _bootstrapCancellation = new();
+    private readonly TaskCompletionSource<LiveControlHost> _hostReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task<XtermPage> _pageTask;
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
+    private readonly WindowCloseCoordinator _closeCoordinator;
     private readonly AppSettings _settings = new SettingsStore().Load();
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
@@ -38,6 +44,9 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
+            WinRT.Interop.WindowNative.GetWindowHandle(this));
+        _appWindow = AppWindow.GetFromWindowId(windowId);
         _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
         _layoutCoordinator = new TerminalLayoutCoordinator(async layout =>
         {
@@ -56,12 +65,36 @@ public sealed partial class MainWindow : Window
                     break;
             }
         };
+        _closeCoordinator = new WindowCloseCoordinator(
+            ShutdownForCloseAsync,
+            work =>
+            {
+                if (!DispatcherQueue.TryEnqueue(() => work()))
+                    throw new InvalidOperationException("Failed to enqueue final window close.");
+            },
+            Close,
+            ex => System.Diagnostics.Debug.WriteLine($"Window shutdown failed: {ex}"));
+        _appWindow.Closing += OnAppWindowClosing;
         Closed += (_, _) =>
         {
+            _appWindow.Closing -= OnAppWindowClosing;
+            _bootstrapCancellation.Cancel();
             _layoutCoordinator.Dispose();
-            _ = Task.Run(() => _host?.Dispose()); // teardown blocks; keep it off the UI thread
+            _ = Task.Run(() => _host?.Dispose()); // bounded emergency cleanup after the page closes
         };
         ObserveTaskFault(StartHostAsync(), "StartHostAsync failed");
+    }
+
+    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        args.Cancel = _closeCoordinator.ShouldCancelClose();
+    }
+
+    private async Task ShutdownForCloseAsync()
+    {
+        _bootstrapCancellation.Cancel();
+        var host = await _hostReady.Task.ConfigureAwait(false);
+        await host.ShutdownAsync().ConfigureAwait(false);
     }
 
     /// <summary>Boot the window's single terminal page: one WebView2, one terminal.html, N panes.</summary>
@@ -77,13 +110,25 @@ public sealed partial class MainWindow : Window
     {
         // constructed off the UI thread: the bootstrap realizes the restored/default selected
         // session, which blocks the constructing thread on UI-thread pane creation
-        var host = await Task.Run(() => new LiveControlHost(new LiveControlHostOptions
+        LiveControlHost host;
+        try
         {
-            OpenSurface = OpenSurfaceAsync,
-            ReadClipboard = ReadClipboardText,
-            IsUiThread = () => DispatcherQueue.HasThreadAccess,
-        }));
+            host = await Task.Run(() => new LiveControlHost(new LiveControlHostOptions
+            {
+                OpenSurface = OpenSurfaceAsync,
+                ReadClipboard = ReadClipboardText,
+                IsUiThread = () => DispatcherQueue.HasThreadAccess,
+                BootstrapCancellationToken = _bootstrapCancellation.Token,
+            }));
+        }
+        catch (Exception ex)
+        {
+            _hostReady.TrySetException(ex);
+            throw;
+        }
+
         _host = host;
+        _hostReady.TrySetResult(host);
         host.StoreCoordinator.SelectionSnapshotChanged += snapshot =>
         {
             DispatcherQueue.TryEnqueue(() =>

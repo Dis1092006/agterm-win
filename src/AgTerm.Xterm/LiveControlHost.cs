@@ -1,8 +1,15 @@
 using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Terminal;
+using System.Threading;
 
 namespace AgTerm.Xterm;
+
+internal interface ILiveShutdownSurface
+{
+    void StopOutput();
+    Task ShutdownAsync(CancellationToken cancellationToken = default);
+}
 
 /// <summary>Construction options for <see cref="LiveControlHost"/> — the HeadlessHostOptions
 /// subset the app configures, plus the live-surface machinery.</summary>
@@ -39,6 +46,9 @@ public sealed record LiveControlHostOptions
 
     /// <summary>How long a realization may take before the show reports "session not realized".</summary>
     public TimeSpan RealizeBudget { get; init; } = TimeSpan.FromSeconds(15);
+
+    /// <summary>Optional cancellation signal for constructor-time bootstrap only.</summary>
+    public CancellationToken BootstrapCancellationToken { get; init; } = CancellationToken.None;
 }
 
 /// <summary>
@@ -49,14 +59,16 @@ public sealed record LiveControlHostOptions
 /// RunLocked off the UI thread), and a primary shell's exit closes its pane the upstream way
 /// (ClosePrimaryPane; a --wait command session is left open, showing its final screen).
 /// </summary>
-public sealed class LiveControlHost : IDisposable
+public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 {
     private readonly LiveControlHostOptions _options;
     private readonly LiveDispatchScopeFactory _scopeFactory;
     private readonly LiveStoreCoordinator _storeCoordinator;
     private readonly LiveSurfaceCoordinator? _coordinator;
+    private readonly object _shutdownLock = new();
     private HeadlessHost? _host;
-    private int _disposed;
+    private Task? _shutdownTask;
+    private int _shutdownStarted;
 
     public LiveControlHost(LiveControlHostOptions options)
     {
@@ -93,8 +105,16 @@ public sealed class LiveControlHost : IDisposable
                 }
             },
             options.Log);
+        var bootstrapCancellationToken = options.BootstrapCancellationToken;
+        var coordinator = _coordinator;
         using var bootstrapScope = _scopeFactory.Begin();
-        Host.Bootstrap();
+        using var bootstrapCancellationRegistration = bootstrapCancellationToken.CanBeCanceled
+            ? bootstrapCancellationToken.Register(() => coordinator.Dispose())
+            : default;
+        if (!bootstrapCancellationToken.IsCancellationRequested)
+        {
+            Host.Bootstrap();
+        }
         bootstrapScope.CompleteAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
@@ -192,8 +212,19 @@ public sealed class LiveControlHost : IDisposable
         {
             return; // a torn-down pane may fault the exit task; nothing to close then
         }
+
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+        {
+            return;
+        }
+
         Host.RunLocked(() =>
         {
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+            {
+                return;
+            }
+
             var live = Host.Store.SessionWithId(sessionId);
             if (!OwnsMainPane(live, surface)) return; // closed via control, or pane replaced
             // session.new --command --wait: hold the pane open after the command exits
@@ -208,27 +239,142 @@ public sealed class LiveControlHost : IDisposable
 
     /// <summary>Stop serving, flush the snapshot, and tear down every live pane (killing the
     /// children) — the app-exit path (§3: save on exit).</summary>
+    public Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        Task shutdownTask = GetOrStartShutdownTask();
+
+        return cancellationToken.CanBeCanceled
+            ? shutdownTask.WaitAsync(cancellationToken)
+            : shutdownTask;
+    }
+
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        Task shutdownTask = GetOrStartShutdownTask();
+
+        Task completedTask;
+        try
         {
+            completedTask = Task.WhenAny(shutdownTask, Task.Delay(TimeSpan.FromSeconds(5))).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"LiveControlHost.Dispose failed to wait for shutdown: {ex}");
             return;
         }
 
+        if (!ReferenceEquals(completedTask, shutdownTask))
+        {
+            _options.Log?.Invoke("LiveControlHost.Dispose timed out waiting for shutdown after 5 seconds.");
+            return;
+        }
+
+        if (!shutdownTask.IsCompletedSuccessfully)
+        {
+            var exception = shutdownTask.Exception?.GetBaseException();
+            _options.Log?.Invoke($"LiveControlHost.Dispose observed shutdown failure: {exception}");
+        }
+    }
+
+    private Task GetOrStartShutdownTask()
+    {
+        lock (_shutdownLock)
+        {
+            _shutdownTask ??= Task.Run(ShutdownCoreAsync, CancellationToken.None);
+            return _shutdownTask;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private async Task ShutdownCoreAsync()
+    {
+        Interlocked.Exchange(ref _shutdownStarted, 1);
+
         Host.Stop();
+
+        if (_coordinator is not null)
+        {
+            await _coordinator.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
         _storeCoordinator.Dispose();
-        _coordinator?.Dispose();
+
+        ITerminalSurface[] surfacesToShutdown = Array.Empty<ITerminalSurface>();
+        Host.RunLocked(() =>
+        {
+            var distinctSurfaces = new HashSet<ITerminalSurface>(ReferenceEqualityComparer.Instance);
+            var orderedSurfaces = new List<ITerminalSurface>();
+
+            foreach (var session in Host.Store.Workspaces.SelectMany(w => w.Sessions))
+            {
+                AddSurface(session.Surface);
+                AddSurface(session.SplitSurface);
+                AddSurface(session.ScratchSurface);
+                AddSurface(session.OverlaySurface);
+            }
+
+            AddSurface(Host.Actions.Quick.Surface);
+
+            surfacesToShutdown = orderedSurfaces.ToArray();
+
+            void AddSurface(ITerminalSurface? surface)
+            {
+                if (surface is null)
+                {
+                    return;
+                }
+
+                if (distinctSurfaces.Add(surface))
+                {
+                    orderedSurfaces.Add(surface);
+                }
+            }
+        });
+
+        foreach (var surface in surfacesToShutdown)
+        {
+            if (surface is not ILiveShutdownSurface liveShutdownSurface)
+            {
+                continue;
+            }
+
+            try
+            {
+                liveShutdownSurface.StopOutput();
+            }
+            catch (Exception ex)
+            {
+                _options.Log?.Invoke($"LiveControlHost shutdown stop-output failure: {ex}");
+            }
+        }
+
         Host.RunLocked(() =>
         {
             Host.Store.CancelPendingSave();
             Host.Store.Save();
-            foreach (var session in Host.Store.Workspaces.SelectMany(w => w.Sessions))
-            {
-                session.Surface?.Teardown();
-                session.SplitSurface?.Teardown();
-                session.ScratchSurface?.Teardown();
-                session.OverlaySurface?.Teardown();
-            }
         });
+
+        foreach (var surface in surfacesToShutdown)
+        {
+            try
+            {
+                if (surface is ILiveShutdownSurface liveShutdownSurface)
+                {
+                    await liveShutdownSurface.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                else
+                {
+                    surface.Teardown();
+                }
+            }
+            catch (Exception ex)
+            {
+                _options.Log?.Invoke($"LiveControlHost shutdown teardown failure: {ex}");
+            }
+        }
     }
 }

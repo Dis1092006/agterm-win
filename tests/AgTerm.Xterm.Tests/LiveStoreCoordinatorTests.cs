@@ -472,4 +472,75 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
         Assert.Equal(0, selCount);
         Assert.Equal(0, sidebarCount);
     }
+
+    // =========================================================================
+    // Group 8 — Late-subscriber race: historical queued event must not be delivered
+    // =========================================================================
+
+    [Fact]
+    public void Subscriber_added_after_event_was_queued_does_not_receive_historical_selection()
+    {
+        // Holding scheduler: enqueues each Action + CancellationToken, returns a TCS task.
+        // Work is not executed until the test manually drains the queue.
+        var queue = new List<(Action work, CancellationToken ct, TaskCompletionSource tcs)>();
+        Task HoldingScheduler(Action work, CancellationToken ct)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            queue.Add((work, ct, tcs));
+            return tcs.Task;
+        }
+
+        using var coordinator = new LiveStoreCoordinator(_host, () => false, HoldingScheduler);
+
+        // Trigger a selection change BEFORE subscribing to SelectionChanged.
+        // OnSelectionChanged calls QueueEvent which calls HoldingScheduler, so delivery
+        // closures are added to the queue but not yet executed.
+        Guid firstId = default;
+        _host.RunLocked(() =>
+        {
+            var ws = _host.Store.Workspaces[0];
+            firstId = _host.Store.AddSession(ws.Id, _stateDir, select: false)!.Id;
+            _host.Store.SelectSession(firstId);
+        });
+        int historicalCount = queue.Count;
+
+        // Subscribe AFTER the historical event was already queued.
+        var receivedIds = new List<Guid?>();
+        coordinator.SelectionChanged += id => receivedIds.Add(id);
+
+        // Manually execute all scheduler items queued by the historical selection change.
+        // Selection change queues at least a SelectionChanged delivery and a SelectionSnapshotChanged
+        // delivery; drain all of them in FIFO order.
+        var historicalItems = queue.GetRange(0, historicalCount);
+        queue.RemoveRange(0, historicalCount);
+        foreach (var (work, _, tcs) in historicalItems)
+        {
+            try { work(); tcs.SetResult(); }
+            catch (Exception ex) { tcs.SetException(ex); }
+        }
+
+        // Late subscriber must not receive the historical selection event.
+        Assert.Empty(receivedIds);
+
+        // Trigger a second selection change AFTER subscription using a distinct new session ID.
+        Guid secondId = default;
+        _host.RunLocked(() =>
+        {
+            var ws = _host.Store.Workspaces[0];
+            secondId = _host.Store.AddSession(ws.Id, _stateDir, select: false)!.Id;
+            _host.Store.SelectSession(secondId);
+        });
+
+        // Drain all scheduler items queued by the post-subscription event.
+        var postItems = queue.ToList();
+        queue.Clear();
+        foreach (var (work, _, tcs) in postItems)
+        {
+            try { work(); tcs.SetResult(); }
+            catch (Exception ex) { tcs.SetException(ex); }
+        }
+
+        // Subscriber must receive exactly the second selection ID once.
+        Assert.Equal(secondId, Assert.Single(receivedIds));
+    }
 }

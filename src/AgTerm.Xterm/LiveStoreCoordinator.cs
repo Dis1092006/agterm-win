@@ -145,11 +145,15 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         var snapshot = CaptureSelectionSnapshot();
 
         var generation = Interlocked.Increment(ref _sidebarGeneration);
+        var sidebarInvalidated = SidebarInvalidated;
+        if (sidebarInvalidated is not null)
+        {
         QueueEvent(() =>
         {
             if (generation == Volatile.Read(ref _sidebarGeneration))
-                SidebarInvalidated?.Invoke();
+                sidebarInvalidated();
         });
+        }
 
         PublishSelectionSnapshot(snapshot);
     }
@@ -165,13 +169,17 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         var selectedSessionId = snapshot.SessionId;
 
         var generation = Interlocked.Increment(ref _selectionNotificationGeneration);
+        var selectionChanged = SelectionChanged;
+        if (selectionChanged is not null)
+        {
         QueueEvent(() =>
         {
             if (generation == Volatile.Read(ref _selectionNotificationGeneration))
             {
-                SelectionChanged?.Invoke(selectedSessionId);
+                selectionChanged(selectedSessionId);
             }
         });
+        }
 
         PublishSelectionSnapshot(snapshot);
     }
@@ -188,11 +196,17 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)
     {
         var generation = Interlocked.Increment(ref _selectionSnapshotGeneration);
+        var selectionSnapshotChanged = SelectionSnapshotChanged;
+        if (selectionSnapshotChanged is null)
+        {
+            return;
+        }
+
         QueueEvent(() =>
         {
             if (generation == Volatile.Read(ref _selectionSnapshotGeneration))
             {
-                SelectionSnapshotChanged?.Invoke(snapshot);
+                selectionSnapshotChanged(snapshot);
             }
         });
     }

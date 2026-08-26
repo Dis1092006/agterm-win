@@ -208,3 +208,10 @@
   flushes, blocked the producer 55 times, and reached 1,048,576 maximum queued bytes.
   These values record the development-machine stress run; the limits above are the
   implementation contract, not the measured throughput.
+- **Ordered live shutdown.** The first WinUI close request is canceled while the live host
+  stops pipe acceptance, cancels and awaits active or queued surface realization, stops
+  every output pump, saves the snapshot, terminates ConPTY children, and awaits renderer
+  removal while WebView2 is still alive. The final close re-enters once after shutdown.
+  Surface and renderer waits use a 5-second budget. Shutdown-triggered process exits do not
+  remove sessions from the store or snapshot; a five-session live test verifies that all
+  children exit, all pane IDs disappear from the page, and all five sessions remain persisted.
