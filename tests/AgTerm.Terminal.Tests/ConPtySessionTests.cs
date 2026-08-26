@@ -135,4 +135,39 @@ public class ConPtySessionTests : IDisposable
         // the child must be gone; a killed conpty child reports a nonzero exit
         await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
     }
+
+    [Fact]
+    public async Task OutputCompleted_completes_only_after_last_OnOutput_callback_returns()
+    {
+        var callbackStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var callbackGate = new ManualResetEventSlim();
+
+        var info = new ConPtyStartInfo
+        {
+            Argv = new[] { Cmd, "/c", "echo output-completion-marker" },
+            Cols = 120,
+            Rows = 30,
+            OnOutput = chunk =>
+            {
+                if (chunk.Length == 0) return;
+                callbackStarted.TrySetResult();
+                callbackGate.Wait();
+            },
+        };
+
+        using var pty = ConPtySession.Start(info);
+        try
+        {
+            await callbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+
+            Assert.False(pty.OutputCompleted.IsCompleted);
+        }
+        finally
+        {
+            callbackGate.Set();
+        }
+
+        await pty.OutputCompleted.WaitAsync(TimeSpan.FromSeconds(15));
+    }
 }

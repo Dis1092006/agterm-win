@@ -31,6 +31,20 @@ public class XtermTerminalTests
     }
 
     [Fact]
+    public async Task FeedOutput_encodes_only_the_slice_not_the_backing_array()
+    {
+        var terminal = await OpenedAsync();
+        byte[] backing = [0xAA, 0xBB, 0x68, 0x69, 0xCC, 0xDD]; // sentinel prefix 0xAA 0xBB, payload "hi", sentinel suffix 0xCC 0xDD
+        ReadOnlyMemory<byte> slice = backing.AsMemory(2, 2);     // just "hi"
+        terminal.FeedOutput(slice);
+        var sliceB64 = Convert.ToBase64String(new byte[] { 0x68, 0x69 });
+        var fullB64  = Convert.ToBase64String(backing);
+        var json = Assert.Single(_host.PostedJson);
+        Assert.Contains(sliceB64, json);
+        Assert.DoesNotContain(fullB64, json);
+    }
+
+    [Fact]
     public async Task SetFontSize_posts_options_addressed_to_the_pane()
     {
         var terminal = await OpenedAsync();

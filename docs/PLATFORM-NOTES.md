@@ -190,3 +190,21 @@
   из Explorer в сайдбар) не реализован; спринг-раскрытие свёрнутого воркспейса под
   драгом — нет (WinUI DnD не даёт hover-таймера бесплатно); подтверждение Clear Flagged
   и confirm-close-session модалки — фаза 5 (настройки уже читаются из AppSettings).
+
+## Phase 4.5: live orchestration
+
+- **Bounded terminal output batching.** Each live pane routes ConPTY output through one
+  bounded channel before it reaches WebView2. `OutputQueueMaxBytes` is 1,048,576 bytes,
+  the item limit is 256 chunks, `OutputBatchMaxBytes` is 65,536 bytes, and
+  `OutputFlushInterval` is 8 ms. The ConPTY reader waits when either queue limit is
+  reached, so pipe backpressure reaches the child instead of growing the managed UI
+  queue. The managed-memory bound also includes one reusable batch buffer and at most one
+  carried chunk suffix, so the default peak is about 1,179,648 bytes
+  (`OutputQueueMaxBytes + 2 * OutputBatchMaxBytes`). Normal process exit waits for reader
+  EOF and the final renderer batch; teardown cancels blocked producers and a renderer
+  callback that can no longer complete.
+- **Output-pump measurement (2026-08-26, Debug, .NET SDK 10.0.201).** A deterministic
+  10 MiB stream completed with the expected SHA-256 at 268.2 MiB/s. It used 160 renderer
+  flushes, blocked the producer 55 times, and reached 1,048,576 maximum queued bytes.
+  These values record the development-machine stress run; the limits above are the
+  implementation contract, not the measured throughput.

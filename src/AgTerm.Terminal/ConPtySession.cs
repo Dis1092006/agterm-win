@@ -39,6 +39,8 @@ public sealed class ConPtySession : IDisposable
     private readonly object _writeGate = new();
     private readonly TaskCompletionSource<int> _exited =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _outputCompleted =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly FileStream _input;
     private readonly IntPtr _console;
     private readonly IntPtr _process;
@@ -54,6 +56,9 @@ public sealed class ConPtySession : IDisposable
 
     /// <summary>Task that completes with the child's exit code.</summary>
     public Task<int> Exited => _exited.Task;
+
+    /// <summary>Task that completes after output reader reaches EOF and all OnOutput callbacks return.</summary>
+    public Task OutputCompleted => _outputCompleted.Task;
 
     public static ConPtySession Start(ConPtyStartInfo info)
     {
@@ -177,6 +182,14 @@ public sealed class ConPtySession : IDisposable
             catch (IOException)
             {
                 // pipe broken — the pseudoconsole was closed; treated as EOF
+            }
+            catch (Exception ex)
+            {
+                _outputCompleted.TrySetException(ex);
+            }
+            finally
+            {
+                _outputCompleted.TrySetResult();
             }
         })
         { IsBackground = true, Name = "conpty-output" };

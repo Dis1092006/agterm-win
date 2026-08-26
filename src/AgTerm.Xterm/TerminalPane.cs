@@ -23,14 +23,22 @@ public sealed record TerminalPaneOptions
 public sealed class TerminalPane : IDisposable
 {
     private readonly SynchronizationContext _ui;
-    private bool _disposed;
+    private int _disposed;
+    private readonly Task<int> _exited;
 
-    private TerminalPane(XtermPage page, XtermTerminal terminal, ConPtySession pty, SynchronizationContext ui)
+    private TerminalPane(
+        XtermPage page,
+        XtermTerminal terminal,
+        ConPtySession pty,
+        TerminalOutputPump outputPump,
+        SynchronizationContext ui)
     {
         Page = page;
         Terminal = terminal;
         Pty = pty;
+        OutputPump = outputPump;
         _ui = ui;
+        _exited = AwaitExitAndFlushAsync();
         terminal.DataReceived += pty.WriteText;
         terminal.Resized += pty.Resize;
         terminal.TitleChanged += t => TitleChanged?.Invoke(t);
@@ -44,8 +52,10 @@ public sealed class TerminalPane : IDisposable
 
     public ConPtySession Pty { get; }
 
+    internal TerminalOutputPump OutputPump { get; }
+
     /// <summary>Completes with the child's exit code.</summary>
-    public Task<int> Exited => Pty.Exited;
+    public Task<int> Exited => _exited;
 
     /// <summary>OSC 0/1/2 → Session.OscTitle (host wires it).</summary>
     public event Action<string>? TitleChanged;
@@ -69,12 +79,18 @@ public sealed class TerminalPane : IDisposable
         XtermTerminal? terminal = null;
         TerminalPane? pane = null;
         ConPtySession? pty = null;
+        TerminalOutputPump? outputPump = null;
+        var openTearingDown = false;
 
         try
         {
             terminal = await page.OpenTerminalAsync(paneId);
 
             cancellationToken.ThrowIfCancellationRequested();
+
+            outputPump = new TerminalOutputPump(
+                new TerminalOutputPumpOptions(),
+                chunk => PostBatchToUiAndFeedAsync(ui, terminal, chunk, () => pane is { IsDisposed: true }));
 
             pty = ConPtySession.Start(new ConPtyStartInfo
             {
@@ -83,25 +99,36 @@ public sealed class TerminalPane : IDisposable
                 ExtraEnvironment = options.ExtraEnvironment,
                 Cols = terminal.Cols > 0 ? terminal.Cols : 80,
                 Rows = terminal.Rows > 0 ? terminal.Rows : 24,
-                // reader-thread chunks marshal to the UI thread; drop what arrives after teardown
-                OnOutput = chunk => ui.Post(_ =>
+                OnOutput = chunk =>
                 {
-                    if (pane is not { _disposed: true }) terminal.FeedOutput(chunk);
-                }, null),
+                    try
+                    {
+                        outputPump.WriteAsync(chunk).AsTask().GetAwaiter().GetResult();
+                    }
+                    catch (OperationCanceledException) when (openTearingDown || pane is { IsDisposed: true })
+                    {
+                    }
+                    catch (ObjectDisposedException) when (openTearingDown || pane is { IsDisposed: true })
+                    {
+                    }
+                },
             });
-            pane = new TerminalPane(page, terminal, pty, ui);
+            pane = new TerminalPane(page, terminal, pty, outputPump, ui);
 
             cancellationToken.ThrowIfCancellationRequested();
             return pane;
         }
         catch (Exception)
         {
+            openTearingDown = true;
+
             if (pane is not null)
             {
                 pane.Dispose();
             }
             else
             {
+                outputPump?.Dispose();
                 pty?.Dispose();
             }
 
@@ -136,9 +163,77 @@ public sealed class TerminalPane : IDisposable
 
     public void Dispose()
     {
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        OutputPump.Dispose();
         Pty.Dispose();
     }
+
+    internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    private async Task<int> AwaitExitAndFlushAsync()
+    {
+        var exitCode = await Pty.Exited.ConfigureAwait(false);
+        await Pty.OutputCompleted.ConfigureAwait(false);
+
+        try
+        {
+            await OutputPump.CompleteAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (IsDisposed)
+        {
+        }
+        catch (ObjectDisposedException) when (IsDisposed)
+        {
+        }
+
+        return exitCode;
+    }
+
+    private static Task PostBatchToUiAndFeedAsync(
+        SynchronizationContext ui,
+        XtermTerminal terminal,
+        ReadOnlyMemory<byte> chunk,
+        Func<bool> isPaneDisposed)
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        try
+        {
+            ui.Post(static state =>
+            {
+                var callbackState = (OutputFeedCallbackState)state!;
+                try
+                {
+                    if (!callbackState.IsPaneDisposed())
+                    {
+                        callbackState.Terminal.FeedOutput(callbackState.Chunk);
+                    }
+
+                    callbackState.Done.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    callbackState.Done.TrySetException(ex);
+                }
+            }, new OutputFeedCallbackState(terminal, chunk, isPaneDisposed, done));
+        }
+        catch (Exception ex)
+        {
+            done.TrySetException(ex);
+        }
+
+        return done.Task;
+    }
+
+    private sealed record OutputFeedCallbackState(
+        XtermTerminal Terminal,
+        ReadOnlyMemory<byte> Chunk,
+        Func<bool> IsPaneDisposed,
+        TaskCompletionSource Done);
 
     private static async Task ClosePaneBestEffortAsync(XtermPage page, string paneId)
     {

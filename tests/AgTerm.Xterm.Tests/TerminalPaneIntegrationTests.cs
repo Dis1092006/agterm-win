@@ -106,4 +106,21 @@ public class TerminalPaneIntegrationTests
         }
         lock (cwds) Assert.Fail($"no parsed cwd; saw: {string.Join(" | ", cwds)}");
     }
+
+    [Fact]
+    public async Task Output_pump_delivers_all_lines_and_stays_within_memory_budget()
+    {
+        using var pane = await OpenAsync(Cmd, "/d", "/c",
+            "for /L %i in (1,1,1500) do @echo pump-line-%i & echo pump-final-marker");
+
+        Assert.Equal(0, await pane.Exited.WaitAsync(TimeSpan.FromSeconds(30)));
+
+        var text = await _webView.RunAsync(_ => pane.Terminal.ReadTextAsync(all: true, lines: null));
+        Assert.Contains("pump-line-1", text);
+        Assert.Contains("pump-line-750", text);
+        Assert.Contains("pump-line-1500", text);
+        Assert.Contains("pump-final-marker", text);
+        Assert.True(pane.OutputPump.MaxObservedQueueBytes <= 1 * 1024 * 1024,
+            $"OutputPump exceeded 1 MB budget: {pane.OutputPump.MaxObservedQueueBytes} bytes");
+    }
 }

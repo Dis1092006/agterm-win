@@ -62,12 +62,12 @@ public sealed class XtermTerminal
 
     /// <summary>Raw VT output from the pty → xterm.write (base64 over the message channel;
     /// xterm decodes UTF-8 itself, so chunk boundaries inside a rune are safe).</summary>
-    public void FeedOutput(byte[] chunk) =>
+    public void FeedOutput(ReadOnlyMemory<byte> chunk) =>
         _page.PostJson(JsonSerializer.Serialize(new
         {
             type = "output",
             paneId = PaneId,
-            data = Convert.ToBase64String(chunk),
+            data = Convert.ToBase64String(chunk.Span),
         }));
 
     public void SetFontSize(double px) =>
