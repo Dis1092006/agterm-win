@@ -344,18 +344,53 @@ window.agterm = {
     interceptChords = items || [];
     return interceptChords.length;
   },
+  syntheticKeyCodeFromKey: (key) => {
+    if (typeof key !== "string") return 0;
+    if (key.length === 1) return key.toUpperCase().charCodeAt(0);
+    switch (key) {
+      case "Tab":
+      case "tab":
+        return 9;
+      case "Enter":
+      case "return":
+        return 13;
+      case "Backspace":
+      case "delete":
+        return 8;
+      case "ArrowLeft":
+      case "left":
+        return 37;
+      case "ArrowUp":
+      case "up":
+        return 38;
+      case "ArrowRight":
+      case "right":
+        return 39;
+      case "ArrowDown":
+      case "down":
+        return 40;
+      case " ":
+      case "Space":
+      case "space":
+        return 32;
+      default:
+        return 0;
+    }
+  },
   // test-only: run a synthetic keydown through the real xterm key path (chord interception)
   dispatchKey: (paneId, opts) =>
     withPane(paneId, (p) => {
-      p.term.textarea.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: opts.key,
-          ctrlKey: !!opts.ctrlKey,
-          altKey: !!opts.altKey,
-          shiftKey: !!opts.shiftKey,
-          cancelable: true,
-        }),
-      );
+      const ev = new KeyboardEvent("keydown", {
+        key: opts.key,
+        ctrlKey: !!opts.ctrlKey,
+        altKey: !!opts.altKey,
+        shiftKey: !!opts.shiftKey,
+        cancelable: true,
+      });
+      const code = window.agterm.syntheticKeyCodeFromKey(opts.key);
+      Object.defineProperty(ev, "keyCode", { value: code, configurable: true });
+      Object.defineProperty(ev, "which", { value: code, configurable: true });
+      p.term.textarea.dispatchEvent(ev);
       return true;
     }),
 };

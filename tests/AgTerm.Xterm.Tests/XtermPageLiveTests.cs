@@ -1,4 +1,6 @@
 using System.Text;
+using AgTerm.App;
+using AgTerm.Core.Keymap;
 using AgTerm.Xterm;
 
 namespace AgTerm.Xterm.Tests;
@@ -100,36 +102,40 @@ public class XtermPageLiveTests
     }
 
     [Fact]
-    public async Task Intercepted_chords_come_back_as_chord_messages_and_skip_the_shell()
+    public async Task Implemented_chord_produces_host_action_and_unimplemented_chord_produces_terminal_data()
     {
         var (page, view) = await BootPageAsync();
-        var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-chord1"));
+        var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-s33"));
         var data = new List<string>();
-        var chords = new List<(string, AgTerm.Core.Keymap.PhysicalChord)>();
+        var chords = new List<(string PaneId, PhysicalChord Chord)>();
         one.DataReceived += data.Add;
         page.ChordPressed += (paneId, chord) => chords.Add((paneId, chord));
 
+        var hotkeys = new HotkeyRouter(Keymap.Empty);
+        var interceptChords = WindowCommandRouter.ImplementedInterceptChords(hotkeys);
+
         await _webView.RunAsync<object?>(async _ =>
         {
-            await page.SetInterceptChordsAsync(
-                new[] { new AgTerm.Core.Keymap.PhysicalChord(true, false, false, "n") });
+            await page.SetInterceptChordsAsync(interceptChords);
             return null;
         });
-        // synthetic keydowns through the real xterm key path (test-only page hook), on the
-        // page's OWN WebView2 (the fixture's first view hosts a different page)
+        // Ctrl+N = NewSession (implemented) → intercepted, must come back as chord, not reach the shell
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-chord1\", {key:'n', ctrlKey:true})"));
+            "agterm.dispatchKey(\"live-s33\", {key:'n', ctrlKey:true})"));
+        // Ctrl+D = ToggleSplit (not implemented) → not intercepted, must pass through as \x04
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-chord1\", {key:'u', ctrlKey:true})"));
+            "agterm.dispatchKey(\"live-s33\", {key:'d', ctrlKey:true})"));
 
         var deadline = Environment.TickCount64 + 30000;
-        while (chords.Count == 0 && Environment.TickCount64 < deadline) await Task.Delay(50);
+        while ((chords.Count == 0 || !data.Any(d => d.Contains('\x04'))) &&
+               Environment.TickCount64 < deadline)
+            await Task.Delay(50);
+
         var hit = Assert.Single(chords);
-        Assert.Equal("live-chord1", hit.Item1);
-        Assert.Equal(new AgTerm.Core.Keymap.PhysicalChord(true, false, false, "n"), hit.Item2);
-        // the intercepted Ctrl+N must NOT have reached the pty as ^N (0x0E); the uncaptured
-        // Ctrl+U may (that's the point of the allowlist)
-        Assert.DoesNotContain(data, d => d.Contains('\x0E'));
+        Assert.Equal("live-s33", hit.PaneId);
+        Assert.Equal(new PhysicalChord(true, false, false, "n"), hit.Chord);
+        Assert.Contains(data, d => d.Contains('\x04'));       // Ctrl+D reached the terminal
+        Assert.DoesNotContain(data, d => d.Contains('\x0E')); // Ctrl+N did not
     }
 
     [Fact]

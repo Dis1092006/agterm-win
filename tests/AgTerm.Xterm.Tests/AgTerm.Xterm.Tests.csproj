@@ -28,4 +28,8 @@
     <ProjectReference Include="..\..\src\AgTerm.Xterm\AgTerm.Xterm.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\..\src\AgTerm.App\WindowCommandRouter.cs" Link="App\WindowCommandRouter.cs" />
+  </ItemGroup>
+
 </Project>

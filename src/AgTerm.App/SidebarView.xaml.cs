@@ -426,7 +426,7 @@ public sealed partial class SidebarView : UserControl
     private void OnFocusPillClick(object sender, RoutedEventArgs e) => _controller?.ClearFocus();
 
     private void OnNewWorkspaceClick(object sender, RoutedEventArgs e) =>
-        _controller?.NewWorkspace($"workspace {(_snapshot?.Workspaces.Count ?? 0) + 1}");
+        _controller?.NewWorkspace();
 
     // MARK: - drag reorder
 

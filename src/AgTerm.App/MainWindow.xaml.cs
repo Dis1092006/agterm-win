@@ -33,6 +33,7 @@ public sealed partial class MainWindow : Window
     private readonly AppSettings _settings = new SettingsStore().Load();
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
+    private WindowCommandRouter? _commandRouter; // UI-thread confined
     private LiveSelectionSnapshot _selection = new(null, null); // UI-thread confined
     private SidebarSnapshot? _latestSidebarSnapshot; // UI-thread confined
     private string? _acceptedPaneId; // UI-thread confined
@@ -51,7 +52,16 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         SystemBackdrop = new MicaBackdrop();
-        AppTitleBar.PaneToggleRequested += (_, _) => _sidebar?.ToggleSidebarVisible();
+        AppTitleBar.PaneToggleRequested += (_, _) =>
+        {
+            var router = _commandRouter;
+            if (router is null)
+                return;
+
+            ObserveTaskFault(
+                router.ExecuteAsync(BuiltinAction.ToggleSidebar),
+                "Title bar toggle sidebar failed");
+        };
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
         _appWindow = AppWindow.GetFromWindowId(windowId);
@@ -197,6 +207,48 @@ public sealed partial class MainWindow : Window
             runOnUi: work => DispatcherQueue.TryEnqueue(() => work()),
             log: message => System.Diagnostics.Debug.WriteLine(message));
         _sidebar = sidebar;
+
+        static WindowCommandHandler Sync(Func<bool> canExecute, Action execute)
+        {
+            return new WindowCommandHandler(canExecute, () =>
+            {
+                execute();
+                return Task.CompletedTask;
+            });
+        }
+
+        static WindowCommandHandler Async(Func<bool> canExecute, Func<Task> executeAsync)
+        {
+            return new WindowCommandHandler(canExecute, executeAsync);
+        }
+
+        bool HasSelectedSession() => _selectedSessionId is not null;
+
+        _commandRouter = new WindowCommandRouter(new Dictionary<BuiltinAction, WindowCommandHandler>
+        {
+            [BuiltinAction.NewWorkspace] = Sync(() => true, () => sidebar.NewWorkspace()),
+            [BuiltinAction.NewSession] = Sync(() => true, () => sidebar.NewSessionInActiveWorkspace()),
+            [BuiltinAction.OpenDirectory] = Async(() => true, OpenDirectoryIntoActiveAsync),
+            [BuiltinAction.RenameSession] = Sync(HasSelectedSession, Sidebar.BeginRenameSelected),
+            [BuiltinAction.DuplicateSession] = Sync(HasSelectedSession, sidebar.DuplicateActiveSession),
+            [BuiltinAction.CloseSession] = Sync(HasSelectedSession, sidebar.CloseActiveSession),
+            [BuiltinAction.UndoClose] = Sync(() => true, sidebar.UndoClose),
+            [BuiltinAction.ClearStatus] = Sync(HasSelectedSession, sidebar.ClearActiveStatus),
+            [BuiltinAction.IncreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("increase_font_size:1")),
+            [BuiltinAction.DecreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("decrease_font_size:1")),
+            [BuiltinAction.ResetFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("reset_font_size")),
+            [BuiltinAction.ToggleSidebar] = Sync(() => true, sidebar.ToggleSidebarVisible),
+            [BuiltinAction.ToggleFlaggedView] = Sync(() => true, sidebar.ToggleFlaggedView),
+            [BuiltinAction.ToggleFlag] = Sync(HasSelectedSession, sidebar.ToggleActiveFlag),
+            [BuiltinAction.FocusWorkspace] = Sync(HasSelectedSession, sidebar.FocusActiveWorkspaceToggle),
+            [BuiltinAction.PreviousSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.Previous)),
+            [BuiltinAction.NextSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.Next)),
+            [BuiltinAction.PreviousAttentionSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.PreviousAttention)),
+            [BuiltinAction.NextAttentionSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.NextAttention)),
+            [BuiltinAction.FirstSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.First)),
+            [BuiltinAction.LastSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.Last)),
+        });
+
         DispatcherQueue.TryEnqueue(() =>
         {
             Sidebar.Attach(sidebar, _settings);
@@ -291,7 +343,11 @@ public sealed partial class MainWindow : Window
         void Arm(Keymap keymap)
         {
             _hotkeys = new HotkeyRouter(keymap);
-            _ = page.SetInterceptChordsAsync(_hotkeys.InterceptChords);
+            foreach (var diagnostic in WindowCommandRouter.EffectiveWindowsChordDiagnostics(keymap))
+                System.Diagnostics.Trace.TraceWarning($"keymap: {diagnostic.Message}");
+            ObserveTaskFault(
+                page.SetInterceptChordsAsync(WindowCommandRouter.ImplementedInterceptChords(_hotkeys)),
+                "Set intercept chords failed");
         }
         Arm(host.Host.Actions.LoadKeymap());
         page.ChordPressed += (_, chord) => DispatcherQueue.TryEnqueue(() => HandleChord(chord));
@@ -335,49 +391,17 @@ public sealed partial class MainWindow : Window
     /// socket drives. Returns whether an action fired.</summary>
     private bool HandleChord(PhysicalChord physical)
     {
-        if (_hotkeys?.Handle(physical) is not { } action) return false;
-        var sidebar = _sidebar;
-        var host = _host;
-        if (sidebar is null || host is null) return false;
-        switch (action)
-        {
-            case BuiltinAction.NewSession: sidebar.NewSessionInActiveWorkspace(); break;
-            case BuiltinAction.CloseSession: sidebar.CloseActiveSession(); break;
-            case BuiltinAction.DuplicateSession: sidebar.DuplicateActiveSession(); break;
-            case BuiltinAction.RenameSession: Sidebar.BeginRenameSelected(); break;
-            case BuiltinAction.NewWorkspace: sidebar.NewWorkspace(); break;
-            case BuiltinAction.ToggleFlag: sidebar.ToggleActiveFlag(); break;
-            case BuiltinAction.ToggleFlaggedView: sidebar.ToggleFlaggedView(); break;
-            case BuiltinAction.ToggleSidebar: sidebar.ToggleSidebarVisible(); break;
-            case BuiltinAction.FocusWorkspace: sidebar.FocusActiveWorkspaceToggle(); break;
-            case BuiltinAction.ClearStatus: sidebar.ClearActiveStatus(); break;
-            case BuiltinAction.UndoClose: sidebar.UndoClose(); break;
-            case BuiltinAction.PreviousSession: sidebar.Navigate(SessionNavigation.Previous); break;
-            case BuiltinAction.NextSession: sidebar.Navigate(SessionNavigation.Next); break;
-            case BuiltinAction.FirstSession: sidebar.Navigate(SessionNavigation.First); break;
-            case BuiltinAction.LastSession: sidebar.Navigate(SessionNavigation.Last); break;
-            case BuiltinAction.PreviousAttentionSession: sidebar.Navigate(SessionNavigation.PreviousAttention); break;
-            case BuiltinAction.NextAttentionSession: sidebar.Navigate(SessionNavigation.NextAttention); break;
-            case BuiltinAction.OpenDirectory: _ = OpenDirectoryIntoActiveAsync(); break;
-            case BuiltinAction.IncreaseFontSize: FontAction("increase_font_size:1"); break;
-            case BuiltinAction.DecreaseFontSize: FontAction("decrease_font_size:1"); break;
-            case BuiltinAction.ResetFontSize: FontAction("reset_font_size"); break;
-            default:
-                // palettes / split / scratch / zoom / fullscreen / quick / dashboard / theme /
-                // window management arrive with phase 5 — swallow the chord (it IS bound), log it
-                System.Diagnostics.Debug.WriteLine($"hotkey {action} is not implemented yet (phase 5)");
-                break;
-        }
-        return true;
-    }
+        if (_hotkeys?.Handle(physical) is not { } action)
+            return false;
 
-    private void FontAction(string action)
-    {
-        var host = _host;
-        if (host is null) return;
+        var router = _commandRouter;
+        if (router is null || !router.CanExecute(action))
+            return false;
+
         ObserveTaskFault(
-            host.PerformFontActionAsync(action),
-            "Font action failed");
+            router.ExecuteAsync(action),
+            $"Hotkey action {action} failed");
+        return true;
     }
 
     private async Task OpenDirectoryIntoActiveAsync()
