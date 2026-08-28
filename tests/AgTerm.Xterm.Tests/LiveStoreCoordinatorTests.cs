@@ -394,9 +394,11 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
         coordinator.SelectionSnapshotChanged += snap => received.TrySetResult(snap);
 
         Guid newId = default;
+        string workspaceName = "";
         _host.RunLocked(() =>
         {
             var ws = _host.Store.Workspaces[0];
+            workspaceName = ws.Name;
             newId = _host.Store.AddSession(ws.Id, _stateDir, name: "selected-title", select: false)!.Id;
             _host.Store.SelectSession(newId);
         });
@@ -404,6 +406,7 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
         var snapshot = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(newId, snapshot.SessionId);
         Assert.Equal("selected-title", snapshot.DisplayName);
+        Assert.Equal(workspaceName, snapshot.WorkspaceName);
     }
 
     [Fact]
@@ -542,5 +545,63 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
 
         // Subscriber must receive exactly the second selection ID once.
         Assert.Equal(secondId, Assert.Single(receivedIds));
+    }
+
+    // =========================================================================
+    // Group 9 — Snapshot atomicity: payload captured when event is produced
+    // =========================================================================
+
+    [Fact]
+    public void Selection_snapshot_captures_title_and_workspace_when_event_is_produced()
+    {
+        // Holding scheduler: enqueues each Action + CancellationToken, returns a TCS task.
+        // Work is not executed until the test manually drains the queue.
+        var queue = new List<(Action work, CancellationToken ct, TaskCompletionSource tcs)>();
+        Task HoldingScheduler(Action work, CancellationToken ct)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            queue.Add((work, ct, tcs));
+            return tcs.Task;
+        }
+
+        using var coordinator = new LiveStoreCoordinator(_host, () => false, HoldingScheduler);
+
+        // Subscribe BEFORE producing the event.
+        var receivedSnapshots = new List<LiveSelectionSnapshot>();
+        coordinator.SelectionSnapshotChanged += snap => receivedSnapshots.Add(snap);
+
+        // Under RunLocked: add workspace "event-workspace", add session "event-title", select it.
+        // This queues event deliveries but does NOT execute them yet.
+        Guid sessionId = default;
+        _host.RunLocked(() =>
+        {
+            var ws = _host.Store.AddWorkspace("event-workspace");
+            var session = _host.Store.AddSession(ws.Id, _stateDir, name: "event-title", select: false)!;
+            sessionId = session.Id;
+            _host.Store.SelectSession(sessionId);
+        });
+
+        // Still before draining: directly mutate CustomName and workspace Name without calling
+        // Save/NotifySidebar/selection methods, so no second public event is produced.
+        _host.RunLocked(() =>
+        {
+            _host.Store.SessionWithId(sessionId)!.CustomName = "later-title";
+            _host.Store.WorkspaceForSession(sessionId)!.Name = "later-workspace";
+        });
+
+        // Drain all queued scheduler items in FIFO order.
+        var items = queue.ToList();
+        queue.Clear();
+        foreach (var (work, _, tcs) in items)
+        {
+            try { work(); tcs.SetResult(); }
+            catch (Exception ex) { tcs.SetException(ex); }
+        }
+
+        // The snapshot must reflect state AT event-production time, not the later-mutated state.
+        Assert.NotEmpty(receivedSnapshots);
+        var snapshot = receivedSnapshots.Last();
+        Assert.Equal("event-title", snapshot.DisplayName);
+        Assert.Equal("event-workspace", snapshot.WorkspaceName);
     }
 }

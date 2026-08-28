@@ -122,6 +122,25 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task WorkspaceName_stays_out_of_bridge_json()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+
+        var accepted = await page.ApplyLayoutAsync(
+            new TerminalLayout.Single(8L, "p1", "session", "workspace-private"));
+
+        Assert.True(accepted);
+        var applyScript = Assert.Single(_host.Scripts, s => s.Contains("agterm.applyLayout"));
+        Assert.Contains("\"type\":\"single\"", applyScript);
+        Assert.Contains("\"generation\":8", applyScript);
+        Assert.Contains("\"paneId\":\"p1\"", applyScript);
+        Assert.Contains("\"title\":\"session\"", applyScript);
+        Assert.DoesNotContain("workspaceName", applyScript);
+        Assert.DoesNotContain("workspace-private", applyScript);
+    }
+
+    [Fact]
     public async Task ApplyLayout_Empty_returns_bridge_bool_and_exact_discriminated_camelCase_json()
     {
         var page = await InitializedAsync();

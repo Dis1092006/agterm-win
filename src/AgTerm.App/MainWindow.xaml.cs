@@ -4,6 +4,7 @@ using AgTerm.ControlServer;
 using AgTerm.Xterm;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
@@ -33,8 +34,11 @@ public sealed partial class MainWindow : Window
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private LiveSelectionSnapshot _selection = new(null, null); // UI-thread confined
+    private SidebarSnapshot? _latestSidebarSnapshot; // UI-thread confined
+    private string? _acceptedPaneId; // UI-thread confined
     private Guid? _selectedSessionId; // UI-thread confined
     private long _layoutGeneration; // UI-thread confined
+    private bool _terminalOnlyPresentation;
     private bool _draggingDivider;
 
     private sealed record StartupState(
@@ -44,6 +48,10 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        SystemBackdrop = new MicaBackdrop();
+        AppTitleBar.PaneToggleRequested += (_, _) => _sidebar?.ToggleSidebarVisible();
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
         _appWindow = AppWindow.GetFromWindowId(windowId);
@@ -59,9 +67,19 @@ public sealed partial class MainWindow : Window
             {
                 case TerminalLayout.Single single:
                     Title = $"{single.Title} — agterm";
+                    AppTitleBar.Title = single.Title;
+                    AppTitleBar.Subtitle = single.WorkspaceName ?? string.Empty;
+                    if (_acceptedPaneId != single.PaneId)
+                    {
+                        _acceptedPaneId = single.PaneId;
+                        FocusActiveTerminal();
+                    }
                     break;
                 case TerminalLayout.Empty:
+                    _acceptedPaneId = null;
                     Title = "agterm";
+                    AppTitleBar.Title = "agterm";
+                    AppTitleBar.Subtitle = string.Empty;
                     break;
             }
         };
@@ -148,16 +166,20 @@ public sealed partial class MainWindow : Window
         var startup = await host.StoreCoordinator.ReadAsync(store =>
         {
             var selectedSessionId = store.SelectedSessionId;
-            var selectedDisplayName = selectedSessionId is { } id
-                ? store.SessionWithId(id)?.DisplayName
-                : null;
+            string? selectedDisplayName = null;
+            string? selectedWorkspaceName = null;
+            if (selectedSessionId is { } selectedId)
+            {
+                selectedDisplayName = store.SessionWithId(selectedId)?.DisplayName;
+                selectedWorkspaceName = store.WorkspaceForSession(selectedId)?.Name;
+            }
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
                 .Where(session => session.Surface is XtermPaneSurface)
                 .Select(session => (session.Id, (XtermPaneSurface)session.Surface!))
                 .ToList();
             return new StartupState(
-                new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName),
+                new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName, selectedWorkspaceName),
                 committedSurfaces);
         });
 
@@ -189,10 +211,38 @@ public sealed partial class MainWindow : Window
     /// <summary>Window-level chrome from a sidebar snapshot: column width and visibility.</summary>
     private void ApplyChrome(SidebarSnapshot snapshot)
     {
+        _latestSidebarSnapshot = snapshot;
+        if (_terminalOnlyPresentation)
+            return;
+
+        ApplySidebarChrome(snapshot);
+    }
+
+    private void ApplySidebarChrome(SidebarSnapshot snapshot)
+    {
+        var width = Math.Clamp(snapshot.SidebarWidth, AppStore.SidebarWidthMin, AppStore.SidebarWidthMax);
         if (!_draggingDivider)
-            SidebarColumn.Width = new GridLength(snapshot.SidebarVisible ? snapshot.SidebarWidth : 0);
-        Sidebar.Visibility = snapshot.SidebarVisible ? Visibility.Visible : Visibility.Collapsed;
-        SidebarDivider.Visibility = Sidebar.Visibility;
+        {
+            SidebarColumn.Width = new GridLength(width);
+            ShellSplitView.OpenPaneLength = width;
+        }
+
+        ShellSplitView.IsPaneOpen = snapshot.SidebarVisible;
+    }
+
+    internal void SetTerminalOnlyPresentation(bool enabled)
+    {
+        if (_terminalOnlyPresentation == enabled)
+            return;
+
+        _terminalOnlyPresentation = enabled;
+        VisualStateManager.GoToState(
+            ShellSplitView,
+            enabled ? "TerminalOnlyPresentation" : "StandardPresentation",
+            useTransitions: false);
+
+        if (!enabled && _latestSidebarSnapshot is { } snapshot)
+            ApplySidebarChrome(snapshot);
     }
 
     /// <summary>Keyboard focus never lives in the sidebar (upstream): after a row gesture, return
@@ -215,8 +265,10 @@ public sealed partial class MainWindow : Window
     private void OnDividerMoved(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
         if (!_draggingDivider) return;
-        var x = e.GetCurrentPoint(RootGrid).Position.X;
-        SidebarColumn.Width = new GridLength(Math.Clamp(x, 160, 560));
+        var x = e.GetCurrentPoint(ShellSplitView).Position.X;
+        var width = Math.Clamp(x, AppStore.SidebarWidthMin, AppStore.SidebarWidthMax);
+        SidebarColumn.Width = new GridLength(width);
+        ShellSplitView.OpenPaneLength = width;
     }
 
     private void OnDividerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
@@ -405,7 +457,7 @@ public sealed partial class MainWindow : Window
             _surfaces.TryGetValue(sessionId, out var surface) &&
             surface.PaneToken is { } paneToken)
         {
-            _layoutCoordinator.Submit(new TerminalLayout.Single(generation, paneToken, displayName));
+            _layoutCoordinator.Submit(new TerminalLayout.Single(generation, paneToken, displayName, _selection.WorkspaceName));
             return;
         }
 

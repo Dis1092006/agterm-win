@@ -11,6 +11,7 @@
 
         <ListView x:Name="RowsList"
                   Grid.Row="0"
+                  Background="Transparent"
                   SelectionMode="Extended"
                   CanDragItems="True"
                   AllowDrop="True"

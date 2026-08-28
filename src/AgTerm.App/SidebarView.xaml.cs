@@ -119,6 +119,12 @@ public sealed partial class SidebarView : UserControl
     private void OnRowTapped(object sender, TappedRoutedEventArgs e)
     {
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not SidebarRowViewModel row) return;
+        if (row.IsSession)
+        {
+            if (row.Id == _snapshot?.SelectedSessionId)
+                RowActivated?.Invoke();
+            return;
+        }
         if (!row.IsWorkspace || _snapshot?.Mode == SidebarMode.Flagged) return;
         _pendingToggle?.Cancel();
         var timer = DispatcherQueue.CreateTimer();

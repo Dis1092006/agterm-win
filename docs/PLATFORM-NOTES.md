@@ -215,3 +215,11 @@
   Surface and renderer waits use a 5-second budget. Shutdown-triggered process exits do not
   remove sessions from the store or snapshot; a five-session live test verifies that all
   children exit, all pane IDs disappear from the page, and all five sessions remain persisted.
+- **Windows list/details shell.** The live window uses the Windows App SDK 1.7 `TitleBar`
+  above a `SplitView`: the custom multi-select sidebar remains the pane and the shared
+  WebView2 remains the content. The pane is inline from 720 effective pixels and overlays
+  below that breakpoint. Its persisted width remains clamped to 160..560 pixels; the 4-pixel
+  drag target overlays a 1-pixel system divider and saves only on pointer release. The title
+  bar shows the accepted session name and owning workspace from one immutable layout
+  generation. The shell uses `MicaBackdrop` plus WinUI system theme resources, which provide
+  the solid fallback and high-contrast resource variants without a separate color palette.

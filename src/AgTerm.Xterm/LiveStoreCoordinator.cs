@@ -3,7 +3,7 @@ using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
-public sealed record LiveSelectionSnapshot(Guid? SessionId, string? DisplayName);
+public sealed record LiveSelectionSnapshot(Guid? SessionId, string? DisplayName, string? WorkspaceName = null);
 
 public interface ILiveStoreCoordinator : IDisposable
 {
@@ -148,11 +148,11 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         var sidebarInvalidated = SidebarInvalidated;
         if (sidebarInvalidated is not null)
         {
-        QueueEvent(() =>
-        {
-            if (generation == Volatile.Read(ref _sidebarGeneration))
-                sidebarInvalidated();
-        });
+            QueueEvent(() =>
+            {
+                if (generation == Volatile.Read(ref _sidebarGeneration))
+                    sidebarInvalidated();
+            });
         }
 
         PublishSelectionSnapshot(snapshot);
@@ -166,19 +166,18 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         }
 
         var snapshot = CaptureSelectionSnapshot();
-        var selectedSessionId = snapshot.SessionId;
 
         var generation = Interlocked.Increment(ref _selectionNotificationGeneration);
         var selectionChanged = SelectionChanged;
         if (selectionChanged is not null)
         {
-        QueueEvent(() =>
-        {
-            if (generation == Volatile.Read(ref _selectionNotificationGeneration))
+            QueueEvent(() =>
             {
-                selectionChanged(selectedSessionId);
-            }
-        });
+                if (generation == Volatile.Read(ref _selectionNotificationGeneration))
+                {
+                    selectionChanged(snapshot.SessionId);
+                }
+            });
         }
 
         PublishSelectionSnapshot(snapshot);
@@ -187,10 +186,15 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     private LiveSelectionSnapshot CaptureSelectionSnapshot()
     {
         var selectedSessionId = _host.Store.SelectedSessionId;
-        var selectedDisplayName = selectedSessionId is { } id
-            ? _host.Store.SessionWithId(id)?.DisplayName
-            : null;
-        return new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName);
+        if (selectedSessionId is not { } id)
+        {
+            return new LiveSelectionSnapshot(selectedSessionId, null, null);
+        }
+
+        var selectedDisplayName = _host.Store.SessionWithId(id)?.DisplayName;
+        var selectedWorkspaceName = _host.Store.WorkspaceForSession(id)?.Name;
+
+        return new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName, selectedWorkspaceName);
     }
 
     private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)

@@ -4,18 +4,84 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:AgTerm.App"
     Title="agterm">
-    <Grid x:Name="RootGrid" KeyDown="OnRootKeyDown">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="SidebarColumn" Width="220" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
-        <local:SidebarView x:Name="Sidebar" Grid.Column="0" />
-        <Border x:Name="SidebarDivider" Grid.Column="1" Width="4"
-                Background="Transparent"
-                PointerPressed="OnDividerPressed"
-                PointerMoved="OnDividerMoved"
-                PointerReleased="OnDividerReleased" />
-        <WebView2 x:Name="TerminalView" Grid.Column="2" />
+    <Grid x:Name="RootGrid"
+          Background="Transparent"
+          KeyDown="OnRootKeyDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TitleBar x:Name="AppTitleBar"
+                  Grid.Row="0"
+                  Title="agterm"
+                  IsPaneToggleButtonVisible="True"
+                  Background="Transparent" />
+
+        <SplitView x:Name="ShellSplitView"
+                   Grid.Row="1"
+                   CompactPaneLength="0"
+                   DisplayMode="Inline"
+                   IsPaneOpen="True"
+                   OpenPaneLength="220"
+                   Background="Transparent"
+                   PaneBackground="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="WindowWidthStates">
+                    <VisualState x:Name="NarrowWindow">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="0" />
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter Target="ShellSplitView.DisplayMode" Value="Overlay" />
+                            <Setter Target="SidebarDivider.Visibility" Value="Collapsed" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="WideWindow">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="720" />
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter Target="ShellSplitView.DisplayMode" Value="Inline" />
+                            <Setter Target="SidebarDivider.Visibility" Value="Visible" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="PresentationStates">
+                    <VisualState x:Name="StandardPresentation" />
+                    <VisualState x:Name="TerminalOnlyPresentation">
+                        <VisualState.Setters>
+                            <Setter Target="AppTitleBar.Visibility" Value="Collapsed" />
+                            <Setter Target="ShellSplitView.IsPaneOpen" Value="False" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+            <SplitView.Pane>
+                <Grid Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="SidebarColumn" Width="220" />
+                    </Grid.ColumnDefinitions>
+
+                    <local:SidebarView x:Name="Sidebar" Grid.Column="0" />
+                    <Border x:Name="SidebarDivider"
+                            Grid.Column="0"
+                            Width="4"
+                            HorizontalAlignment="Right"
+                            Background="Transparent"
+                            AutomationProperties.Name="Resize sidebar"
+                            PointerPressed="OnDividerPressed"
+                            PointerMoved="OnDividerMoved"
+                            PointerReleased="OnDividerReleased">
+                        <Border Width="1"
+                                HorizontalAlignment="Center"
+                                Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                    </Border>
+                </Grid>
+            </SplitView.Pane>
+            <SplitView.Content>
+                <WebView2 x:Name="TerminalView" />
+            </SplitView.Content>
+        </SplitView>
     </Grid>
 </Window>

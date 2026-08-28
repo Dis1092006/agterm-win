@@ -177,4 +177,25 @@ public sealed class TerminalLayoutCoordinatorTests
         var intermediateAccepted = accepted.Where(l => l.Generation >= 2 && l.Generation < 20).ToList();
         Assert.Empty(intermediateAccepted);
     }
+
+    [Fact]
+    public async Task LayoutAccepted_carries_the_workspace_name_of_the_submitted_layout()
+    {
+        var accepted = new List<TerminalLayout>();
+
+        Task<bool> Sink(TerminalLayout layout)
+        {
+            accepted.Add(layout);
+            return Task.FromResult(true);
+        }
+
+        using var coordinator = new TerminalLayoutCoordinator(Sink);
+        coordinator.LayoutAccepted += (_, layout) => { };
+
+        coordinator.Submit(new TerminalLayout.Single(1L, "pane", "session", "workspace"));
+        await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        var single = Assert.IsType<TerminalLayout.Single>(accepted.Single());
+        Assert.Equal("workspace", single.WorkspaceName);
+    }
 }
