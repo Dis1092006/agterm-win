@@ -382,6 +382,38 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Coordinator_successful_commit_notifies_sidebar_after_surface_transition()
+    {
+        using var host = BuildHost();
+        var scopes = new LiveDispatchScopeFactory();
+        var sessionId = host.Store.ActiveSession!.Id;
+        var openerTcs = new TaskCompletionSource<IHeadlessSurface>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var coordinator = BuildCoordinator(host, scopes, (_, _) => openerTcs.Task);
+
+        var notifications = 0;
+        using var scope = scopes.Begin();
+        host.RunLocked(() =>
+        {
+            coordinator.Reserve(new SurfaceOpenRequest(
+                sessionId, LiveSurfaceKind.Main, DefaultOptions(_stateDir)));
+        });
+
+        // Subscribe AFTER Reserve returns (not before)
+        host.Store.SidebarChanged += () => notifications++;
+
+        var completeTask = scope.CompleteAsync(CancellationToken.None);
+
+        var fake = new FakeSurface { PaneToken = "sidebar-commit" };
+        openerTcs.TrySetResult(fake);
+
+        await completeTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, notifications);
+    }
+
+    [Fact]
     public async Task Coordinator_commit_callback_failure_does_not_fault_completion()
     {
         using var host = BuildHost();
@@ -595,6 +627,36 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
         // Pending still reports unrealized shapes
         Assert.False(pending.Inject("x"));
         Assert.Null(pending.ReadScreenText(false, null));
+    }
+
+    [Fact]
+    public async Task Coordinator_creation_failure_notifies_sidebar_after_surface_transition()
+    {
+        using var host = BuildHost();
+        var scopes = new LiveDispatchScopeFactory();
+        var sessionId = host.Store.ActiveSession!.Id;
+
+        using var coordinator = BuildCoordinator(
+            host, scopes,
+            (_, _) => Task.FromException<IHeadlessSurface>(
+                new InvalidOperationException("test: opener always fails")));
+
+        var notifications = 0;
+        PendingTerminalSurface? pending = null;
+        using var scope = scopes.Begin();
+
+        host.RunLocked(() =>
+        {
+            pending = coordinator.Reserve(new SurfaceOpenRequest(
+                sessionId, LiveSurfaceKind.Main, DefaultOptions(_stateDir)));
+        });
+
+        // Subscribe AFTER Reserve returns (not before)
+        host.Store.SidebarChanged += () => notifications++;
+
+        await scope.CompleteAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, notifications);
     }
 
     // -------------------------------------------------------------------------

@@ -578,6 +578,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
             }
 
             session.Surface = realized;
+            _host.Store.NotifySidebar();
             committed = true;
         });
 
@@ -626,6 +627,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
             if (session is not null && ReferenceEquals(session.Surface, pending))
             {
                 session.Surface = null;
+                _host.Store.NotifySidebar();
             }
         });
     }

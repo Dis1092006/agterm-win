@@ -224,6 +224,33 @@ public sealed class SidebarControllerTests : IDisposable
         Assert.Equal(new[] { w2, w1 }, Latest.Workspaces.Select(w => w.Id));
     }
 
+    [Fact]
+    public void Surface_lifecycle_states_map_to_SurfaceStatuses_in_snapshot()
+    {
+        var sessionId = Latest.SelectedSessionId!.Value;
+
+        Mutate(store =>
+        {
+            store.SessionWithId(sessionId)!.Surface = new PendingTerminalSurface();
+            store.NotifySidebar();
+        });
+        Assert.Equal(SidebarSurfaceStatus.Pending, Latest.SurfaceStatuses[sessionId]);
+
+        Mutate(store =>
+        {
+            store.SessionWithId(sessionId)!.Surface = new FakeSurface();
+            store.NotifySidebar();
+        });
+        Assert.Equal(SidebarSurfaceStatus.Ready, Latest.SurfaceStatuses[sessionId]);
+
+        Mutate(store =>
+        {
+            store.SessionWithId(sessionId)!.Surface = null;
+            store.NotifySidebar();
+        });
+        Assert.Equal(SidebarSurfaceStatus.Failed, Latest.SurfaceStatuses[sessionId]);
+    }
+
     // =========================================================================
     // Lifecycle and async snapshot ordering — driven by a fake ILiveStoreCoordinator
     // =========================================================================
@@ -356,5 +383,259 @@ public sealed class SidebarControllerTests : IDisposable
         public void RaiseSelectionChanged(Guid? id) => SelectionChanged?.Invoke(id);
 
         public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
+    }
+}
+
+public sealed class SidebarGesturePolicyTests
+{
+    public static IEnumerable<object[]> GestureCases => new[]
+    {
+        // workspace Tap: tree → ToggleWorkspace, flagged → None
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarPointerGesture.Tap,       SidebarGestureAction.ToggleWorkspace },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarPointerGesture.Tap,       SidebarGestureAction.None            },
+        // session Tap: tree or flagged, selected or unselected → ActivateSession
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarPointerGesture.Tap,       SidebarGestureAction.ActivateSession  },
+        new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarPointerGesture.Tap,       SidebarGestureAction.ActivateSession  },
+        // DoubleTap → None on both kinds and both modes (no rename, no duplicate single-tap)
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarPointerGesture.DoubleTap, SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarPointerGesture.DoubleTap, SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarPointerGesture.DoubleTap, SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarPointerGesture.DoubleTap, SidebarGestureAction.None            },
+    };
+
+    [Theory]
+    [MemberData(nameof(GestureCases))]
+    public void Decide_maps_gesture_to_expected_action(
+        SidebarRowKind kind, SidebarMode mode, SidebarPointerGesture gesture, SidebarGestureAction expected)
+    {
+        Assert.Equal(expected, SidebarGesturePolicy.Decide(kind, mode, gesture));
+    }
+}
+
+public sealed class SidebarKeyboardGesturePolicyTests
+{
+    public static IEnumerable<object[]> KeyboardCases => new[]
+    {
+        // tree workspace: Enter → ToggleWorkspace, Space → ToggleWorkspace
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.Enter, SidebarGestureAction.ToggleWorkspace },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.Space, SidebarGestureAction.ToggleWorkspace },
+        // flagged workspace: Enter → None, Space → None
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.Enter, SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.Space, SidebarGestureAction.None            },
+        // session Enter: tree or flagged → ActivateSession
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.Enter, SidebarGestureAction.ActivateSession  },
+        new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.Enter, SidebarGestureAction.ActivateSession  },
+        // session Space: tree or flagged → None (ListView selection; SelectionChanged owns activation)
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.Space, SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.Space, SidebarGestureAction.None            },
+        // F2 on session or tree workspace → Rename
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.F2,    SidebarGestureAction.Rename           },
+        new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.F2,    SidebarGestureAction.Rename           },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.F2,    SidebarGestureAction.Rename           },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.F2,    SidebarGestureAction.None            },
+        // unsupported enum values → None
+        new object[] { (SidebarRowKind)99,       SidebarMode.Tree,    SidebarKeyboardGesture.Enter, SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Session,   (SidebarMode)99,     SidebarKeyboardGesture.Enter, SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    (SidebarKeyboardGesture)99,   SidebarGestureAction.None            },
+    };
+
+    [Theory]
+    [MemberData(nameof(KeyboardCases))]
+    public void DecideKeyboard_maps_gesture_to_expected_action(
+        SidebarRowKind kind, SidebarMode mode, SidebarKeyboardGesture gesture, SidebarGestureAction expected)
+    {
+        Assert.Equal(expected, SidebarGesturePolicy.DecideKeyboard(kind, mode, gesture));
+    }
+}
+
+public sealed class SidebarKeyboardGesturePolicyIsSelectedTests
+{
+    // Session + Enter + not selected → SelectSession (select without activate)
+    // Session + Enter + already selected → ActivateSession (refocus/activate)
+    // Non-session: Tree Workspace + Enter ignores selected flag → ToggleWorkspace
+
+    public static IEnumerable<object[]> IsSelectedCases => new[]
+    {
+        // Session, Enter, not selected: Tree → SelectSession
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.Enter, false, SidebarGestureAction.SelectSession  },
+        // Session, Enter, not selected: Flagged → SelectSession
+        new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.Enter, false, SidebarGestureAction.SelectSession  },
+        // Session, Enter, already selected: Tree → ActivateSession
+        new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.Enter, true,  SidebarGestureAction.ActivateSession },
+        // Session, Enter, already selected: Flagged → ActivateSession
+        new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.Enter, true,  SidebarGestureAction.ActivateSession },
+        // Workspace, Tree, Enter, not selected → ToggleWorkspace (selected flag is irrelevant for non-session)
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.Enter, false, SidebarGestureAction.ToggleWorkspace },
+        // Workspace, Tree, Enter, selected → ToggleWorkspace (selected flag is irrelevant for non-session)
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.Enter, true,  SidebarGestureAction.ToggleWorkspace },
+    };
+
+    [Theory]
+    [MemberData(nameof(IsSelectedCases))]
+    public void DecideKeyboard_with_isSelected_maps_gesture_to_expected_action(
+        SidebarRowKind kind, SidebarMode mode, SidebarKeyboardGesture gesture, bool isSelected, SidebarGestureAction expected)
+    {
+        Assert.Equal(expected, SidebarGesturePolicy.DecideKeyboard(kind, mode, gesture, isSelected));
+    }
+}
+
+public sealed class SidebarAutomationTextTests
+{
+    // -------------------------------------------------------------------------
+    // Surface(SidebarSurfaceStatus)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Surface_Pending_returns_terminal_starting()
+    {
+        Assert.Equal("Terminal starting", SidebarAutomationText.Surface(SidebarSurfaceStatus.Pending));
+    }
+
+    [Fact]
+    public void Surface_Failed_returns_terminal_failed_to_start()
+    {
+        Assert.Equal("Terminal failed to start", SidebarAutomationText.Surface(SidebarSurfaceStatus.Failed));
+    }
+
+    [Fact]
+    public void Surface_Ready_returns_empty_string()
+    {
+        Assert.Equal(string.Empty, SidebarAutomationText.Surface(SidebarSurfaceStatus.Ready));
+    }
+
+    // -------------------------------------------------------------------------
+    // Agent(AgentStatus)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Agent_Blocked_returns_agent_status_blocked()
+    {
+        Assert.Equal("Agent status blocked", SidebarAutomationText.Agent(AgentStatus.Blocked));
+    }
+
+    [Fact]
+    public void Agent_Idle_returns_empty_string()
+    {
+        Assert.Equal(string.Empty, SidebarAutomationText.Agent(AgentStatus.Idle));
+    }
+
+    // -------------------------------------------------------------------------
+    // Unseen(int)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Unseen_zero_returns_empty_string()
+    {
+        Assert.Equal(string.Empty, SidebarAutomationText.Unseen(0));
+    }
+
+    [Fact]
+    public void Unseen_one_returns_singular_notification()
+    {
+        Assert.Equal("1 unseen notification", SidebarAutomationText.Unseen(1));
+    }
+
+    [Fact]
+    public void Unseen_many_returns_plural_notifications()
+    {
+        Assert.Equal("3 unseen notifications", SidebarAutomationText.Unseen(3));
+    }
+
+    // -------------------------------------------------------------------------
+    // Chevron(SidebarRow)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Chevron_expanded_workspace_returns_collapse_label()
+    {
+        var row = new SidebarRow(SidebarRowKind.Workspace, Guid.NewGuid(), "api")
+        {
+            Collapsed = false,
+        };
+        Assert.Equal("Collapse workspace api", SidebarAutomationText.Chevron(row));
+    }
+
+    [Fact]
+    public void Chevron_collapsed_workspace_returns_expand_label()
+    {
+        var row = new SidebarRow(SidebarRowKind.Workspace, Guid.NewGuid(), "api")
+        {
+            Collapsed = true,
+        };
+        Assert.Equal("Expand workspace api", SidebarAutomationText.Chevron(row));
+    }
+
+    // -------------------------------------------------------------------------
+    // Row(SidebarRow, SidebarSurfaceStatus)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Row_workspace_expanded_focused_with_unseen_includes_all_parts()
+    {
+        var row = new SidebarRow(SidebarRowKind.Workspace, Guid.NewGuid(), "api")
+        {
+            Collapsed = false,
+            Focused = true,
+            Unseen = 2,
+        };
+        Assert.Equal(
+            "Workspace api, expanded, focused, 2 unseen notifications",
+            SidebarAutomationText.Row(row, SidebarSurfaceStatus.Ready));
+    }
+
+    [Fact]
+    public void Row_workspace_collapsed_unfocused_no_unseen_omits_optional_parts()
+    {
+        var row = new SidebarRow(SidebarRowKind.Workspace, Guid.NewGuid(), "api")
+        {
+            Collapsed = true,
+            Focused = false,
+            Unseen = 0,
+        };
+        Assert.Equal(
+            "Workspace api, collapsed",
+            SidebarAutomationText.Row(row, SidebarSurfaceStatus.Ready));
+    }
+
+    [Fact]
+    public void Row_session_pending_flagged_blocked_with_unseen_includes_all_parts()
+    {
+        var row = new SidebarRow(SidebarRowKind.Session, Guid.NewGuid(), "shell")
+        {
+            Flagged = true,
+            Indicator = new AgentIndicator(AgentStatus.Blocked),
+            Unseen = 3,
+        };
+        Assert.Equal(
+            "Session shell, terminal starting, flagged, agent status blocked, 3 unseen notifications",
+            SidebarAutomationText.Row(row, SidebarSurfaceStatus.Pending));
+    }
+
+    [Fact]
+    public void Row_session_failed_surface_uses_terminal_failed_to_start()
+    {
+        var row = new SidebarRow(SidebarRowKind.Session, Guid.NewGuid(), "shell")
+        {
+            Flagged = true,
+            Indicator = new AgentIndicator(AgentStatus.Blocked),
+            Unseen = 3,
+        };
+        Assert.Equal(
+            "Session shell, terminal failed to start, flagged, agent status blocked, 3 unseen notifications",
+            SidebarAutomationText.Row(row, SidebarSurfaceStatus.Failed));
+    }
+
+    [Fact]
+    public void Row_session_ready_idle_unflagged_no_unseen_returns_label_only()
+    {
+        var row = new SidebarRow(SidebarRowKind.Session, Guid.NewGuid(), "shell")
+        {
+            Flagged = false,
+            Indicator = new AgentIndicator(AgentStatus.Idle),
+            Unseen = 0,
+        };
+        Assert.Equal(
+            "Session shell",
+            SidebarAutomationText.Row(row, SidebarSurfaceStatus.Ready));
     }
 }

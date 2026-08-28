@@ -12,16 +12,16 @@
         <ListView x:Name="RowsList"
                   Grid.Row="0"
                   Background="Transparent"
+                  IsDoubleTapEnabled="False"
                   SelectionMode="Extended"
                   CanDragItems="True"
                   AllowDrop="True"
-                  IsDoubleTapEnabled="True"
+                  ContainerContentChanging="OnRowsListContainerContentChanging"
                   SelectionChanged="OnSelectionChanged"
                   DragItemsStarting="OnDragItemsStarting"
                   DragOver="OnListDragOver"
                   Drop="OnListDrop"
-                  RightTapped="OnRowRightTapped"
-                  DoubleTapped="OnRowDoubleTapped"
+                  ContextRequested="OnRowContextRequested"
                   Tapped="OnRowTapped"
                   KeyDown="OnListKeyDown">
             <ListView.ItemContainerStyle>
@@ -37,7 +37,8 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
@@ -47,6 +48,8 @@
                                   Glyph="{x:Bind Chevron, Mode=OneWay}"
                                   FontSize="10"
                                   VerticalAlignment="Center"
+                                  AutomationProperties.Name="{x:Bind ChevronAutomationName, Mode=OneWay}"
+                                  AutomationProperties.AccessibilityView="Raw"
                                   Visibility="{x:Bind WorkspaceVisibility, Mode=OneWay}" />
 
                         <!-- session icon: terminal rect (+split divider), filled when flagged -->
@@ -76,26 +79,50 @@
                                       Glyph="&#xE72E;"
                                       FontSize="10"
                                       VerticalAlignment="Center"
+                                      AutomationProperties.Name="{x:Bind FocusedWorkspaceAutomationName, Mode=OneWay}"
+                                      AutomationProperties.AccessibilityView="Raw"
                                       Visibility="{x:Bind FocusPillVisibility, Mode=OneWay}" />
                         </StackPanel>
 
+                        <!-- lifecycle status (ready has no icon): pending ring or failed marker -->
+                        <Grid Grid.Column="2"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <ProgressRing Width="12" Height="12"
+                                        IsActive="True"
+                                        Visibility="{x:Bind PendingVisibility, Mode=OneWay}"
+                                        AutomationProperties.Name="{x:Bind SurfaceAutomationName, Mode=OneWay}"
+                                        AutomationProperties.AccessibilityView="Raw" />
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      Glyph="&#xEA39;"
+                                      FontSize="12"
+                                      Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                      Visibility="{x:Bind FailedVisibility, Mode=OneWay}"
+                                      AutomationProperties.Name="{x:Bind SurfaceAutomationName, Mode=OneWay}"
+                                      AutomationProperties.AccessibilityView="Raw" />
+                        </Grid>
+
                         <!-- agent-status glyph -->
-                        <Path Grid.Column="2"
+                        <Path Grid.Column="3"
                               x:Name="StatusGlyph"
                               Data="{x:Bind GlyphData, Mode=OneWay}"
                               Fill="{x:Bind GlyphFill, Mode=OneWay}"
                               Width="13" Height="13"
                               VerticalAlignment="Center"
                               Visibility="{x:Bind GlyphVisibility, Mode=OneWay}"
+                              AutomationProperties.Name="{x:Bind AgentAutomationName, Mode=OneWay}"
+                              AutomationProperties.AccessibilityView="Raw"
                               Loaded="OnGlyphLoaded" />
 
                         <!-- unseen badge -->
-                        <Border Grid.Column="3"
+                        <Border Grid.Column="4"
                                 Background="#E81123"
                                 CornerRadius="8"
                                 MinWidth="16" Height="16"
                                 Padding="4,0,4,0"
                                 VerticalAlignment="Center"
+                                AutomationProperties.Name="{x:Bind UnseenAutomationName, Mode=OneWay}"
+                                AutomationProperties.AccessibilityView="Raw"
                                 Visibility="{x:Bind BadgeVisibility, Mode=OneWay}">
                             <TextBlock Text="{x:Bind BadgeText, Mode=OneWay}"
                                        Foreground="White"
@@ -123,6 +150,7 @@
                           Grid.Column="0"
                           Padding="6,2,6,2"
                           Click="OnFlaggedToggleClick"
+                          AutomationProperties.Name="Flagged sessions"
                           ToolTipService.ToolTip="Flagged view">
                 <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           Glyph="&#xE7C1;" FontSize="12" />
@@ -131,6 +159,7 @@
                     Grid.Column="1"
                     Padding="6,2,6,2"
                     Visibility="Collapsed"
+                    AutomationProperties.Name="Clear workspace focus"
                     Click="OnFocusPillClick">
                 <StackPanel Orientation="Horizontal" Spacing="4">
                     <TextBlock x:Name="FocusPillText" FontSize="11" />
@@ -141,6 +170,7 @@
             <Button Grid.Column="3"
                     Padding="6,2,6,2"
                     Click="OnNewWorkspaceClick"
+                    AutomationProperties.Name="New workspace"
                     ToolTipService.ToolTip="New workspace">
                 <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           Glyph="&#xE710;" FontSize="12" />

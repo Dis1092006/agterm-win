@@ -1,10 +1,18 @@
 using System.Diagnostics;
+using System.Collections.ObjectModel;
 using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
 /// <summary>One workspace entry for the sidebar's menus (Move to ▸, delete gating).</summary>
 public sealed record SidebarWorkspaceInfo(Guid Id, string Name);
+
+public enum SidebarSurfaceStatus
+{
+    Ready,
+    Pending,
+    Failed,
+}
 
 /// <summary>
 /// Everything the sidebar view renders, snapshotted UNDER the host gate in one read: the row
@@ -17,6 +25,8 @@ public sealed record SidebarSnapshot
     public required IReadOnlyList<SidebarRow> Rows { get; init; }
     public required string ShapeKey { get; init; }
     public required IReadOnlyList<SidebarWorkspaceInfo> Workspaces { get; init; }
+    public IReadOnlyDictionary<Guid, SidebarSurfaceStatus> SurfaceStatuses { get; init; } =
+        new ReadOnlyDictionary<Guid, SidebarSurfaceStatus>(new Dictionary<Guid, SidebarSurfaceStatus>());
     public Guid? SelectedSessionId { get; init; }
     public bool CanRemoveWorkspace { get; init; }
     public bool SidebarVisible { get; init; }
@@ -276,6 +286,20 @@ public sealed class SidebarController : IDisposable
     /// <summary>Projects AppStore into immutable/materialized sidebar view state.</summary>
     private static SidebarSnapshot Capture(AppStore store)
     {
+        var surfaceStatuses = new Dictionary<Guid, SidebarSurfaceStatus>();
+        foreach (var workspace in store.Workspaces)
+        {
+            foreach (var session in workspace.Sessions)
+            {
+                surfaceStatuses[session.Id] = session.Surface switch
+                {
+                    PendingTerminalSurface => SidebarSurfaceStatus.Pending,
+                    null => SidebarSurfaceStatus.Failed,
+                    _ => SidebarSurfaceStatus.Ready,
+                };
+            }
+        }
+
         return new SidebarSnapshot
         {
             Rows = SidebarProjection.Project(store),
@@ -283,6 +307,7 @@ public sealed class SidebarController : IDisposable
             Workspaces = store.Workspaces
                 .Select(w => new SidebarWorkspaceInfo(w.Id, w.Name))
                 .ToList(),
+            SurfaceStatuses = new ReadOnlyDictionary<Guid, SidebarSurfaceStatus>(surfaceStatuses),
             SelectedSessionId = store.SelectedSessionId,
             CanRemoveWorkspace = store.CanRemoveWorkspace,
             SidebarVisible = store.SidebarVisible,

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -25,7 +26,6 @@ public sealed partial class SidebarView : UserControl
     private SidebarSnapshot? _snapshot;
     private string? _shapeKey;
     private bool _syncingSelection;
-    private DispatcherQueueTimerHolder? _pendingToggle;
     private SidebarRowViewModel? _editing;
     private string _editingOriginal = "";
     private IReadOnlyList<Guid> _draggedSessions = Array.Empty<Guid>();
@@ -58,13 +58,15 @@ public sealed partial class SidebarView : UserControl
             CancelRename();
             _items.Clear();
             foreach (var row in snapshot.Rows)
-                _items.Add(new SidebarRowViewModel(row, _settings));
+                _items.Add(new SidebarRowViewModel(row, _settings, SurfaceStatusOf(snapshot, row)));
         }
         else
         {
             for (var i = 0; i < snapshot.Rows.Count; i++)
-                _items[i].Update(snapshot.Rows[i], _settings);
+                _items[i].Update(snapshot.Rows[i], _settings, SurfaceStatusOf(snapshot, snapshot.Rows[i]));
         }
+
+        RefreshRealizedRowAutomationNames();
         SyncSelection(snapshot);
         FlaggedToggle.IsChecked = snapshot.Mode == SidebarMode.Flagged;
         FlaggedToggle.IsEnabled = snapshot.Mode == SidebarMode.Flagged || snapshot.FlaggedCount > 0;
@@ -72,6 +74,29 @@ public sealed partial class SidebarView : UserControl
             ? Visibility.Collapsed
             : Visibility.Visible;
         FocusPillText.Text = snapshot.FocusedWorkspaceName ?? "";
+    }
+
+    private void RefreshRealizedRowAutomationNames()
+    {
+        foreach (var item in _items)
+        {
+            if (RowsList.ContainerFromItem(item) is ListViewItem container)
+            {
+                AutomationProperties.SetName(container, item.AutomationName);
+            }
+        }
+    }
+
+    private static SidebarSurfaceStatus SurfaceStatusOf(SidebarSnapshot snapshot, SidebarRow row)
+    {
+        if (row.Kind != SidebarRowKind.Session)
+        {
+            return SidebarSurfaceStatus.Ready;
+        }
+
+        return snapshot.SurfaceStatuses.TryGetValue(row.Id, out var status)
+            ? status
+            : SidebarSurfaceStatus.Ready;
     }
 
     private void SyncSelection(SidebarSnapshot snapshot)
@@ -114,60 +139,50 @@ public sealed partial class SidebarView : UserControl
         RowActivated?.Invoke();
     }
 
-    // MARK: - workspace collapse (deferred single tap, canceled by a rename double-tap)
+    private void OnRowsListContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (args.ItemContainer is ListViewItem container && args.Item is SidebarRowViewModel row)
+        {
+            AutomationProperties.SetName(container, row.AutomationName);
+        }
+    }
+
+    // MARK: - pointer tap gestures
 
     private void OnRowTapped(object sender, TappedRoutedEventArgs e)
     {
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not SidebarRowViewModel row) return;
-        if (row.IsSession)
-        {
-            if (row.Id == _snapshot?.SelectedSessionId)
-                RowActivated?.Invoke();
-            return;
-        }
-        if (!row.IsWorkspace || _snapshot?.Mode == SidebarMode.Flagged) return;
-        _pendingToggle?.Cancel();
-        var timer = DispatcherQueue.CreateTimer();
-        _pendingToggle = new DispatcherQueueTimerHolder(timer);
-        timer.Interval = TimeSpan.FromMilliseconds(350);
-        timer.IsRepeating = false;
-        timer.Tick += (_, _) =>
-        {
-            _pendingToggle?.Cancel();
-            _controller?.ToggleWorkspaceCollapse(row.Id);
-        };
-        timer.Start();
-    }
-
-    private sealed class DispatcherQueueTimerHolder
-    {
-        private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _timer;
-
-        public DispatcherQueueTimerHolder(Microsoft.UI.Dispatching.DispatcherQueueTimer timer)
-        {
-            _timer = timer;
-        }
-
-        public void Cancel() => _timer.Stop();
+        var mode = _snapshot?.Mode ?? SidebarMode.Tree;
+        ExecuteRowAction(row, SidebarGesturePolicy.Decide(row.Kind, mode, SidebarPointerGesture.Tap));
     }
 
     // MARK: - inline rename
 
-    private void OnRowDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        _pendingToggle?.Cancel(); // a double-click renames; it must not flip the workspace
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is SidebarRowViewModel row)
-            BeginRename(row);
-    }
-
     private void OnListKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != VirtualKey.F2) return;
-        if (RowsList.SelectedItems.OfType<SidebarRowViewModel>().FirstOrDefault() is { } row)
+        var gesture = e.Key switch
         {
-            BeginRename(row);
-            e.Handled = true;
+            VirtualKey.Enter => SidebarKeyboardGesture.Enter,
+            VirtualKey.Space => SidebarKeyboardGesture.Space,
+            VirtualKey.F2 => SidebarKeyboardGesture.F2,
+            _ => (SidebarKeyboardGesture?)null,
+        };
+        if (gesture is not { } keyboardGesture) return;
+
+        if (FocusedRow() is not { } row) return;
+        var mode = _snapshot?.Mode ?? SidebarMode.Tree;
+        var action = SidebarGesturePolicy.DecideKeyboard(
+            row.Kind,
+            mode,
+            keyboardGesture,
+            row.Id == _snapshot?.SelectedSessionId);
+        if (action == SidebarGestureAction.None)
+        {
+            return;
         }
+
+        ExecuteRowAction(row, action);
+        e.Handled = true;
     }
 
     /// <summary>The rename_session hotkey: inline-rename the selected session row.</summary>
@@ -242,18 +257,69 @@ public sealed partial class SidebarView : UserControl
         row.IsEditing = false;
     }
 
+    private SidebarRowViewModel? FocusedRow()
+    {
+        if (FocusManager.GetFocusedElement(XamlRoot) is FrameworkElement { DataContext: SidebarRowViewModel focused })
+        {
+            return focused;
+        }
+
+        return RowsList.SelectedItems.OfType<SidebarRowViewModel>().FirstOrDefault();
+    }
+
+    private void ExecuteRowAction(SidebarRowViewModel row, SidebarGestureAction action)
+    {
+        switch (action)
+        {
+            case SidebarGestureAction.ToggleWorkspace:
+                _controller?.ToggleWorkspaceCollapse(row.Id);
+                break;
+            case SidebarGestureAction.SelectSession:
+                _controller?.Select(row.Id, new[] { row.Id });
+                RowActivated?.Invoke();
+                break;
+            case SidebarGestureAction.ActivateSession:
+                if (row.Id == _snapshot?.SelectedSessionId)
+                {
+                    // SelectionChanged owns selecting a new row; direct activation only refocuses.
+                    RowActivated?.Invoke();
+                }
+                break;
+            case SidebarGestureAction.Rename:
+                BeginRename(row);
+                break;
+            default:
+                break;
+        }
+    }
+
     // MARK: - context menus
 
-    private void OnRowRightTapped(object sender, RightTappedRoutedEventArgs e)
+    private void OnRowContextRequested(UIElement sender, ContextRequestedEventArgs e)
     {
-        if ((e.OriginalSource as FrameworkElement)?.DataContext is not SidebarRowViewModel row) return;
+        var row = (e.OriginalSource as FrameworkElement)?.DataContext as SidebarRowViewModel
+            ?? FocusedRow();
+        if (row is null) return;
+
         var flyout = row.IsWorkspace ? WorkspaceMenu(row) : SessionMenu(row);
-        flyout.ShowAt(RowsList, e.GetPosition(RowsList));
+        if (e.TryGetPosition(RowsList, out var point))
+        {
+            flyout.ShowAt(RowsList, point);
+        }
+        else if (RowsList.ContainerFromItem(row) is FrameworkElement rowContainer)
+        {
+            flyout.ShowAt(rowContainer);
+        }
+        else
+        {
+            flyout.ShowAt(RowsList);
+        }
+
         e.Handled = true;
     }
 
-    /// <summary>Mac list convention: right-click inside the multi-selection keeps it; outside
-    /// narrows to the clicked row.</summary>
+    /// <summary>List convention: context invocation inside the multi-selection keeps it; outside
+    /// narrows to the invoked row.</summary>
     private IReadOnlyList<Guid> ContextTargets(SidebarRowViewModel clicked)
     {
         var selected = RowsList.SelectedItems.OfType<SidebarRowViewModel>()

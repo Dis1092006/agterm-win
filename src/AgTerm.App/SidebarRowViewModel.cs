@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using AgTerm.Core.Model;
+using AgTerm.Xterm;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -17,13 +18,18 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 {
     private SidebarRow _row;
     private AppSettings _settings;
+    private SidebarSurfaceStatus _surfaceStatus;
     private bool _isEditing;
     private string _editText = "";
 
-    public SidebarRowViewModel(SidebarRow row, AppSettings settings)
+    public SidebarRowViewModel(
+        SidebarRow row,
+        AppSettings settings,
+        SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready)
     {
         _row = row;
         _settings = settings;
+        _surfaceStatus = surfaceStatus;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -43,6 +49,18 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public Visibility WorkspaceVisibility => IsWorkspace ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility SessionVisibility => IsSession ? Visibility.Visible : Visibility.Collapsed;
+
+    public string AutomationName => SidebarAutomationText.Row(_row, _surfaceStatus);
+
+    public string ChevronAutomationName => SidebarAutomationText.Chevron(_row);
+
+    public string SurfaceAutomationName => SidebarAutomationText.Surface(_surfaceStatus);
+
+    public string AgentAutomationName => SidebarAutomationText.Agent(_row.Indicator.Status);
+
+    public string UnseenAutomationName => SidebarAutomationText.Unseen(_row.Unseen);
+
+    public string FocusedWorkspaceAutomationName => "Focused workspace";
 
     public string Chevron => _row.Collapsed ? "" : ""; // ChevronRight / ChevronDown
 
@@ -105,6 +123,14 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public string BadgeText => _row.Unseen > 99 ? "99+" : _row.Unseen.ToString();
 
+    public bool IsSurfacePending => IsSession && _surfaceStatus == SidebarSurfaceStatus.Pending;
+
+    public bool IsSurfaceFailed => IsSession && _surfaceStatus == SidebarSurfaceStatus.Failed;
+
+    public Visibility PendingVisibility => IsSurfacePending ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility FailedVisibility => IsSurfaceFailed ? Visibility.Visible : Visibility.Collapsed;
+
     // inline rename
     public bool IsEditing
     {
@@ -134,16 +160,26 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     /// <summary>Re-apply a fresh row/settings pair; notifies only when the content differs (rows
     /// are records, so equality is the whole diff). Never disturbs an in-progress rename.</summary>
-    public void Update(SidebarRow row, AppSettings settings)
+    public void Update(
+        SidebarRow row,
+        AppSettings settings,
+        SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready)
     {
         var settingsChanged = !ReferenceEquals(_settings, settings);
-        if (_row == row && !settingsChanged) return;
+        var surfaceStatusChanged = _surfaceStatus != surfaceStatus;
+        if (_row == row && !settingsChanged && !surfaceStatusChanged) return;
         _row = row;
         _settings = settings;
+        _surfaceStatus = surfaceStatus;
         Raise(nameof(Label), nameof(Chevron), nameof(LabelOpacity), nameof(LabelWeight),
               nameof(FocusPillVisibility), nameof(IconData), nameof(IconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),
-              nameof(GlyphData), nameof(BadgeVisibility), nameof(BadgeText));
+              nameof(GlyphData), nameof(BadgeVisibility), nameof(BadgeText),
+              nameof(AutomationName), nameof(ChevronAutomationName),
+              nameof(SurfaceAutomationName), nameof(AgentAutomationName),
+              nameof(UnseenAutomationName), nameof(FocusedWorkspaceAutomationName),
+              nameof(IsSurfacePending), nameof(IsSurfaceFailed),
+              nameof(PendingVisibility), nameof(FailedVisibility));
     }
 
     private void Raise(params string[] names)
