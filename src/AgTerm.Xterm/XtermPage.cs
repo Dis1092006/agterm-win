@@ -13,6 +13,10 @@ namespace AgTerm.Xterm;
 public sealed class XtermPage
 {
     private const string AssetsHost = "agterm.assets";
+    private static readonly JsonSerializerOptions RendererSettingsScriptLiteral = new(XtermTerminal.ScriptLiteral)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
 
     private readonly IWebViewScriptHost _host;
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -61,6 +65,15 @@ public sealed class XtermPage
         return JsonSerializer.Deserialize<bool>(raw);
     }
 
+    /// <summary>Apply page-global renderer settings for all panes (last writer wins).</summary>
+    public Task ApplyRendererSettingsAsync(RendererSettingsSnapshot settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var payload = JsonSerializer.Serialize(settings, RendererSettingsScriptLiteral);
+        return _host.ExecuteScriptAsync($"agterm.applyRendererSettings({payload})");
+    }
+
     /// <summary>Dispose the pane's terminal and div, and stop routing messages to its handle.</summary>
     public async Task ClosePaneAsync(string paneId)
     {
@@ -71,6 +84,9 @@ public sealed class XtermPage
     /// <summary>A key press one of the panes intercepted against the pushed chord table — the
     /// window's hotkey dispatcher handles it (the shell never saw the key).</summary>
     public event Action<string, Core.Keymap.PhysicalChord>? ChordPressed;
+
+    /// <summary>Raised when the page requests host-side paste for a known pane id.</summary>
+    public event Action<string>? PasteRequested;
 
     /// <summary>Push the hotkey table every pane intercepts (replaces the previous table; empty
     /// clears the interception). Call after keymap load/reload, on the WebView2 UI thread — a
@@ -137,6 +153,12 @@ public sealed class XtermPage
         {
             ChordPressed?.Invoke(chordPane,
                 new Core.Keymap.PhysicalChord(msg.Ctrl ?? false, msg.Alt ?? false, msg.Shift ?? false, key));
+            return;
+        }
+        if (msg?.Type == "pasteRequested")
+        {
+            if (msg.PaneId is { } pastePaneId && _terminals.ContainsKey(pastePaneId))
+                PasteRequested?.Invoke(pastePaneId);
             return;
         }
         if (msg?.PaneId is { } paneId && _terminals.TryGetValue(paneId, out var terminal))

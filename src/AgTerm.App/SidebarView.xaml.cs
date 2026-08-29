@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
+using Windows.UI;
 using Windows.System;
 
 namespace AgTerm.App;
@@ -44,8 +45,24 @@ public sealed partial class SidebarView : UserControl
     public void Attach(SidebarController controller, AppSettings settings)
     {
         _controller = controller;
-        _settings = settings;
+        ApplySettings(settings);
         controller.SnapshotChanged += Apply;
+    }
+
+    public void ApplySettings(AppSettings settings)
+    {
+        _settings = settings;
+        for (var i = 0; i < _items.Count; i++)
+        {
+            var row = _items[i].Row;
+            var status = _snapshot is { } snapshot
+                ? SurfaceStatusOf(snapshot, row)
+                : SidebarSurfaceStatus.Ready;
+            _items[i].Update(row, _settings, status);
+        }
+
+        RefreshRealizedRowAutomationNames();
+        ApplyBackgroundShiftOverlay();
     }
 
     /// <summary>Reconcile a fresh snapshot on the UI thread (the controller marshals here).</summary>
@@ -85,6 +102,23 @@ public sealed partial class SidebarView : UserControl
                 AutomationProperties.SetName(container, item.AutomationName);
             }
         }
+    }
+
+    private void ApplyBackgroundShiftOverlay()
+    {
+        var shift = AppSettings.SidebarShiftAmount(
+            _settings.SidebarBackgroundShift ?? AppSettings.DefaultSidebarBackgroundShift);
+        var alpha = Math.Abs(shift);
+        if (alpha <= 0)
+        {
+            BackgroundShiftOverlay.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+            return;
+        }
+
+        var channel = shift > 0 ? (byte)0x00 : (byte)0xFF;
+        var opacity = (byte)Math.Clamp(Math.Round(alpha * 255.0), 0, 255);
+        BackgroundShiftOverlay.Background = new SolidColorBrush(
+            Color.FromArgb(opacity, channel, channel, channel));
     }
 
     private static SidebarSurfaceStatus SurfaceStatusOf(SidebarSnapshot snapshot, SidebarRow row)

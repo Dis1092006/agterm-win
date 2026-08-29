@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using AgTerm.App;
 using AgTerm.Core.Keymap;
 using AgTerm.Xterm;
@@ -259,4 +260,383 @@ public class XtermPageLiveTests
         Assert.Equal("\"none\"", p1AfterStale);
         Assert.Equal("\"none\"", p2AfterStale);
     }
+
+    [Fact]
+    public async Task Renderer_settings_applied_to_existing_pane_reflect_all_fields()
+    {
+        var (page, view) = await BootPageAsync();
+        _ = await _webView.RunAsync(_ => page.OpenTerminalAsync("settings-existing"));
+
+        var snapshot = new RendererSettingsSnapshot(
+            FontFamily: "Fira Code",
+            FontSize: 18,
+            ForegroundColor: "#112233",
+            BackgroundColor: "#0C0C0C",
+            CursorColor: "#445566",
+            SelectionBackgroundColor: "#77889980",
+            BackgroundOpacity: 0.5,
+            BackgroundBlur: 20,
+            CursorBlink: false,
+            CursorStyle: "underline",
+            ScrollSensitivity: 4.5,
+            Scrollback: 4321,
+            RightClickPaste: false,
+            ScreenReaderMode: true);
+
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(snapshot);
+            return null;
+        });
+
+        var settings = await ReadRendererSettingsAsync(view, "settings-existing");
+        Assert.NotNull(settings);
+        Assert.Equal("Fira Code", settings.FontFamily);
+        Assert.Equal(18.0, settings.FontSize);
+        Assert.Equal("#112233", settings.ForegroundColor, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("rgba(12, 12, 12, 0.5)", settings.BackgroundColor);
+        Assert.Equal("#445566", settings.CursorColor, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("#77889980", settings.SelectionBackgroundColor, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(0.5, settings.BackgroundOpacity);
+        Assert.Equal(20, settings.BackgroundBlur);
+        Assert.False(settings.CursorBlink);
+        Assert.Equal("underline", settings.CursorStyle);
+        Assert.Equal(4.5, settings.ScrollSensitivity);
+        Assert.Equal(4321, settings.Scrollback);
+        Assert.False(settings.RightClickPaste);
+        Assert.True(settings.ScreenReaderMode);
+
+        var bodyBg = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync("document.body.style.background"));
+        Assert.Equal("\"transparent\"", bodyBg);
+    }
+
+    [Fact]
+    public async Task Renderer_settings_applied_before_open_inherited_by_future_pane()
+    {
+        var (page, view) = await BootPageAsync();
+
+        var snapshot = new RendererSettingsSnapshot(
+            FontFamily: "Fira Code",
+            FontSize: 16,
+            ForegroundColor: "#CCCCCC",
+            BackgroundColor: "#0C0C0C",
+            CursorColor: "#FFFFFF",
+            SelectionBackgroundColor: "#FFFFFF40",
+            BackgroundOpacity: 0.85,
+            BackgroundBlur: 0,
+            CursorBlink: true,
+            CursorStyle: "block",
+            ScrollSensitivity: 4.5,
+            Scrollback: 5000,
+            RightClickPaste: true,
+            ScreenReaderMode: false);
+
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(snapshot);
+            return null;
+        });
+
+        _ = await _webView.RunAsync(_ => page.OpenTerminalAsync("settings-future"));
+
+        var settings = await ReadRendererSettingsAsync(view, "settings-future");
+        Assert.NotNull(settings);
+        Assert.Equal("Fira Code", settings.FontFamily);
+        Assert.Equal(16.0, settings.FontSize);
+        Assert.Equal(4.5, settings.ScrollSensitivity);
+        Assert.Equal(5000, settings.Scrollback);
+    }
+
+    [Fact]
+    public async Task Renderer_settings_fontSize_override_on_open_takes_precedence()
+    {
+        var (page, view) = await BootPageAsync();
+
+        var snapshot = new RendererSettingsSnapshot(
+            FontFamily: "Fira Code",
+            FontSize: 24,
+            ForegroundColor: "#CCCCCC",
+            BackgroundColor: "#0C0C0C",
+            CursorColor: "#FFFFFF",
+            SelectionBackgroundColor: "#FFFFFF40",
+            BackgroundOpacity: 1.0,
+            BackgroundBlur: 0,
+            CursorBlink: true,
+            CursorStyle: "block",
+            ScrollSensitivity: 3.0,
+            Scrollback: 10000,
+            RightClickPaste: true,
+            ScreenReaderMode: false);
+
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(snapshot);
+            return null;
+        });
+
+        _ = await _webView.RunAsync(_ => page.OpenTerminalAsync("settings-override", fontSize: 19));
+
+        var settings = await ReadRendererSettingsAsync(view, "settings-override");
+        Assert.NotNull(settings);
+        Assert.Equal(19.0, settings.FontSize);
+        Assert.Equal("Fira Code", settings.FontFamily);
+    }
+
+    private sealed record BridgeRendererSettingsDto(
+        string? FontFamily,
+        double FontSize,
+        string? ForegroundColor,
+        string? BackgroundColor,
+        string? CursorColor,
+        string? SelectionBackgroundColor,
+        double BackgroundOpacity,
+        int BackgroundBlur,
+        bool CursorBlink,
+        string? CursorStyle,
+        double ScrollSensitivity,
+        int Scrollback,
+        bool RightClickPaste,
+        bool ScreenReaderMode);
+
+    private static readonly JsonSerializerOptions _caseInsensitive =
+        new() { PropertyNameCaseInsensitive = true };
+
+    private async Task<BridgeRendererSettingsDto?> ReadRendererSettingsAsync(
+        Microsoft.Web.WebView2.WinForms.WebView2 view, string paneId)
+    {
+        var raw = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                $"agterm.getRendererSettings({XtermPage.PaneLiteral(paneId)})"));
+        return raw is null or "null"
+            ? null
+            : JsonSerializer.Deserialize<BridgeRendererSettingsDto>(raw, _caseInsensitive);
+    }
+
+    // ── PasteRequested: right-click-paste bridge behavior ────────────────────
+
+    [Fact]
+    public async Task Right_click_paste_enabled_fires_PasteRequested_disabled_does_not()
+    {
+        var (page, view) = await BootPageAsync();
+        _ = await _webView.RunAsync(_ => page.OpenTerminalAsync("settings-paste"));
+
+        var pasted = new List<string>();
+        page.PasteRequested += pasted.Add;
+
+        var snapshotOn = RendererSettingsSnapshot.From(
+            new AgTerm.Core.Model.AppSettings { RightClickPaste = true });
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(snapshotOn);
+            return null;
+        });
+
+        await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """
+                (function() {
+                    var el = document.querySelector('[data-pane-id="settings-paste"]');
+                    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                })()
+                """));
+
+        var deadline = Environment.TickCount64 + 5000;
+        while (pasted.Count == 0 && Environment.TickCount64 < deadline)
+            await Task.Delay(50);
+
+        Assert.Equal("settings-paste", Assert.Single(pasted));
+
+        var snapshotOff = RendererSettingsSnapshot.From(
+            new AgTerm.Core.Model.AppSettings { RightClickPaste = false });
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(snapshotOff);
+            return null;
+        });
+
+        await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """
+                (function() {
+                    var el = document.querySelector('[data-pane-id="settings-paste"]');
+                    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+                })()
+                """));
+
+        // ExecuteScriptAsync completes only after the JS microtask queue drains, so any
+        // synchronous postMessage call inside the handler has already been dispatched; a
+        // brief extra window guards against async paths.
+        await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync("undefined"));
+        await Task.Delay(200);
+
+        Assert.Single(pasted);
+    }
+
+    [Fact]
+    public async Task Renderer_capabilities_report_optional_WebGL_and_keep_builtin_fallback_working()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("settings-renderer"));
+
+        var raw = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                $"agterm.getRendererCapabilities({XtermPage.PaneLiteral("settings-renderer")})"));
+        var capabilities = raw is null or "null" or "undefined"
+            ? null
+            : JsonSerializer.Deserialize<BridgeRendererCapabilitiesDto>(raw, _caseInsensitive);
+
+        Assert.NotNull(capabilities);
+        Assert.True(
+            capabilities.RendererBackend is "webgl" or "builtIn",
+            $"unexpected rendererBackend: {capabilities.RendererBackend}");
+        if (!capabilities.WebglAddonAvailable)
+            Assert.Equal("builtIn", capabilities.RendererBackend);
+        // pin: addon-webgl.js is absent from vendor assets; update when the manifest gains the addon
+        Assert.False(capabilities.WebglAddonAvailable,
+            "addon-webgl.js is not vendored; update this assertion when the manifest changes");
+
+        await _webView.RunAsync<object?>(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("λ-render-ok\r\n"));
+            return Task.FromResult<object?>(null);
+        });
+        Func<Func<Task<string>>, Task<string>> onUi = work => _webView.RunAsync(_ => work());
+        await WaitForTextAsync(terminal, "λ-render-ok", onUi);
+    }
+
+    [Fact]
+    public async Task Renderer_settings_reload_preserves_unicode_buffer_and_selection()
+    {
+        var (page, _) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("reload-uc"));
+
+        // ASCII + CJK + emoji + combining sequence (e + combining acute accent)
+        const string marker = "S4 \u6f22 \U0001F600 e\u0301";
+        await _webView.RunAsync<object?>(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes(marker + "\r\n"));
+            return Task.FromResult<object?>(null);
+        });
+
+        Func<Func<Task<string>>, Task<string>> onUi = work => _webView.RunAsync(_ => work());
+        await WaitForTextAsync(terminal, "S4", onUi);
+
+        // Apply changed renderer settings; buffer must survive the reload
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(MakeSnapshot(fontSize: 16));
+            return null;
+        });
+
+        var text = await _webView.RunAsync(_ => terminal.ReadTextAsync(all: true, lines: null));
+        Assert.Contains("S4", text);
+        Assert.Contains("\u6f22", text); // CJK survives settings reload
+
+        // Selection must also contain the Unicode content
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await terminal.SelectAllAsync();
+            return null;
+        });
+        var selection = await _webView.RunAsync(_ => terminal.GetSelectionAsync());
+        Assert.Contains("S4", selection);
+        Assert.Contains("\u6f22", selection);
+    }
+
+    [Fact]
+    public async Task Screen_reader_mode_creates_xterm_accessibility_tree()
+    {
+        var (page, view) = await BootPageAsync();
+        _ = await _webView.RunAsync(_ => page.OpenTerminalAsync("screader-p1"));
+
+        // ScreenReaderMode=true → xterm must add .xterm-accessibility to the pane DOM
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(MakeSnapshot(screenReaderMode: true));
+            return null;
+        });
+
+        // Poll: xterm may add the element asynchronously after the option change
+        var deadline = Environment.TickCount64 + 5000;
+        var accessibilityPresent = "false";
+        while (accessibilityPresent != "true" && Environment.TickCount64 < deadline)
+        {
+            accessibilityPresent = await _webView.RunAsync(async _ =>
+                await view.CoreWebView2.ExecuteScriptAsync(
+                    "document.querySelector('[data-pane-id=\"screader-p1\"] .xterm-accessibility') !== null"));
+            if (accessibilityPresent != "true") await Task.Delay(50);
+        }
+        Assert.Equal("true", accessibilityPresent);
+
+        // ScreenReaderMode=false → option reads back false (DOM removal is xterm-internal, not asserted)
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(MakeSnapshot(screenReaderMode: false));
+            return null;
+        });
+
+        var settings = await ReadRendererSettingsAsync(view, "screader-p1");
+        Assert.NotNull(settings);
+        Assert.False(settings.ScreenReaderMode);
+    }
+
+    [Fact]
+    public async Task Composition_events_reach_xterm_data_path()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("compo-p1"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+
+        // Focus the xterm helper textarea and dispatch a realistic IME composition sequence for CJK text.
+        // xterm.js CompositionHelper reads textarea.value in a setTimeout(0) after compositionend;
+        // set the value between compositionstart and compositionupdate so the position tracking is correct.
+        await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                """
+                (function() {
+                    var ta = document.querySelector('[data-pane-id="compo-p1"] .xterm-helper-textarea');
+                    if (!ta) return 'no-textarea';
+                    ta.focus();
+                    ta.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: '' }));
+                    ta.value = '\u6f22\u5b57';
+                    ta.dispatchEvent(new CompositionEvent('compositionupdate', { bubbles: true, data: '\u6f22\u5b57' }));
+                    ta.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\u6f22\u5b57' }));
+                    return 'dispatched';
+                })()
+                """));
+
+        var deadline = Environment.TickCount64 + 5000;
+        while (data.Count == 0 && Environment.TickCount64 < deadline)
+            await Task.Delay(50);
+
+        Assert.True(data.Count > 0, "DataReceived was not raised; xterm did not emit composed text via synthetic composition events");
+        Assert.Contains(data, d => d.Contains("\u6f22\u5b57") || d.Contains("\u6f22"));
+    }
+
+    private static RendererSettingsSnapshot MakeSnapshot(
+        double fontSize = 14,
+        bool screenReaderMode = false) =>
+        new(
+            FontFamily: "Cascadia Mono, Consolas, monospace",
+            FontSize: fontSize,
+            ForegroundColor: "#CCCCCC",
+            BackgroundColor: "#0C0C0C",
+            CursorColor: "#FFFFFF",
+            SelectionBackgroundColor: "#FFFFFF40",
+            BackgroundOpacity: 1.0,
+            BackgroundBlur: 0,
+            CursorBlink: true,
+            CursorStyle: "block",
+            ScrollSensitivity: 3.0,
+            Scrollback: 10000,
+            RightClickPaste: true,
+            ScreenReaderMode: screenReaderMode);
+
+    private sealed record BridgeRendererCapabilitiesDto(
+        bool Webgl2Available,
+        bool WebglAddonAvailable,
+        string? RendererBackend);
 }

@@ -33,6 +33,12 @@ public sealed record LiveControlHostOptions
     /// <summary>System clipboard reader handed to every surface (session.paste).</summary>
     public Func<string?>? ReadClipboard { get; init; }
 
+    /// <summary>Default base font size for newly realized surfaces.</summary>
+    public double BaseFontSize { get; init; } = 14;
+
+    /// <summary>config.reload count callback forwarded to the headless control actions.</summary>
+    public Func<int>? ConfigReload { get; init; }
+
     public Action<string>? Log { get; init; }
 
     /// <summary>Reports whether the current callback is running on the owning UI thread.</summary>
@@ -65,6 +71,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private readonly LiveDispatchScopeFactory _scopeFactory;
     private readonly LiveStoreCoordinator _storeCoordinator;
     private readonly LiveSurfaceCoordinator? _coordinator;
+    private double _currentBaseFontSize;
     private readonly object _shutdownLock = new();
     private HeadlessHost? _host;
     private Task? _shutdownTask;
@@ -73,6 +80,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     public LiveControlHost(LiveControlHostOptions options)
     {
         _options = options;
+        _currentBaseFontSize = options.BaseFontSize;
         _scopeFactory = new LiveDispatchScopeFactory();
         Host = new HeadlessHost(new HeadlessHostOptions
         {
@@ -81,6 +89,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             PipeName = options.PipeName,
             WindowName = options.WindowName,
             AvailableThemes = options.AvailableThemes,
+            ConfigReload = options.ConfigReload,
             HomeDirectory = options.HomeDirectory,
             Log = options.Log,
             SurfaceRealizer = ReserveSurface,
@@ -136,6 +145,26 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             _ => Host.Actions.Font(null, null, null, action),
             cancellationToken);
 
+    public Task ApplyBaseFontSizeAsync(double fontSize, CancellationToken cancellationToken = default)
+    {
+        if (!double.IsFinite(fontSize) || fontSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(fontSize));
+
+        return StoreCoordinator.MutateAsync(store =>
+        {
+            _currentBaseFontSize = fontSize;
+            store.ResetSessionFontSizes();
+
+            foreach (var session in store.Workspaces.SelectMany(workspace => workspace.Sessions))
+            {
+                if (session.Surface is XtermPaneSurface paneSurface)
+                {
+                    paneSurface.ApplyBaseFontSize(fontSize);
+                }
+            }
+        }, cancellationToken);
+    }
+
     /// <summary>A surface realized after this host's own bootstrap (i.e. any control- or UI-driven
     /// show). The app uses it to mount the pane's view; fired on the realizing (dispatch) thread.</summary>
     public event Action<Guid, XtermPaneSurface>? SurfaceRealized;
@@ -163,7 +192,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             {
                 Argv = argv.ToArray(),
                 Cwd = ExistingDirectoryOrNull(session.EffectiveCwd),
-                BaseFontSize = session.FontSize ?? 14,
+                BaseFontSize = session.FontSize ?? _currentBaseFontSize,
                 ReadClipboard = _options.ReadClipboard,
             });
 

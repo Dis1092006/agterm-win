@@ -1,3 +1,4 @@
+using AgTerm.Core.Model;
 using AgTerm.Xterm;
 
 namespace AgTerm.Xterm.Tests;
@@ -186,5 +187,123 @@ public class XtermPageTests
         Assert.Contains("agterm.closePane(\"p1\")", _host.Scripts[^1]);
         _host.RaiseMessage("""{"type":"data","paneId":"p1","data":"late"}""");
         Assert.Empty(data);
+    }
+
+    // ── ApplyRendererSettingsAsync ─────────────────────────────────────────────
+
+    [Fact]
+    public async Task ApplyRendererSettings_emits_applyRendererSettings_script_with_all_fields_camelCase()
+    {
+        var page = await InitializedAsync();
+        var snapshot = RendererSettingsSnapshot.From(new AppSettings
+        {
+            FontFamily = "Fira Code",
+            FontSize = 16.0,
+            BackgroundOpacity = 0.85,
+            BackgroundBlur = 5,
+            MouseScrollMultiplier = 5.0,
+            RightClickPaste = false,
+        });
+
+        await page.ApplyRendererSettingsAsync(snapshot);
+
+        var script = Assert.Single(_host.Scripts, s => s.Contains("agterm.applyRendererSettings"));
+
+        // every field must be present with its camelCase key
+        Assert.Contains("\"fontFamily\"", script);
+        Assert.Contains("\"fontSize\"", script);
+        Assert.Contains("\"foregroundColor\"", script);
+        Assert.Contains("\"backgroundColor\"", script);
+        Assert.Contains("\"cursorColor\"", script);
+        Assert.Contains("\"selectionBackgroundColor\"", script);
+        Assert.Contains("\"backgroundOpacity\"", script);
+        Assert.Contains("\"backgroundBlur\"", script);
+        Assert.Contains("\"cursorBlink\"", script);
+        Assert.Contains("\"cursorStyle\"", script);
+        Assert.Contains("\"scrollSensitivity\"", script);
+        Assert.Contains("\"scrollback\"", script);
+        Assert.Contains("\"rightClickPaste\"", script);
+        Assert.Contains("\"screenReaderMode\"", script);
+
+        // none of those fields may appear with PascalCase names
+        Assert.DoesNotContain("\"FontFamily\"", script);
+        Assert.DoesNotContain("\"FontSize\"", script);
+        Assert.DoesNotContain("\"ForegroundColor\"", script);
+        Assert.DoesNotContain("\"BackgroundColor\"", script);
+        Assert.DoesNotContain("\"CursorColor\"", script);
+        Assert.DoesNotContain("\"SelectionBackgroundColor\"", script);
+        Assert.DoesNotContain("\"BackgroundOpacity\"", script);
+        Assert.DoesNotContain("\"BackgroundBlur\"", script);
+        Assert.DoesNotContain("\"CursorBlink\"", script);
+        Assert.DoesNotContain("\"CursorStyle\"", script);
+        Assert.DoesNotContain("\"ScrollSensitivity\"", script);
+        Assert.DoesNotContain("\"Scrollback\"", script);
+        Assert.DoesNotContain("\"RightClickPaste\"", script);
+        Assert.DoesNotContain("\"ScreenReaderMode\"", script);
+
+        // non-default values appear verbatim so the serialization is verifiable
+        Assert.Contains("\"Fira Code\"", script);
+        Assert.Contains("\"fontSize\":16", script);
+        Assert.Contains("\"backgroundOpacity\":0.85", script);
+        Assert.Contains("\"backgroundBlur\":5", script);
+        Assert.Contains("\"scrollSensitivity\":5", script);
+        Assert.Contains("\"rightClickPaste\":false", script);
+    }
+
+    [Fact]
+    public async Task ApplyRendererSettings_called_twice_emits_two_scripts_and_second_carries_updated_settings()
+    {
+        var page = await InitializedAsync();
+        var first = RendererSettingsSnapshot.From(new AppSettings { FontFamily = "Fira Code", FontSize = 14.0 });
+        var second = RendererSettingsSnapshot.From(new AppSettings { FontFamily = "Consolas", FontSize = 20.0 });
+
+        await page.ApplyRendererSettingsAsync(first);
+        await page.ApplyRendererSettingsAsync(second);
+
+        var scripts = _host.Scripts.Where(s => s.Contains("agterm.applyRendererSettings")).ToList();
+        Assert.Equal(2, scripts.Count);
+        Assert.Contains("\"Fira Code\"", scripts[0]);
+        Assert.Contains("\"Consolas\"", scripts[1]);
+        Assert.DoesNotContain("\"Fira Code\"", scripts[1]);
+    }
+
+    [Fact]
+    public async Task ApplyRendererSettings_null_snapshot_throws_ArgumentNullException()
+    {
+        var page = await InitializedAsync();
+        await Assert.ThrowsAsync<ArgumentNullException>(() => page.ApplyRendererSettingsAsync(null!));
+    }
+
+    [Fact]
+    public async Task ApplyRendererSettings_does_not_affect_per_pane_fontSize_passed_to_openPane()
+    {
+        var page = await InitializedAsync();
+        var snapshot = RendererSettingsSnapshot.From(new AppSettings { FontSize = 24.0 });
+
+        await page.ApplyRendererSettingsAsync(snapshot);
+        await page.OpenTerminalAsync("p1", fontSize: 19);
+
+        Assert.Contains("agterm.openPane(\"p1\", {\"fontSize\":19})", _host.Scripts[^1]);
+    }
+
+    // ── PasteRequested routing ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task PasteRequested_fires_for_known_pane_and_not_for_unknown_or_missing()
+    {
+        var page = await InitializedAsync();
+        await page.OpenTerminalAsync("p1");
+
+        var pasted = new List<string>();
+        page.PasteRequested += pasted.Add;
+
+        _host.RaiseMessage("""{"type":"pasteRequested","paneId":"p1"}""");
+        Assert.Equal("p1", Assert.Single(pasted));
+
+        _host.RaiseMessage("""{"type":"pasteRequested","paneId":"ghost"}""");
+        Assert.Single(pasted);
+
+        _host.RaiseMessage("""{"type":"pasteRequested"}""");
+        Assert.Single(pasted);
     }
 }

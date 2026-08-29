@@ -9,21 +9,267 @@
 //                                              {type:'title', paneId, title}     OSC 0/1/2
 //                                              {type:'cwd', paneId, uri}         OSC 7 / OSC 9;9
 //                                              {type:'chord', paneId, ctrl, alt, shift, key}
+//                                              {type:'pasteRequested', paneId}   right-click paste
 //   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize}) → {cols,rows},
 //     agterm.showPane(paneId), agterm.closePane(paneId), agterm.applyLayout(layout), and the per-pane reads/writes:
 //     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
 //     each takes paneId first; every call on an unknown paneId returns null. Page-global:
 //     agterm.setChords([{ctrl,alt,shift,key}]) — the hotkey table the panes intercept.
+//     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
+//     agterm.getRendererCapabilities(paneId).
 //     layout schema: {type:'single', generation, paneId, title} | {type:'empty', generation}.
 //     applyLayout rejects stale generations (< highest accepted) with false and does no DOM changes.
 // The FIRST opened pane is shown automatically; window resizes refit only the visible pane.
 "use strict";
 
-const panes = new Map(); // paneId → {term, fitAddon, searchAddon, serializeAddon, lastSearch, el}
+const panes = new Map(); // paneId → {term, fitAddon, searchAddon, serializeAddon, lastSearch, el, webgl2Available, webglAddonAvailable, rendererBackend, webglAddon?}
 let visiblePaneId = null;
 let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
 const container = document.getElementById("panes");
+
+const DEFAULT_RENDERER_SETTINGS = Object.freeze({
+  fontFamily: "Cascadia Mono, Consolas, monospace",
+  fontSize: 14,
+  foregroundColor: "#CCCCCC",
+  backgroundColor: "#0C0C0C",
+  cursorColor: "#FFFFFF",
+  selectionBackgroundColor: "#FFFFFF40",
+  backgroundOpacity: 1,
+  backgroundBlur: 0,
+  cursorBlink: true,
+  cursorStyle: "block",
+  scrollSensitivity: 3,
+  scrollback: 10000,
+  rightClickPaste: true,
+  screenReaderMode: false,
+});
+
+let rendererSettings = { ...DEFAULT_RENDERER_SETTINGS };
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeNonEmptyString(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+function normalizeFiniteNumber(value, fallback, min, max) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return clampNumber(value, min, max);
+}
+
+function normalizeInteger(value, fallback, min, max) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.trunc(clampNumber(value, min, max));
+}
+
+function normalizeBoolean(value, fallback) {
+  if (typeof value !== "boolean") return fallback;
+  return value;
+}
+
+function normalizeCursorStyle(value, fallback) {
+  if (value === "block" || value === "underline" || value === "bar")
+    return value;
+  return fallback;
+}
+
+function normalizeRendererSettings(payload, fallback) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  return {
+    fontFamily: normalizeNonEmptyString(source.fontFamily, fallback.fontFamily),
+    fontSize: normalizeFiniteNumber(source.fontSize, fallback.fontSize, 6, 72),
+    foregroundColor: normalizeNonEmptyString(
+      source.foregroundColor,
+      fallback.foregroundColor,
+    ),
+    backgroundColor: normalizeNonEmptyString(
+      source.backgroundColor,
+      fallback.backgroundColor,
+    ),
+    cursorColor: normalizeNonEmptyString(
+      source.cursorColor,
+      fallback.cursorColor,
+    ),
+    selectionBackgroundColor: normalizeNonEmptyString(
+      source.selectionBackgroundColor,
+      fallback.selectionBackgroundColor,
+    ),
+    backgroundOpacity: normalizeFiniteNumber(
+      source.backgroundOpacity,
+      fallback.backgroundOpacity,
+      0,
+      1,
+    ),
+    backgroundBlur: normalizeInteger(
+      source.backgroundBlur,
+      fallback.backgroundBlur,
+      0,
+      100,
+    ),
+    cursorBlink: normalizeBoolean(source.cursorBlink, fallback.cursorBlink),
+    cursorStyle: normalizeCursorStyle(source.cursorStyle, fallback.cursorStyle),
+    scrollSensitivity: normalizeFiniteNumber(
+      source.scrollSensitivity,
+      fallback.scrollSensitivity,
+      0.1,
+      10,
+    ),
+    scrollback: normalizeInteger(
+      source.scrollback,
+      fallback.scrollback,
+      0,
+      200000,
+    ),
+    rightClickPaste: normalizeBoolean(
+      source.rightClickPaste,
+      fallback.rightClickPaste,
+    ),
+    screenReaderMode: normalizeBoolean(
+      source.screenReaderMode,
+      fallback.screenReaderMode,
+    ),
+  };
+}
+
+function parseHexRgb(color) {
+  if (typeof color !== "string") return null;
+  const m = /^#([0-9a-fA-F]{6})$/.exec(color.trim());
+  if (!m) return null;
+  const hex = m[1];
+  return {
+    r: parseInt(hex.slice(0, 2), 16),
+    g: parseInt(hex.slice(2, 4), 16),
+    b: parseInt(hex.slice(4, 6), 16),
+  };
+}
+
+function effectiveThemeBackground(backgroundColor, backgroundOpacity) {
+  if (backgroundOpacity >= 1) return backgroundColor;
+  const rgb = parseHexRgb(backgroundColor);
+  if (!rgb) return backgroundColor;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${backgroundOpacity})`;
+}
+
+function buildTheme(settings) {
+  return {
+    foreground: settings.foregroundColor,
+    background: effectiveThemeBackground(
+      settings.backgroundColor,
+      settings.backgroundOpacity,
+    ),
+    cursor: settings.cursorColor,
+    selectionBackground: settings.selectionBackgroundColor,
+  };
+}
+
+function buildTerminalOptions(settings, fontSizeOverride) {
+  const fontSize =
+    typeof fontSizeOverride === "number" && Number.isFinite(fontSizeOverride)
+      ? fontSizeOverride
+      : settings.fontSize;
+  return {
+    allowProposedApi: true,
+    allowTransparency: true,
+    cursorBlink: settings.cursorBlink,
+    cursorStyle: settings.cursorStyle,
+    fontFamily: settings.fontFamily,
+    fontSize,
+    scrollSensitivity: settings.scrollSensitivity,
+    scrollback: settings.scrollback,
+    screenReaderMode: settings.screenReaderMode,
+    theme: buildTheme(settings),
+  };
+}
+
+function probeWebgl2Availability() {
+  try {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("webgl2");
+    return !!context;
+  } catch {
+    return false;
+  }
+}
+
+function getWebglAddonConstructor() {
+  const addonNamespace = window.WebglAddon;
+  if (!addonNamespace || typeof addonNamespace !== "object") return null;
+  const ctor = addonNamespace.WebglAddon;
+  return typeof ctor === "function" ? ctor : null;
+}
+
+function applyPageBackground(settings) {
+  const background =
+    settings.backgroundOpacity < 1 ? "transparent" : settings.backgroundColor;
+  document.documentElement.style.background = background;
+  document.body.style.background = background;
+}
+
+function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
+  const opts = buildTerminalOptions(settings, fontSizeOverride);
+  pane.term.options.allowTransparency = true;
+  pane.term.options.cursorBlink = opts.cursorBlink;
+  pane.term.options.cursorStyle = opts.cursorStyle;
+  pane.term.options.fontFamily = opts.fontFamily;
+  pane.term.options.fontSize = opts.fontSize;
+  pane.term.options.scrollSensitivity = opts.scrollSensitivity;
+  pane.term.options.scrollback = opts.scrollback;
+  pane.term.options.screenReaderMode = opts.screenReaderMode;
+  pane.term.options.theme = opts.theme;
+}
+
+function applyRendererSettings(settings) {
+  rendererSettings = normalizeRendererSettings(settings, rendererSettings);
+  for (const [, pane] of panes)
+    applyRendererSettingsToPane(pane, rendererSettings);
+  applyPageBackground(rendererSettings);
+  if (visiblePaneId !== null) fitAndReport(visiblePaneId);
+  return panes.size;
+}
+
+function getRendererSettings(paneId) {
+  const pane = panes.get(paneId);
+  if (!pane) return null;
+  const termOptions = pane.term.options;
+  const theme = termOptions.theme || {};
+  return {
+    fontFamily: termOptions.fontFamily,
+    fontSize: termOptions.fontSize,
+    foregroundColor: theme.foreground || rendererSettings.foregroundColor,
+    backgroundColor:
+      theme.background ||
+      effectiveThemeBackground(
+        rendererSettings.backgroundColor,
+        rendererSettings.backgroundOpacity,
+      ),
+    cursorColor: theme.cursor || rendererSettings.cursorColor,
+    selectionBackgroundColor:
+      theme.selectionBackground || rendererSettings.selectionBackgroundColor,
+    backgroundOpacity: rendererSettings.backgroundOpacity,
+    backgroundBlur: rendererSettings.backgroundBlur,
+    cursorBlink: !!termOptions.cursorBlink,
+    cursorStyle: termOptions.cursorStyle,
+    scrollSensitivity: termOptions.scrollSensitivity,
+    scrollback: termOptions.scrollback,
+    rightClickPaste: rendererSettings.rightClickPaste,
+    screenReaderMode: !!termOptions.screenReaderMode,
+  };
+}
+
+function getRendererCapabilities(paneId) {
+  const pane = panes.get(paneId);
+  if (!pane) return null;
+  return {
+    webgl2Available: !!pane.webgl2Available,
+    webglAddonAvailable: !!pane.webglAddonAvailable,
+    rendererBackend: pane.rendererBackend || "builtIn",
+  };
+}
 
 // e.key → the keymap key name (lowercased char or a named key); null = not interceptable
 function normalizeKey(key) {
@@ -66,13 +312,12 @@ function openPane(paneId, opts) {
   el.style.display = "none";
   container.appendChild(el);
 
-  const term = new Terminal({
-    allowProposedApi: true,
-    cursorBlink: true,
-    fontFamily: "Cascadia Mono, Consolas, monospace",
-    fontSize: opts && typeof opts.fontSize === "number" ? opts.fontSize : 14,
-    scrollback: 10000,
-  });
+  const term = new Terminal(
+    buildTerminalOptions(
+      rendererSettings,
+      opts && typeof opts.fontSize === "number" ? opts.fontSize : null,
+    ),
+  );
   const fitAddon = new FitAddon.FitAddon();
   const searchAddon = new SearchAddon.SearchAddon();
   const serializeAddon = new SerializeAddon.SerializeAddon();
@@ -94,6 +339,48 @@ function openPane(paneId, opts) {
   // only toggled after open — xterm needs a laid-out element, so flip on, open+fit, restore.
   el.style.display = "block";
   term.open(el);
+
+  const webgl2Available = probeWebgl2Availability();
+  const webglAddonConstructor = getWebglAddonConstructor();
+  const webglAddonAvailable = webglAddonConstructor !== null;
+  pane.webgl2Available = webgl2Available;
+  pane.webglAddonAvailable = webglAddonAvailable;
+  pane.rendererBackend = "builtIn";
+  pane.webglAddon = null;
+
+  if (webgl2Available && webglAddonAvailable) {
+    try {
+      const webglAddon = new webglAddonConstructor();
+      term.loadAddon(webglAddon);
+      pane.webglAddon = webglAddon;
+      pane.rendererBackend = "webgl";
+      if (typeof webglAddon.onContextLoss === "function") {
+        webglAddon.onContextLoss(() => {
+          try {
+            webglAddon.dispose();
+          } catch {
+            // Keep pane alive even if addon cleanup fails.
+          }
+          pane.webglAddon = null;
+          pane.rendererBackend = "builtIn";
+        });
+      }
+    } catch {
+      pane.webglAddon = null;
+      pane.rendererBackend = "builtIn";
+    }
+  }
+
+  // right-click paste is controlled by page-global renderer settings and can be toggled at runtime.
+  el.addEventListener(
+    "contextmenu",
+    (ev) => {
+      if (!rendererSettings.rightClickPaste) return;
+      if (ev.preventDefault) ev.preventDefault();
+      post({ type: "pasteRequested", paneId });
+    },
+    true,
+  );
 
   // app hotkeys never reach the shell: a keydown matching the host-pushed chord table goes
   // back as a chord message instead (the host's KeybindMatcher dispatches it)
@@ -291,6 +578,9 @@ window.agterm = {
   openPane,
   showPane,
   closePane,
+  applyRendererSettings,
+  getRendererSettings,
+  getRendererCapabilities,
   applyLayout,
   fit: (paneId) => fitAndReport(paneId),
   text: (paneId, all, lines) =>
@@ -394,5 +684,7 @@ window.agterm = {
       return true;
     }),
 };
+
+applyPageBackground(rendererSettings);
 
 post({ type: "ready" });

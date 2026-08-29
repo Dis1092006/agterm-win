@@ -32,7 +32,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
     private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(5);
 
     private readonly Func<string?>? _readClipboard;
-    private readonly double _baseFontSize;
+    private double _baseFontSize;
     private readonly object _shutdownGate = new();
     private int _stopOutputStarted;
     private Task? _shutdownCoreTask;
@@ -148,6 +148,16 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
         if (applied is not { } size) return false;
         FontSize = size;
         return true;
+    }
+
+    public void ApplyBaseFontSize(double fontSize)
+    {
+        if (!double.IsFinite(fontSize) || fontSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(fontSize));
+
+        // Page-global renderer apply runs separately; this updates reset/readback state in-place.
+        _baseFontSize = fontSize;
+        FontSize = fontSize;
     }
 
     public void Teardown()

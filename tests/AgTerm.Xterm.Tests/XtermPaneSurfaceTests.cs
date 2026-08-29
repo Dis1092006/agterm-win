@@ -171,4 +171,32 @@ public class XtermPaneSurfaceTests
             await _webView.RunAsync(async _ =>
                 await XtermPaneSurface.OpenAsync(page, options, cts.Token)));
     }
+
+    [Fact]
+    public async Task ApplyBaseFontSize_resets_zoom_and_changes_future_reset_target()
+    {
+        using var surface = await OpenAsync(new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd },
+            BaseFontSize = 14,
+        });
+        WaitForScreen(surface, ">");
+
+        // zoom up twice: 14 -> 15 -> 16
+        Assert.True(surface.PerformBindingAction("increase_font_size:1"));
+        Assert.True(surface.PerformBindingAction("increase_font_size:1"));
+        Assert.Equal(16, surface.FontSize);
+
+        // applying a new base size must: clear runtime zoom and change the reset target
+        surface.ApplyBaseFontSize(18);
+        Assert.Equal(18, surface.FontSize);
+
+        // zoom once more: 18 -> 19
+        Assert.True(surface.PerformBindingAction("increase_font_size:1"));
+        Assert.Equal(19, surface.FontSize);
+
+        // reset must return to the new base, not to the original 14
+        Assert.True(surface.PerformBindingAction("reset_font_size"));
+        Assert.Equal(18, surface.FontSize);
+    }
 }

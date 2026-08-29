@@ -5,6 +5,7 @@ using AgTerm.Xterm;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
@@ -30,7 +31,10 @@ public sealed partial class MainWindow : Window
     private readonly Task<XtermPage> _pageTask;
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
     private readonly WindowCloseCoordinator _closeCoordinator;
-    private readonly AppSettings _settings = new SettingsStore().Load();
+    private readonly SettingsStore _settingsStore;
+    private readonly SettingsReloadCoordinator _settingsReloadCoordinator;
+    private AppSettings _settings; // UI-thread confined
+    private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private WindowCommandRouter? _commandRouter; // UI-thread confined
@@ -48,10 +52,23 @@ public sealed partial class MainWindow : Window
 
     public MainWindow()
     {
+        _settingsStore = new SettingsStore();
+        _settings = _settingsStore.Load();
+        _rendererSettings = RendererSettingsSnapshot.From(_settings);
+
         InitializeComponent();
+        _settingsReloadCoordinator = new SettingsReloadCoordinator(
+            load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
+            runOnUi: work =>
+            {
+                if (!DispatcherQueue.TryEnqueue(() => work()))
+                    throw new InvalidOperationException("Failed to enqueue settings reload.");
+            },
+            apply: ApplySettingsAsync,
+            error: ex => System.Diagnostics.Trace.TraceError(
+                $"Settings reload failed: {ex.GetBaseException().Message}"));
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        SystemBackdrop = new MicaBackdrop();
         AppTitleBar.PaneToggleRequested += (_, _) =>
         {
             var router = _commandRouter;
@@ -107,8 +124,11 @@ public sealed partial class MainWindow : Window
         {
             _appWindow.Closing -= OnAppWindowClosing;
             _bootstrapCancellation.Cancel();
+            _settingsReloadCoordinator.Dispose();
             _layoutCoordinator.Dispose();
-            _ = Task.Run(() => _host?.Dispose()); // bounded emergency cleanup after the page closes
+            ObserveTaskFault(
+                Task.Run(() => _host?.Dispose()),
+                "Window closed disposal failed");
         };
         ObserveTaskFault(StartHostAsync(), "StartHostAsync failed");
     }
@@ -131,6 +151,9 @@ public sealed partial class MainWindow : Window
         await TerminalView.EnsureCoreWebView2Async();
         var page = new XtermPage(new WinRtScriptHost(TerminalView.CoreWebView2));
         await page.InitializeAsync();
+        page.PasteRequested += OnPagePasteRequested;
+        ApplyComposition(_rendererSettings);
+        await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
     }
 
@@ -145,6 +168,9 @@ public sealed partial class MainWindow : Window
             {
                 OpenSurface = OpenSurfaceAsync,
                 ReadClipboard = ReadClipboardText,
+                BaseFontSize = _rendererSettings.FontSize,
+                ConfigDir = _settings.ConfigDirectory,
+                ConfigReload = OnConfigReload,
                 IsUiThread = () => DispatcherQueue.HasThreadAccess,
                 BootstrapCancellationToken = _bootstrapCancellation.Token,
             }));
@@ -257,7 +283,7 @@ public sealed partial class MainWindow : Window
             sidebar.Start();
         });
         host.Start();
-        _ = ArmHotkeysAsync(host);
+        ObserveTaskFault(ArmHotkeysAsync(host), "Arm hotkeys failed");
     }
 
     /// <summary>Window-level chrome from a sidebar snapshot: column width and visibility.</summary>
@@ -303,7 +329,11 @@ public sealed partial class MainWindow : Window
     {
         TerminalView.Focus(FocusState.Programmatic);
         if (_selectedSessionId is { } id && _surfaces.TryGetValue(id, out var surface))
-            _ = surface.Pane.Terminal.FocusAsync();
+        {
+            ObserveTaskFault(
+                surface.Pane.Terminal.FocusAsync(),
+                "Focus active terminal failed");
+        }
     }
 
     // MARK: - sidebar divider drag (persist on release, clamp 160…560 in the controller)
@@ -470,7 +500,9 @@ public sealed partial class MainWindow : Window
             return;
         _surfaces[sessionId] = surface;
         SubmitLayout();
-        _ = UnmountOnExitAsync(sessionId, surface);
+        ObserveTaskFault(
+            UnmountOnExitAsync(sessionId, surface),
+            $"Unmount on exit failed for session {sessionId}");
     }
 
     private void SubmitLayout()
@@ -510,25 +542,34 @@ public sealed partial class MainWindow : Window
         });
     }
 
+    private async Task<string?> ReadClipboardTextOnUiAsync()
+    {
+        try
+        {
+            var content = Clipboard.GetContent();
+            return content.Contains(StandardDataFormats.Text)
+                ? await content.GetTextAsync()
+                : null;
+        }
+        catch (Exception)
+        {
+            return null; // an unreadable clipboard pastes nothing, upstream-style
+        }
+    }
+
     /// <summary>Sync clipboard read for session.paste, called on the host's dispatch thread —
     /// marshals to the UI thread and waits, bounded.</summary>
     private string? ReadClipboardText()
     {
+        if (DispatcherQueue.HasThreadAccess)
+            return null; // UI callers use the asynchronous right-click path below.
+
         var done = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        DispatcherQueue.TryEnqueue(async () =>
+        if (!DispatcherQueue.TryEnqueue(async () =>
         {
-            try
-            {
-                var content = Clipboard.GetContent();
-                done.TrySetResult(content.Contains(StandardDataFormats.Text)
-                    ? await content.GetTextAsync()
-                    : null);
-            }
-            catch (Exception)
-            {
-                done.TrySetResult(null); // an unreadable clipboard pastes nothing, upstream-style
-            }
-        });
+            done.TrySetResult(await ReadClipboardTextOnUiAsync());
+        }))
+            return null;
         try
         {
             return done.Task.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
@@ -538,6 +579,107 @@ public sealed partial class MainWindow : Window
             return null;
         }
     }
+
+    private void OnPagePasteRequested(string paneToken)
+    {
+        var surface = _surfaces.Values.FirstOrDefault(s =>
+            string.Equals(s.PaneToken, paneToken, StringComparison.Ordinal));
+        if (surface is null)
+        {
+            return;
+        }
+
+        ObserveTaskFault(
+            PasteIntoSurfaceAsync(surface),
+            "Right-click paste failed");
+    }
+
+    private async Task PasteIntoSurfaceAsync(XtermPaneSurface surface)
+    {
+        var text = await ReadClipboardTextOnUiAsync();
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        await surface.Pane.Terminal.PasteAsync(text);
+    }
+
+    private int OnConfigReload()
+    {
+        _settingsReloadCoordinator.Request();
+        return 0;
+    }
+
+    private async Task ApplySettingsAsync(AppSettings settings)
+    {
+        var snapshot = RendererSettingsSnapshot.From(settings);
+
+        if (_host is { } host)
+        {
+            // Upstream's explicit config reload clears per-session zoom even when the configured
+            // base font is unchanged; only automatic appearance flips preserve zoom.
+            await host.ApplyBaseFontSizeAsync(snapshot.FontSize);
+        }
+
+        var page = await _pageTask;
+        await page.ApplyRendererSettingsAsync(snapshot);
+
+        _settings = settings;
+        _rendererSettings = snapshot;
+        Sidebar.ApplySettings(settings);
+        ApplyComposition(snapshot);
+    }
+
+    private void ApplyComposition(RendererSettingsSnapshot snapshot)
+    {
+        var translucent = snapshot.BackgroundOpacity < 1.0;
+        TerminalView.DefaultBackgroundColor = translucent
+            ? Color.FromArgb(0x00, 0x00, 0x00, 0x00)
+            : ParseHexColor(snapshot.BackgroundColor, Color.FromArgb(0xFF, 0x0C, 0x0C, 0x0C));
+
+        if (!translucent)
+        {
+            if (SystemBackdrop is not MicaBackdrop)
+                SystemBackdrop = new MicaBackdrop();
+            return;
+        }
+
+        if (snapshot.BackgroundBlur > 0)
+        {
+            if (SystemBackdrop is not DesktopAcrylicBackdrop)
+                SystemBackdrop = new DesktopAcrylicBackdrop();
+        }
+        else if (SystemBackdrop is not null)
+        {
+            SystemBackdrop = null;
+        }
+    }
+
+    private static Color ParseHexColor(string hex, Color fallback)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            return fallback;
+        }
+
+        var trimmed = hex.Trim();
+        if (trimmed.Length == 7 && trimmed[0] == '#')
+        {
+            if (TryHexByte(trimmed.AsSpan(1, 2), out var r) &&
+                TryHexByte(trimmed.AsSpan(3, 2), out var g) &&
+                TryHexByte(trimmed.AsSpan(5, 2), out var b))
+            {
+                return Color.FromArgb(0xFF, r, g, b);
+            }
+        }
+
+        return fallback;
+    }
+
+    private static bool TryHexByte(ReadOnlySpan<char> hex, out byte value) =>
+        byte.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
+            System.Globalization.CultureInfo.InvariantCulture, out value);
 
     private static void ObserveTaskFault(Task task, string context)
     {

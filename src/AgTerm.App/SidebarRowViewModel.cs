@@ -46,6 +46,11 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public string Label => _row.Label;
 
+    public double FontSize =>
+        AppSettings.ClampSidebarFontSize(_settings.SidebarFontSize ?? AppSettings.DefaultSidebarFontSize);
+
+    public double RowHeight => AppSettings.SidebarRowHeight(FontSize);
+
     public Visibility WorkspaceVisibility => IsWorkspace ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility SessionVisibility => IsSession ? Visibility.Visible : Visibility.Collapsed;
@@ -172,6 +177,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _settings = settings;
         _surfaceStatus = surfaceStatus;
         Raise(nameof(Label), nameof(Chevron), nameof(LabelOpacity), nameof(LabelWeight),
+              nameof(FontSize), nameof(RowHeight),
               nameof(FocusPillVisibility), nameof(IconData), nameof(IconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),
               nameof(GlyphData), nameof(BadgeVisibility), nameof(BadgeText),
