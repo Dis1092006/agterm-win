@@ -12,6 +12,10 @@ public sealed class XtermSurfaceOptions
 
     public string? Cwd { get; init; }
 
+    /// <summary>Optional startup keystrokes injected after the child is spawned and cancellation
+    /// is re-checked. Newlines are normalized to terminal Enter (CR) via KeystrokeText.</summary>
+    public string? InitialInput { get; init; }
+
     /// <summary>What reset_font_size returns to (upstream: the engine config's font size).</summary>
     public double BaseFontSize { get; init; } = 14;
 
@@ -77,6 +81,11 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
             }, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (!string.IsNullOrEmpty(options.InitialInput))
+            {
+                pane.Pty.WriteText(KeystrokeText.ToPtyInput(options.InitialInput));
+            }
 
             surface = new XtermPaneSurface(pane, token, options);
             if (Math.Abs(options.BaseFontSize - 14) > 0.001) // bridge default is 14

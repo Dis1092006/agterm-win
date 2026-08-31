@@ -52,7 +52,7 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
         LiveDispatchScopeFactory scopes,
         Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> opener,
         TimeSpan? realizeBudget = null,
-        Action<Guid, IHeadlessSurface>? committed = null,
+        Action<SurfaceOpenRequest, IHeadlessSurface>? committed = null,
         Action<string>? log = null) =>
         new LiveSurfaceCoordinator(
             host, scopes, opener,
@@ -275,6 +275,33 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Scope_callback_failure_runs_registered_work_and_closes_the_scope()
+    {
+        var factory = new LiveDispatchScopeFactory();
+        var operationRan = false;
+        factory.SetBeforeComplete(() =>
+        {
+            Assert.True(factory.TryRegister(_ =>
+            {
+                operationRan = true;
+                return Task.CompletedTask;
+            }));
+            throw new InvalidOperationException("test reconciliation failure");
+        });
+        using var scope = factory.Begin();
+
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => scope.CompleteAsync(CancellationToken.None));
+
+        Assert.Equal("test reconciliation failure", failure.Message);
+        Assert.True(operationRan);
+        Assert.False(factory.TryRegister(_ => Task.CompletedTask));
+        Assert.Same(
+            scope.CompleteAsync(CancellationToken.None),
+            scope.CompleteAsync(CancellationToken.None));
+    }
+
+    [Fact]
     public void Scope_TryRegister_returns_false_after_scope_Dispose_clears_ambient()
     {
         var factory = new LiveDispatchScopeFactory();
@@ -338,13 +365,18 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         var committedCount = 0;
-        Guid committedId = default;
+        SurfaceOpenRequest? committedRequest = null;
         IHeadlessSurface? committedSurface = null;
 
         using var coordinator = BuildCoordinator(
             host, scopes,
             (_, _) => openerTcs.Task,
-            committed: (id, s) => { committedId = id; committedSurface = s; committedCount++; });
+            committed: (request, surface) =>
+            {
+                committedRequest = request;
+                committedSurface = surface;
+                committedCount++;
+            });
 
         PendingTerminalSurface? pending = null;
 
@@ -368,7 +400,8 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
 
         // Committed callback fires exactly once
         Assert.Equal(1, committedCount);
-        Assert.Equal(sessionId, committedId);
+        Assert.Equal(sessionId, committedRequest!.SessionId);
+        Assert.Equal(LiveSurfaceKind.Main, committedRequest.Kind);
         Assert.Same(fake, committedSurface);
 
         // Slot now holds the real surface
@@ -657,6 +690,38 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
         await scope.CompleteAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Equal(1, notifications);
+    }
+
+    [Theory]
+    [InlineData(LiveSurfaceKind.Scratch, true)]
+    [InlineData(LiveSurfaceKind.Scratch, false)]
+    [InlineData(LiveSurfaceKind.Overlay, true)]
+    [InlineData(LiveSurfaceKind.Overlay, false)]
+    [InlineData(LiveSurfaceKind.Quick, true)]
+    [InlineData(LiveSurfaceKind.Quick, false)]
+    public async Task Coordinator_non_sidebar_slot_transition_does_not_notify_sidebar(
+        LiveSurfaceKind kind,
+        bool succeeds)
+    {
+        using var host = BuildHost();
+        var scopes = new LiveDispatchScopeFactory();
+        var sessionId = host.Store.ActiveSession!.Id;
+        var opener = succeeds
+            ? Task.FromResult<IHeadlessSurface>(new FakeSurface())
+            : Task.FromException<IHeadlessSurface>(new InvalidOperationException("test failure"));
+        using var coordinator = BuildCoordinator(host, scopes, (_, _) => opener);
+        var notifications = 0;
+        using var scope = scopes.Begin();
+
+        host.RunLocked(() => coordinator.Reserve(new SurfaceOpenRequest(
+            kind == LiveSurfaceKind.Quick ? null : sessionId,
+            kind,
+            DefaultOptions(_stateDir))));
+        host.Store.SidebarChanged += () => notifications++;
+
+        await scope.CompleteAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(0, notifications);
     }
 
     // -------------------------------------------------------------------------

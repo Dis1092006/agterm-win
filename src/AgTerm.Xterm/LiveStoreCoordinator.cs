@@ -29,6 +29,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     private readonly HeadlessHost _host;
     private readonly Func<bool> _isUiThread;
     private readonly Func<Action, CancellationToken, Task> _scheduler;
+    private readonly Action? _afterMutation;
     private readonly Action _onSidebarChanged;
     private readonly Action _onSidebarVisibilityChanged;
     private readonly Action _onSelectionChanged;
@@ -43,19 +44,21 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
 
     public event Action<LiveSelectionSnapshot>? SelectionSnapshotChanged;
 
-    public LiveStoreCoordinator(HeadlessHost host, Func<bool> isUiThread)
-        : this(host, isUiThread, static (work, cancellationToken) => Task.Run(work, cancellationToken))
+    public LiveStoreCoordinator(HeadlessHost host, Func<bool> isUiThread, Action? afterMutation = null)
+        : this(host, isUiThread, static (work, cancellationToken) => Task.Run(work, cancellationToken), afterMutation)
     {
     }
 
     internal LiveStoreCoordinator(
         HeadlessHost host,
         Func<bool> isUiThread,
-        Func<Action, CancellationToken, Task> scheduler)
+        Func<Action, CancellationToken, Task> scheduler,
+        Action? afterMutation = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _isUiThread = isUiThread ?? throw new ArgumentNullException(nameof(isUiThread));
         _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
+        _afterMutation = afterMutation;
 
         _onSidebarChanged = OnSidebarInvalidated;
         _onSidebarVisibilityChanged = OnSidebarInvalidated;
@@ -116,6 +119,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
                 cancellationToken.ThrowIfCancellationRequested();
                 ThrowIfDisposed();
                 mutate(_host.Store);
+                _afterMutation?.Invoke();
             });
         }, cancellationToken).ConfigureAwait(false);
     }

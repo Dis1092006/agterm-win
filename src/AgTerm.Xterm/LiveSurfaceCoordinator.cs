@@ -1,12 +1,18 @@
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using AgTerm.ControlServer;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
 public enum LiveSurfaceKind
 {
     Main,
+    Split,
+    Scratch,
+    Overlay,
+    Quick,
 }
 
 public sealed record SurfaceOpenRequest(Guid? SessionId, LiveSurfaceKind Kind, XtermSurfaceOptions Options);
@@ -14,8 +20,14 @@ public sealed record SurfaceOpenRequest(Guid? SessionId, LiveSurfaceKind Kind, X
 internal sealed class LiveDispatchScopeFactory : IControlDispatchScopeFactory
 {
     private readonly AsyncLocal<LiveDispatchScope?> _ambient = new();
+    private Action? _beforeComplete;
 
     internal LiveDispatchScope? Current => _ambient.Value;
+
+    internal void SetBeforeComplete(Action? beforeComplete)
+    {
+        _beforeComplete = beforeComplete;
+    }
 
     public IControlDispatchScope Begin()
     {
@@ -47,6 +59,11 @@ internal sealed class LiveDispatchScopeFactory : IControlDispatchScopeFactory
         {
             _ambient.Value = null;
         }
+    }
+
+    internal void InvokeBeforeComplete()
+    {
+        _beforeComplete?.Invoke();
     }
 
     internal sealed class LiveDispatchScope : IControlDispatchScope
@@ -106,12 +123,7 @@ internal sealed class LiveDispatchScopeFactory : IControlDispatchScopeFactory
                     return _completion;
                 }
 
-                _accepting = false;
-                var snapshot = _operations.ToArray();
-                _operations.Clear();
-
-                _owner.ClearAmbientIfCurrent(this);
-                _completion = RunSnapshotAsync(snapshot, cancellationToken);
+                _completion = CompleteCoreAsync(cancellationToken);
                 return _completion;
             }
         }
@@ -129,10 +141,58 @@ internal sealed class LiveDispatchScopeFactory : IControlDispatchScopeFactory
 
         private static async Task RunSnapshotAsync(
             IReadOnlyList<Func<CancellationToken, Task>> operations,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            Exception? callbackFailure = null)
         {
-            await Task.WhenAll(operations.Select(operation => operation(cancellationToken)))
-                .ConfigureAwait(false);
+            Exception? operationFailure = null;
+            try
+            {
+                await Task.WhenAll(operations.Select(operation => operation(cancellationToken)))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                operationFailure = ex;
+            }
+
+            if (callbackFailure is not null && operationFailure is not null)
+            {
+                throw new AggregateException(callbackFailure, operationFailure);
+            }
+
+            if (callbackFailure is not null)
+            {
+                ExceptionDispatchInfo.Capture(callbackFailure).Throw();
+            }
+
+            if (operationFailure is not null)
+            {
+                ExceptionDispatchInfo.Capture(operationFailure).Throw();
+            }
+        }
+
+        private Task CompleteCoreAsync(CancellationToken cancellationToken)
+        {
+            Exception? callbackFailure = null;
+            try
+            {
+                _owner.InvokeBeforeComplete();
+            }
+            catch (Exception ex)
+            {
+                callbackFailure = ex;
+            }
+
+            IReadOnlyList<Func<CancellationToken, Task>> snapshot;
+            lock (_gate)
+            {
+                _accepting = false;
+                snapshot = _operations.ToArray();
+                _operations.Clear();
+                _owner.ClearAmbientIfCurrent(this);
+            }
+
+            return RunSnapshotAsync(snapshot, cancellationToken, callbackFailure);
         }
     }
 }
@@ -140,6 +200,8 @@ internal sealed class LiveDispatchScopeFactory : IControlDispatchScopeFactory
 internal sealed class LiveSurfaceCoordinator : IDisposable
 {
     private static readonly TimeSpan CanceledOpenDrainWindow = TimeSpan.FromSeconds(1);
+
+    private readonly record struct SurfaceSlot(LiveSurfaceKind Kind, Guid? SessionId);
 
     private static Task ScheduleWithTaskRun(Func<Task> work)
     {
@@ -150,7 +212,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
     private readonly LiveDispatchScopeFactory _scopes;
     private readonly Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> _openSurface;
     private readonly TimeSpan _realizeBudget;
-    private readonly Action<Guid, IHeadlessSurface>? _committed;
+    private readonly Action<SurfaceOpenRequest, IHeadlessSurface>? _committed;
     private readonly Action<string>? _log;
     private readonly Func<Func<Task>, Task> _schedule;
     private readonly CancellationTokenSource _shutdown = new();
@@ -165,7 +227,34 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         LiveDispatchScopeFactory scopes,
         Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> openSurface,
         TimeSpan realizeBudget,
-        Action<Guid, IHeadlessSurface>? committed = null,
+        Action<Guid, IHeadlessSurface>? committed,
+        Action<string>? log = null,
+        Func<Func<Task>, Task>? schedule = null)
+        : this(
+            host,
+            scopes,
+            openSurface,
+            realizeBudget,
+            committed is null
+                ? null
+                : (request, surface) =>
+                {
+                    if (request.SessionId is { } sessionId)
+                    {
+                        committed(sessionId, surface);
+                    }
+                },
+            log,
+            schedule)
+    {
+    }
+
+    public LiveSurfaceCoordinator(
+        HeadlessHost host,
+        LiveDispatchScopeFactory scopes,
+        Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> openSurface,
+        TimeSpan realizeBudget,
+        Action<SurfaceOpenRequest, IHeadlessSurface>? committed = null,
         Action<string>? log = null,
         Func<Func<Task>, Task>? schedule = null)
     {
@@ -182,26 +271,15 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-        if (request.Kind != LiveSurfaceKind.Main)
-        {
-            throw new NotSupportedException($"Unsupported surface kind: {request.Kind}");
-        }
-
-        if (request.SessionId is not { } sessionId)
-        {
-            throw new InvalidOperationException("Main surface requires a session id.");
-        }
-
-        var session = _host.Store.SessionWithId(sessionId)
-            ?? throw new InvalidOperationException($"Session not found: {sessionId}");
+        var slot = ResolveSlot(request);
 
         var pending = new PendingTerminalSurface();
-        session.Surface = pending;
+        AssignSlot(slot, pending);
         Track(pending);
 
-        if (!_scopes.TryRegister(ct => RunTrackedRealizeAsync(request, pending, ct)))
+        if (!_scopes.TryRegister(ct => RunTrackedRealizeAsync(request, slot, pending, ct)))
         {
-            ObserveUnscopedFaults(RunUnscopedTrackedRealizeAsync(request, pending));
+            ObserveUnscopedFaults(RunUnscopedTrackedRealizeAsync(request, slot, pending));
         }
 
         return pending;
@@ -251,21 +329,23 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
 
     private Task RunTrackedRealizeAsync(
         SurfaceOpenRequest request,
+        SurfaceSlot slot,
         PendingTerminalSurface pending,
         CancellationToken operationToken)
     {
         RegisterActiveRealization();
-        return RunTrackedRegisteredRealizeAsync(request, pending, operationToken);
+        return RunTrackedRegisteredRealizeAsync(request, slot, pending, operationToken);
     }
 
     private async Task RunTrackedRegisteredRealizeAsync(
         SurfaceOpenRequest request,
+        SurfaceSlot slot,
         PendingTerminalSurface pending,
         CancellationToken operationToken)
     {
         try
         {
-            await RunRealizeAsync(request, pending, operationToken).ConfigureAwait(false);
+            await RunRealizeAsync(request, slot, pending, operationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -273,7 +353,10 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
     }
 
-    private Task RunUnscopedTrackedRealizeAsync(SurfaceOpenRequest request, PendingTerminalSurface pending)
+    private Task RunUnscopedTrackedRealizeAsync(
+        SurfaceOpenRequest request,
+        SurfaceSlot slot,
+        PendingTerminalSurface pending)
     {
         RegisterActiveRealization();
 
@@ -294,7 +377,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         {
             try
             {
-                await RunRealizeAsync(request, pending, CancellationToken.None).ConfigureAwait(false);
+                await RunRealizeAsync(request, slot, pending, CancellationToken.None).ConfigureAwait(false);
                 workCompletion.TrySetResult(null);
             }
             catch (Exception ex)
@@ -315,19 +398,24 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
         catch (Exception ex)
         {
-            CancelPendingBeforeOpen(request, pending);
+            CancelPendingBeforeOpen(slot, pending);
             workCompletion.TrySetException(ex);
             ReleaseActiveRegistration();
             return Task.FromException(ex);
         }
 
-        return AwaitScheduledAndWorkAsync(scheduled, workCompletion.Task, request, pending, ReleaseActiveRegistration);
+        return AwaitScheduledAndWorkAsync(
+            scheduled,
+            workCompletion.Task,
+            slot,
+            pending,
+            ReleaseActiveRegistration);
     }
 
     private async Task AwaitScheduledAndWorkAsync(
         Task scheduled,
         Task work,
-        SurfaceOpenRequest request,
+        SurfaceSlot slot,
         PendingTerminalSurface pending,
         Action releaseActiveRegistration)
     {
@@ -340,7 +428,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         {
             if (!work.IsCompleted)
             {
-                CancelPendingBeforeOpen(request, pending);
+                CancelPendingBeforeOpen(slot, pending);
                 releaseActiveRegistration();
             }
 
@@ -397,6 +485,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
 
     private async Task RunRealizeAsync(
         SurfaceOpenRequest request,
+        SurfaceSlot slot,
         PendingTerminalSurface pending,
         CancellationToken operationToken)
     {
@@ -405,54 +494,27 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
             operationToken.IsCancellationRequested ||
             pending.ReservationToken.IsCancellationRequested)
         {
-            CancelPendingBeforeOpen(request, pending);
+            CancelPendingBeforeOpen(slot, pending);
             return;
         }
 
-        await RealizeAsync(request, pending, operationToken).ConfigureAwait(false);
+        await RealizeAsync(request, slot, pending, operationToken).ConfigureAwait(false);
     }
 
-    private void CancelPendingBeforeOpen(SurfaceOpenRequest request, PendingTerminalSurface pending)
+    private void CancelPendingBeforeOpen(SurfaceSlot slot, PendingTerminalSurface pending)
     {
-        if (request.SessionId is { } sessionId)
-        {
-            ClearPendingSlot(sessionId, pending);
-            pending.Settle(null);
-        }
-        else
-        {
-            pending.Teardown();
-        }
+        ClearPendingSlot(slot, pending);
+        pending.Settle(null);
 
         Untrack(pending);
     }
 
     private async Task RealizeAsync(
         SurfaceOpenRequest request,
+        SurfaceSlot slot,
         PendingTerminalSurface pending,
         CancellationToken operationToken)
     {
-        if (request.SessionId is not { } sessionId)
-        {
-            pending.Teardown();
-            Untrack(pending);
-            return;
-        }
-
-        var stillCurrent = false;
-        _host.RunLocked(() =>
-        {
-            var session = _host.Store.SessionWithId(sessionId);
-            stillCurrent = session is not null && ReferenceEquals(session.Surface, pending);
-        });
-
-        if (!stillCurrent)
-        {
-            pending.Teardown();
-            Untrack(pending);
-            return;
-        }
-
         using var budgetCts = new CancellationTokenSource(_realizeBudget);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(
             operationToken,
@@ -467,8 +529,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
         catch (Exception ex)
         {
-            _log?.Invoke($"LiveSurfaceCoordinator opener failed for {sessionId}: {ex}");
-            ClearPendingSlot(sessionId, pending);
+            _log?.Invoke($"LiveSurfaceCoordinator opener failed for {DescribeSlot(slot)}: {ex}");
+            ClearPendingSlot(slot, pending);
             pending.Settle(null);
             Untrack(pending);
             return;
@@ -493,7 +555,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
             }
             catch (Exception ex)
             {
-                _log?.Invoke($"LiveSurfaceCoordinator teardown failed for {sessionId}: {ex}");
+                _log?.Invoke($"LiveSurfaceCoordinator teardown failed for {DescribeSlot(slot)}: {ex}");
             }
         }
 
@@ -504,7 +566,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
         catch (OperationCanceledException)
         {
-            ClearPendingSlot(sessionId, pending);
+            ClearPendingSlot(slot, pending);
             // Ready means this attempt settled. ReservationToken records slot teardown specifically;
             // timeout/server/shutdown cancellation is carried by the linked opener token instead.
             pending.Settle(null);
@@ -551,8 +613,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
         catch (Exception ex)
         {
-            _log?.Invoke($"LiveSurfaceCoordinator realize failed for {sessionId}: {ex}");
-            ClearPendingSlot(sessionId, pending);
+            _log?.Invoke($"LiveSurfaceCoordinator realize failed for {DescribeSlot(slot)}: {ex}");
+            ClearPendingSlot(slot, pending);
             pending.Settle(null);
             Untrack(pending);
             return;
@@ -561,13 +623,12 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         var committed = false;
         _host.RunLocked(() =>
         {
-            var session = _host.Store.SessionWithId(sessionId);
-            if (session is null)
+            if (!TryGetSlotSurface(slot, out var current))
             {
                 return;
             }
 
-            if (!ReferenceEquals(session.Surface, pending))
+            if (!ReferenceEquals(current, pending))
             {
                 return;
             }
@@ -577,14 +638,17 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
                 return;
             }
 
-            session.Surface = realized;
-            _host.Store.NotifySidebar();
+            AssignSlot(slot, realized);
+            if (ShouldNotifySidebar(slot))
+            {
+                _host.Store.NotifySidebar();
+            }
             committed = true;
         });
 
         if (!committed)
         {
-            ClearPendingSlot(sessionId, pending);
+            ClearPendingSlot(slot, pending);
             TeardownSurfaceOnce(realized);
             pending.Settle(null);
             Untrack(pending);
@@ -594,12 +658,13 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         pending.Settle(realized);
         try
         {
-            _committed?.Invoke(sessionId, realized);
+            _committed?.Invoke(request, realized);
         }
         catch (Exception ex)
         {
-            _log?.Invoke($"LiveSurfaceCoordinator commit callback failed for {sessionId}: {ex}");
+            _log?.Invoke($"LiveSurfaceCoordinator commit callback failed for {DescribeSlot(slot)}: {ex}");
         }
+
         Untrack(pending);
     }
 
@@ -619,14 +684,171 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
     }
 
-    private void ClearPendingSlot(Guid sessionId, PendingTerminalSurface pending)
+    private SurfaceSlot ResolveSlot(SurfaceOpenRequest request)
+    {
+        switch (request.Kind)
+        {
+            case LiveSurfaceKind.Main:
+            {
+                if (request.SessionId is not { } sessionId)
+                {
+                    throw new InvalidOperationException("Main surface requires a session id.");
+                }
+
+                EnsureSessionExists(sessionId);
+                return new SurfaceSlot(request.Kind, sessionId);
+            }
+
+            case LiveSurfaceKind.Split:
+            case LiveSurfaceKind.Scratch:
+            case LiveSurfaceKind.Overlay:
+            {
+                if (request.SessionId is not { } sessionId)
+                {
+                    throw new InvalidOperationException($"{request.Kind} surface requires a session id.");
+                }
+
+                EnsureSessionExists(sessionId);
+                return new SurfaceSlot(request.Kind, sessionId);
+            }
+
+            case LiveSurfaceKind.Quick:
+            {
+                if (request.SessionId is not null)
+                {
+                    throw new InvalidOperationException("Quick surface does not accept a session id.");
+                }
+
+                return new SurfaceSlot(request.Kind, null);
+            }
+
+            default:
+                throw new NotSupportedException($"Unsupported surface kind: {request.Kind}");
+        }
+    }
+
+    private void EnsureSessionExists(Guid sessionId)
+    {
+        _ = _host.Store.SessionWithId(sessionId)
+            ?? throw new InvalidOperationException($"Session not found: {sessionId}");
+    }
+
+    private bool ShouldNotifySidebar(SurfaceSlot slot) =>
+        slot.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split;
+
+    private bool TryGetSlotSurface(SurfaceSlot slot, out ITerminalSurface? surface)
+    {
+        switch (slot.Kind)
+        {
+            case LiveSurfaceKind.Main:
+            case LiveSurfaceKind.Split:
+            case LiveSurfaceKind.Scratch:
+            case LiveSurfaceKind.Overlay:
+            {
+                if (slot.SessionId is not { } sessionId)
+                {
+                    surface = null;
+                    return false;
+                }
+
+                var session = _host.Store.SessionWithId(sessionId);
+                if (session is null)
+                {
+                    surface = null;
+                    return false;
+                }
+
+                surface = slot.Kind switch
+                {
+                    LiveSurfaceKind.Main => session.Surface,
+                    LiveSurfaceKind.Split => session.SplitSurface,
+                    LiveSurfaceKind.Scratch => session.ScratchSurface,
+                    LiveSurfaceKind.Overlay => session.OverlaySurface,
+                    _ => null,
+                };
+
+                return true;
+            }
+
+            case LiveSurfaceKind.Quick:
+                surface = _host.Actions.Quick.Surface;
+                return true;
+
+            default:
+                surface = null;
+                return false;
+        }
+    }
+
+    private void AssignSlot(SurfaceSlot slot, ITerminalSurface? surface)
+    {
+        switch (slot.Kind)
+        {
+            case LiveSurfaceKind.Main:
+            case LiveSurfaceKind.Split:
+            case LiveSurfaceKind.Scratch:
+            case LiveSurfaceKind.Overlay:
+            {
+                if (slot.SessionId is not { } sessionId)
+                {
+                    return;
+                }
+
+                var session = _host.Store.SessionWithId(sessionId);
+                if (session is null)
+                {
+                    return;
+                }
+
+                switch (slot.Kind)
+                {
+                    case LiveSurfaceKind.Main:
+                        session.Surface = surface;
+                        break;
+                    case LiveSurfaceKind.Split:
+                        session.SplitSurface = surface;
+                        break;
+                    case LiveSurfaceKind.Scratch:
+                        session.ScratchSurface = surface;
+                        break;
+                    case LiveSurfaceKind.Overlay:
+                        session.OverlaySurface = surface;
+                        break;
+                }
+
+                return;
+            }
+
+            case LiveSurfaceKind.Quick:
+                _host.Actions.Quick.Surface = surface as IHeadlessSurface;
+                return;
+        }
+    }
+
+    private static string DescribeSlot(SurfaceSlot slot)
+    {
+        return slot.SessionId is { } sessionId
+            ? $"{slot.Kind}:{sessionId}"
+            : slot.Kind.ToString();
+    }
+
+    private void ClearPendingSlot(SurfaceSlot slot, PendingTerminalSurface pending)
     {
         _host.RunLocked(() =>
         {
-            var session = _host.Store.SessionWithId(sessionId);
-            if (session is not null && ReferenceEquals(session.Surface, pending))
+            if (!TryGetSlotSurface(slot, out var current))
             {
-                session.Surface = null;
+                return;
+            }
+
+            if (!ReferenceEquals(current, pending))
+            {
+                return;
+            }
+
+            AssignSlot(slot, null);
+            if (ShouldNotifySidebar(slot))
+            {
                 _host.Store.NotifySidebar();
             }
         });

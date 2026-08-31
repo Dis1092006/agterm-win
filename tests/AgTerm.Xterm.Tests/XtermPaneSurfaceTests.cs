@@ -79,6 +79,18 @@ public class XtermPaneSurfaceTests
     }
 
     [Fact]
+    public async Task Initial_input_is_injected_after_the_shell_starts()
+    {
+        using var surface = await OpenAsync(new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd },
+            InitialInput = "echo initial-input-ok\n",
+        });
+
+        WaitForScreen(surface, "initial-input-ok");
+    }
+
+    [Fact]
     public async Task ReadScreenText_lines_returns_the_tail()
     {
         using var surface = await OpenAsync();

@@ -36,6 +36,9 @@ public sealed record LiveControlHostOptions
     /// <summary>Default base font size for newly realized surfaces.</summary>
     public double BaseFontSize { get; init; } = 14;
 
+    /// <summary>When true, restored foreground/override commands are sent as startup input.</summary>
+    public bool RestoreRunningCommand { get; init; }
+
     /// <summary>config.reload count callback forwarded to the headless control actions.</summary>
     public Func<int>? ConfigReload { get; init; }
 
@@ -91,6 +94,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             AvailableThemes = options.AvailableThemes,
             ConfigReload = options.ConfigReload,
             HomeDirectory = options.HomeDirectory,
+            RestoreRunningCommand = options.RestoreRunningCommand,
             Log = options.Log,
             SurfaceRealizer = ReserveSurface,
             DispatchScopeFactory = _scopeFactory,
@@ -99,21 +103,28 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             EagerSurfaceRealization = true,
             DeferBootstrap = true,
         });
-        _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
             _scopeFactory,
             options.OpenSurface,
             options.RealizeBudget,
-            (sessionId, realizedSurface) =>
+            (request, realizedSurface) =>
             {
-                if (realizedSurface is XtermPaneSurface paneSurface)
+                if (realizedSurface is not XtermPaneSurface paneSurface)
+                {
+                    return;
+                }
+
+                if (request.Kind == LiveSurfaceKind.Main && request.SessionId is { } sessionId)
                 {
                     Bind(sessionId, paneSurface);
-                    SurfaceRealized?.Invoke(sessionId, paneSurface);
                 }
+
+                SurfaceRealized?.Invoke(request, paneSurface);
             },
             options.Log);
+        _scopeFactory.SetBeforeComplete(() => Host.RunLocked(ReconcileSurfacesLocked));
+        _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         var bootstrapCancellationToken = options.BootstrapCancellationToken;
         var coordinator = _coordinator;
         using var bootstrapScope = _scopeFactory.Begin();
@@ -167,7 +178,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     /// <summary>A surface realized after this host's own bootstrap (i.e. any control- or UI-driven
     /// show). The app uses it to mount the pane's view; fired on the realizing (dispatch) thread.</summary>
-    public event Action<Guid, XtermPaneSurface>? SurfaceRealized;
+    public event Action<SurfaceOpenRequest, XtermPaneSurface>? SurfaceRealized;
 
     /// <summary>Reserve a pending surface under the host gate. The coordinator opens and commits
     /// the real surface asynchronously after bootstrap dispatch completes.</summary>
@@ -177,28 +188,205 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             throw new InvalidOperationException(
                 "LiveControlHost invariant violated: Host is not initialized.");
 
-        var argv = session.InitialCommand is { } command
-            ? CommandTokenizer.Tokenize(command)
-            : new[] { ShellResolver.Resolve(_options.DefaultShell) };
+        var request = CaptureRequest(session, LiveSurfaceKind.Main);
+        if (request is null)
+        {
+            return null;
+        }
+
+        var coordinator = _coordinator ?? throw new InvalidOperationException(
+            "LiveControlHost invariant violated: coordinator is not initialized.");
+        return coordinator.Reserve(request);
+    }
+
+    private void ReconcileSurfacesLocked()
+    {
+        var coordinator = _coordinator;
+        if (coordinator is null)
+        {
+            return;
+        }
+
+        foreach (var session in Host.Store.Workspaces.SelectMany(workspace => workspace.Sessions))
+        {
+            ReserveIfMissing(coordinator, session, LiveSurfaceKind.Main, session.Surface);
+            if (session.HasSplit)
+            {
+                ReserveIfMissing(coordinator, session, LiveSurfaceKind.Split, session.SplitSurface);
+            }
+            else if (session.SplitSurface is { } splitSurface)
+            {
+                session.SplitSurface = null;
+                splitSurface.Teardown();
+            }
+
+            if (session.ScratchActive)
+            {
+                ReserveIfMissing(coordinator, session, LiveSurfaceKind.Scratch, session.ScratchSurface);
+            }
+
+            if (session.OverlayActive)
+            {
+                ReserveIfMissing(coordinator, session, LiveSurfaceKind.Overlay, session.OverlaySurface);
+            }
+            else if (session.OverlaySurface is { } overlaySurface)
+            {
+                session.OverlaySurface = null;
+                overlaySurface.Teardown();
+            }
+        }
+
+        if (Host.Actions.Quick.Visible &&
+            Host.Store.ActiveSession is { } activeSession &&
+            Host.Actions.Quick.Surface is null)
+        {
+            var quickRequest = CaptureRequest(activeSession, LiveSurfaceKind.Quick);
+            if (quickRequest is not null)
+            {
+                coordinator.Reserve(quickRequest);
+            }
+        }
+
+    }
+
+    private void ReserveIfMissing(
+        LiveSurfaceCoordinator coordinator,
+        Session session,
+        LiveSurfaceKind kind,
+        ITerminalSurface? slot)
+    {
+        if (slot is not null)
+        {
+            return;
+        }
+
+        var request = CaptureRequest(session, kind);
+        if (request is not null)
+        {
+            coordinator.Reserve(request);
+        }
+    }
+
+    private SurfaceOpenRequest? CaptureRequest(Session session, LiveSurfaceKind kind)
+    {
+        IReadOnlyList<string> argv;
+        string? cwd;
+        string? initialInput = null;
+        Guid? sessionId;
+        var baseFontSize = session.FontSize ?? _currentBaseFontSize;
+        var shellArgv = new[] { ShellResolver.Resolve(_options.DefaultShell) };
+        var restoreRunningCommand = _options.RestoreRunningCommand;
+
+        switch (kind)
+        {
+            case LiveSurfaceKind.Main:
+            {
+                var pendingOverride = session.TakePendingRestoreOverride(StatusPane.Left);
+                var capturedForeground = session.ForegroundCommand;
+                session.ForegroundCommand = null;
+
+                if (pendingOverride is not null)
+                {
+                    argv = shellArgv;
+                    initialInput = restoreRunningCommand && pendingOverride.Length > 0
+                        ? pendingOverride + "\n"
+                        : null;
+                }
+                else if (capturedForeground is { Length: > 0 })
+                {
+                    argv = capturedForeground;
+                    initialInput = restoreRunningCommand
+                        ? WindowsCommandLine.FromArgv(capturedForeground) + "\n"
+                        : null;
+                }
+                else if (session.InitialCommand is { } initialCommand &&
+                         (!session.WasRestored || restoreRunningCommand))
+                {
+                    argv = CommandTokenizer.Tokenize(initialCommand);
+                }
+                else
+                {
+                    argv = shellArgv;
+                }
+
+                cwd = session.EffectiveCwd;
+                sessionId = session.Id;
+                break;
+            }
+
+            case LiveSurfaceKind.Split:
+            {
+                var pendingOverride = session.TakePendingRestoreOverride(StatusPane.Right);
+                var capturedForeground = session.SplitForegroundCommand;
+                session.SplitForegroundCommand = null;
+
+                argv = shellArgv;
+                if (pendingOverride is not null)
+                {
+                    initialInput = restoreRunningCommand && pendingOverride.Length > 0
+                        ? pendingOverride + "\n"
+                        : null;
+                }
+                else if (capturedForeground is { Length: > 0 })
+                {
+                    initialInput = restoreRunningCommand
+                        ? WindowsCommandLine.FromArgv(capturedForeground) + "\n"
+                        : null;
+                }
+
+                cwd = session.InitialSplitCwd ?? session.EffectiveCwd;
+                sessionId = session.Id;
+                break;
+            }
+
+            case LiveSurfaceKind.Scratch:
+                var scratchCommand = session.ScratchCommand;
+                session.ScratchCommand = null;
+                argv = scratchCommand is { } command
+                    ? CommandTokenizer.Tokenize(command)
+                    : shellArgv;
+                cwd = session.EffectiveCwd;
+                sessionId = session.Id;
+                break;
+
+            case LiveSurfaceKind.Overlay:
+                if (session.OverlayCommand is not { } overlayCommand)
+                {
+                    return null;
+                }
+
+                argv = CommandTokenizer.Tokenize(overlayCommand);
+                cwd = session.OverlayCwd ?? session.EffectiveCwd;
+                sessionId = session.Id;
+                break;
+
+            case LiveSurfaceKind.Quick:
+                argv = shellArgv;
+                cwd = session.EffectiveCwd;
+                sessionId = null;
+                baseFontSize = _currentBaseFontSize;
+                break;
+
+            default:
+                throw new NotSupportedException($"Unsupported surface kind: {kind}");
+        }
+
         if (argv.Count == 0)
         {
             return null;
         }
 
-        var request = new SurfaceOpenRequest(
-            session.Id,
-            LiveSurfaceKind.Main,
+        return new SurfaceOpenRequest(
+            sessionId,
+            kind,
             new XtermSurfaceOptions
             {
                 Argv = argv.ToArray(),
-                Cwd = ExistingDirectoryOrNull(session.EffectiveCwd),
-                BaseFontSize = session.FontSize ?? _currentBaseFontSize,
+                Cwd = ExistingDirectoryOrNull(cwd),
+                InitialInput = initialInput,
+                BaseFontSize = baseFontSize,
                 ReadClipboard = _options.ReadClipboard,
             });
-
-        var coordinator = _coordinator ?? throw new InvalidOperationException(
-            "LiveControlHost invariant violated: coordinator is not initialized.");
-        return coordinator.Reserve(request);
     }
 
     /// <summary>Live reports → session fields. Every mutation hops to the thread pool and takes
@@ -259,6 +447,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             // session.new --command --wait: hold the pane open after the command exits
             if (live!.InitialCommand is not null && live.CommandWait) return;
             Host.Store.ClosePrimaryPane(live.Id);
+            ReconcileSurfacesLocked();
         });
     }
 

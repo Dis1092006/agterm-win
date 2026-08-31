@@ -196,8 +196,13 @@ public sealed partial class MainWindow : Window
             });
         };
 
-        host.SurfaceRealized += (sessionId, surface) =>
-            DispatcherQueue.TryEnqueue(() => MountSurface(sessionId, surface));
+        host.SurfaceRealized += (request, surface) =>
+        {
+            if (request.Kind == LiveSurfaceKind.Main && request.SessionId is { } sessionId)
+            {
+                DispatcherQueue.TryEnqueue(() => MountSurface(sessionId, surface));
+            }
+        };
 
         var startup = await host.StoreCoordinator.ReadAsync(store =>
         {
