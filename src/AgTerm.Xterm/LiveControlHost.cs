@@ -176,6 +176,33 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }, cancellationToken);
     }
 
+    public async Task<bool> ApplySplitRatioAsync(
+        string leftPaneId,
+        string rightPaneId,
+        double ratio,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(leftPaneId) || string.IsNullOrEmpty(rightPaneId))
+        {
+            return false;
+        }
+
+        var applied = false;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            var session = store.Workspaces
+                .SelectMany(workspace => workspace.Sessions)
+                .FirstOrDefault(candidate =>
+                    candidate.Surface?.PaneToken == leftPaneId &&
+                    candidate.SplitSurface?.PaneToken == rightPaneId);
+            if (session is not null)
+            {
+                applied = store.ApplySplitRatio(ratio, session.Id) is not null;
+            }
+        }, cancellationToken).ConfigureAwait(false);
+        return applied;
+    }
+
     /// <summary>A surface realized after this host's own bootstrap (i.e. any control- or UI-driven
     /// show). The app uses it to mount the pane's view; fired on the realizing (dispatch) thread.</summary>
     public event Action<SurfaceOpenRequest, XtermPaneSurface>? SurfaceRealized;

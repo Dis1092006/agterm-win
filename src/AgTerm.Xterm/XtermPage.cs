@@ -88,6 +88,10 @@ public sealed class XtermPage
     /// <summary>Raised when the page requests host-side paste for a known pane id.</summary>
     public event Action<string>? PasteRequested;
 
+    public event Action<string>? PaneFocusChanged;
+
+    public event Action<string, string, double>? SplitResized;
+
     /// <summary>Push the hotkey table every pane intercepts (replaces the previous table; empty
     /// clears the interception). Call after keymap load/reload, on the WebView2 UI thread — a
     /// script call, so nothing dispatched afterwards can outrun the table.</summary>
@@ -118,6 +122,14 @@ public sealed class XtermPage
                     writer.WriteNumber("generation", single.Generation);
                     writer.WriteString("paneId", single.PaneId);
                     writer.WriteString("title", single.Title);
+                    break;
+                case TerminalLayout.Split split:
+                    writer.WriteString("type", "split");
+                    writer.WriteNumber("generation", split.Generation);
+                    writer.WriteString("leftPaneId", split.LeftPaneId);
+                    writer.WriteString("rightPaneId", split.RightPaneId);
+                    writer.WriteNumber("ratio", split.Ratio);
+                    writer.WriteString("focusedPaneId", split.FocusedPaneId);
                     break;
                 case TerminalLayout.Empty empty:
                     writer.WriteString("type", "empty");
@@ -161,6 +173,30 @@ public sealed class XtermPage
                 PasteRequested?.Invoke(pastePaneId);
             return;
         }
+
+        if (msg?.Type == "paneFocus")
+        {
+            if (msg.PaneId is { } focusedPaneId && _terminals.ContainsKey(focusedPaneId))
+                PaneFocusChanged?.Invoke(focusedPaneId);
+            return;
+        }
+
+        if (msg?.Type == "splitResize")
+        {
+            if (msg.LeftPaneId is { } leftPaneId
+                && msg.RightPaneId is { } rightPaneId
+                && leftPaneId != rightPaneId
+                && _terminals.ContainsKey(leftPaneId)
+                && _terminals.ContainsKey(rightPaneId)
+                && msg.Ratio is { } ratio
+                && double.IsFinite(ratio))
+            {
+                SplitResized?.Invoke(leftPaneId, rightPaneId, Core.Model.AppStore.ClampSplitRatio(ratio));
+            }
+
+            return;
+        }
+
         if (msg?.PaneId is { } paneId && _terminals.TryGetValue(paneId, out var terminal))
             terminal.HandleMessage(msg);
     }
@@ -186,4 +222,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("alt")] public bool? Alt { get; init; }
     [JsonPropertyName("shift")] public bool? Shift { get; init; }
     [JsonPropertyName("key")] public string? Key { get; init; }
+    [JsonPropertyName("leftPaneId")] public string? LeftPaneId { get; init; }
+    [JsonPropertyName("rightPaneId")] public string? RightPaneId { get; init; }
+    [JsonPropertyName("ratio")] public double? Ratio { get; init; }
 }

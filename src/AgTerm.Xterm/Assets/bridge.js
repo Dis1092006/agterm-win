@@ -17,16 +17,27 @@
 //     agterm.setChords([{ctrl,alt,shift,key}]) — the hotkey table the panes intercept.
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
 //     agterm.getRendererCapabilities(paneId).
-//     layout schema: {type:'single', generation, paneId, title} | {type:'empty', generation}.
+//     layout schema:
+//       {type:'single', generation, paneId, title} |
+//       {type:'empty', generation} |
+//       {type:'split', generation, leftPaneId, rightPaneId, ratio, focusedPaneId}.
 //     applyLayout rejects stale generations (< highest accepted) with false and does no DOM changes.
-// The FIRST opened pane is shown automatically; window resizes refit only the visible pane.
+// The FIRST opened pane is shown automatically; window resizes refit all visible panes.
 "use strict";
 
 const panes = new Map(); // paneId → {term, fitAddon, searchAddon, serializeAddon, lastSearch, el, webgl2Available, webglAddonAvailable, rendererBackend, webglAddon?}
 let visiblePaneId = null;
+let visibleLayout = { type: "empty", paneIds: [] };
 let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
 const container = document.getElementById("panes");
+const SPLIT_MIN_RATIO = 0.05;
+const SPLIT_MAX_RATIO = 0.95;
+const SPLIT_DIVIDER_WIDTH_PX = 4;
+
+let splitDividerEl = null;
+let splitDragState = null;
+let splitFitRafHandle = 0;
 
 const DEFAULT_RENDERER_SETTINGS = Object.freeze({
   fontFamily: "Cascadia Mono, Consolas, monospace",
@@ -49,6 +60,301 @@ let rendererSettings = { ...DEFAULT_RENDERER_SETTINGS };
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getVisiblePaneIds() {
+  if (!visibleLayout || !Array.isArray(visibleLayout.paneIds)) return [];
+  return visibleLayout.paneIds;
+}
+
+function emitPaneFocus(paneId) {
+  if (!panes.has(paneId)) return;
+  post({ type: "paneFocus", paneId });
+  if (visibleLayout && visibleLayout.type === "split")
+    visibleLayout.focusedPaneId = paneId;
+}
+
+function focusPane(paneId, emitEvent) {
+  const pane = panes.get(paneId);
+  if (!pane) return false;
+  pane.term.focus();
+  if (emitEvent) emitPaneFocus(paneId);
+  return true;
+}
+
+function setVisibleLayout(nextLayout) {
+  visibleLayout = nextLayout;
+  const paneIds = getVisiblePaneIds();
+  visiblePaneId = paneIds.length > 0 ? paneIds[0] : null;
+}
+
+function hideAllPanes() {
+  for (const [, pane] of panes) pane.el.style.display = "none";
+}
+
+function stopSplitDrag(postResize) {
+  if (!splitDragState || !splitDragState.active) {
+    splitDragState = null;
+    return;
+  }
+
+  const state = splitDragState;
+  splitDragState = null;
+
+  if (splitDividerEl && typeof splitDividerEl.releasePointerCapture === "function") {
+    try {
+      if (splitDividerEl.hasPointerCapture(state.pointerId))
+        splitDividerEl.releasePointerCapture(state.pointerId);
+    } catch {
+      // Ignore pointer capture release failures.
+    }
+  }
+
+  window.removeEventListener("pointermove", onSplitDragPointerMove);
+  window.removeEventListener("pointerup", onSplitDragPointerUp);
+  window.removeEventListener("pointercancel", onSplitDragPointerCancel);
+
+  if (postResize) {
+    fitAndReportPaneIds([state.leftPaneId, state.rightPaneId]);
+    post({
+      type: "splitResize",
+      leftPaneId: state.leftPaneId,
+      rightPaneId: state.rightPaneId,
+      ratio: state.ratio,
+    });
+  }
+}
+
+function removeSplitDivider() {
+  stopSplitDrag(false);
+  if (splitDividerEl) {
+    splitDividerEl.removeEventListener("pointerdown", onSplitDividerPointerDown);
+    splitDividerEl.remove();
+    splitDividerEl = null;
+  }
+}
+
+function clearSplitPresentation() {
+  if (splitFitRafHandle !== 0) {
+    window.cancelAnimationFrame(splitFitRafHandle);
+    splitFitRafHandle = 0;
+  }
+  removeSplitDivider();
+  container.style.display = "";
+  container.style.gridTemplateColumns = "";
+  container.style.gridTemplateRows = "";
+}
+
+function scheduleSplitFit(leftPaneId, rightPaneId) {
+  if (splitFitRafHandle !== 0) return;
+  splitFitRafHandle = window.requestAnimationFrame(() => {
+    splitFitRafHandle = 0;
+    fitAndReportPaneIds([leftPaneId, rightPaneId]);
+  });
+}
+
+function setSplitGridColumns(ratio) {
+  container.style.gridTemplateColumns = `${ratio}fr ${SPLIT_DIVIDER_WIDTH_PX}px ${1 - ratio}fr`;
+}
+
+function ensureSplitDivider() {
+  if (splitDividerEl) return splitDividerEl;
+
+  const divider = document.createElement("div");
+  divider.className = "split-divider";
+  divider.setAttribute("role", "separator");
+  divider.setAttribute("tabindex", "0");
+  divider.setAttribute("aria-orientation", "vertical");
+  divider.setAttribute("aria-valuemin", String(SPLIT_MIN_RATIO * 100));
+  divider.setAttribute("aria-valuemax", String(SPLIT_MAX_RATIO * 100));
+  divider.addEventListener("pointerdown", onSplitDividerPointerDown);
+  splitDividerEl = divider;
+  return divider;
+}
+
+function updateSplitDividerAriaRatio(ratio) {
+  if (!splitDividerEl) return;
+  splitDividerEl.setAttribute("aria-valuenow", String(Math.round(ratio * 100)));
+}
+
+function validateSplitLayout(layout) {
+  if (typeof layout.leftPaneId !== "string") return null;
+  if (typeof layout.rightPaneId !== "string") return null;
+  if (typeof layout.focusedPaneId !== "string") return null;
+  if (typeof layout.ratio !== "number" || !Number.isFinite(layout.ratio)) return null;
+
+  const leftPaneId = layout.leftPaneId.trim();
+  const rightPaneId = layout.rightPaneId.trim();
+  const focusedPaneId = layout.focusedPaneId.trim();
+  if (leftPaneId.length === 0 || rightPaneId.length === 0) return null;
+  if (leftPaneId === rightPaneId) return null;
+  if (!panes.has(leftPaneId) || !panes.has(rightPaneId)) return null;
+
+  if (focusedPaneId !== leftPaneId && focusedPaneId !== rightPaneId)
+    return null;
+
+  return {
+    leftPaneId,
+    rightPaneId,
+    ratio: clampNumber(layout.ratio, SPLIT_MIN_RATIO, SPLIT_MAX_RATIO),
+    focusedPaneId,
+  };
+}
+
+function applySinglePresentation(paneId, shouldFitAndReport, shouldFocus) {
+  const pane = panes.get(paneId);
+  if (!pane) return false;
+
+  clearSplitPresentation();
+  for (const [id, p] of panes) p.el.style.display = id === paneId ? "block" : "none";
+  pane.el.style.gridColumn = "";
+  pane.el.style.gridRow = "";
+
+  setVisibleLayout({ type: "single", paneIds: [paneId], paneId });
+
+  if (shouldFitAndReport) fitAndReport(paneId);
+  if (shouldFocus) focusPane(paneId, true);
+  return true;
+}
+
+function applyEmptyPresentation() {
+  clearSplitPresentation();
+  hideAllPanes();
+  setVisibleLayout({ type: "empty", paneIds: [] });
+}
+
+function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
+  const leftPane = panes.get(splitLayout.leftPaneId);
+  const rightPane = panes.get(splitLayout.rightPaneId);
+  if (!leftPane || !rightPane) return false;
+
+  clearSplitPresentation();
+  const divider = ensureSplitDivider();
+
+  container.style.display = "grid";
+  container.style.gridTemplateRows = "100%";
+  setSplitGridColumns(splitLayout.ratio);
+
+  if (divider.parentElement !== container) container.appendChild(divider);
+  divider.style.display = "block";
+  divider.style.gridColumn = "2";
+  divider.style.gridRow = "1";
+  updateSplitDividerAriaRatio(splitLayout.ratio);
+
+  for (const [id, pane] of panes) {
+    const visible = id === splitLayout.leftPaneId || id === splitLayout.rightPaneId;
+    pane.el.style.display = visible ? "block" : "none";
+    if (id === splitLayout.leftPaneId) {
+      pane.el.style.gridColumn = "1";
+      pane.el.style.gridRow = "1";
+    } else if (id === splitLayout.rightPaneId) {
+      pane.el.style.gridColumn = "3";
+      pane.el.style.gridRow = "1";
+    } else {
+      pane.el.style.gridColumn = "";
+      pane.el.style.gridRow = "";
+    }
+  }
+
+  setVisibleLayout({
+    type: "split",
+    paneIds: [splitLayout.leftPaneId, splitLayout.rightPaneId],
+    leftPaneId: splitLayout.leftPaneId,
+    rightPaneId: splitLayout.rightPaneId,
+    focusedPaneId: splitLayout.focusedPaneId,
+    ratio: splitLayout.ratio,
+  });
+
+  if (shouldFitAndReport)
+    fitAndReportPaneIds([splitLayout.leftPaneId, splitLayout.rightPaneId]);
+  if (shouldFocus) focusPane(splitLayout.focusedPaneId, true);
+
+  return true;
+}
+
+function ratioFromClientX(clientX) {
+  const rect = container.getBoundingClientRect();
+  if (!Number.isFinite(rect.width) || rect.width <= 0) return null;
+  const rawRatio = (clientX - rect.left) / rect.width;
+  return clampNumber(rawRatio, SPLIT_MIN_RATIO, SPLIT_MAX_RATIO);
+}
+
+function onSplitDividerPointerDown(ev) {
+  if (!visibleLayout || visibleLayout.type !== "split") return;
+
+  const ratio = ratioFromClientX(ev.clientX);
+  const startRatio = ratio === null ? visibleLayout.ratio : ratio;
+  splitDragState = {
+    active: true,
+    pointerId: ev.pointerId,
+    leftPaneId: visibleLayout.leftPaneId,
+    rightPaneId: visibleLayout.rightPaneId,
+    ratio: startRatio,
+  };
+
+  if (splitDividerEl && typeof splitDividerEl.setPointerCapture === "function") {
+    try {
+      splitDividerEl.setPointerCapture(ev.pointerId);
+    } catch {
+      // Ignore capture failures and continue with window listeners.
+    }
+  }
+
+  setSplitGridColumns(startRatio);
+  updateSplitDividerAriaRatio(startRatio);
+  if (ev.preventDefault) ev.preventDefault();
+
+  window.addEventListener("pointermove", onSplitDragPointerMove);
+  window.addEventListener("pointerup", onSplitDragPointerUp);
+  window.addEventListener("pointercancel", onSplitDragPointerCancel);
+}
+
+function onSplitDragPointerMove(ev) {
+  if (!splitDragState || !splitDragState.active) return;
+  const ratio = ratioFromClientX(ev.clientX);
+  if (ratio === null) return;
+
+  splitDragState.ratio = ratio;
+  setSplitGridColumns(ratio);
+  updateSplitDividerAriaRatio(ratio);
+  scheduleSplitFit(splitDragState.leftPaneId, splitDragState.rightPaneId);
+}
+
+function onSplitDragPointerUp(ev) {
+  if (!splitDragState || !splitDragState.active) return;
+  if (splitDragState.pointerId !== ev.pointerId) return;
+
+  const ratio = ratioFromClientX(ev.clientX);
+  if (ratio !== null) splitDragState.ratio = ratio;
+
+  const dragState = {
+    leftPaneId: splitDragState.leftPaneId,
+    rightPaneId: splitDragState.rightPaneId,
+    ratio: splitDragState.ratio,
+  };
+
+  stopSplitDrag(false);
+
+  const nextLayout = {
+    leftPaneId: dragState.leftPaneId,
+    rightPaneId: dragState.rightPaneId,
+    ratio: dragState.ratio,
+    focusedPaneId: visibleLayout.focusedPaneId,
+  };
+
+  applySplitPresentation(nextLayout, true, false);
+  post({
+    type: "splitResize",
+    leftPaneId: dragState.leftPaneId,
+    rightPaneId: dragState.rightPaneId,
+    ratio: dragState.ratio,
+  });
+}
+
+function onSplitDragPointerCancel(ev) {
+  if (!splitDragState || !splitDragState.active) return;
+  if (splitDragState.pointerId !== ev.pointerId) return;
+  stopSplitDrag(false);
 }
 
 function normalizeNonEmptyString(value, fallback) {
@@ -228,7 +534,7 @@ function applyRendererSettings(settings) {
   for (const [, pane] of panes)
     applyRendererSettingsToPane(pane, rendererSettings);
   applyPageBackground(rendererSettings);
-  if (visiblePaneId !== null) fitAndReport(visiblePaneId);
+  fitAndReportVisiblePanes();
   return panes.size;
 }
 
@@ -412,6 +718,11 @@ function openPane(paneId, opts) {
   term.onData((data) => post({ type: "data", paneId, data }));
   term.onBinary((data) => post({ type: "binary", paneId, data }));
 
+  // Any user/programmatic focus transition on a pane is surfaced to host orchestration.
+  el.addEventListener("focusin", () => {
+    emitPaneFocus(paneId);
+  });
+
   // OSC 0/1/2 → session title (manual VT parsing is banned; xterm's handler is the source)
   term.onTitleChange((title) => post({ type: "title", paneId, title }));
 
@@ -441,9 +752,9 @@ function openPane(paneId, opts) {
   fitAddon.fit();
   const size = { cols: term.cols, rows: term.rows };
 
-  if (visiblePaneId === null) {
-    visiblePaneId = paneId;
-    term.focus();
+  if (getVisiblePaneIds().length === 0) {
+    setVisibleLayout({ type: "single", paneIds: [paneId], paneId });
+    focusPane(paneId, true);
   } else {
     el.style.display = "none";
   }
@@ -451,23 +762,23 @@ function openPane(paneId, opts) {
 }
 
 function showPane(paneId) {
-  const pane = panes.get(paneId);
-  if (!pane) return null;
-  for (const [id, p] of panes)
-    p.el.style.display = id === paneId ? "block" : "none";
-  visiblePaneId = paneId;
-  fitAndReport(paneId);
-  pane.term.focus();
-  return true;
+  if (!panes.has(paneId)) return null;
+  return applySinglePresentation(paneId, true, true);
 }
 
 function closePane(paneId) {
   const pane = panes.get(paneId);
   if (!pane) return null;
+
+  const paneIsVisible = getVisiblePaneIds().includes(paneId);
+  if (paneIsVisible) applyEmptyPresentation();
+
   panes.delete(paneId);
   pane.term.dispose();
   pane.el.remove();
-  if (visiblePaneId === paneId) visiblePaneId = null;
+
+  if (!paneIsVisible && visiblePaneId === paneId) visiblePaneId = null;
+
   return true;
 }
 
@@ -488,8 +799,7 @@ function applyLayout(layout) {
     return false;
 
   if (layout.type === "empty") {
-    for (const [, p] of panes) p.el.style.display = "none";
-    visiblePaneId = null;
+    applyEmptyPresentation();
     highestAcceptedLayoutGeneration = generation;
     return true;
   }
@@ -498,8 +808,16 @@ function applyLayout(layout) {
     if (typeof layout.paneId !== "string" || typeof layout.title !== "string")
       return false;
     if (!panes.has(layout.paneId)) return false;
-    const shown = showPane(layout.paneId);
-    if (shown !== true) return false;
+    if (!applySinglePresentation(layout.paneId, true, true)) return false;
+    highestAcceptedLayoutGeneration = generation;
+    return true;
+  }
+
+  if (layout.type === "split") {
+    const validSplitLayout = validateSplitLayout(layout);
+    if (!validSplitLayout) return false;
+
+    if (!applySplitPresentation(validSplitLayout, true, true)) return false;
     highestAcceptedLayoutGeneration = generation;
     return true;
   }
@@ -514,8 +832,22 @@ function fitAndReport(paneId) {
   post({ type: "resize", paneId, cols: pane.term.cols, rows: pane.term.rows });
   return { cols: pane.term.cols, rows: pane.term.rows };
 }
+
+function fitAndReportPaneIds(paneIds) {
+  const seen = new Set();
+  for (const paneId of paneIds) {
+    if (seen.has(paneId)) continue;
+    seen.add(paneId);
+    fitAndReport(paneId);
+  }
+}
+
+function fitAndReportVisiblePanes() {
+  fitAndReportPaneIds(getVisiblePaneIds());
+}
+
 window.addEventListener("resize", () => {
-  if (visiblePaneId !== null) fitAndReport(visiblePaneId);
+  fitAndReportVisiblePanes();
 });
 
 window.chrome.webview.addEventListener("message", (e) => {
@@ -627,6 +959,7 @@ window.agterm = {
   focus: (paneId) =>
     withPane(paneId, (p) => {
       p.term.focus();
+      emitPaneFocus(paneId);
       return true;
     }),
   // page-global hotkey table (host-invoked so a following dispatch cannot outrun it)

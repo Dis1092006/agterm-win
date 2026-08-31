@@ -152,6 +152,7 @@ public sealed partial class MainWindow : Window
         var page = new XtermPage(new WinRtScriptHost(TerminalView.CoreWebView2));
         await page.InitializeAsync();
         page.PasteRequested += OnPagePasteRequested;
+        page.SplitResized += OnPageSplitResized;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
@@ -597,6 +598,18 @@ public sealed partial class MainWindow : Window
         ObserveTaskFault(
             PasteIntoSurfaceAsync(surface),
             "Right-click paste failed");
+    }
+
+    private void OnPageSplitResized(string leftPaneId, string rightPaneId, double ratio)
+    {
+        if (_host is not { } host)
+        {
+            return;
+        }
+
+        ObserveTaskFault(
+            host.ApplySplitRatioAsync(leftPaneId, rightPaneId, ratio),
+            "Split ratio persistence failed");
     }
 
     private async Task PasteIntoSurfaceAsync(XtermPaneSurface surface)
