@@ -39,6 +39,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
     private double _baseFontSize;
     private readonly object _shutdownGate = new();
     private int _stopOutputStarted;
+    private int _promotedToPrimaryPane;
     private Task? _shutdownCoreTask;
 
     private XtermPaneSurface(TerminalPane pane, string paneToken, XtermSurfaceOptions options)
@@ -58,6 +59,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
 
     /// <summary>The pane's live font size (the tree read-back's fontSize source).</summary>
     public double FontSize { get; private set; }
+
+    internal bool IsPromotedToPrimaryPane => Volatile.Read(ref _promotedToPrimaryPane) != 0;
 
     /// <summary>Spawn the child with the pane token baked in, on the WebView2 UI thread. The pane
     /// token doubles as the bridge pane id — one identifier addresses the pane end to end.</summary>
@@ -198,10 +201,11 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
         Pane.StopOutput();
     }
 
-    /// <summary>Split-pane promotion has no live wiring yet (phase 3 is single-pane; the split
-    /// subsystem arrives with the multi-pane host). State-only, like the model expects.</summary>
+    /// <summary>Switch this surface's report and exit routing to the primary-pane role without
+    /// recreating its ConPTY process or xterm instance.</summary>
     public void PromoteToPrimaryPane()
     {
+        Interlocked.Exchange(ref _promotedToPrimaryPane, 1);
     }
 
     public void Dispose() => Teardown();

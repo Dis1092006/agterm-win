@@ -317,6 +317,12 @@ public sealed class XtermPageSplitLiveTests
         await Task.Delay(100);
         Assert.Equal(new[] { "focus-right" }, focusMessages);
 
+        var focusCountBeforeRatioChange = focusMessages.Count;
+        Assert.True(await ApplyAsync(page,
+            new TerminalLayout.Split(2, "focus-left", "focus-right", 0.6, "focus-right")));
+        await Task.Delay(100);
+        Assert.Equal(focusCountBeforeRatioChange, focusMessages.Count);
+
         var leftFocused = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         page.PaneFocusChanged += paneId =>
         {

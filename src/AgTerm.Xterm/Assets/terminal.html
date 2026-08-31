@@ -1,39 +1,59 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-  <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'" />
-  <title>agterm terminal</title>
-  <link rel="stylesheet" href="vendor/xterm.css" />
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; background: #0c0c0c; overflow: hidden; }
-    #panes { height: 100%; width: 100%; }
-    .pane { height: 100%; width: 100%; min-width: 0; min-height: 0; overflow: hidden; }
-    .split-divider {
-      width: 4px;
-      height: 100%;
-      cursor: col-resize;
-      background: rgba(255, 255, 255, 0.15);
-      touch-action: none;
-      user-select: none;
-      min-width: 4px;
-      min-height: 0;
-    }
-    .split-divider:focus {
-      outline: 1px solid rgba(255, 255, 255, 0.65);
-      outline-offset: -1px;
-    }
-    /* xterm's own padding is 0; keep a hairline inset so glyphs don't touch the window edge */
-    .xterm { padding: 2px; }
-  </style>
-</head>
-<body>
-  <div id="panes"></div>
-  <script src="vendor/xterm.js"></script>
-  <script src="vendor/addon-fit.js"></script>
-  <script src="vendor/addon-search.js"></script>
-  <script src="vendor/addon-serialize.js"></script>
-  <script src="bridge.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'"
+    />
+    <title>agterm terminal</title>
+    <link rel="stylesheet" href="vendor/xterm.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0c0c0c;
+        overflow: hidden;
+      }
+      #panes {
+        height: 100%;
+        width: 100%;
+      }
+      .pane {
+        height: 100%;
+        width: 100%;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .split-divider {
+        width: 4px;
+        height: 100%;
+        cursor: col-resize;
+        background: rgba(255, 255, 255, 0.15);
+        touch-action: none;
+        user-select: none;
+        min-width: 4px;
+        min-height: 0;
+      }
+      .split-divider:focus {
+        outline: 1px solid rgba(255, 255, 255, 0.65);
+        outline-offset: -1px;
+      }
+      /* xterm's own padding is 0; keep a hairline inset so glyphs don't touch the window edge */
+      .xterm {
+        padding: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="panes"></div>
+    <script src="vendor/xterm.js"></script>
+    <script src="vendor/addon-fit.js"></script>
+    <script src="vendor/addon-search.js"></script>
+    <script src="vendor/addon-serialize.js"></script>
+    <script src="bridge.js"></script>
+  </body>
 </html>

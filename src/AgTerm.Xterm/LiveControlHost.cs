@@ -76,6 +76,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private readonly LiveSurfaceCoordinator? _coordinator;
     private double _currentBaseFontSize;
     private readonly object _shutdownLock = new();
+    private readonly object _focusRequestLock = new();
+    private readonly HashSet<Task> _focusRequestTasks = new();
     private HeadlessHost? _host;
     private Task? _shutdownTask;
     private int _shutdownStarted;
@@ -102,6 +104,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             // session.type works into background sessions without a select (phase 4 DoD)
             EagerSurfaceRealization = true,
             DeferBootstrap = true,
+            PaneFocusRequested = QueuePaneFocusRequested,
         });
         _coordinator = new LiveSurfaceCoordinator(
             Host,
@@ -118,6 +121,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 if (request.Kind == LiveSurfaceKind.Main && request.SessionId is { } sessionId)
                 {
                     Bind(sessionId, paneSurface);
+                }
+                else if (request.Kind == LiveSurfaceKind.Split && request.SessionId is { } splitSessionId)
+                {
+                    BindSplit(splitSessionId, paneSurface);
                 }
 
                 SurfaceRealized?.Invoke(request, paneSurface);
@@ -203,9 +210,98 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         return applied;
     }
 
+    public async Task<bool> ApplyPaneFocusAsync(
+        string paneId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(paneId))
+        {
+            return false;
+        }
+
+        var changed = false;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            var matches = 0;
+            Session? targetSession = null;
+            var targetSplitFocused = false;
+
+            foreach (var session in store.Workspaces.SelectMany(workspace => workspace.Sessions))
+            {
+                if (session.Surface?.PaneToken == paneId)
+                {
+                    matches++;
+                    targetSession = session;
+                    targetSplitFocused = false;
+                }
+
+                if (session.SplitSurface?.PaneToken == paneId)
+                {
+                    matches++;
+                    targetSession = session;
+                    targetSplitFocused = true;
+                }
+            }
+
+            if (matches != 1 || targetSession is null)
+            {
+                return;
+            }
+
+            if (targetSession.SplitFocused == targetSplitFocused)
+            {
+                return;
+            }
+
+            targetSession.SplitFocused = targetSplitFocused;
+            store.NotifySidebar();
+            changed = true;
+        }, cancellationToken).ConfigureAwait(false);
+
+        return changed;
+    }
+
     /// <summary>A surface realized after this host's own bootstrap (i.e. any control- or UI-driven
     /// show). The app uses it to mount the pane's view; fired on the realizing (dispatch) thread.</summary>
     public event Action<SurfaceOpenRequest, XtermPaneSurface>? SurfaceRealized;
+
+    /// <summary>An explicit control request to move keyboard focus to an exact live pane token.</summary>
+    public event Action<string>? PaneFocusRequested;
+
+    private void QueuePaneFocusRequested(string paneId)
+    {
+        lock (_focusRequestLock)
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+            {
+                return;
+            }
+
+            Task? delivery = null;
+            delivery = Task.Run(() =>
+            {
+                try
+                {
+                    if (Volatile.Read(ref _shutdownStarted) == 0)
+                    {
+                        PaneFocusRequested?.Invoke(paneId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _options.Log?.Invoke($"Pane focus request subscriber failed: {ex}");
+                }
+                finally
+                {
+                    lock (_focusRequestLock)
+                    {
+                        _focusRequestTasks.Remove(delivery!);
+                    }
+                }
+            });
+            _focusRequestTasks.Add(delivery);
+        }
+    }
 
     /// <summary>Reserve a pending surface under the host gate. The coordinator opens and commits
     /// the real surface asynchronously after bootstrap dispatch completes.</summary>
@@ -441,10 +537,52 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         _ = CloseOnExitAsync(sessionId, surface);
     }
 
+    private void BindSplit(Guid sessionId, XtermPaneSurface surface)
+    {
+        surface.Pane.TitleChanged += title => Task.Run(() => Host.RunLocked(() =>
+        {
+            var live = Host.Store.SessionWithId(sessionId);
+            if (OwnsSplitPane(live, surface))
+            {
+                live!.SplitTitle = title;
+                Host.Store.NotifySidebar();
+                return;
+            }
+
+            if (surface.IsPromotedToPrimaryPane && OwnsMainPane(live, surface))
+            {
+                live!.OscTitle = title;
+                Host.Store.NotifySidebar();
+            }
+        }));
+        surface.Pane.CwdChanged += cwd => Task.Run(() => Host.RunLocked(() =>
+        {
+            var live = Host.Store.SessionWithId(sessionId);
+            if (OwnsSplitPane(live, surface))
+            {
+                live!.SplitCwd = cwd;
+                Host.Store.NotifySidebar();
+                return;
+            }
+
+            if (surface.IsPromotedToPrimaryPane && OwnsMainPane(live, surface))
+            {
+                live!.CurrentCwd = cwd;
+                Host.Store.NotifySidebar();
+            }
+        }));
+        _ = CloseSplitOnExitAsync(sessionId, surface);
+    }
+
     /// <summary>The realized surface still is the session's current main pane.</summary>
     private static bool OwnsMainPane(Session? live, XtermPaneSurface surface) =>
         live is not null &&
         ReferenceEquals(live.Surface, surface);
+
+    /// <summary>The realized surface still is the session's current split pane.</summary>
+    private static bool OwnsSplitPane(Session? live, XtermPaneSurface surface) =>
+        live is not null &&
+        ReferenceEquals(live.SplitSurface, surface);
 
     private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
@@ -475,6 +613,45 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             if (live!.InitialCommand is not null && live.CommandWait) return;
             Host.Store.ClosePrimaryPane(live.Id);
             ReconcileSurfacesLocked();
+        });
+    }
+
+    private async Task CloseSplitOnExitAsync(Guid sessionId, XtermPaneSurface surface)
+    {
+        try
+        {
+            await surface.Pane.Exited.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return; // a torn-down pane may fault the exit task; nothing to close then
+        }
+
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+        {
+            return;
+        }
+
+        Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+            {
+                return;
+            }
+
+            var live = Host.Store.SessionWithId(sessionId);
+            if (OwnsSplitPane(live, surface))
+            {
+                Host.Store.CloseSplitPane(live!.Id);
+                ReconcileSurfacesLocked();
+                return;
+            }
+
+            if (surface.IsPromotedToPrimaryPane && OwnsMainPane(live, surface))
+            {
+                Host.Store.ClosePrimaryPane(live!.Id);
+                ReconcileSurfacesLocked();
+            }
         });
     }
 
@@ -540,6 +717,13 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         Interlocked.Exchange(ref _shutdownStarted, 1);
 
         Host.Stop();
+
+        Task[] focusRequests;
+        lock (_focusRequestLock)
+        {
+            focusRequests = _focusRequestTasks.ToArray();
+        }
+        await Task.WhenAll(focusRequests).ConfigureAwait(false);
 
         if (_coordinator is not null)
         {

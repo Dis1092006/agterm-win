@@ -28,6 +28,7 @@
 const panes = new Map(); // paneId → {term, fitAddon, searchAddon, serializeAddon, lastSearch, el, webgl2Available, webglAddonAvailable, rendererBackend, webglAddon?}
 let visiblePaneId = null;
 let visibleLayout = { type: "empty", paneIds: [] };
+let programmaticFocusPaneId = null;
 let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
 const container = document.getElementById("panes");
@@ -77,7 +78,12 @@ function emitPaneFocus(paneId) {
 function focusPane(paneId, emitEvent) {
   const pane = panes.get(paneId);
   if (!pane) return false;
-  pane.term.focus();
+  programmaticFocusPaneId = paneId;
+  try {
+    pane.term.focus();
+  } finally {
+    programmaticFocusPaneId = null;
+  }
   if (emitEvent) emitPaneFocus(paneId);
   return true;
 }
@@ -86,6 +92,13 @@ function setVisibleLayout(nextLayout) {
   visibleLayout = nextLayout;
   const paneIds = getVisiblePaneIds();
   visiblePaneId = paneIds.length > 0 ? paneIds[0] : null;
+}
+
+function visibleFocusedPaneId() {
+  if (!visibleLayout) return null;
+  if (visibleLayout.type === "single") return visibleLayout.paneId;
+  if (visibleLayout.type === "split") return visibleLayout.focusedPaneId;
+  return null;
 }
 
 function hideAllPanes() {
@@ -101,7 +114,10 @@ function stopSplitDrag(postResize) {
   const state = splitDragState;
   splitDragState = null;
 
-  if (splitDividerEl && typeof splitDividerEl.releasePointerCapture === "function") {
+  if (
+    splitDividerEl &&
+    typeof splitDividerEl.releasePointerCapture === "function"
+  ) {
     try {
       if (splitDividerEl.hasPointerCapture(state.pointerId))
         splitDividerEl.releasePointerCapture(state.pointerId);
@@ -128,7 +144,10 @@ function stopSplitDrag(postResize) {
 function removeSplitDivider() {
   stopSplitDrag(false);
   if (splitDividerEl) {
-    splitDividerEl.removeEventListener("pointerdown", onSplitDividerPointerDown);
+    splitDividerEl.removeEventListener(
+      "pointerdown",
+      onSplitDividerPointerDown,
+    );
     splitDividerEl.remove();
     splitDividerEl = null;
   }
@@ -181,7 +200,8 @@ function validateSplitLayout(layout) {
   if (typeof layout.leftPaneId !== "string") return null;
   if (typeof layout.rightPaneId !== "string") return null;
   if (typeof layout.focusedPaneId !== "string") return null;
-  if (typeof layout.ratio !== "number" || !Number.isFinite(layout.ratio)) return null;
+  if (typeof layout.ratio !== "number" || !Number.isFinite(layout.ratio))
+    return null;
 
   const leftPaneId = layout.leftPaneId.trim();
   const rightPaneId = layout.rightPaneId.trim();
@@ -206,7 +226,8 @@ function applySinglePresentation(paneId, shouldFitAndReport, shouldFocus) {
   if (!pane) return false;
 
   clearSplitPresentation();
-  for (const [id, p] of panes) p.el.style.display = id === paneId ? "block" : "none";
+  for (const [id, p] of panes)
+    p.el.style.display = id === paneId ? "block" : "none";
   pane.el.style.gridColumn = "";
   pane.el.style.gridRow = "";
 
@@ -242,7 +263,8 @@ function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
   updateSplitDividerAriaRatio(splitLayout.ratio);
 
   for (const [id, pane] of panes) {
-    const visible = id === splitLayout.leftPaneId || id === splitLayout.rightPaneId;
+    const visible =
+      id === splitLayout.leftPaneId || id === splitLayout.rightPaneId;
     pane.el.style.display = visible ? "block" : "none";
     if (id === splitLayout.leftPaneId) {
       pane.el.style.gridColumn = "1";
@@ -292,7 +314,10 @@ function onSplitDividerPointerDown(ev) {
     ratio: startRatio,
   };
 
-  if (splitDividerEl && typeof splitDividerEl.setPointerCapture === "function") {
+  if (
+    splitDividerEl &&
+    typeof splitDividerEl.setPointerCapture === "function"
+  ) {
     try {
       splitDividerEl.setPointerCapture(ev.pointerId);
     } catch {
@@ -720,7 +745,7 @@ function openPane(paneId, opts) {
 
   // Any user/programmatic focus transition on a pane is surfaced to host orchestration.
   el.addEventListener("focusin", () => {
-    emitPaneFocus(paneId);
+    if (programmaticFocusPaneId !== paneId) emitPaneFocus(paneId);
   });
 
   // OSC 0/1/2 → session title (manual VT parsing is banned; xterm's handler is the source)
@@ -808,7 +833,9 @@ function applyLayout(layout) {
     if (typeof layout.paneId !== "string" || typeof layout.title !== "string")
       return false;
     if (!panes.has(layout.paneId)) return false;
-    if (!applySinglePresentation(layout.paneId, true, true)) return false;
+    const shouldFocus = visibleFocusedPaneId() !== layout.paneId;
+    if (!applySinglePresentation(layout.paneId, true, shouldFocus))
+      return false;
     highestAcceptedLayoutGeneration = generation;
     return true;
   }
@@ -817,7 +844,10 @@ function applyLayout(layout) {
     const validSplitLayout = validateSplitLayout(layout);
     if (!validSplitLayout) return false;
 
-    if (!applySplitPresentation(validSplitLayout, true, true)) return false;
+    const shouldFocus =
+      visibleFocusedPaneId() !== validSplitLayout.focusedPaneId;
+    if (!applySplitPresentation(validSplitLayout, true, shouldFocus))
+      return false;
     highestAcceptedLayoutGeneration = generation;
     return true;
   }
@@ -956,12 +986,7 @@ window.agterm = {
       return p.term.options.fontSize;
     }),
   getFontSize: (paneId) => withPane(paneId, (p) => p.term.options.fontSize),
-  focus: (paneId) =>
-    withPane(paneId, (p) => {
-      p.term.focus();
-      emitPaneFocus(paneId);
-      return true;
-    }),
+  focus: (paneId) => focusPane(paneId, true),
   // page-global hotkey table (host-invoked so a following dispatch cannot outrun it)
   setChords: (items) => {
     interceptChords = items || [];

@@ -3,7 +3,43 @@ using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
-public sealed record LiveSelectionSnapshot(Guid? SessionId, string? DisplayName, string? WorkspaceName = null);
+public sealed record LiveSelectionSnapshot(
+    Guid? SessionId,
+    string? DisplayName,
+    string? WorkspaceName = null,
+    string? MainPaneId = null,
+    string? SplitPaneId = null,
+    bool IsSplit = false,
+    bool SplitFocused = false,
+    double? SplitRatio = null)
+{
+    public TerminalLayout ToTerminalLayout(long generation)
+    {
+        if (SessionId is null || string.IsNullOrWhiteSpace(DisplayName) || string.IsNullOrWhiteSpace(MainPaneId))
+        {
+            return new TerminalLayout.Empty(generation);
+        }
+
+        if (IsSplit && !string.IsNullOrWhiteSpace(SplitPaneId))
+        {
+            var ratio = SplitRatio ?? AppStore.SplitRatioDefault;
+            var focusedPaneId = SplitFocused ? SplitPaneId : MainPaneId;
+            return new TerminalLayout.Split(
+                generation,
+                MainPaneId,
+                SplitPaneId,
+                ratio,
+                focusedPaneId,
+                DisplayName,
+                WorkspaceName);
+        }
+
+        var paneId = !IsSplit && SplitFocused && !string.IsNullOrWhiteSpace(SplitPaneId)
+            ? SplitPaneId
+            : MainPaneId;
+        return new TerminalLayout.Single(generation, paneId, DisplayName, WorkspaceName);
+    }
+}
 
 public interface ILiveStoreCoordinator : IDisposable
 {
@@ -195,10 +231,19 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             return new LiveSelectionSnapshot(selectedSessionId, null, null);
         }
 
-        var selectedDisplayName = _host.Store.SessionWithId(id)?.DisplayName;
+        var selectedSession = _host.Store.SessionWithId(id);
+        var selectedDisplayName = selectedSession?.DisplayName;
         var selectedWorkspaceName = _host.Store.WorkspaceForSession(id)?.Name;
 
-        return new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName, selectedWorkspaceName);
+        return new LiveSelectionSnapshot(
+            selectedSessionId,
+            selectedDisplayName,
+            selectedWorkspaceName,
+            selectedSession?.Surface?.PaneToken,
+            selectedSession?.SplitSurface?.PaneToken,
+            selectedSession?.IsSplit ?? false,
+            selectedSession?.SplitFocused ?? false,
+            selectedSession?.SplitRatio);
     }
 
     private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)

@@ -14,7 +14,9 @@ public abstract record TerminalLayout(long Generation)
             string leftPaneId,
             string rightPaneId,
             double ratio,
-            string focusedPaneId)
+            string focusedPaneId,
+            string? title = null,
+            string? workspaceName = null)
             : base(generation)
         {
             if (string.IsNullOrWhiteSpace(leftPaneId))
@@ -37,6 +39,8 @@ public abstract record TerminalLayout(long Generation)
             RightPaneId = rightPaneId;
             Ratio = Core.Model.AppStore.ClampSplitRatio(ratio);
             FocusedPaneId = focusedPaneId;
+            Title = title;
+            WorkspaceName = workspaceName;
         }
 
         public string LeftPaneId { get; }
@@ -46,5 +50,9 @@ public abstract record TerminalLayout(long Generation)
         public double Ratio { get; }
 
         public string FocusedPaneId { get; }
+
+        public string? Title { get; }
+
+        public string? WorkspaceName { get; }
     }
 }

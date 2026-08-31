@@ -97,6 +97,7 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly bool _restoreRunningCommand;
     private readonly bool _closeGraceUndoEnabled;
     private readonly double _dashboardBaseFontSize;
+    private readonly Action<string>? _paneFocusRequested;
 
     public HeadlessControlActions(AppStore store, ControlEventRing ring, Guid windowId,
                                   string windowName, string configDirectory,
@@ -105,7 +106,8 @@ public sealed class HeadlessControlActions : IControlActions
                                   bool restoreRunningCommand = false,
                                   bool closeGraceUndoEnabled = false,
                                   double dashboardBaseFontSize = 13,
-                                  string? homeDirectory = null)
+                                  string? homeDirectory = null,
+                                  Action<string>? paneFocusRequested = null)
     {
         _store = store;
         _ring = ring;
@@ -120,6 +122,7 @@ public sealed class HeadlessControlActions : IControlActions
         _closeGraceUndoEnabled = closeGraceUndoEnabled;
         _dashboardBaseFontSize = dashboardBaseFontSize;
         _homeDirectory = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        _paneFocusRequested = paneFocusRequested;
         Zoom.TargetResolver = () => TerminalZoomController.ResolveTarget(_store, Quick.Visible);
     }
 
@@ -796,9 +799,21 @@ public sealed class HeadlessControlActions : IControlActions
                 return Err("session has no split");
             if (ControlPaneFocusModes.Parse(pane) is not { } parsedPane)
                 return Err($"invalid pane: {pane ?? "other"}");
-            // upstream AppActions.setSplitFocus: flip the model flag; the keyboard-focus hop is a
-            // headless no-op.
-            session.SplitFocused = parsedPane.WantsSplit(session.SplitFocused);
+            // upstream AppActions.setSplitFocus updates the model and asks the live adapter to move
+            // keyboard focus. Headless hosts have no subscriber for the pane-token request.
+            var splitFocused = parsedPane.WantsSplit(session.SplitFocused);
+            if (session.SplitFocused != splitFocused)
+            {
+                session.SplitFocused = splitFocused;
+                store.NotifySidebar();
+            }
+            var paneId = splitFocused
+                ? session.SplitSurface?.PaneToken
+                : session.Surface?.PaneToken;
+            if (!string.IsNullOrEmpty(paneId))
+            {
+                _paneFocusRequested?.Invoke(paneId);
+            }
             return OkId(id);
         });
     }

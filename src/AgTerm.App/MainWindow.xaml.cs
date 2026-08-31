@@ -23,7 +23,7 @@ namespace AgTerm.App;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    private readonly Dictionary<Guid, XtermPaneSurface> _surfaces = new(); // UI-thread confined
+    private readonly Dictionary<string, XtermPaneSurface> _surfaces = new(); // UI-thread confined; keyed by pane token
     private readonly AppWindow _appWindow;
     private readonly CancellationTokenSource _bootstrapCancellation = new();
     private readonly TaskCompletionSource<LiveControlHost> _hostReady =
@@ -48,7 +48,7 @@ public sealed partial class MainWindow : Window
 
     private sealed record StartupState(
         LiveSelectionSnapshot Selection,
-        IReadOnlyList<(Guid SessionId, XtermPaneSurface Surface)> CommittedMainSurfaces);
+        IReadOnlyList<XtermPaneSurface> CommittedSurfaces);
 
     public MainWindow()
     {
@@ -99,6 +99,16 @@ public sealed partial class MainWindow : Window
                     if (_acceptedPaneId != single.PaneId)
                     {
                         _acceptedPaneId = single.PaneId;
+                        FocusActiveTerminal();
+                    }
+                    break;
+                case TerminalLayout.Split split:
+                    Title = $"{split.Title} — agterm";
+                    AppTitleBar.Title = split.Title;
+                    AppTitleBar.Subtitle = split.WorkspaceName ?? string.Empty;
+                    if (_acceptedPaneId != split.FocusedPaneId)
+                    {
+                        _acceptedPaneId = split.FocusedPaneId;
                         FocusActiveTerminal();
                     }
                     break;
@@ -153,6 +163,7 @@ public sealed partial class MainWindow : Window
         await page.InitializeAsync();
         page.PasteRequested += OnPagePasteRequested;
         page.SplitResized += OnPageSplitResized;
+        page.PaneFocusChanged += OnPagePaneFocusChanged;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
@@ -199,10 +210,20 @@ public sealed partial class MainWindow : Window
 
         host.SurfaceRealized += (request, surface) =>
         {
-            if (request.Kind == LiveSurfaceKind.Main && request.SessionId is { } sessionId)
+            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split)
             {
-                DispatcherQueue.TryEnqueue(() => MountSurface(sessionId, surface));
+                DispatcherQueue.TryEnqueue(() => MountSurface(surface));
             }
+        };
+        host.PaneFocusRequested += paneId =>
+        {
+            if (_bootstrapCancellation.IsCancellationRequested)
+                return;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_bootstrapCancellation.IsCancellationRequested)
+                    FocusTerminal(paneId);
+            });
         };
 
         var startup = await host.StoreCoordinator.ReadAsync(store =>
@@ -215,13 +236,30 @@ public sealed partial class MainWindow : Window
                 selectedDisplayName = store.SessionWithId(selectedId)?.DisplayName;
                 selectedWorkspaceName = store.WorkspaceForSession(selectedId)?.Name;
             }
+            var selectedSession = selectedSessionId is { } selectedIdForLayout
+                ? store.SessionWithId(selectedIdForLayout)
+                : null;
+            var selection = new LiveSelectionSnapshot(
+                selectedSessionId,
+                selectedDisplayName,
+                selectedWorkspaceName,
+                selectedSession?.Surface?.PaneToken,
+                selectedSession?.SplitSurface?.PaneToken,
+                selectedSession?.IsSplit ?? false,
+                selectedSession?.SplitFocused ?? false,
+                selectedSession?.SplitRatio);
+
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
-                .Where(session => session.Surface is XtermPaneSurface)
-                .Select(session => (session.Id, (XtermPaneSurface)session.Surface!))
+                .SelectMany(session => new[]
+                {
+                    session.Surface,
+                    session.SplitSurface,
+                })
+                .OfType<XtermPaneSurface>()
                 .ToList();
             return new StartupState(
-                new LiveSelectionSnapshot(selectedSessionId, selectedDisplayName, selectedWorkspaceName),
+                selection,
                 committedSurfaces);
         });
 
@@ -229,8 +267,8 @@ public sealed partial class MainWindow : Window
         {
             _selection = startup.Selection;
             _selectedSessionId = startup.Selection.SessionId;
-            foreach (var (sessionId, surface) in startup.CommittedMainSurfaces)
-                MountSurface(sessionId, surface);
+            foreach (var surface in startup.CommittedSurfaces)
+                MountSurface(surface);
             SubmitLayout();
         });
 
@@ -270,6 +308,37 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.DecreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("decrease_font_size:1")),
             [BuiltinAction.ResetFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("reset_font_size")),
             [BuiltinAction.ToggleSidebar] = Sync(() => true, sidebar.ToggleSidebarVisible),
+            [BuiltinAction.ToggleSplit] = Async(
+                HasSelectedSession,
+                () =>
+                {
+                    if (_selection.SessionId is not { } selectedSessionId)
+                        return Task.CompletedTask;
+
+                    return host.StoreCoordinator.MutateAsync(store => store.ToggleSplit(selectedSessionId));
+                }),
+            [BuiltinAction.FocusLeftPane] = Async(
+                () => !string.IsNullOrWhiteSpace(_selection.MainPaneId) && !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
+                () =>
+                {
+                    var targetPaneId = _selection.MainPaneId;
+                    if (string.IsNullOrWhiteSpace(targetPaneId))
+                        return Task.CompletedTask;
+
+                    FocusTerminal(targetPaneId);
+                    return host.ApplyPaneFocusAsync(targetPaneId);
+                }),
+            [BuiltinAction.FocusRightPane] = Async(
+                () => !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
+                () =>
+                {
+                    var targetPaneId = _selection.SplitPaneId;
+                    if (string.IsNullOrWhiteSpace(targetPaneId))
+                        return Task.CompletedTask;
+
+                    FocusTerminal(targetPaneId);
+                    return host.ApplyPaneFocusAsync(targetPaneId);
+                }),
             [BuiltinAction.ToggleFlaggedView] = Sync(() => true, sidebar.ToggleFlaggedView),
             [BuiltinAction.ToggleFlag] = Sync(HasSelectedSession, sidebar.ToggleActiveFlag),
             [BuiltinAction.FocusWorkspace] = Sync(HasSelectedSession, sidebar.FocusActiveWorkspaceToggle),
@@ -333,8 +402,16 @@ public sealed partial class MainWindow : Window
     /// it to the visible terminal pane.</summary>
     private void FocusActiveTerminal()
     {
+        if (_acceptedPaneId is { Length: > 0 } paneId)
+        {
+            FocusTerminal(paneId);
+        }
+    }
+
+    private void FocusTerminal(string paneId)
+    {
         TerminalView.Focus(FocusState.Programmatic);
-        if (_selectedSessionId is { } id && _surfaces.TryGetValue(id, out var surface))
+        if (_surfaces.TryGetValue(paneId, out var surface))
         {
             ObserveTaskFault(
                 surface.Pane.Terminal.FocusAsync(),
@@ -456,9 +533,9 @@ public sealed partial class MainWindow : Window
     {
         if (cancellationToken.IsCancellationRequested)
             return Task.FromCanceled<IHeadlessSurface>(cancellationToken);
-        if (request.Kind == LiveSurfaceKind.Main && request.SessionId is null)
+        if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split && request.SessionId is null)
             return Task.FromException<IHeadlessSurface>(
-                new InvalidOperationException("Main surface requires a session id."));
+                new InvalidOperationException("Main and split surfaces require a session id."));
 
         var done = new TaskCompletionSource<IHeadlessSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!DispatcherQueue.TryEnqueue(async () =>
@@ -500,33 +577,29 @@ public sealed partial class MainWindow : Window
         return done.Task;
     }
 
-    private void MountSurface(Guid sessionId, XtermPaneSurface surface)
+    private void MountSurface(XtermPaneSurface surface)
     {
-        if (_surfaces.TryGetValue(sessionId, out var current) && ReferenceEquals(current, surface))
+        if (string.IsNullOrWhiteSpace(surface.PaneToken))
             return;
-        _surfaces[sessionId] = surface;
+
+        var paneToken = surface.PaneToken;
+        if (_surfaces.TryGetValue(paneToken, out var current) && ReferenceEquals(current, surface))
+            return;
+
+        _surfaces[paneToken] = surface;
         SubmitLayout();
         ObserveTaskFault(
-            UnmountOnExitAsync(sessionId, surface),
-            $"Unmount on exit failed for session {sessionId}");
+            UnmountOnExitAsync(paneToken, surface),
+            $"Unmount on exit failed for pane {paneToken}");
     }
 
     private void SubmitLayout()
     {
         var generation = ++_layoutGeneration;
-        if (_selection.SessionId is { } sessionId &&
-            _selection.DisplayName is { } displayName &&
-            _surfaces.TryGetValue(sessionId, out var surface) &&
-            surface.PaneToken is { } paneToken)
-        {
-            _layoutCoordinator.Submit(new TerminalLayout.Single(generation, paneToken, displayName, _selection.WorkspaceName));
-            return;
-        }
-
-        _layoutCoordinator.Submit(new TerminalLayout.Empty(generation));
+        _layoutCoordinator.Submit(_selection.ToTerminalLayout(generation));
     }
 
-    private async Task UnmountOnExitAsync(Guid sessionId, XtermPaneSurface surface)
+    private async Task UnmountOnExitAsync(string paneToken, XtermPaneSurface surface)
     {
         try
         {
@@ -539,11 +612,10 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             // the surface's Teardown (host close path) removes the page pane; here we only drop
-            // the window's handle and refresh layout selection state
-            if (_surfaces.TryGetValue(sessionId, out var current) && ReferenceEquals(current, surface))
+            // the window's token ownership
+            if (_surfaces.TryGetValue(paneToken, out var current) && ReferenceEquals(current, surface))
             {
-                _surfaces.Remove(sessionId);
-                SubmitLayout();
+                _surfaces.Remove(paneToken);
             }
         });
     }
@@ -588,9 +660,7 @@ public sealed partial class MainWindow : Window
 
     private void OnPagePasteRequested(string paneToken)
     {
-        var surface = _surfaces.Values.FirstOrDefault(s =>
-            string.Equals(s.PaneToken, paneToken, StringComparison.Ordinal));
-        if (surface is null)
+        if (!_surfaces.TryGetValue(paneToken, out var surface))
         {
             return;
         }
@@ -610,6 +680,18 @@ public sealed partial class MainWindow : Window
         ObserveTaskFault(
             host.ApplySplitRatioAsync(leftPaneId, rightPaneId, ratio),
             "Split ratio persistence failed");
+    }
+
+    private void OnPagePaneFocusChanged(string paneId)
+    {
+        if (_host is not { } host)
+        {
+            return;
+        }
+
+        ObserveTaskFault(
+            host.ApplyPaneFocusAsync(paneId),
+            "Pane focus persistence failed");
     }
 
     private async Task PasteIntoSurfaceAsync(XtermPaneSurface surface)

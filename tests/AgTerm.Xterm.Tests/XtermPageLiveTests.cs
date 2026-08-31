@@ -103,7 +103,7 @@ public class XtermPageLiveTests
     }
 
     [Fact]
-    public async Task Implemented_chord_produces_host_action_and_unimplemented_chord_produces_terminal_data()
+    public async Task Implemented_new_session_and_toggle_split_chords_produce_host_actions()
     {
         var (page, view) = await BootPageAsync();
         var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-s33"));
@@ -123,19 +123,27 @@ public class XtermPageLiveTests
         // Ctrl+N = NewSession (implemented) → intercepted, must come back as chord, not reach the shell
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
             "agterm.dispatchKey(\"live-s33\", {key:'n', ctrlKey:true})"));
-        // Ctrl+D = ToggleSplit (not implemented) → not intercepted, must pass through as \x04
+        // Ctrl+D = ToggleSplit (implemented in P3) → intercepted as a second host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
             "agterm.dispatchKey(\"live-s33\", {key:'d', ctrlKey:true})"));
 
         var deadline = Environment.TickCount64 + 30000;
-        while ((chords.Count == 0 || !data.Any(d => d.Contains('\x04'))) &&
-               Environment.TickCount64 < deadline)
+        while (chords.Count < 2 && Environment.TickCount64 < deadline)
             await Task.Delay(50);
 
-        var hit = Assert.Single(chords);
-        Assert.Equal("live-s33", hit.PaneId);
-        Assert.Equal(new PhysicalChord(true, false, false, "n"), hit.Chord);
-        Assert.Contains(data, d => d.Contains('\x04'));       // Ctrl+D reached the terminal
+        Assert.Collection(
+            chords,
+            hit =>
+            {
+                Assert.Equal("live-s33", hit.PaneId);
+                Assert.Equal(new PhysicalChord(true, false, false, "n"), hit.Chord);
+            },
+            hit =>
+            {
+                Assert.Equal("live-s33", hit.PaneId);
+                Assert.Equal(new PhysicalChord(true, false, false, "d"), hit.Chord);
+            });
+        Assert.DoesNotContain(data, d => d.Contains('\x04')); // Ctrl+D did not reach the terminal
         Assert.DoesNotContain(data, d => d.Contains('\x0E')); // Ctrl+N did not
     }
 

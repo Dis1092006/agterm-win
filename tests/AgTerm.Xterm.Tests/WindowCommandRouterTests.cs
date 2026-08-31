@@ -20,6 +20,9 @@ public class WindowCommandRouterTests
         BuiltinAction.DecreaseFontSize,
         BuiltinAction.ResetFontSize,
         BuiltinAction.ToggleSidebar,
+        BuiltinAction.ToggleSplit,
+        BuiltinAction.FocusLeftPane,
+        BuiltinAction.FocusRightPane,
         BuiltinAction.ToggleFlaggedView,
         BuiltinAction.ToggleFlag,
         BuiltinAction.FocusWorkspace,
@@ -40,14 +43,11 @@ public class WindowCommandRouterTests
         BuiltinAction.RenameWorkspace,
         BuiltinAction.DeleteWorkspace,
         BuiltinAction.ReopenRecent,
-        BuiltinAction.ToggleSplit,
         BuiltinAction.ToggleScratch,
         BuiltinAction.ToggleTerminalZoom,
         BuiltinAction.ToggleSearch,
         BuiltinAction.SelectTheme,
         BuiltinAction.ToggleFullscreen,
-        BuiltinAction.FocusLeftPane,
-        BuiltinAction.FocusRightPane,
         BuiltinAction.QuickTerminal,
         BuiltinAction.SessionPalette,
         BuiltinAction.CommandPalette,
@@ -91,9 +91,8 @@ public class WindowCommandRouterTests
     private static Dictionary<BuiltinAction, WindowCommandHandler> AllNoOpHandlers(
         BuiltinAction? replace = null, WindowCommandHandler? replacement = null)
     {
-        var handlers = ImplementedActions.ToDictionary(
-            a => a,
-            _ => new WindowCommandHandler(() => true, () => Task.CompletedTask));
+        var handlers = ImplementedActions
+            .ToDictionary(a => a, _ => new WindowCommandHandler(() => true, () => Task.CompletedTask));
         if (replace is { } a && replacement is { } h)
             handlers[a] = h;
         return handlers;
@@ -122,7 +121,7 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public void Constructor_succeeds_with_exactly_21_implemented_handlers()
+    public void Constructor_succeeds_with_exactly_the_currently_implemented_handlers()
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());
         Assert.NotNull(router);
@@ -179,7 +178,6 @@ public class WindowCommandRouterTests
 
     [Theory]
     [InlineData(BuiltinAction.NewWindow)]
-    [InlineData(BuiltinAction.ToggleSplit)]
     [InlineData(BuiltinAction.Dashboard)]
     public void CanExecute_returns_false_for_unimplemented_action(BuiltinAction action)
     {
@@ -273,10 +271,9 @@ public class WindowCommandRouterTests
     {
         // Ctrl+Q decodes to cmd+q / ctrl+q / ctrl+cmd+q — none are default or overridden binds.
         var totalCalls = new[] { 0 };
-        var handlers = ImplementedActions.ToDictionary(
-            a => a,
-            _ => new WindowCommandHandler(() => true, () => { totalCalls[0]++; return Task.CompletedTask; }));
-        var router = new WindowCommandRouter(handlers);
+        var router = new WindowCommandRouter(ImplementedActions
+            .ToDictionary(a => a, _ =>
+                new WindowCommandHandler(() => true, () => { totalCalls[0]++; return Task.CompletedTask; })));
         var hotkeys = new HotkeyRouter(Keymap.Empty);
         var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "q");
 
@@ -287,21 +284,20 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public async Task ExecuteChordAsync_ctrl_d_resolves_unimplemented_toggle_split_returns_false_invokes_none()
+    public async Task ExecuteChordAsync_ctrl_d_resolves_toggle_split_returns_true_and_invokes_once()
     {
-        // cmd+d is the default chord for ToggleSplit; Ctrl+D decodes cmd+d first → ToggleSplit (unimplemented).
-        var totalCalls = new[] { 0 };
-        var handlers = ImplementedActions.ToDictionary(
-            a => a,
-            _ => new WindowCommandHandler(() => true, () => { totalCalls[0]++; return Task.CompletedTask; }));
-        var router = new WindowCommandRouter(handlers);
+        // cmd+d is the default chord for ToggleSplit; Ctrl+D decodes cmd+d first → ToggleSplit (implemented in P3).
+        var calls = 0;
+        var router = new WindowCommandRouter(AllNoOpHandlers(
+            replace: BuiltinAction.ToggleSplit,
+            replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })));
         var hotkeys = new HotkeyRouter(Keymap.Empty);
         var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "d");
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
-        Assert.False(result);
-        Assert.Equal(0, totalCalls[0]);
+        Assert.True(result);
+        Assert.Equal(1, calls);
     }
 
     [Fact]
@@ -354,8 +350,12 @@ public class WindowCommandRouterTests
         // Ctrl+N → cmd+n → NewSession (implemented): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "n"), chords);
 
-        // Ctrl+D → cmd+d → ToggleSplit (unimplemented): must be absent
-        Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "d"), chords);
+        // Ctrl+D → cmd+d → ToggleSplit (implemented in P3): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "d"), chords);
+        // Ctrl+Alt+Left → cmd+opt+left → FocusLeftPane (implemented in P3): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: true, Shift: false, Key: "left"), chords);
+        // Ctrl+Alt+Right → cmd+opt+right → FocusRightPane (implemented in P3): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: true, Shift: false, Key: "right"), chords);
         // Ctrl+J → cmd+j → ToggleScratch (unimplemented): must be absent
         Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j"), chords);
         // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (unimplemented): must be absent

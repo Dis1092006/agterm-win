@@ -65,6 +65,10 @@ public sealed record HeadlessHostOptions
 
     /// <summary>Optional per-request completion scope. Null preserves the legacy dispatch timing.</summary>
     public IControlDispatchScopeFactory? DispatchScopeFactory { get; init; }
+
+    /// <summary>Live-only exact pane-token focus callback. Invoked under the host gate and must
+    /// return without blocking; null keeps the headless focus adaptation unchanged.</summary>
+    public Action<string>? PaneFocusRequested { get; init; }
 }
 
 /// <summary>
@@ -120,7 +124,8 @@ public sealed class HeadlessHost : IDisposable
             restoreRunningCommand: options.RestoreRunningCommand,
             closeGraceUndoEnabled: options.CloseGraceUndoEnabled,
             dashboardBaseFontSize: options.DashboardBaseFontSize,
-            homeDirectory: options.HomeDirectory);
+            homeDirectory: options.HomeDirectory,
+            paneFocusRequested: options.PaneFocusRequested);
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.
