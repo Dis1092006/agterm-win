@@ -130,6 +130,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 {
                     BindScratch(scratchSessionId, paneSurface);
                 }
+                else if (request.Kind == LiveSurfaceKind.Overlay && request.SessionId is { } overlaySessionId)
+                {
+                    BindOverlay(overlaySessionId, paneSurface);
+                }
 
                 SurfaceRealized?.Invoke(request, paneSurface);
             },
@@ -482,7 +486,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     return null;
                 }
 
-                argv = CommandTokenizer.Tokenize(overlayCommand);
+                argv =
+                [
+                    Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",
+                    "/c",
+                    overlayCommand,
+                ];
                 cwd = session.OverlayCwd ?? session.EffectiveCwd;
                 sessionId = session.Id;
                 break;
@@ -581,6 +590,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private void BindScratch(Guid sessionId, XtermPaneSurface surface) =>
         _ = CloseScratchOnExitAsync(sessionId, surface);
 
+    private void BindOverlay(Guid sessionId, XtermPaneSurface surface) =>
+        _ = CloseOverlayOnExitAsync(sessionId, surface);
+
     /// <summary>The realized surface still is the session's current main pane.</summary>
     private static bool OwnsMainPane(Session? live, XtermPaneSurface surface) =>
         live is not null &&
@@ -594,6 +606,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private static bool OwnsScratchPane(Session? live, XtermPaneSurface surface) =>
         live is not null &&
         ReferenceEquals(live.ScratchSurface, surface);
+
+    private static bool OwnsOverlayPane(Session? live, XtermPaneSurface surface) =>
+        live is not null &&
+        ReferenceEquals(live.OverlaySurface, surface);
 
     private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
@@ -692,6 +708,41 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             var live = Host.Store.SessionWithId(sessionId);
             if (!OwnsScratchPane(live, surface)) return;
             Host.Store.CloseScratch(live!.Id);
+            ReconcileSurfacesLocked();
+        });
+    }
+
+    private async Task CloseOverlayOnExitAsync(Guid sessionId, XtermPaneSurface surface)
+    {
+        int exitCode;
+        try
+        {
+            exitCode = await surface.Pane.Exited.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+        {
+            return;
+        }
+
+        Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+            {
+                return;
+            }
+
+            var live = Host.Store.SessionWithId(sessionId);
+            if (!OwnsOverlayPane(live, surface)) return;
+            Host.Store.RecordOverlayExit(live!.Id, exitCode);
+            if (!live.OverlayWait)
+            {
+                Host.Store.CloseOverlay(live.Id);
+            }
             ReconcileSurfacesLocked();
         });
     }

@@ -231,6 +231,46 @@ public sealed class LiveSelectionSnapshotLayoutTests
 
         Assert.IsType<TerminalLayout.Empty>(snapshot.ToTerminalLayout(1));
     }
+
+    [Fact]
+    public void ToTerminalLayout_wraps_split_in_configured_overlay_layer()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session", "workspace",
+            MainPaneId: "left-token",
+            SplitPaneId: "right-token",
+            IsSplit: true,
+            SplitFocused: true,
+            SplitRatio: 0.4,
+            OverlayPaneId: "overlay-token",
+            OverlayActive: true,
+            OverlaySizePercent: 70,
+            OverlayBackgroundColor: "#123456");
+
+        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(11));
+        Assert.IsType<TerminalLayout.Split>(layered.BaseLayout);
+        Assert.Equal("overlay-token", layered.Layer.PaneId);
+        Assert.Equal(70, layered.Layer.SizePercent);
+        Assert.Equal("#123456", layered.Layer.BackgroundColor);
+    }
+
+    [Fact]
+    public void ToTerminalLayout_places_overlay_above_scratch_and_falls_back_when_overlay_is_unrealized()
+    {
+        var withOverlay = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session",
+            MainPaneId: "main-token",
+            ScratchPaneId: "scratch-token",
+            ScratchActive: true,
+            OverlayPaneId: "overlay-token",
+            OverlayActive: true);
+        var overlay = Assert.IsType<TerminalLayout.Layered>(withOverlay.ToTerminalLayout(1));
+        Assert.Equal("overlay-token", overlay.Layer.PaneId);
+
+        var withoutRealizedOverlay = withOverlay with { OverlayPaneId = null };
+        var scratch = Assert.IsType<TerminalLayout.Layered>(withoutRealizedOverlay.ToTerminalLayout(2));
+        Assert.Equal("scratch-token", scratch.Layer.PaneId);
+    }
 }
 
 public sealed class MainWindowSplitWiringTests
@@ -253,7 +293,7 @@ public sealed class MainWindowSplitWiringTests
     }
 
     [Fact]
-    public void MainWindow_routes_split_and_scratch_presentation_through_live_owners()
+    public void MainWindow_routes_split_scratch_and_overlay_presentation_through_live_owners()
     {
         var source = File.ReadAllText(Path.Combine(
             FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
@@ -262,9 +302,11 @@ public sealed class MainWindowSplitWiringTests
         Assert.Contains("page.PaneFocusChanged += OnPagePaneFocusChanged", source, StringComparison.Ordinal);
         Assert.Contains("host.PaneFocusRequested +=", source, StringComparison.Ordinal);
         Assert.Contains(
-            "request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch",
+            "request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay",
             source,
             StringComparison.Ordinal);
+        Assert.Contains("session.OverlaySurface", source, StringComparison.Ordinal);
+        Assert.Contains("await surface.ShutdownStarted", source, StringComparison.Ordinal);
         Assert.Contains("case TerminalLayout.Layered layered:", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleSplit]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleScratch]", source, StringComparison.Ordinal);

@@ -161,7 +161,12 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
         AssertRequest(captured, LiveSurfaceKind.Scratch, sessionId, mainCwd,
             new[] { "scratch-tool", "--flag" }, 19, readClipboard);
         AssertRequest(captured, LiveSurfaceKind.Overlay, sessionId, overlayCwd,
-            new[] { "overlay-tool", "--flag" }, 19, readClipboard);
+            new[]
+            {
+                Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",
+                "/c",
+                "overlay-tool --flag",
+            }, 19, readClipboard);
         AssertRequest(captured, LiveSurfaceKind.Quick, null, mainCwd,
             new[] { "test-shell.exe" }, 19, readClipboard);
 

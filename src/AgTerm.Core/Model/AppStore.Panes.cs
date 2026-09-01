@@ -185,6 +185,7 @@ public sealed partial class AppStore
         session.OverlaySizePercent = sizePercent is { } percent ? Math.Min(100, Math.Max(1, percent)) : null;
         session.OverlayBackgroundColor = backgroundColor;
         session.OverlayActive = true;
+        NotifySidebar();
         return true;
     }
 
@@ -196,6 +197,7 @@ public sealed partial class AppStore
     {
         if (SessionWithId(sessionId) is not { } session || !session.OverlayActive) return false;
         session.OverlaySizePercent = sizePercent is { } percent ? Math.Min(100, Math.Max(1, percent)) : null;
+        NotifySidebar();
         return true;
     }
 
@@ -212,6 +214,11 @@ public sealed partial class AppStore
     public bool CloseOverlay(Guid sessionId)
     {
         if (SessionWithId(sessionId) is not { } session || !session.OverlayActive) return false;
+        if (session.OverlayExitCode is null &&
+            session.OverlaySurface is ICompletedExitCodeSurface { CompletedExitCode: { } exitCode })
+        {
+            session.OverlayExitCode = exitCode;
+        }
         session.OverlayActive = false;
         session.OverlaySurface?.Teardown();
         session.OverlaySurface = null;
@@ -220,6 +227,7 @@ public sealed partial class AppStore
         session.OverlayWait = false;
         session.OverlaySizePercent = null;
         session.OverlayBackgroundColor = null;
+        NotifySidebar();
         return true;
     }
 

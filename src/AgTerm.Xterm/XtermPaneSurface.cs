@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.ExceptionServices;
 using AgTerm.ControlServer;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
@@ -30,7 +31,7 @@ public sealed class XtermSurfaceOptions
 /// and blocks (bounded) — a timeout or a torn-down pane reports as "not realized" (false/null),
 /// which the arms map to the pinned wire errors, never a crash.
 /// </summary>
-public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, IDisposable
+public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurface, ILiveShutdownSurface, IDisposable
 {
     private static readonly TimeSpan UiCallBudget = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(5);
@@ -38,6 +39,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
     private readonly Func<string?>? _readClipboard;
     private double _baseFontSize;
     private readonly object _shutdownGate = new();
+    private readonly TaskCompletionSource _shutdownStarted = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private int _stopOutputStarted;
     private int _promotedToPrimaryPane;
     private Task? _shutdownCoreTask;
@@ -59,6 +62,14 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
 
     /// <summary>The pane's live font size (the tree read-back's fontSize source).</summary>
     public double FontSize { get; private set; }
+
+    /// <summary>Completes when teardown starts, which may be later than the child process exit for
+    /// a retained --wait surface.</summary>
+    public Task ShutdownStarted => _shutdownStarted.Task;
+
+    public int? CompletedExitCode => Pane.Exited.IsCompletedSuccessfully
+        ? Pane.Exited.Result
+        : null;
 
     internal bool IsPromotedToPrimaryPane => Volatile.Read(ref _promotedToPrimaryPane) != 0;
 
@@ -174,12 +185,14 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ILiveShutdownSurface, I
 
     public void Teardown()
     {
+        _shutdownStarted.TrySetResult();
         StopOutput();
         ObserveFault(EnsureShutdownCoreTask());
     }
 
     public Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
+        _shutdownStarted.TrySetResult();
         var coreTask = EnsureShutdownCoreTask();
         return cancellationToken.CanBeCanceled
             ? coreTask.WaitAsync(cancellationToken)

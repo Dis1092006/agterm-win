@@ -693,8 +693,6 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(LiveSurfaceKind.Overlay, true)]
-    [InlineData(LiveSurfaceKind.Overlay, false)]
     [InlineData(LiveSurfaceKind.Quick, true)]
     [InlineData(LiveSurfaceKind.Quick, false)]
     public async Task Coordinator_non_sidebar_slot_transition_does_not_notify_sidebar(
@@ -723,9 +721,13 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Coordinator_scratch_slot_transition_notifies_sidebar(bool succeeds)
+    [InlineData(LiveSurfaceKind.Scratch, true)]
+    [InlineData(LiveSurfaceKind.Scratch, false)]
+    [InlineData(LiveSurfaceKind.Overlay, true)]
+    [InlineData(LiveSurfaceKind.Overlay, false)]
+    public async Task Coordinator_layer_slot_transition_notifies_sidebar(
+        LiveSurfaceKind kind,
+        bool succeeds)
     {
         using var host = BuildHost();
         var scopes = new LiveDispatchScopeFactory();
@@ -739,7 +741,7 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
 
         host.RunLocked(() => coordinator.Reserve(new SurfaceOpenRequest(
             sessionId,
-            LiveSurfaceKind.Scratch,
+            kind,
             DefaultOptions(_stateDir))));
         host.Store.SidebarChanged += () => notifications++;
 

@@ -586,6 +586,42 @@ public class AppStorePaneTests
     }
 
     [Fact]
+    public void OverlayPresentationMutationsNotifySidebar()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var workspace = store.AddWorkspace("work");
+        var session = store.AddSession(workspace.Id, "/a")!;
+        var notifications = 0;
+        store.SidebarChanged += () => notifications++;
+
+        Assert.True(store.OpenOverlay(session.Id, "pause"));
+        Assert.Equal(1, notifications);
+        Assert.False(store.OpenOverlay(session.Id, "other"));
+        Assert.Equal(1, notifications);
+
+        Assert.True(store.ResizeOverlay(session.Id, 60));
+        Assert.Equal(2, notifications);
+        Assert.True(store.CloseOverlay(session.Id));
+        Assert.Equal(3, notifications);
+        Assert.False(store.CloseOverlay(session.Id));
+        Assert.Equal(3, notifications);
+    }
+
+    [Fact]
+    public void CloseOverlayCapturesExitCodeAlreadyCompletedOnSurface()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var workspace = store.AddWorkspace("work");
+        var session = store.AddSession(workspace.Id, "/a")!;
+        Assert.True(store.OpenOverlay(session.Id, "exit 64", wait: true));
+        session.OverlaySurface = new SpySurface { CompletedExitCode = 64 };
+
+        Assert.True(store.CloseOverlay(session.Id));
+
+        Assert.Equal(64, session.OverlayExitCode);
+    }
+
+    [Fact]
     public void ControlTreeReportsCommandWait()
     {
         var store = AppStoreFixtures.MakeStore();

@@ -199,7 +199,7 @@ public sealed partial class MainWindow : Window
 
         host.SurfaceRealized += (request, surface) =>
         {
-            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch)
+            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay)
             {
                 DispatcherQueue.TryEnqueue(() => MountSurface(surface));
             }
@@ -238,7 +238,11 @@ public sealed partial class MainWindow : Window
                 selectedSession?.SplitFocused ?? false,
                 selectedSession?.SplitRatio,
                 selectedSession?.ScratchSurface?.PaneToken,
-                selectedSession?.ScratchActive ?? false);
+                selectedSession?.ScratchActive ?? false,
+                selectedSession?.OverlaySurface?.PaneToken,
+                selectedSession?.OverlayActive ?? false,
+                selectedSession?.OverlaySizePercent,
+                selectedSession?.OverlayBackgroundColor);
 
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
@@ -247,6 +251,7 @@ public sealed partial class MainWindow : Window
                     session.Surface,
                     session.SplitSurface,
                     session.ScratchSurface,
+                    session.OverlaySurface,
                 })
                 .OfType<XtermPaneSurface>()
                 .ToList();
@@ -556,9 +561,9 @@ public sealed partial class MainWindow : Window
     {
         if (cancellationToken.IsCancellationRequested)
             return Task.FromCanceled<IHeadlessSurface>(cancellationToken);
-        if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch && request.SessionId is null)
+        if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay && request.SessionId is null)
             return Task.FromException<IHeadlessSurface>(
-                new InvalidOperationException("Main, split, and scratch surfaces require a session id."));
+            new InvalidOperationException("Main, split, scratch, and overlay surfaces require a session id."));
 
         var done = new TaskCompletionSource<IHeadlessSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!DispatcherQueue.TryEnqueue(async () =>
@@ -612,8 +617,8 @@ public sealed partial class MainWindow : Window
         _surfaces[paneToken] = surface;
         SubmitLayout();
         ObserveTaskFault(
-            UnmountOnExitAsync(paneToken, surface),
-            $"Unmount on exit failed for pane {paneToken}");
+            UnmountOnShutdownAsync(paneToken, surface),
+            $"Unmount on shutdown failed for pane {paneToken}");
     }
 
     private void SubmitLayout()
@@ -622,16 +627,9 @@ public sealed partial class MainWindow : Window
         _layoutCoordinator.Submit(_selection.ToTerminalLayout(generation));
     }
 
-    private async Task UnmountOnExitAsync(string paneToken, XtermPaneSurface surface)
+    private async Task UnmountOnShutdownAsync(string paneToken, XtermPaneSurface surface)
     {
-        try
-        {
-            await surface.Pane.Exited;
-        }
-        catch (Exception)
-        {
-            // a torn-down pane may fault its exit task — unmount regardless
-        }
+        await surface.ShutdownStarted;
         DispatcherQueue.TryEnqueue(() =>
         {
             // the surface's Teardown (host close path) removes the page pane; here we only drop

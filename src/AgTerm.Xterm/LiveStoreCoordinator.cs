@@ -13,7 +13,11 @@ public sealed record LiveSelectionSnapshot(
     bool SplitFocused = false,
     double? SplitRatio = null,
     string? ScratchPaneId = null,
-    bool ScratchActive = false)
+    bool ScratchActive = false,
+    string? OverlayPaneId = null,
+    bool OverlayActive = false,
+    int? OverlaySizePercent = null,
+    string? OverlayBackgroundColor = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -42,6 +46,14 @@ public sealed record LiveSelectionSnapshot(
                 ? SplitPaneId
                 : MainPaneId;
             baseLayout = new TerminalLayout.Single(generation, paneId, DisplayName, WorkspaceName);
+        }
+
+        if (OverlayActive && !string.IsNullOrWhiteSpace(OverlayPaneId))
+        {
+            return new TerminalLayout.Layered(
+                generation,
+                baseLayout,
+                new TerminalLayer(OverlayPaneId, OverlaySizePercent, OverlayBackgroundColor));
         }
 
         if (ScratchActive && !string.IsNullOrWhiteSpace(ScratchPaneId))
@@ -257,7 +269,11 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             selectedSession?.SplitFocused ?? false,
             selectedSession?.SplitRatio,
             selectedSession?.ScratchSurface?.PaneToken,
-            selectedSession?.ScratchActive ?? false);
+            selectedSession?.ScratchActive ?? false,
+            selectedSession?.OverlaySurface?.PaneToken,
+            selectedSession?.OverlayActive ?? false,
+            selectedSession?.OverlaySizePercent,
+            selectedSession?.OverlayBackgroundColor);
     }
 
     private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)

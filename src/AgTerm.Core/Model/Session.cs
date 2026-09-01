@@ -19,6 +19,13 @@ public interface ITerminalSurface
     void PromoteToPrimaryPane();
 }
 
+/// <summary>Optional non-blocking exit-code projection for a terminal process that has already
+/// completed. Hosts that cannot report a process status do not implement this interface.</summary>
+public interface ICompletedExitCodeSurface
+{
+    int? CompletedExitCode { get; }
+}
+
 /// <summary>
 /// One shell session: a sidebar row owning a main pane, an optional split pane, an ephemeral
 /// scratch shell, and an ephemeral overlay. Pure model state — surfaces are opaque host handles.

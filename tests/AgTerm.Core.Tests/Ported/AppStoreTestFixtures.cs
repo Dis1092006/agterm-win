@@ -26,10 +26,12 @@ internal static class AppStoreFixtures
         Path.Combine(Path.GetTempPath(), "agterm-tests-" + Guid.NewGuid().ToString("D"));
 }
 
-internal sealed class SpySurface : ITerminalSurface
+internal sealed class SpySurface : ITerminalSurface, ICompletedExitCodeSurface
 {
     public int TeardownCount;
     public int PromotedCount;
+
+    public int? CompletedExitCode { get; set; }
 
     public string? PaneToken { get; set; }
 
