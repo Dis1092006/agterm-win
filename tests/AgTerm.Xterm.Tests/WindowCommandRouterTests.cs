@@ -21,6 +21,7 @@ public class WindowCommandRouterTests
         BuiltinAction.ResetFontSize,
         BuiltinAction.ToggleSidebar,
         BuiltinAction.ToggleSplit,
+        BuiltinAction.ToggleScratch,
         BuiltinAction.FocusLeftPane,
         BuiltinAction.FocusRightPane,
         BuiltinAction.ToggleFlaggedView,
@@ -43,7 +44,6 @@ public class WindowCommandRouterTests
         BuiltinAction.RenameWorkspace,
         BuiltinAction.DeleteWorkspace,
         BuiltinAction.ReopenRecent,
-        BuiltinAction.ToggleScratch,
         BuiltinAction.ToggleTerminalZoom,
         BuiltinAction.ToggleSearch,
         BuiltinAction.SelectTheme,
@@ -301,6 +301,22 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
+    public async Task ExecuteChordAsync_ctrl_j_resolves_toggle_scratch_returns_true_and_invokes_once()
+    {
+        var calls = 0;
+        var router = new WindowCommandRouter(AllNoOpHandlers(
+            replace: BuiltinAction.ToggleScratch,
+            replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })));
+        var hotkeys = new HotkeyRouter(Keymap.Empty);
+        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j");
+
+        var result = await router.ExecuteChordAsync(hotkeys, physical);
+
+        Assert.True(result);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task ExecuteChordAsync_implemented_but_disabled_new_session_returns_false_invokes_none()
     {
         // Ctrl+N resolves NewSession (implemented), but CanExecute returns false → handler must not fire.
@@ -356,8 +372,8 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: true, Shift: false, Key: "left"), chords);
         // Ctrl+Alt+Right → cmd+opt+right → FocusRightPane (implemented in P3): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: true, Shift: false, Key: "right"), chords);
-        // Ctrl+J → cmd+j → ToggleScratch (unimplemented): must be absent
-        Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j"), chords);
+        // Ctrl+J → cmd+j → ToggleScratch (implemented in Q2): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j"), chords);
         // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (unimplemented): must be absent
         Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
         // Ctrl+P → ctrl+p → SessionPalette (unimplemented): must be absent

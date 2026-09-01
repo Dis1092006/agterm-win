@@ -11,7 +11,9 @@ public sealed record LiveSelectionSnapshot(
     string? SplitPaneId = null,
     bool IsSplit = false,
     bool SplitFocused = false,
-    double? SplitRatio = null)
+    double? SplitRatio = null,
+    string? ScratchPaneId = null,
+    bool ScratchActive = false)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -20,11 +22,12 @@ public sealed record LiveSelectionSnapshot(
             return new TerminalLayout.Empty(generation);
         }
 
+        TerminalLayout baseLayout;
         if (IsSplit && !string.IsNullOrWhiteSpace(SplitPaneId))
         {
             var ratio = SplitRatio ?? AppStore.SplitRatioDefault;
             var focusedPaneId = SplitFocused ? SplitPaneId : MainPaneId;
-            return new TerminalLayout.Split(
+            baseLayout = new TerminalLayout.Split(
                 generation,
                 MainPaneId,
                 SplitPaneId,
@@ -33,11 +36,20 @@ public sealed record LiveSelectionSnapshot(
                 DisplayName,
                 WorkspaceName);
         }
+        else
+        {
+            var paneId = !IsSplit && SplitFocused && !string.IsNullOrWhiteSpace(SplitPaneId)
+                ? SplitPaneId
+                : MainPaneId;
+            baseLayout = new TerminalLayout.Single(generation, paneId, DisplayName, WorkspaceName);
+        }
 
-        var paneId = !IsSplit && SplitFocused && !string.IsNullOrWhiteSpace(SplitPaneId)
-            ? SplitPaneId
-            : MainPaneId;
-        return new TerminalLayout.Single(generation, paneId, DisplayName, WorkspaceName);
+        if (ScratchActive && !string.IsNullOrWhiteSpace(ScratchPaneId))
+        {
+            return new TerminalLayout.Layered(generation, baseLayout, new TerminalLayer(ScratchPaneId));
+        }
+
+        return baseLayout;
     }
 }
 
@@ -243,7 +255,9 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             selectedSession?.SplitSurface?.PaneToken,
             selectedSession?.IsSplit ?? false,
             selectedSession?.SplitFocused ?? false,
-            selectedSession?.SplitRatio);
+            selectedSession?.SplitRatio,
+            selectedSession?.ScratchSurface?.PaneToken,
+            selectedSession?.ScratchActive ?? false);
     }
 
     private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)

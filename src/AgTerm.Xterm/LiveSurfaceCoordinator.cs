@@ -734,7 +734,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
     }
 
     private bool ShouldNotifySidebar(SurfaceSlot slot) =>
-        slot.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split;
+        slot.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch;
 
     private bool TryGetSlotSurface(SurfaceSlot slot, out ITerminalSurface? surface)
     {

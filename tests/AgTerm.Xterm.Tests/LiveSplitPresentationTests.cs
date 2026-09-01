@@ -167,6 +167,70 @@ public sealed class LiveSelectionSnapshotLayoutTests
         var split = Assert.IsType<TerminalLayout.Split>(snapshot.ToTerminalLayout(1));
         Assert.InRange(split.Ratio, 0.49, 0.51); // default is 0.5
     }
+
+    [Fact]
+    public void ToTerminalLayout_wraps_single_in_full_layer_when_scratch_is_active_and_realized()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session", "workspace",
+            MainPaneId: "main-token",
+            ScratchPaneId: "scratch-token",
+            ScratchActive: true);
+
+        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(9));
+        Assert.IsType<TerminalLayout.Single>(layered.BaseLayout);
+        Assert.Equal("scratch-token", layered.Layer.PaneId);
+        Assert.Null(layered.Layer.SizePercent);
+        Assert.Equal(9, layered.Generation);
+    }
+
+    [Fact]
+    public void ToTerminalLayout_wraps_split_in_full_layer_when_scratch_is_active_and_realized()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session", null,
+            MainPaneId: "left-token",
+            SplitPaneId: "right-token",
+            IsSplit: true,
+            SplitFocused: true,
+            SplitRatio: 0.4,
+            ScratchPaneId: "scratch-token",
+            ScratchActive: true);
+
+        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(10));
+        var split = Assert.IsType<TerminalLayout.Split>(layered.BaseLayout);
+        Assert.Equal("right-token", split.FocusedPaneId);
+        Assert.Equal("scratch-token", layered.Layer.PaneId);
+        Assert.Null(layered.Layer.SizePercent);
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "scratch-token")]
+    public void ToTerminalLayout_keeps_base_when_scratch_is_inactive_or_not_realized(
+        bool scratchActive,
+        string? scratchPaneId)
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session",
+            MainPaneId: "main-token",
+            ScratchPaneId: scratchPaneId,
+            ScratchActive: scratchActive);
+
+        Assert.IsType<TerminalLayout.Single>(snapshot.ToTerminalLayout(1));
+    }
+
+    [Fact]
+    public void ToTerminalLayout_keeps_empty_when_scratch_has_no_base_session()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            null,
+            null,
+            ScratchPaneId: "scratch-token",
+            ScratchActive: true);
+
+        Assert.IsType<TerminalLayout.Empty>(snapshot.ToTerminalLayout(1));
+    }
 }
 
 public sealed class MainWindowSplitWiringTests
@@ -189,7 +253,7 @@ public sealed class MainWindowSplitWiringTests
     }
 
     [Fact]
-    public void MainWindow_routes_split_presentation_and_commands_through_live_owners()
+    public void MainWindow_routes_split_and_scratch_presentation_through_live_owners()
     {
         var source = File.ReadAllText(Path.Combine(
             FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
@@ -197,8 +261,13 @@ public sealed class MainWindowSplitWiringTests
         Assert.Contains("_selection.ToTerminalLayout(generation)", source, StringComparison.Ordinal);
         Assert.Contains("page.PaneFocusChanged += OnPagePaneFocusChanged", source, StringComparison.Ordinal);
         Assert.Contains("host.PaneFocusRequested +=", source, StringComparison.Ordinal);
-        Assert.Contains("request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("case TerminalLayout.Layered layered:", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleSplit]", source, StringComparison.Ordinal);
+        Assert.Contains("[BuiltinAction.ToggleScratch]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusLeftPane]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusRightPane]", source, StringComparison.Ordinal);
     }

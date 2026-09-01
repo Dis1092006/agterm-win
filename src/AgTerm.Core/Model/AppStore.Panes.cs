@@ -229,7 +229,9 @@ public sealed partial class AppStore
     /// persisted, so no Save. No-op for an unknown session.</summary>
     public void ToggleScratch(Guid sessionId)
     {
-        if (SessionWithId(sessionId) is { } session) session.ScratchActive = !session.ScratchActive;
+        if (SessionWithId(sessionId) is not { } session) return;
+        session.ScratchActive = !session.ScratchActive;
+        NotifySidebar();
     }
 
     /// <summary>Closes the scratch terminal: hides it AND tears down its surface (so a subsequent
@@ -249,6 +251,7 @@ public sealed partial class AppStore
         ClearIndicatorOwnedByPane(StatusPane.Scratch, session);
         scratch.Teardown();
         session.ScratchSurface = null;
+        NotifySidebar();
         return true;
     }
 }

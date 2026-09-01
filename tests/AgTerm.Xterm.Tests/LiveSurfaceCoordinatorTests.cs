@@ -693,8 +693,6 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(LiveSurfaceKind.Scratch, true)]
-    [InlineData(LiveSurfaceKind.Scratch, false)]
     [InlineData(LiveSurfaceKind.Overlay, true)]
     [InlineData(LiveSurfaceKind.Overlay, false)]
     [InlineData(LiveSurfaceKind.Quick, true)]
@@ -722,6 +720,32 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
         await scope.CompleteAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(0, notifications);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Coordinator_scratch_slot_transition_notifies_sidebar(bool succeeds)
+    {
+        using var host = BuildHost();
+        var scopes = new LiveDispatchScopeFactory();
+        var sessionId = host.Store.ActiveSession!.Id;
+        var opener = succeeds
+            ? Task.FromResult<IHeadlessSurface>(new FakeSurface())
+            : Task.FromException<IHeadlessSurface>(new InvalidOperationException("test failure"));
+        using var coordinator = BuildCoordinator(host, scopes, (_, _) => opener);
+        var notifications = 0;
+        using var scope = scopes.Begin();
+
+        host.RunLocked(() => coordinator.Reserve(new SurfaceOpenRequest(
+            sessionId,
+            LiveSurfaceKind.Scratch,
+            DefaultOptions(_stateDir))));
+        host.Store.SidebarChanged += () => notifications++;
+
+        await scope.CompleteAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, notifications);
     }
 
     // -------------------------------------------------------------------------

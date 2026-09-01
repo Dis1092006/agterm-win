@@ -126,6 +126,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 {
                     BindSplit(splitSessionId, paneSurface);
                 }
+                else if (request.Kind == LiveSurfaceKind.Scratch && request.SessionId is { } scratchSessionId)
+                {
+                    BindScratch(scratchSessionId, paneSurface);
+                }
 
                 SurfaceRealized?.Invoke(request, paneSurface);
             },
@@ -574,6 +578,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         _ = CloseSplitOnExitAsync(sessionId, surface);
     }
 
+    private void BindScratch(Guid sessionId, XtermPaneSurface surface) =>
+        _ = CloseScratchOnExitAsync(sessionId, surface);
+
     /// <summary>The realized surface still is the session's current main pane.</summary>
     private static bool OwnsMainPane(Session? live, XtermPaneSurface surface) =>
         live is not null &&
@@ -583,6 +590,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private static bool OwnsSplitPane(Session? live, XtermPaneSurface surface) =>
         live is not null &&
         ReferenceEquals(live.SplitSurface, surface);
+
+    private static bool OwnsScratchPane(Session? live, XtermPaneSurface surface) =>
+        live is not null &&
+        ReferenceEquals(live.ScratchSurface, surface);
 
     private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
@@ -652,6 +663,36 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 Host.Store.ClosePrimaryPane(live!.Id);
                 ReconcileSurfacesLocked();
             }
+        });
+    }
+
+    private async Task CloseScratchOnExitAsync(Guid sessionId, XtermPaneSurface surface)
+    {
+        try
+        {
+            await surface.Pane.Exited.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+        {
+            return;
+        }
+
+        Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+            {
+                return;
+            }
+
+            var live = Host.Store.SessionWithId(sessionId);
+            if (!OwnsScratchPane(live, surface)) return;
+            Host.Store.CloseScratch(live!.Id);
+            ReconcileSurfacesLocked();
         });
     }
 

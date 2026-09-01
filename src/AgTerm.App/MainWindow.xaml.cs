@@ -93,24 +93,13 @@ public sealed partial class MainWindow : Window
             switch (layout)
             {
                 case TerminalLayout.Single single:
-                    Title = $"{single.Title} — agterm";
-                    AppTitleBar.Title = single.Title;
-                    AppTitleBar.Subtitle = single.WorkspaceName ?? string.Empty;
-                    if (_acceptedPaneId != single.PaneId)
-                    {
-                        _acceptedPaneId = single.PaneId;
-                        FocusActiveTerminal();
-                    }
+                    ApplyAcceptedBaseLayout(single, single.PaneId);
                     break;
                 case TerminalLayout.Split split:
-                    Title = $"{split.Title} — agterm";
-                    AppTitleBar.Title = split.Title;
-                    AppTitleBar.Subtitle = split.WorkspaceName ?? string.Empty;
-                    if (_acceptedPaneId != split.FocusedPaneId)
-                    {
-                        _acceptedPaneId = split.FocusedPaneId;
-                        FocusActiveTerminal();
-                    }
+                    ApplyAcceptedBaseLayout(split, split.FocusedPaneId);
+                    break;
+                case TerminalLayout.Layered layered:
+                    ApplyAcceptedBaseLayout(layered.BaseLayout, layered.Layer.PaneId);
                     break;
                 case TerminalLayout.Empty:
                     _acceptedPaneId = null;
@@ -210,7 +199,7 @@ public sealed partial class MainWindow : Window
 
         host.SurfaceRealized += (request, surface) =>
         {
-            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split)
+            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch)
             {
                 DispatcherQueue.TryEnqueue(() => MountSurface(surface));
             }
@@ -247,7 +236,9 @@ public sealed partial class MainWindow : Window
                 selectedSession?.SplitSurface?.PaneToken,
                 selectedSession?.IsSplit ?? false,
                 selectedSession?.SplitFocused ?? false,
-                selectedSession?.SplitRatio);
+                selectedSession?.SplitRatio,
+                selectedSession?.ScratchSurface?.PaneToken,
+                selectedSession?.ScratchActive ?? false);
 
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
@@ -255,6 +246,7 @@ public sealed partial class MainWindow : Window
                 {
                     session.Surface,
                     session.SplitSurface,
+                    session.ScratchSurface,
                 })
                 .OfType<XtermPaneSurface>()
                 .ToList();
@@ -316,6 +308,15 @@ public sealed partial class MainWindow : Window
                         return Task.CompletedTask;
 
                     return host.StoreCoordinator.MutateAsync(store => store.ToggleSplit(selectedSessionId));
+                }),
+            [BuiltinAction.ToggleScratch] = Async(
+                HasSelectedSession,
+                () =>
+                {
+                    if (_selection.SessionId is not { } selectedSessionId)
+                        return Task.CompletedTask;
+
+                    return host.StoreCoordinator.MutateAsync(store => store.ToggleScratch(selectedSessionId));
                 }),
             [BuiltinAction.FocusLeftPane] = Async(
                 () => !string.IsNullOrWhiteSpace(_selection.MainPaneId) && !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
@@ -396,6 +397,28 @@ public sealed partial class MainWindow : Window
 
         if (!enabled && _latestSidebarSnapshot is { } snapshot)
             ApplySidebarChrome(snapshot);
+    }
+
+    /// <summary>Applies title/subtitle from a Single/Split base layout and updates the accepted
+    /// pane id — for a Layered layout, the base still owns the chrome and the layer owns focus.</summary>
+    private void ApplyAcceptedBaseLayout(TerminalLayout baseLayout, string paneId)
+    {
+        var (title, workspaceName) = baseLayout switch
+        {
+            TerminalLayout.Single single => (single.Title, single.WorkspaceName),
+            TerminalLayout.Split split => (split.Title ?? string.Empty, split.WorkspaceName),
+            _ => throw new ArgumentOutOfRangeException(nameof(baseLayout), baseLayout, "Base layout must be single or split."),
+        };
+
+        Title = $"{title} — agterm";
+        AppTitleBar.Title = title;
+        AppTitleBar.Subtitle = workspaceName ?? string.Empty;
+
+        if (_acceptedPaneId != paneId)
+        {
+            _acceptedPaneId = paneId;
+            FocusActiveTerminal();
+        }
     }
 
     /// <summary>Keyboard focus never lives in the sidebar (upstream): after a row gesture, return
@@ -533,9 +556,9 @@ public sealed partial class MainWindow : Window
     {
         if (cancellationToken.IsCancellationRequested)
             return Task.FromCanceled<IHeadlessSurface>(cancellationToken);
-        if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split && request.SessionId is null)
+        if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch && request.SessionId is null)
             return Task.FromException<IHeadlessSurface>(
-                new InvalidOperationException("Main and split surfaces require a session id."));
+                new InvalidOperationException("Main, split, and scratch surfaces require a session id."));
 
         var done = new TaskCompletionSource<IHeadlessSurface>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!DispatcherQueue.TryEnqueue(async () =>

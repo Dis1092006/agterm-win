@@ -103,7 +103,7 @@ public class XtermPageLiveTests
     }
 
     [Fact]
-    public async Task Implemented_new_session_and_toggle_split_chords_produce_host_actions()
+    public async Task Implemented_new_session_split_and_scratch_chords_produce_host_actions()
     {
         var (page, view) = await BootPageAsync();
         var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-s33"));
@@ -126,9 +126,12 @@ public class XtermPageLiveTests
         // Ctrl+D = ToggleSplit (implemented in P3) → intercepted as a second host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
             "agterm.dispatchKey(\"live-s33\", {key:'d', ctrlKey:true})"));
+        // Ctrl+J = ToggleScratch (implemented in Q2) → intercepted as a third host chord
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"live-s33\", {key:'j', ctrlKey:true})"));
 
         var deadline = Environment.TickCount64 + 30000;
-        while (chords.Count < 2 && Environment.TickCount64 < deadline)
+        while (chords.Count < 3 && Environment.TickCount64 < deadline)
             await Task.Delay(50);
 
         Assert.Collection(
@@ -142,9 +145,15 @@ public class XtermPageLiveTests
             {
                 Assert.Equal("live-s33", hit.PaneId);
                 Assert.Equal(new PhysicalChord(true, false, false, "d"), hit.Chord);
+            },
+            hit =>
+            {
+                Assert.Equal("live-s33", hit.PaneId);
+                Assert.Equal(new PhysicalChord(true, false, false, "j"), hit.Chord);
             });
         Assert.DoesNotContain(data, d => d.Contains('\x04')); // Ctrl+D did not reach the terminal
         Assert.DoesNotContain(data, d => d.Contains('\x0E')); // Ctrl+N did not
+        Assert.DoesNotContain(data, d => d.Contains('\x0A')); // Ctrl+J did not
     }
 
     [Fact]

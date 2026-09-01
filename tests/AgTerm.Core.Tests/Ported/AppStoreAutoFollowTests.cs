@@ -292,6 +292,22 @@ public sealed class AppStoreAutoFollowTests
         Assert.Equal(blocked.Id, store.SelectedSessionId); // fully resumed -> follows the block
     }
 
+    [Fact]
+    public void ScratchShowAndHideDoNotSuppressAutoFollow()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var workspace = store.AddWorkspace("w");
+        var session = store.AddSession(workspace.Id, "/session")!;
+
+        store.ToggleScratch(session.Id);
+        Assert.True(session.ScratchActive);
+        Assert.Equal(0, store.AutoFollowSuppressionCount);
+
+        store.ToggleScratch(session.Id);
+        Assert.False(session.ScratchActive);
+        Assert.Equal(0, store.AutoFollowSuppressionCount);
+    }
+
     // MARK: - NoteUserActivity + IdleMs
 
     [Fact]
