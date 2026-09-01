@@ -114,35 +114,82 @@ public sealed class XtermPage
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
-            writer.WriteStartObject();
-            switch (layout)
-            {
-                case TerminalLayout.Single single:
-                    writer.WriteString("type", "single");
-                    writer.WriteNumber("generation", single.Generation);
-                    writer.WriteString("paneId", single.PaneId);
-                    writer.WriteString("title", single.Title);
-                    break;
-                case TerminalLayout.Split split:
-                    writer.WriteString("type", "split");
-                    writer.WriteNumber("generation", split.Generation);
-                    writer.WriteString("leftPaneId", split.LeftPaneId);
-                    writer.WriteString("rightPaneId", split.RightPaneId);
-                    writer.WriteNumber("ratio", split.Ratio);
-                    writer.WriteString("focusedPaneId", split.FocusedPaneId);
-                    break;
-                case TerminalLayout.Empty empty:
-                    writer.WriteString("type", "empty");
-                    writer.WriteNumber("generation", empty.Generation);
-                    break;
-                default:
-                    throw new NotSupportedException($"Unknown terminal layout variant: {layout.GetType().FullName}");
-            }
-
-            writer.WriteEndObject();
+            WriteLayoutObject(writer, layout);
         }
 
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static void WriteLayoutObject(Utf8JsonWriter writer, TerminalLayout layout)
+    {
+        writer.WriteStartObject();
+        switch (layout)
+        {
+            case TerminalLayout.Single single:
+                writer.WriteString("type", "single");
+                writer.WriteNumber("generation", single.Generation);
+                writer.WriteString("paneId", single.PaneId);
+                writer.WriteString("title", single.Title);
+                break;
+            case TerminalLayout.Split split:
+                writer.WriteString("type", "split");
+                writer.WriteNumber("generation", split.Generation);
+                writer.WriteString("leftPaneId", split.LeftPaneId);
+                writer.WriteString("rightPaneId", split.RightPaneId);
+                writer.WriteNumber("ratio", split.Ratio);
+                writer.WriteString("focusedPaneId", split.FocusedPaneId);
+                break;
+            case TerminalLayout.Empty empty:
+                writer.WriteString("type", "empty");
+                writer.WriteNumber("generation", empty.Generation);
+                break;
+            case TerminalLayout.Layered layered:
+                writer.WriteString("type", "layered");
+                writer.WriteNumber("generation", layered.Generation);
+                writer.WritePropertyName("base");
+                WriteLayeredBaseObject(writer, layered.BaseLayout);
+                writer.WritePropertyName("layer");
+                WriteLayerObject(writer, layered.Layer);
+                break;
+            default:
+                throw new NotSupportedException($"Unknown terminal layout variant: {layout.GetType().FullName}");
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteLayeredBaseObject(Utf8JsonWriter writer, TerminalLayout baseLayout)
+    {
+        writer.WriteStartObject();
+        switch (baseLayout)
+        {
+            case TerminalLayout.Single single:
+                writer.WriteString("type", "single");
+                writer.WriteString("paneId", single.PaneId);
+                break;
+            case TerminalLayout.Split split:
+                writer.WriteString("type", "split");
+                writer.WriteString("leftPaneId", split.LeftPaneId);
+                writer.WriteString("rightPaneId", split.RightPaneId);
+                writer.WriteNumber("ratio", split.Ratio);
+                writer.WriteString("focusedPaneId", split.FocusedPaneId);
+                break;
+            default:
+                throw new NotSupportedException($"Unknown layered base layout variant: {baseLayout.GetType().FullName}");
+        }
+
+        writer.WriteEndObject();
+    }
+
+    private static void WriteLayerObject(Utf8JsonWriter writer, TerminalLayer layer)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("paneId", layer.PaneId);
+        if (layer.SizePercent is { } sizePercent)
+            writer.WriteNumber("sizePercent", sizePercent);
+        if (layer.BackgroundColor is { } backgroundColor)
+            writer.WriteString("backgroundColor", backgroundColor);
+        writer.WriteEndObject();
     }
 
     private void OnMessage(string json)

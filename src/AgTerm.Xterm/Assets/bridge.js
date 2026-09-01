@@ -20,7 +20,10 @@
 //     layout schema:
 //       {type:'single', generation, paneId, title} |
 //       {type:'empty', generation} |
-//       {type:'split', generation, leftPaneId, rightPaneId, ratio, focusedPaneId}.
+//       {type:'split', generation, leftPaneId, rightPaneId, ratio, focusedPaneId} |
+//       {type:'layered', generation,
+//          base:{type:'single', paneId} | {type:'split', leftPaneId, rightPaneId, ratio, focusedPaneId},
+//          layer:{paneId, sizePercent?, backgroundColor?}}.
 //     applyLayout rejects stale generations (< highest accepted) with false and does no DOM changes.
 // The FIRST opened pane is shown automatically; window resizes refit all visible panes.
 "use strict";
@@ -35,10 +38,14 @@ const container = document.getElementById("panes");
 const SPLIT_MIN_RATIO = 0.05;
 const SPLIT_MAX_RATIO = 0.95;
 const SPLIT_DIVIDER_WIDTH_PX = 4;
+const OVERLAY_CATCHER_Z_INDEX = 10;
+const OVERLAY_LAYER_Z_INDEX = 20;
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 let splitDividerEl = null;
 let splitDragState = null;
 let splitFitRafHandle = 0;
+let overlayCatcherEl = null;
 
 const DEFAULT_RENDERER_SETTINGS = Object.freeze({
   fontFamily: "Cascadia Mono, Consolas, monospace",
@@ -98,6 +105,7 @@ function visibleFocusedPaneId() {
   if (!visibleLayout) return null;
   if (visibleLayout.type === "single") return visibleLayout.paneId;
   if (visibleLayout.type === "split") return visibleLayout.focusedPaneId;
+  if (visibleLayout.type === "layered") return visibleLayout.layerPaneId;
   return null;
 }
 
@@ -164,6 +172,267 @@ function clearSplitPresentation() {
   container.style.gridTemplateRows = "";
 }
 
+function removeOverlayCatcher() {
+  if (!overlayCatcherEl) return;
+  overlayCatcherEl.removeEventListener(
+    "pointerdown",
+    onOverlayCatcherPointerDown,
+  );
+  overlayCatcherEl.removeEventListener("click", onOverlayCatcherClick);
+  overlayCatcherEl.remove();
+  overlayCatcherEl = null;
+}
+
+function clearPaneOverlayStyles(pane) {
+  if (pane.overlayBackgroundColor !== null) {
+    pane.overlayBackgroundColor = null;
+    applyRendererSettingsToPane(pane, rendererSettings);
+  }
+  pane.el.classList.remove("overlay-base-pane", "overlay-layer-pane");
+  pane.el.style.position = "";
+  pane.el.style.inset = "";
+  pane.el.style.top = "";
+  pane.el.style.left = "";
+  pane.el.style.transform = "";
+  pane.el.style.width = "";
+  pane.el.style.height = "";
+  pane.el.style.zIndex = "";
+  pane.el.style.background = "";
+  pane.el.style.borderRadius = "";
+  pane.el.style.boxShadow = "";
+  pane.el.style.border = "";
+  pane.el.style.pointerEvents = "";
+  pane.el.style.opacity = "";
+}
+
+function clearLayeredPresentationStyles() {
+  removeOverlayCatcher();
+  container.classList.remove("layered-layout");
+  container.style.position = "";
+  for (const [, pane] of panes) clearPaneOverlayStyles(pane);
+}
+
+function onOverlayCatcherPointerDown(ev) {
+  if (!visibleLayout || visibleLayout.type !== "layered") return;
+  if (ev.preventDefault) ev.preventDefault();
+  if (ev.stopPropagation) ev.stopPropagation();
+  focusPane(visibleLayout.layerPaneId, false);
+}
+
+function onOverlayCatcherClick(ev) {
+  if (!visibleLayout || visibleLayout.type !== "layered") return;
+  if (ev.preventDefault) ev.preventDefault();
+  if (ev.stopPropagation) ev.stopPropagation();
+  focusPane(visibleLayout.layerPaneId, true);
+}
+
+function ensureOverlayCatcher() {
+  if (!overlayCatcherEl) {
+    const catcher = document.createElement("div");
+    catcher.className = "overlay-catcher";
+    catcher.addEventListener("pointerdown", onOverlayCatcherPointerDown);
+    catcher.addEventListener("click", onOverlayCatcherClick);
+    overlayCatcherEl = catcher;
+  }
+
+  if (overlayCatcherEl.parentElement !== container)
+    container.appendChild(overlayCatcherEl);
+
+  overlayCatcherEl.style.display = "block";
+  overlayCatcherEl.style.position = "absolute";
+  overlayCatcherEl.style.inset = "0";
+  overlayCatcherEl.style.zIndex = String(OVERLAY_CATCHER_Z_INDEX);
+  overlayCatcherEl.style.pointerEvents = "auto";
+  overlayCatcherEl.style.background = "transparent";
+
+  return overlayCatcherEl;
+}
+
+function hasOnlyKeys(value, keys) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const allowed = new Set(keys);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) return false;
+  }
+  return true;
+}
+
+function normalizeKnownPaneId(value) {
+  if (typeof value !== "string") return null;
+  const paneId = value.trim();
+  if (paneId.length === 0) return null;
+  if (!panes.has(paneId)) return null;
+  return paneId;
+}
+
+function validateLayeredBaseLayout(baseLayout) {
+  if (
+    !hasOnlyKeys(baseLayout, [
+      "type",
+      "paneId",
+      "leftPaneId",
+      "rightPaneId",
+      "ratio",
+      "focusedPaneId",
+    ])
+  ) {
+    return null;
+  }
+
+  if (typeof baseLayout.type !== "string") return null;
+
+  if (baseLayout.type === "single") {
+    if (!hasOnlyKeys(baseLayout, ["type", "paneId"])) return null;
+    const paneId = normalizeKnownPaneId(baseLayout.paneId);
+    if (!paneId) return null;
+    return { type: "single", paneIds: [paneId], paneId };
+  }
+
+  if (baseLayout.type === "split") {
+    if (
+      !hasOnlyKeys(baseLayout, [
+        "type",
+        "leftPaneId",
+        "rightPaneId",
+        "ratio",
+        "focusedPaneId",
+      ])
+    ) {
+      return null;
+    }
+
+    const validSplitLayout = validateSplitLayout(baseLayout);
+    if (!validSplitLayout) return null;
+    return {
+      type: "split",
+      paneIds: [validSplitLayout.leftPaneId, validSplitLayout.rightPaneId],
+      split: validSplitLayout,
+    };
+  }
+
+  return null;
+}
+
+function validateLayeredLayout(layout) {
+  if (!hasOnlyKeys(layout, ["type", "generation", "base", "layer"]))
+    return null;
+
+  const base = validateLayeredBaseLayout(layout.base);
+  if (!base) return null;
+
+  if (!hasOnlyKeys(layout.layer, ["paneId", "sizePercent", "backgroundColor"]))
+    return null;
+
+  const layerPaneId = normalizeKnownPaneId(layout.layer.paneId);
+  if (!layerPaneId) return null;
+  if (base.paneIds.includes(layerPaneId)) return null;
+
+  let sizePercent = null;
+  if (
+    layout.layer.sizePercent !== undefined &&
+    layout.layer.sizePercent !== null
+  ) {
+    if (
+      typeof layout.layer.sizePercent !== "number" ||
+      !Number.isFinite(layout.layer.sizePercent) ||
+      !Number.isInteger(layout.layer.sizePercent)
+    ) {
+      return null;
+    }
+
+    if (layout.layer.sizePercent < 1 || layout.layer.sizePercent > 100)
+      return null;
+    sizePercent = layout.layer.sizePercent;
+  }
+
+  let backgroundColor = null;
+  if (
+    layout.layer.backgroundColor !== undefined &&
+    layout.layer.backgroundColor !== null
+  ) {
+    if (typeof layout.layer.backgroundColor !== "string") return null;
+    if (!HEX_COLOR_RE.test(layout.layer.backgroundColor)) return null;
+    backgroundColor = layout.layer.backgroundColor;
+  }
+
+  return {
+    base,
+    layerPaneId,
+    sizePercent,
+    backgroundColor,
+  };
+}
+
+function applyLayeredPresentation(validLayered, shouldFocusLayer) {
+  if (validLayered.base.type === "single") {
+    if (!applySinglePresentation(validLayered.base.paneId, false, false))
+      return false;
+  } else {
+    if (!applySplitPresentation(validLayered.base.split, false, false))
+      return false;
+  }
+
+  const layerPane = panes.get(validLayered.layerPaneId);
+  if (!layerPane) return false;
+
+  container.classList.add("layered-layout");
+  container.style.position = "relative";
+  ensureOverlayCatcher();
+
+  for (const basePaneId of validLayered.base.paneIds) {
+    const basePane = panes.get(basePaneId);
+    if (!basePane) return false;
+    basePane.el.classList.add("overlay-base-pane");
+    // Full cover keeps base xterms mounted and sized so output continues without a remount.
+    basePane.el.style.opacity = validLayered.sizePercent === null ? "0" : "1";
+    basePane.el.style.pointerEvents =
+      validLayered.sizePercent === null ? "none" : "auto";
+  }
+
+  layerPane.el.classList.add("overlay-layer-pane");
+  layerPane.el.style.display = "block";
+  layerPane.el.style.gridColumn = "";
+  layerPane.el.style.gridRow = "";
+  layerPane.el.style.position = "absolute";
+  layerPane.el.style.pointerEvents = "auto";
+  layerPane.el.style.zIndex = String(OVERLAY_LAYER_Z_INDEX);
+
+  if (validLayered.sizePercent === null) {
+    layerPane.el.style.inset = "0";
+    layerPane.el.style.width = "100%";
+    layerPane.el.style.height = "100%";
+  } else {
+    const size = `${validLayered.sizePercent}%`;
+    layerPane.el.style.top = "50%";
+    layerPane.el.style.left = "50%";
+    layerPane.el.style.transform = "translate(-50%, -50%)";
+    layerPane.el.style.width = size;
+    layerPane.el.style.height = size;
+    layerPane.el.style.borderRadius = "10px";
+    layerPane.el.style.border = "1px solid rgba(255, 255, 255, 0.2)";
+    layerPane.el.style.boxShadow = "0 16px 48px rgba(0, 0, 0, 0.45)";
+  }
+
+  if (validLayered.backgroundColor !== null)
+    layerPane.el.style.background = validLayered.backgroundColor;
+  layerPane.overlayBackgroundColor = validLayered.backgroundColor;
+  applyRendererSettingsToPane(layerPane, rendererSettings);
+
+  setVisibleLayout({
+    type: "layered",
+    paneIds: [...validLayered.base.paneIds, validLayered.layerPaneId],
+    base: validLayered.base,
+    layerPaneId: validLayered.layerPaneId,
+    sizePercent: validLayered.sizePercent,
+    backgroundColor: validLayered.backgroundColor,
+  });
+
+  fitAndReportPaneIds([...validLayered.base.paneIds, validLayered.layerPaneId]);
+  if (shouldFocusLayer) focusPane(validLayered.layerPaneId, true);
+
+  return true;
+}
+
 function scheduleSplitFit(leftPaneId, rightPaneId) {
   if (splitFitRafHandle !== 0) return;
   splitFitRafHandle = window.requestAnimationFrame(() => {
@@ -225,6 +494,7 @@ function applySinglePresentation(paneId, shouldFitAndReport, shouldFocus) {
   const pane = panes.get(paneId);
   if (!pane) return false;
 
+  clearLayeredPresentationStyles();
   clearSplitPresentation();
   for (const [id, p] of panes)
     p.el.style.display = id === paneId ? "block" : "none";
@@ -239,6 +509,7 @@ function applySinglePresentation(paneId, shouldFitAndReport, shouldFocus) {
 }
 
 function applyEmptyPresentation() {
+  clearLayeredPresentationStyles();
   clearSplitPresentation();
   hideAllPanes();
   setVisibleLayout({ type: "empty", paneIds: [] });
@@ -249,6 +520,7 @@ function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
   const rightPane = panes.get(splitLayout.rightPaneId);
   if (!leftPane || !rightPane) return false;
 
+  clearLayeredPresentationStyles();
   clearSplitPresentation();
   const divider = ensureSplitDivider();
 
@@ -543,6 +815,8 @@ function applyPageBackground(settings) {
 
 function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
   const opts = buildTerminalOptions(settings, fontSizeOverride);
+  if (pane.overlayBackgroundColor !== null)
+    opts.theme.background = pane.overlayBackgroundColor;
   pane.term.options.allowTransparency = true;
   pane.term.options.cursorBlink = opts.cursorBlink;
   pane.term.options.cursorStyle = opts.cursorStyle;
@@ -661,6 +935,7 @@ function openPane(paneId, opts) {
     fitAddon,
     searchAddon,
     serializeAddon,
+    overlayBackgroundColor: null,
     lastSearch: { index: -1, count: 0 },
     el,
   };
@@ -847,6 +1122,17 @@ function applyLayout(layout) {
     const shouldFocus =
       visibleFocusedPaneId() !== validSplitLayout.focusedPaneId;
     if (!applySplitPresentation(validSplitLayout, true, shouldFocus))
+      return false;
+    highestAcceptedLayoutGeneration = generation;
+    return true;
+  }
+
+  if (layout.type === "layered") {
+    const validLayeredLayout = validateLayeredLayout(layout);
+    if (!validLayeredLayout) return false;
+    const shouldFocusLayer =
+      visibleFocusedPaneId() !== validLayeredLayout.layerPaneId;
+    if (!applyLayeredPresentation(validLayeredLayout, shouldFocusLayer))
       return false;
     highestAcceptedLayoutGeneration = generation;
     return true;
