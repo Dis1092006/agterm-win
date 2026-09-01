@@ -22,6 +22,7 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleSidebar,
         BuiltinAction.ToggleSplit,
         BuiltinAction.ToggleScratch,
+        BuiltinAction.ToggleSearch,
         BuiltinAction.FocusLeftPane,
         BuiltinAction.FocusRightPane,
         BuiltinAction.ToggleFlaggedView,
@@ -45,7 +46,6 @@ public class WindowCommandRouterTests
         BuiltinAction.DeleteWorkspace,
         BuiltinAction.ReopenRecent,
         BuiltinAction.ToggleTerminalZoom,
-        BuiltinAction.ToggleSearch,
         BuiltinAction.SelectTheme,
         BuiltinAction.ToggleFullscreen,
         BuiltinAction.QuickTerminal,
@@ -337,7 +337,7 @@ public class WindowCommandRouterTests
     public async Task ExecuteChordAsync_collision_ctrl_f_resolves_toggle_search_via_cmd_priority_not_new_session()
     {
         // map ctrl+f new_session: HotkeyRouter binds ctrl+f→NewSession and cmd+f→ToggleSearch (default).
-        // Physical Ctrl+F candidates: cmd+f first (cmd priority) → ToggleSearch (unimplemented).
+        // Physical Ctrl+F candidates: cmd+f first (cmd priority) → ToggleSearch (implemented).
         // The NewSession handler must not fire.
         var newSessionCalls = 0;
         var router = new WindowCommandRouter(AllNoOpHandlers(
@@ -349,7 +349,7 @@ public class WindowCommandRouterTests
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
-        Assert.False(result);
+        Assert.True(result);
         Assert.Equal(0, newSessionCalls);
     }
 
@@ -374,6 +374,8 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: true, Shift: false, Key: "right"), chords);
         // Ctrl+J → cmd+j → ToggleScratch (implemented in Q2): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j"), chords);
+        // Ctrl+F → cmd+f → ToggleSearch (implemented in Q4): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "f"), chords);
         // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (unimplemented): must be absent
         Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
         // Ctrl+P → ctrl+p → SessionPalette (unimplemented): must be absent
@@ -402,15 +404,15 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public void ImplementedInterceptChords_collision_ctrl_f_excluded_when_toggle_search_wins_over_new_session()
+    public void ImplementedInterceptChords_collision_ctrl_f_included_when_toggle_search_wins_over_new_session()
     {
-        // map ctrl+f new_session: ctrl+f→NewSession; cmd+f→ToggleSearch (default, unimplemented) wins first.
+        // map ctrl+f new_session: ctrl+f→NewSession; cmd+f→ToggleSearch (default, implemented) wins first.
         var (keymap, _) = KeymapParser.Parse("map ctrl+f new_session");
         var hotkeys = new HotkeyRouter(keymap);
 
         var chords = WindowCommandRouter.ImplementedInterceptChords(hotkeys);
 
-        Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "f"), chords);
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "f"), chords);
     }
 
     [Fact]

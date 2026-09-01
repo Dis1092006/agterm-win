@@ -622,6 +622,29 @@ public class AppStorePaneTests
     }
 
     [Fact]
+    public void SearchMutationsKeepExactOwnerAndRejectStalePaneToken()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var workspace = store.AddWorkspace("work");
+        var session = store.AddSession(workspace.Id, "/a")!;
+        var owner = new SpySurface("owner-pane");
+        session.Surface = owner;
+
+        Assert.True(store.OpenSearch(session.Id));
+        Assert.Same(owner, session.SearchSurface);
+        Assert.False(store.UpdateSearch(session.Id, "stale-pane", "needle", 3, 1));
+        Assert.Equal("", session.SearchNeedle);
+        Assert.False(store.CloseSearch(session.Id, "stale-pane"));
+        Assert.True(session.SearchActive);
+
+        Assert.True(store.UpdateSearch(session.Id, "owner-pane", "needle", 3, 1));
+        Assert.Equal("needle", session.SearchNeedle);
+        Assert.Equal("1 of 3", session.SearchDisplayText);
+        Assert.True(store.CloseSearch(session.Id, "owner-pane"));
+        Assert.False(session.SearchActive);
+    }
+
+    [Fact]
     public void ControlTreeReportsCommandWait()
     {
         var store = AppStoreFixtures.MakeStore();

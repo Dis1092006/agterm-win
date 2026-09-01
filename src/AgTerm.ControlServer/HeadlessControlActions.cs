@@ -73,6 +73,16 @@ public sealed class HeadlessThemeSlots
 /// the headless host checks once (surfaces attach externally and never realize asynchronously) and
 /// answers with the upstream error string for the closest state.
 /// </summary>
+public sealed record HeadlessSearchUpdate(
+    Guid SessionId,
+    IHeadlessSurface Surface,
+    bool Active,
+    string Needle,
+    string DisplayText,
+    int? Selected,
+    bool FocusInput,
+    string? RestorePaneId);
+
 public sealed class HeadlessControlActions : IControlActions
 {
     /// <summary>The pinned wire error for the window arms that need real on-screen windows
@@ -98,6 +108,7 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly bool _closeGraceUndoEnabled;
     private readonly double _dashboardBaseFontSize;
     private readonly Action<string>? _paneFocusRequested;
+    private readonly Action<HeadlessSearchUpdate>? _searchUpdated;
 
     public HeadlessControlActions(AppStore store, ControlEventRing ring, Guid windowId,
                                   string windowName, string configDirectory,
@@ -107,7 +118,8 @@ public sealed class HeadlessControlActions : IControlActions
                                   bool closeGraceUndoEnabled = false,
                                   double dashboardBaseFontSize = 13,
                                   string? homeDirectory = null,
-                                  Action<string>? paneFocusRequested = null)
+                                  Action<string>? paneFocusRequested = null,
+                                  Action<HeadlessSearchUpdate>? searchUpdated = null)
     {
         _store = store;
         _ring = ring;
@@ -123,6 +135,7 @@ public sealed class HeadlessControlActions : IControlActions
         _dashboardBaseFontSize = dashboardBaseFontSize;
         _homeDirectory = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _paneFocusRequested = paneFocusRequested;
+        _searchUpdated = searchUpdated;
         Zoom.TargetResolver = () => TerminalZoomController.ResolveTarget(_store, Quick.Visible);
     }
 
@@ -1122,7 +1135,23 @@ public sealed class HeadlessControlActions : IControlActions
         // close exits search without selecting; with no open search there is no owner — clean no-op.
         if (to == "close")
         {
-            if (session.SearchSurface is not null) session.ClearSearch();
+            if (session.SearchSurface is IHeadlessSurface searchOwner)
+            {
+                var restorePaneId = store.SelectedSessionId == id
+                    ? session.TopmostSurface?.PaneToken
+                    : null;
+                session.ClearSearch();
+                store.NotifySidebar();
+                _searchUpdated?.Invoke(new HeadlessSearchUpdate(
+                    id,
+                    searchOwner,
+                    Active: false,
+                    Needle: "",
+                    DisplayText: "",
+                    Selected: null,
+                    FocusInput: false,
+                    RestorePaneId: restorePaneId));
+            }
             return OkId(id);
         }
         if (Zoom.Target is not null)
@@ -1133,7 +1162,8 @@ public sealed class HeadlessControlActions : IControlActions
         store.SelectSession(id);
         if (session.OnScreenSurface is not IHeadlessSurface openSurface)
             return Err("session not realized");
-        if (!session.SearchActive)
+        var opened = !session.SearchActive;
+        if (opened)
         {
             // startSearch: upstream's async START callback pins the owner; headless pins directly.
             session.SearchActive = true;
@@ -1148,6 +1178,16 @@ public sealed class HeadlessControlActions : IControlActions
                 // an explicitly-empty needle clears the query; nothing to count.
                 session.SearchTotal = null;
                 session.SearchSelected = null;
+                store.NotifySidebar();
+                _searchUpdated?.Invoke(new HeadlessSearchUpdate(
+                    id,
+                    surface,
+                    Active: true,
+                    Needle: "",
+                    DisplayText: "",
+                    Selected: null,
+                    FocusInput: opened,
+                    RestorePaneId: null));
                 return OkId(id);
             }
             var buffer = surface.ReadScreenText(all: true, lines: null) ?? "";
@@ -1169,6 +1209,16 @@ public sealed class HeadlessControlActions : IControlActions
             }
         }
         var display = session.SearchDisplayText;
+        store.NotifySidebar();
+        _searchUpdated?.Invoke(new HeadlessSearchUpdate(
+            id,
+            surface,
+            Active: true,
+            Needle: session.SearchNeedle,
+            DisplayText: display,
+            Selected: session.SearchSelected,
+            FocusInput: opened,
+            RestorePaneId: null));
         return new ControlResponse
         {
             Ok = true,

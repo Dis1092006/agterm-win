@@ -69,6 +69,10 @@ public sealed record HeadlessHostOptions
     /// <summary>Live-only exact pane-token focus callback. Invoked under the host gate and must
     /// return without blocking; null keeps the headless focus adaptation unchanged.</summary>
     public Action<string>? PaneFocusRequested { get; init; }
+
+    /// <summary>Live-only immutable search update callback. Invoked under the host gate and must
+    /// return without blocking; a live host registers the renderer operation in its dispatch scope.</summary>
+    public Action<HeadlessSearchUpdate>? SearchUpdated { get; init; }
 }
 
 /// <summary>
@@ -125,7 +129,8 @@ public sealed class HeadlessHost : IDisposable
             closeGraceUndoEnabled: options.CloseGraceUndoEnabled,
             dashboardBaseFontSize: options.DashboardBaseFontSize,
             homeDirectory: options.HomeDirectory,
-            paneFocusRequested: options.PaneFocusRequested);
+            paneFocusRequested: options.PaneFocusRequested,
+            searchUpdated: options.SearchUpdated);
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.

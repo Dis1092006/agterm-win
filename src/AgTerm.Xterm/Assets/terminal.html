@@ -21,7 +21,70 @@
         height: 100%;
         width: 100%;
       }
+      #search-bar {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        width: min(360px, calc(100% - 16px));
+        min-width: 0;
+        height: 34px;
+        padding: 0 5px 0 9px;
+        border: 1px solid rgba(255, 255, 255, 0.24);
+        border-radius: 6px;
+        background: rgba(31, 31, 31, 0.96);
+        color: #f3f3f3;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+        font:
+          13px "Segoe UI Variable Text",
+          "Segoe UI",
+          sans-serif;
+      }
+      #search-bar[hidden] {
+        display: none;
+      }
+      #search-input {
+        flex: 1 1 auto;
+        min-width: 120px;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+      }
+      #search-input::placeholder {
+        color: rgba(255, 255, 255, 0.55);
+      }
+      #search-status {
+        min-width: 64px;
+        color: rgba(255, 255, 255, 0.72);
+        text-align: right;
+        white-space: nowrap;
+      }
+      .search-button {
+        width: 26px;
+        height: 26px;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+        font:
+          16px "Segoe UI Symbol",
+          sans-serif;
+        line-height: 26px;
+        cursor: pointer;
+      }
+      .search-button:hover,
+      .search-button:focus-visible {
+        background: rgba(255, 255, 255, 0.12);
+        outline: none;
+      }
       .pane {
+        position: relative;
         height: 100%;
         width: 100%;
         min-width: 0;
@@ -50,6 +113,41 @@
   </head>
   <body>
     <div id="panes"></div>
+    <div id="search-bar" role="search" hidden>
+      <input
+        id="search-input"
+        type="text"
+        placeholder="Find"
+        aria-label="Find"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <span id="search-status" aria-live="polite"></span>
+      <button
+        id="search-previous"
+        class="search-button"
+        type="button"
+        aria-label="Previous match"
+      >
+        &#x2191;
+      </button>
+      <button
+        id="search-next"
+        class="search-button"
+        type="button"
+        aria-label="Next match"
+      >
+        &#x2193;
+      </button>
+      <button
+        id="search-close"
+        class="search-button"
+        type="button"
+        aria-label="Close search"
+      >
+        &#x00D7;
+      </button>
+    </div>
     <script src="vendor/xterm.js"></script>
     <script src="vendor/addon-fit.js"></script>
     <script src="vendor/addon-search.js"></script>

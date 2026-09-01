@@ -4,6 +4,61 @@ namespace AgTerm.Core.Model;
 
 public sealed partial class AppStore
 {
+    public bool OpenSearch(Guid sessionId)
+    {
+        if (SessionWithId(sessionId) is not { } session ||
+            session.SearchActive ||
+            session.FullOverlayActive ||
+            session.OnScreenSurface is not { } owner)
+        {
+            return false;
+        }
+
+        session.SearchActive = true;
+        session.SearchNeedle = "";
+        session.SearchTotal = null;
+        session.SearchSelected = null;
+        session.SearchSurface = owner;
+        NotifySidebar();
+        return true;
+    }
+
+    public bool UpdateSearch(
+        Guid sessionId,
+        string ownerPaneId,
+        string needle,
+        int count,
+        int? selected)
+    {
+        if (SessionWithId(sessionId) is not { } session ||
+            !session.SearchActive ||
+            session.SearchSurface?.PaneToken != ownerPaneId)
+        {
+            return false;
+        }
+
+        session.SearchNeedle = needle;
+        session.SearchTotal = needle.Length == 0 ? null : Math.Max(0, count);
+        session.SearchSelected = needle.Length == 0 ? null : selected;
+        NotifySidebar();
+        return true;
+    }
+
+    public bool CloseSearch(Guid sessionId, string? expectedOwnerPaneId = null)
+    {
+        if (SessionWithId(sessionId) is not { } session || !session.SearchActive)
+            return false;
+        if (expectedOwnerPaneId is not null &&
+            session.SearchSurface?.PaneToken != expectedOwnerPaneId)
+        {
+            return false;
+        }
+
+        session.ClearSearch();
+        NotifySidebar();
+        return true;
+    }
+
     /// <summary>Toggles the one-level split for a session. The second pane's surface is created
     /// lazily by the host on first show and kept alive when hidden, so this only flips the flag.
     /// The flag is persisted, so the split is restored on relaunch.</summary>

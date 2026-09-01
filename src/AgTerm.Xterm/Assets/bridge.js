@@ -35,6 +35,12 @@ let programmaticFocusPaneId = null;
 let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
 const container = document.getElementById("panes");
+const searchBarEl = document.getElementById("search-bar");
+const searchInputEl = document.getElementById("search-input");
+const searchStatusEl = document.getElementById("search-status");
+const searchPreviousEl = document.getElementById("search-previous");
+const searchNextEl = document.getElementById("search-next");
+const searchCloseEl = document.getElementById("search-close");
 const SPLIT_MIN_RATIO = 0.05;
 const SPLIT_MAX_RATIO = 0.95;
 const SPLIT_DIVIDER_WIDTH_PX = 4;
@@ -46,6 +52,188 @@ let splitDividerEl = null;
 let splitDragState = null;
 let splitFitRafHandle = 0;
 let overlayCatcherEl = null;
+
+function searchDecorations() {
+  return {
+    matchOverviewRuler: "#888888",
+    activeMatchColorOverviewRuler: "#ffffff",
+  };
+}
+
+function searchOptions(incremental = false) {
+  return {
+    caseSensitive: true,
+    incremental,
+    decorations: searchDecorations(),
+  };
+}
+
+function openSearch(paneId, needle, displayText, focusInput = true) {
+  const pane = panes.get(paneId);
+  if (!pane || !searchBarEl || !searchInputEl || !searchStatusEl) return false;
+  pane.el.appendChild(searchBarEl);
+  searchBarEl.dataset.paneId = paneId;
+  searchInputEl.value = typeof needle === "string" ? needle : "";
+  searchStatusEl.textContent =
+    typeof displayText === "string" ? displayText : "";
+  searchBarEl.hidden = false;
+  if (focusInput) {
+    searchInputEl.focus();
+    searchInputEl.select();
+  }
+  return true;
+}
+
+function closeSearch(paneId, restoreFocus) {
+  if (
+    !searchBarEl ||
+    searchBarEl.hidden ||
+    searchBarEl.dataset.paneId !== paneId
+  )
+    return false;
+  const pane = panes.get(paneId);
+  if (pane) {
+    pane.searchAddon.clearDecorations();
+    pane.term.clearSelection();
+    pane.lastSearch = { index: -1, count: 0 };
+    pane.appliedSearch = { needle: "", selected: null };
+  }
+  searchBarEl.hidden = true;
+  delete searchBarEl.dataset.paneId;
+  if (restoreFocus) {
+    const target = visibleFocusedPaneId();
+    if (target) focusPane(target, false);
+  }
+  return true;
+}
+
+function runSearchFromBar(direction, queryOnly) {
+  if (!searchBarEl || searchBarEl.hidden || !searchInputEl) return false;
+  const paneId = searchBarEl.dataset.paneId;
+  const pane = panes.get(paneId);
+  if (!pane) return false;
+  const needle = searchInputEl.value;
+  if (needle.length === 0) {
+    pane.searchAddon.clearDecorations();
+    pane.term.clearSelection();
+    pane.lastSearch = { index: -1, count: 0 };
+    pane.appliedSearch = { needle: "", selected: null };
+    post({ type: "searchUpdated", paneId, needle, count: 0, selected: null });
+    return true;
+  }
+  const opts = searchOptions(queryOnly);
+  const found =
+    direction === "prev"
+      ? pane.searchAddon.findPrevious(needle, opts)
+      : pane.searchAddon.findNext(needle, opts);
+  const selected =
+    !queryOnly && found && pane.lastSearch.index >= 0
+      ? pane.lastSearch.index + 1
+      : null;
+  pane.appliedSearch = { needle, selected };
+  post({
+    type: "searchUpdated",
+    paneId,
+    needle,
+    count: pane.lastSearch.count,
+    selected,
+  });
+  return true;
+}
+
+function applySearch(state) {
+  if (!state || typeof state.paneId !== "string") return false;
+  const pane = panes.get(state.paneId);
+  if (!pane) return false;
+  const needle = typeof state.needle === "string" ? state.needle : "";
+  const selected =
+    Number.isInteger(state.selected) && state.selected > 0
+      ? state.selected
+      : null;
+  const previous = pane.appliedSearch;
+
+  if (needle !== previous.needle) {
+    if (needle.length === 0) {
+      pane.searchAddon.clearDecorations();
+      pane.term.clearSelection();
+      pane.lastSearch = { index: -1, count: 0 };
+    } else {
+      pane.searchAddon.findNext(needle, searchOptions(true));
+    }
+    pane.appliedSearch = { needle, selected: null };
+  }
+
+  if (needle.length > 0 && selected !== pane.appliedSearch.selected) {
+    const count = pane.lastSearch.count;
+    const current = pane.appliedSearch.selected;
+    if (selected === null) {
+      // The incremental query already highlights the first hit; model selection remains unset
+      // until an explicit next/previous command.
+    } else if (current === null && selected === 1) {
+      // The addon's incremental query is already on the first hit.
+    } else if (current === null && count > 0 && selected === count) {
+      pane.searchAddon.findPrevious(needle, searchOptions());
+    } else if (
+      current !== null &&
+      count > 0 &&
+      selected === (current % count) + 1
+    ) {
+      pane.searchAddon.findNext(needle, searchOptions());
+    } else if (
+      current !== null &&
+      count > 0 &&
+      selected === (current <= 1 ? count : current - 1)
+    ) {
+      pane.searchAddon.findPrevious(needle, searchOptions());
+    } else {
+      pane.searchAddon.findNext(needle, searchOptions(true));
+      for (let index = 1; index < selected; index += 1)
+        pane.searchAddon.findNext(needle, searchOptions());
+    }
+    pane.appliedSearch = { needle, selected };
+  }
+
+  return openSearch(
+    state.paneId,
+    needle,
+    typeof state.displayText === "string" ? state.displayText : "",
+    state.focusInput === true,
+  );
+}
+
+function hideSearch(state) {
+  if (!state || !searchBarEl) return false;
+  const displayedOwnerPaneId = searchBarEl.dataset.paneId;
+  if (typeof state.clearOwnerPaneId === "string") {
+    const owner = panes.get(state.clearOwnerPaneId);
+    if (owner) {
+      owner.searchAddon.clearDecorations();
+      owner.term.clearSelection();
+      owner.lastSearch = { index: -1, count: 0 };
+      owner.appliedSearch = { needle: "", selected: null };
+    }
+  }
+  const shouldHide =
+    typeof state.clearOwnerPaneId !== "string" ||
+    displayedOwnerPaneId === state.clearOwnerPaneId;
+  if (shouldHide) {
+    searchBarEl.hidden = true;
+    delete searchBarEl.dataset.paneId;
+    if (typeof state.restorePaneId === "string")
+      focusPane(state.restorePaneId, false);
+  }
+  return true;
+}
+
+function getSearchState(paneId) {
+  const pane = panes.get(paneId);
+  if (!pane) return null;
+  return {
+    needle: pane.appliedSearch.needle,
+    count: pane.lastSearch.count,
+    selected: pane.appliedSearch.selected,
+  };
+}
 
 const DEFAULT_RENDERER_SETTINGS = Object.freeze({
   fontFamily: "Cascadia Mono, Consolas, monospace",
@@ -902,6 +1090,38 @@ function normalizeKey(key) {
 
 const post = (msg) => window.chrome.webview.postMessage(msg);
 
+if (searchInputEl) {
+  searchInputEl.addEventListener("input", () => runSearchFromBar("next", true));
+  searchInputEl.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      const paneId = searchBarEl ? searchBarEl.dataset.paneId : null;
+      if (paneId && closeSearch(paneId, true))
+        post({ type: "searchClosed", paneId });
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
+    if (ev.key === "Enter") {
+      runSearchFromBar(ev.shiftKey ? "prev" : "next", false);
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+  });
+}
+if (searchPreviousEl)
+  searchPreviousEl.addEventListener("click", () =>
+    runSearchFromBar("prev", false),
+  );
+if (searchNextEl)
+  searchNextEl.addEventListener("click", () => runSearchFromBar("next", false));
+if (searchCloseEl) {
+  searchCloseEl.addEventListener("click", () => {
+    const paneId = searchBarEl ? searchBarEl.dataset.paneId : null;
+    if (paneId && closeSearch(paneId, true))
+      post({ type: "searchClosed", paneId });
+  });
+}
+
 const b64ToBytes = (b64) => {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -937,6 +1157,7 @@ function openPane(paneId, opts) {
     serializeAddon,
     overlayBackgroundColor: null,
     lastSearch: { index: -1, count: 0 },
+    appliedSearch: { needle: "", selected: null },
     el,
   };
   panes.set(paneId, pane);
@@ -1069,6 +1290,7 @@ function showPane(paneId) {
 function closePane(paneId) {
   const pane = panes.get(paneId);
   if (!pane) return null;
+  closeSearch(paneId, false);
 
   const paneIsVisible = getVisiblePaneIds().includes(paneId);
   if (paneIsVisible) applyEmptyPresentation();
@@ -1226,6 +1448,11 @@ window.agterm = {
   openPane,
   showPane,
   closePane,
+  openSearch,
+  closeSearch,
+  applySearch,
+  hideSearch,
+  getSearchState,
   applyRendererSettings,
   getRendererSettings,
   getRendererCapabilities,
@@ -1242,12 +1469,7 @@ window.agterm = {
   serialize: (paneId) => withPane(paneId, (p) => p.serializeAddon.serialize()),
   search: (paneId, needle, dir) =>
     withPane(paneId, (p) => {
-      const opts = {
-        decorations: {
-          matchOverviewRuler: "#888888",
-          activeMatchColorOverviewRuler: "#ffffff",
-        },
-      };
+      const opts = searchOptions();
       const found =
         dir === "prev"
           ? p.searchAddon.findPrevious(needle, opts)

@@ -54,6 +54,25 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task Search_presentation_scripts_preserve_owner_state_and_escape_text()
+    {
+        var page = await InitializedAsync();
+
+        await page.ApplySearchAsync("pane-1", "say \"hi\"", "2 of 5", selected: 2, focusInput: true);
+        Assert.Contains("agterm.applySearch", _host.Scripts[^1]);
+        Assert.Contains("\"paneId\":\"pane-1\"", _host.Scripts[^1]);
+        Assert.Contains("\"needle\":\"say \\\"hi\\\"\"", _host.Scripts[^1]);
+        Assert.Contains("\"displayText\":\"2 of 5\"", _host.Scripts[^1]);
+        Assert.Contains("\"selected\":2", _host.Scripts[^1]);
+        Assert.Contains("\"focusInput\":true", _host.Scripts[^1]);
+
+        await page.HideSearchAsync("pane-1", "pane-2");
+        Assert.Contains("agterm.hideSearch", _host.Scripts[^1]);
+        Assert.Contains("\"clearOwnerPaneId\":\"pane-1\"", _host.Scripts[^1]);
+        Assert.Contains("\"restorePaneId\":\"pane-2\"", _host.Scripts[^1]);
+    }
+
+    [Fact]
     public async Task Messages_route_to_the_terminal_with_the_matching_pane_id()
     {
         var page = await InitializedAsync();

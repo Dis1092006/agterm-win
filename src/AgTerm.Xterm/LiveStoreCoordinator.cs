@@ -17,7 +17,13 @@ public sealed record LiveSelectionSnapshot(
     string? OverlayPaneId = null,
     bool OverlayActive = false,
     int? OverlaySizePercent = null,
-    string? OverlayBackgroundColor = null)
+    string? OverlayBackgroundColor = null,
+    string? SearchOwnerPaneId = null,
+    bool SearchActive = false,
+    string SearchNeedle = "",
+    string SearchDisplayText = "",
+    int? SearchTotal = null,
+    int? SearchSelected = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -273,7 +279,13 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             selectedSession?.OverlaySurface?.PaneToken,
             selectedSession?.OverlayActive ?? false,
             selectedSession?.OverlaySizePercent,
-            selectedSession?.OverlayBackgroundColor);
+            selectedSession?.OverlayBackgroundColor,
+            selectedSession?.SearchSurface?.PaneToken,
+            selectedSession?.SearchActive ?? false,
+            selectedSession?.SearchNeedle ?? "",
+            selectedSession?.SearchDisplayText ?? "",
+            selectedSession?.SearchTotal,
+            selectedSession?.SearchSelected);
     }
 
     private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)

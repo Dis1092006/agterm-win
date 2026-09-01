@@ -300,6 +300,8 @@ public sealed class MainWindowSplitWiringTests
 
         Assert.Contains("_selection.ToTerminalLayout(generation)", source, StringComparison.Ordinal);
         Assert.Contains("page.PaneFocusChanged += OnPagePaneFocusChanged", source, StringComparison.Ordinal);
+        Assert.Contains("page.SearchUpdated += OnPageSearchUpdated", source, StringComparison.Ordinal);
+        Assert.Contains("page.SearchClosed += OnPageSearchClosed", source, StringComparison.Ordinal);
         Assert.Contains("host.PaneFocusRequested +=", source, StringComparison.Ordinal);
         Assert.Contains(
             "request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay",
@@ -310,6 +312,7 @@ public sealed class MainWindowSplitWiringTests
         Assert.Contains("case TerminalLayout.Layered layered:", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleSplit]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleScratch]", source, StringComparison.Ordinal);
+        Assert.Contains("[BuiltinAction.ToggleSearch]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusLeftPane]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusRightPane]", source, StringComparison.Ordinal);
     }
@@ -328,6 +331,73 @@ public sealed class MainWindowSplitWiringTests
 
         throw new DirectoryNotFoundException("Could not find the repository root.");
     }
+}
+
+public sealed class SearchPresentationTransitionTests
+{
+    private static readonly Guid SessionA = Guid.NewGuid();
+    private static readonly Guid SessionB = Guid.NewGuid();
+
+    [Fact]
+    public void Same_session_close_clears_exact_owner_and_restores_accepted_pane()
+    {
+        var previous = SearchSnapshot(SessionA, "owner-a", active: true);
+        var current = SearchSnapshot(SessionA, null, active: false);
+
+        var hide = Assert.IsType<SearchPresentationTransition.Hide>(
+            SearchPresentationTransition.Resolve(previous, current, "visible-pane"));
+
+        Assert.Equal("owner-a", hide.ClearOwnerPaneId);
+        Assert.Equal("visible-pane", hide.RestorePaneId);
+    }
+
+    [Fact]
+    public void Session_switch_hides_bar_without_clearing_background_owner_or_moving_focus()
+    {
+        var previous = SearchSnapshot(SessionA, "owner-a", active: true);
+        var current = SearchSnapshot(SessionB, null, active: false);
+
+        var hide = Assert.IsType<SearchPresentationTransition.Hide>(
+            SearchPresentationTransition.Resolve(previous, current, "visible-b"));
+
+        Assert.Null(hide.ClearOwnerPaneId);
+        Assert.Null(hide.RestorePaneId);
+    }
+
+    [Fact]
+    public void Selecting_session_with_open_search_shows_and_focuses_its_pinned_owner()
+    {
+        var previous = SearchSnapshot(SessionB, null, active: false);
+        var current = SearchSnapshot(SessionA, "owner-a", active: true);
+
+        var show = Assert.IsType<SearchPresentationTransition.Show>(
+            SearchPresentationTransition.Resolve(previous, current, "visible-a"));
+
+        Assert.Equal("owner-a", show.PaneId);
+        Assert.True(show.FocusInput);
+    }
+
+    [Fact]
+    public void Same_owner_query_update_does_not_refocus_input()
+    {
+        var previous = SearchSnapshot(SessionA, "owner-a", active: true) with { SearchNeedle = "a" };
+        var current = previous with { SearchNeedle = "ab", SearchDisplayText = "2 matches" };
+
+        var show = Assert.IsType<SearchPresentationTransition.Show>(
+            SearchPresentationTransition.Resolve(previous, current, "visible-a"));
+
+        Assert.False(show.FocusInput);
+        Assert.Equal("ab", show.Needle);
+        Assert.Equal("2 matches", show.DisplayText);
+    }
+
+    private static LiveSelectionSnapshot SearchSnapshot(Guid sessionId, string? owner, bool active) =>
+        new(
+            sessionId,
+            "session",
+            MainPaneId: "main",
+            SearchOwnerPaneId: owner,
+            SearchActive: active);
 }
 
 /// <summary>

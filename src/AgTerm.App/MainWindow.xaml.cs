@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window
     private string? _acceptedPaneId; // UI-thread confined
     private Guid? _selectedSessionId; // UI-thread confined
     private long _layoutGeneration; // UI-thread confined
+    private long _searchPresentationGeneration; // UI-thread confined
     private bool _terminalOnlyPresentation;
     private bool _draggingDivider;
 
@@ -153,6 +154,8 @@ public sealed partial class MainWindow : Window
         page.PasteRequested += OnPagePasteRequested;
         page.SplitResized += OnPageSplitResized;
         page.PaneFocusChanged += OnPagePaneFocusChanged;
+        page.SearchUpdated += OnPageSearchUpdated;
+        page.SearchClosed += OnPageSearchClosed;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
@@ -191,9 +194,11 @@ public sealed partial class MainWindow : Window
                 if (snapshot == _selection)
                     return;
 
+                var previousSelection = _selection;
                 _selection = snapshot;
                 _selectedSessionId = snapshot.SessionId;
                 SubmitLayout();
+                SubmitSearchPresentation(previousSelection, snapshot);
             });
         };
 
@@ -242,7 +247,13 @@ public sealed partial class MainWindow : Window
                 selectedSession?.OverlaySurface?.PaneToken,
                 selectedSession?.OverlayActive ?? false,
                 selectedSession?.OverlaySizePercent,
-                selectedSession?.OverlayBackgroundColor);
+                selectedSession?.OverlayBackgroundColor,
+                selectedSession?.SearchSurface?.PaneToken,
+                selectedSession?.SearchActive ?? false,
+                selectedSession?.SearchNeedle ?? "",
+                selectedSession?.SearchDisplayText ?? "",
+                selectedSession?.SearchTotal,
+                selectedSession?.SearchSelected);
 
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
@@ -267,6 +278,7 @@ public sealed partial class MainWindow : Window
             foreach (var surface in startup.CommittedSurfaces)
                 MountSurface(surface);
             SubmitLayout();
+            SubmitSearchPresentation(new LiveSelectionSnapshot(null, null), startup.Selection);
         });
 
         var sidebar = new SidebarController(
@@ -322,6 +334,21 @@ public sealed partial class MainWindow : Window
                         return Task.CompletedTask;
 
                     return host.StoreCoordinator.MutateAsync(store => store.ToggleScratch(selectedSessionId));
+                }),
+            [BuiltinAction.ToggleSearch] = Async(
+                HasSelectedSession,
+                () =>
+                {
+                    if (_selection.SessionId is not { } selectedSessionId)
+                        return Task.CompletedTask;
+
+                    return host.StoreCoordinator.MutateAsync(store =>
+                    {
+                        if (store.SessionWithId(selectedSessionId)?.SearchActive == true)
+                            store.CloseSearch(selectedSessionId);
+                        else
+                            store.OpenSearch(selectedSessionId);
+                    });
                 }),
             [BuiltinAction.FocusLeftPane] = Async(
                 () => !string.IsNullOrWhiteSpace(_selection.MainPaneId) && !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
@@ -627,6 +654,41 @@ public sealed partial class MainWindow : Window
         _layoutCoordinator.Submit(_selection.ToTerminalLayout(generation));
     }
 
+    private void SubmitSearchPresentation(
+        LiveSelectionSnapshot previous,
+        LiveSelectionSnapshot current)
+    {
+        var generation = ++_searchPresentationGeneration;
+        ObserveTaskFault(
+            ApplySearchPresentationAsync(generation, previous, current),
+            "Apply search presentation failed");
+    }
+
+    private async Task ApplySearchPresentationAsync(
+        long generation,
+        LiveSelectionSnapshot previous,
+        LiveSelectionSnapshot current)
+    {
+        var page = await _pageTask;
+        if (generation != _searchPresentationGeneration)
+            return;
+
+        switch (SearchPresentationTransition.Resolve(previous, current, _acceptedPaneId))
+        {
+            case SearchPresentationTransition.Show show:
+                await page.ApplySearchAsync(
+                    show.PaneId,
+                    show.Needle,
+                    show.DisplayText,
+                    show.Selected,
+                    show.FocusInput);
+                break;
+            case SearchPresentationTransition.Hide hide:
+                await page.HideSearchAsync(hide.ClearOwnerPaneId, hide.RestorePaneId);
+                break;
+        }
+    }
+
     private async Task UnmountOnShutdownAsync(string paneToken, XtermPaneSurface surface)
     {
         await surface.ShutdownStarted;
@@ -713,6 +775,40 @@ public sealed partial class MainWindow : Window
         ObserveTaskFault(
             host.ApplyPaneFocusAsync(paneId),
             "Pane focus persistence failed");
+    }
+
+    private void OnPageSearchUpdated(string paneId, string needle, int count, int? selected)
+    {
+        if (_host is not { } host)
+            return;
+
+        ObserveTaskFault(
+            host.StoreCoordinator.MutateAsync(store =>
+            {
+                var owner = store.Workspaces
+                    .SelectMany(workspace => workspace.Sessions)
+                    .FirstOrDefault(session => session.SearchSurface?.PaneToken == paneId);
+                if (owner is not null)
+                    store.UpdateSearch(owner.Id, paneId, needle, count, selected);
+            }),
+            "Search update failed");
+    }
+
+    private void OnPageSearchClosed(string paneId)
+    {
+        if (_host is not { } host)
+            return;
+
+        ObserveTaskFault(
+            host.StoreCoordinator.MutateAsync(store =>
+            {
+                var owner = store.Workspaces
+                    .SelectMany(workspace => workspace.Sessions)
+                    .FirstOrDefault(session => session.SearchSurface?.PaneToken == paneId);
+                if (owner is not null)
+                    store.CloseSearch(owner.Id, paneId);
+            }),
+            "Search close failed");
     }
 
     private async Task PasteIntoSurfaceAsync(XtermPaneSurface surface)

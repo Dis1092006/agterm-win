@@ -105,6 +105,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             EagerSurfaceRealization = true,
             DeferBootstrap = true,
             PaneFocusRequested = QueuePaneFocusRequested,
+            SearchUpdated = QueueSearchUpdated,
         });
         _coordinator = new LiveSurfaceCoordinator(
             Host,
@@ -308,6 +309,39 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 }
             });
             _focusRequestTasks.Add(delivery);
+        }
+    }
+
+    private void QueueSearchUpdated(HeadlessSearchUpdate update)
+    {
+        _scopeFactory.TryRegister(cancellationToken => ApplySearchUpdateAsync(update, cancellationToken));
+    }
+
+    private static async Task ApplySearchUpdateAsync(
+        HeadlessSearchUpdate update,
+        CancellationToken cancellationToken)
+    {
+        if (update.Surface is not XtermPaneSurface surface ||
+            string.IsNullOrWhiteSpace(surface.PaneToken))
+        {
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (update.Active)
+        {
+            await surface.Pane.Page.ApplySearchAsync(
+                surface.PaneToken,
+                update.Needle,
+                update.DisplayText,
+                update.Selected,
+                update.FocusInput).ConfigureAwait(false);
+        }
+        else
+        {
+            await surface.Pane.Page.HideSearchAsync(
+                surface.PaneToken,
+                update.RestorePaneId).ConfigureAwait(false);
         }
     }
 

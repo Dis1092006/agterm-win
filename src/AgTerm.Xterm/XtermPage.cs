@@ -74,6 +74,34 @@ public sealed class XtermPage
         return _host.ExecuteScriptAsync($"agterm.applyRendererSettings({payload})");
     }
 
+    public Task ApplySearchAsync(
+        string paneId,
+        string needle,
+        string displayText,
+        int? selected,
+        bool focusInput)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            paneId,
+            needle,
+            displayText,
+            selected,
+            focusInput,
+        }, XtermTerminal.ScriptLiteral);
+        return _host.ExecuteScriptAsync($"agterm.applySearch({payload})");
+    }
+
+    public Task HideSearchAsync(string? clearOwnerPaneId, string? restorePaneId)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            clearOwnerPaneId,
+            restorePaneId,
+        }, XtermTerminal.ScriptLiteral);
+        return _host.ExecuteScriptAsync($"agterm.hideSearch({payload})");
+    }
+
     /// <summary>Dispose the pane's terminal and div, and stop routing messages to its handle.</summary>
     public async Task ClosePaneAsync(string paneId)
     {
@@ -91,6 +119,10 @@ public sealed class XtermPage
     public event Action<string>? PaneFocusChanged;
 
     public event Action<string, string, double>? SplitResized;
+
+    public event Action<string, string, int, int?>? SearchUpdated;
+
+    public event Action<string>? SearchClosed;
 
     /// <summary>Push the hotkey table every pane intercepts (replaces the previous table; empty
     /// clears the interception). Call after keymap load/reload, on the WebView2 UI thread — a
@@ -244,6 +276,20 @@ public sealed class XtermPage
             return;
         }
 
+        if (msg is { Type: "searchUpdated", PaneId: { } searchPaneId, Needle: { } needle }
+            && _terminals.ContainsKey(searchPaneId))
+        {
+            SearchUpdated?.Invoke(searchPaneId, needle, Math.Max(0, msg.Count ?? 0), msg.Selected);
+            return;
+        }
+
+        if (msg is { Type: "searchClosed", PaneId: { } closedSearchPaneId }
+            && _terminals.ContainsKey(closedSearchPaneId))
+        {
+            SearchClosed?.Invoke(closedSearchPaneId);
+            return;
+        }
+
         if (msg?.PaneId is { } paneId && _terminals.TryGetValue(paneId, out var terminal))
             terminal.HandleMessage(msg);
     }
@@ -272,4 +318,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("leftPaneId")] public string? LeftPaneId { get; init; }
     [JsonPropertyName("rightPaneId")] public string? RightPaneId { get; init; }
     [JsonPropertyName("ratio")] public double? Ratio { get; init; }
+    [JsonPropertyName("needle")] public string? Needle { get; init; }
+    [JsonPropertyName("count")] public int? Count { get; init; }
+    [JsonPropertyName("selected")] public int? Selected { get; init; }
 }

@@ -48,6 +48,167 @@ public class XtermPageLiveTests
         return "";
     }
 
+        [Fact]
+        public async Task Search_bar_opens_for_exact_pane_with_model_display_text_and_input_focus()
+        {
+                var (page, view) = await BootPageAsync();
+                await _webView.RunAsync(_ => page.OpenTerminalAsync("search-owner"));
+
+                var state = await _webView.RunAsync(async _ =>
+                        await view.CoreWebView2.ExecuteScriptAsync(
+                                """
+                                (() => {
+                                    const apiType = typeof agterm.openSearch;
+                                    if (apiType !== 'function') return { apiType };
+                                    const accepted = agterm.openSearch('search-owner', 'needle', '2 of 5');
+                                    const bar = document.getElementById('search-bar');
+                                    const input = document.getElementById('search-input');
+                                    const status = document.getElementById('search-status');
+                                    return {
+                                        apiType,
+                                        accepted,
+                                        hidden: bar ? bar.hidden : null,
+                                        owner: bar ? bar.dataset.paneId : null,
+                                        value: input ? input.value : null,
+                                        status: status ? status.textContent : null,
+                                        inputLabel: input ? input.getAttribute('aria-label') : null,
+                                        focused: document.activeElement === input,
+                                    };
+                                })()
+                                """));
+
+                using var json = JsonDocument.Parse(state);
+                var root = json.RootElement;
+                Assert.Equal("function", root.GetProperty("apiType").GetString());
+                Assert.True(root.GetProperty("accepted").GetBoolean());
+                Assert.False(root.GetProperty("hidden").GetBoolean());
+                Assert.Equal("search-owner", root.GetProperty("owner").GetString());
+                Assert.Equal("needle", root.GetProperty("value").GetString());
+                Assert.Equal("2 of 5", root.GetProperty("status").GetString());
+                Assert.Equal("Find", root.GetProperty("inputLabel").GetString());
+                Assert.True(root.GetProperty("focused").GetBoolean());
+        }
+
+            [Fact]
+            public async Task Search_bar_input_navigation_and_escape_report_exact_owner_and_restore_terminal_focus()
+            {
+                var (page, view) = await BootPageAsync();
+                var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("search-events"));
+                await _webView.RunAsync<object?>(_ =>
+                {
+                    terminal.FeedOutput(Encoding.UTF8.GetBytes("needle one needle two\r\n"));
+                    return Task.FromResult<object?>(null);
+                });
+                await WaitForTextAsync(terminal, "needle two", work => _webView.RunAsync(_ => work()));
+
+                var queryUpdated = new TaskCompletionSource<(string PaneId, string Needle, int Count, int? Selected)>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                var navigated = new TaskCompletionSource<(string PaneId, string Needle, int Count, int? Selected)>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                var closed = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                page.SearchUpdated += (paneId, needle, count, selected) =>
+                {
+                    var update = (paneId, needle, count, selected);
+                    if (selected is null) queryUpdated.TrySetResult(update);
+                    else navigated.TrySetResult(update);
+                };
+                page.SearchClosed += paneId => closed.TrySetResult(paneId);
+
+                await _webView.RunAsync<object?>(async _ =>
+                {
+                    await view.CoreWebView2.ExecuteScriptAsync(
+                        "agterm.openSearch('search-events', '', '', true)");
+                    await view.CoreWebView2.ExecuteScriptAsync(
+                        """
+                        (() => {
+                          const input = document.getElementById('search-input');
+                          input.value = 'needle';
+                          input.dispatchEvent(new Event('input', { bubbles: true }));
+                        })()
+                        """);
+                    return null;
+                });
+
+                var first = await queryUpdated.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal("search-events", first.PaneId);
+                Assert.Equal("needle", first.Needle);
+                Assert.True(first.Count >= 2);
+                Assert.Null(first.Selected);
+
+                await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                    "document.getElementById('search-input').dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true}))"));
+                var next = await navigated.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                Assert.Equal("search-events", next.PaneId);
+                Assert.Equal("needle", next.Needle);
+                Assert.True(next.Selected > 0);
+
+                await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                    "document.getElementById('search-input').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}))"));
+                Assert.Equal("search-events", await closed.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+
+                var focusState = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                    """
+                    (() => ({
+                      hidden: document.getElementById('search-bar').hidden,
+                      inputFocused: document.activeElement === document.getElementById('search-input'),
+                      terminalFocused: document.activeElement && document.activeElement.classList.contains('xterm-helper-textarea'),
+                    }))()
+                    """));
+                using var focusJson = JsonDocument.Parse(focusState);
+                Assert.True(focusJson.RootElement.GetProperty("hidden").GetBoolean());
+                Assert.False(focusJson.RootElement.GetProperty("inputFocused").GetBoolean());
+                Assert.True(focusJson.RootElement.GetProperty("terminalFocused").GetBoolean());
+            }
+
+            [Fact]
+            public async Task Search_bar_shift_enter_and_buttons_drive_navigation_and_close()
+            {
+                var (page, view) = await BootPageAsync();
+                var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("search-buttons"));
+                await _webView.RunAsync<object?>(_ =>
+                {
+                    terminal.FeedOutput(Encoding.UTF8.GetBytes("hit hit hit\r\n"));
+                    return Task.FromResult<object?>(null);
+                });
+                await WaitForTextAsync(terminal, "hit hit hit", work => _webView.RunAsync(_ => work()));
+
+                var raw = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                    """
+                    (() => {
+                      agterm.openSearch('search-buttons', '', '', true);
+                      const input = document.getElementById('search-input');
+                      input.value = 'hit';
+                      input.dispatchEvent(new Event('input', {bubbles:true}));
+                      document.getElementById('search-next').click();
+                      const afterNext = agterm.getSearchState('search-buttons').selected;
+                      input.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true}));
+                      const afterShiftEnter = agterm.getSearchState('search-buttons').selected;
+                      document.getElementById('search-previous').click();
+                      const afterPreviousButton = agterm.getSearchState('search-buttons').selected;
+                      document.getElementById('search-close').click();
+                      return {
+                        afterNext,
+                        afterShiftEnter,
+                        afterPreviousButton,
+                        hidden: document.getElementById('search-bar').hidden,
+                        terminalFocused: document.activeElement && document.activeElement.classList.contains('xterm-helper-textarea'),
+                      };
+                    })()
+                    """));
+
+                using var json = JsonDocument.Parse(raw);
+                var root = json.RootElement;
+                Assert.True(root.GetProperty("afterNext").GetInt32() > 0);
+                Assert.NotEqual(
+                    root.GetProperty("afterNext").GetInt32(),
+                    root.GetProperty("afterShiftEnter").GetInt32());
+                Assert.NotEqual(
+                    root.GetProperty("afterShiftEnter").GetInt32(),
+                    root.GetProperty("afterPreviousButton").GetInt32());
+                Assert.True(root.GetProperty("hidden").GetBoolean());
+                Assert.True(root.GetProperty("terminalFocused").GetBoolean());
+            }
+
     [Fact]
     public async Task Two_panes_have_isolated_buffers_and_title_routing()
     {
@@ -103,7 +264,7 @@ public class XtermPageLiveTests
     }
 
     [Fact]
-    public async Task Implemented_new_session_split_and_scratch_chords_produce_host_actions()
+    public async Task Implemented_new_session_split_scratch_and_search_chords_produce_host_actions()
     {
         var (page, view) = await BootPageAsync();
         var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-s33"));
@@ -129,9 +290,12 @@ public class XtermPageLiveTests
         // Ctrl+J = ToggleScratch (implemented in Q2) → intercepted as a third host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
             "agterm.dispatchKey(\"live-s33\", {key:'j', ctrlKey:true})"));
+        // Ctrl+F = ToggleSearch (implemented in Q4) → intercepted as a fourth host chord
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"live-s33\", {key:'f', ctrlKey:true})"));
 
         var deadline = Environment.TickCount64 + 30000;
-        while (chords.Count < 3 && Environment.TickCount64 < deadline)
+        while (chords.Count < 4 && Environment.TickCount64 < deadline)
             await Task.Delay(50);
 
         Assert.Collection(
@@ -150,10 +314,16 @@ public class XtermPageLiveTests
             {
                 Assert.Equal("live-s33", hit.PaneId);
                 Assert.Equal(new PhysicalChord(true, false, false, "j"), hit.Chord);
+            },
+            hit =>
+            {
+                Assert.Equal("live-s33", hit.PaneId);
+                Assert.Equal(new PhysicalChord(true, false, false, "f"), hit.Chord);
             });
         Assert.DoesNotContain(data, d => d.Contains('\x04')); // Ctrl+D did not reach the terminal
         Assert.DoesNotContain(data, d => d.Contains('\x0E')); // Ctrl+N did not
         Assert.DoesNotContain(data, d => d.Contains('\x0A')); // Ctrl+J did not
+        Assert.DoesNotContain(data, d => d.Contains('\x06')); // Ctrl+F did not
     }
 
     [Fact]

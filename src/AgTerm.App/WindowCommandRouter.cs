@@ -43,7 +43,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.ToggleSplit] = true,
             [BuiltinAction.ToggleScratch] = true,
             [BuiltinAction.ToggleTerminalZoom] = false,
-            [BuiltinAction.ToggleSearch] = false,
+            [BuiltinAction.ToggleSearch] = true,
             [BuiltinAction.ToggleSidebar] = true,
             [BuiltinAction.SelectTheme] = false,
             [BuiltinAction.ToggleFullscreen] = false,
