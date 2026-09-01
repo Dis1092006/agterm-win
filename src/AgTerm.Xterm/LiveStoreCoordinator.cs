@@ -23,17 +23,18 @@ public sealed record LiveSelectionSnapshot(
     string SearchNeedle = "",
     string SearchDisplayText = "",
     int? SearchTotal = null,
-    int? SearchSelected = null)
+    int? SearchSelected = null,
+    string? QuickPaneId = null,
+    bool QuickVisible = false)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
+        TerminalLayout baseLayout;
         if (SessionId is null || string.IsNullOrWhiteSpace(DisplayName) || string.IsNullOrWhiteSpace(MainPaneId))
         {
-            return new TerminalLayout.Empty(generation);
+            baseLayout = new TerminalLayout.Empty(generation);
         }
-
-        TerminalLayout baseLayout;
-        if (IsSplit && !string.IsNullOrWhiteSpace(SplitPaneId))
+        else if (IsSplit && !string.IsNullOrWhiteSpace(SplitPaneId))
         {
             var ratio = SplitRatio ?? AppStore.SplitRatioDefault;
             var focusedPaneId = SplitFocused ? SplitPaneId : MainPaneId;
@@ -52,6 +53,19 @@ public sealed record LiveSelectionSnapshot(
                 ? SplitPaneId
                 : MainPaneId;
             baseLayout = new TerminalLayout.Single(generation, paneId, DisplayName, WorkspaceName);
+        }
+
+        if (QuickVisible && !string.IsNullOrWhiteSpace(QuickPaneId))
+        {
+            return new TerminalLayout.Layered(
+                generation,
+                baseLayout,
+                new TerminalLayer(QuickPaneId, sizePercent: 90));
+        }
+
+        if (baseLayout is TerminalLayout.Empty)
+        {
+            return baseLayout;
         }
 
         if (OverlayActive && !string.IsNullOrWhiteSpace(OverlayPaneId))
@@ -258,7 +272,12 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         var selectedSessionId = _host.Store.SelectedSessionId;
         if (selectedSessionId is not { } id)
         {
-            return new LiveSelectionSnapshot(selectedSessionId, null, null);
+            return new LiveSelectionSnapshot(
+                selectedSessionId,
+                null,
+                null,
+                QuickPaneId: _host.Actions.Quick.Surface?.PaneToken,
+                QuickVisible: _host.Actions.Quick.Visible);
         }
 
         var selectedSession = _host.Store.SessionWithId(id);
@@ -285,8 +304,13 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             selectedSession?.SearchNeedle ?? "",
             selectedSession?.SearchDisplayText ?? "",
             selectedSession?.SearchTotal,
-            selectedSession?.SearchSelected);
+            selectedSession?.SearchSelected,
+            _host.Actions.Quick.Surface?.PaneToken,
+            _host.Actions.Quick.Visible);
     }
+
+    internal void PublishSelectionSnapshotLocked() =>
+        PublishSelectionSnapshot(CaptureSelectionSnapshot());
 
     private void PublishSelectionSnapshot(LiveSelectionSnapshot snapshot)
     {

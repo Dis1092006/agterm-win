@@ -85,11 +85,33 @@ public sealed class XtermPageOverlayTests
         Assert.Throws<ArgumentException>(() => new TerminalLayer("p", backgroundColor: color));
     }
 
+    // Q5.2: Layered must accept Empty as a base so Quick can render over a no-session window.
     [Fact]
-    public void Layered_rejects_Empty_base()
+    public void Layered_accepts_Empty_base_for_quick_terminal()
     {
-        Assert.Throws<ArgumentException>(() =>
-            new TerminalLayout.Layered(1, new TerminalLayout.Empty(1), new TerminalLayer("overlay")));
+        var layered = new TerminalLayout.Layered(1, new TerminalLayout.Empty(1), new TerminalLayer("quick"));
+        Assert.IsType<TerminalLayout.Empty>(layered.BaseLayout);
+        Assert.Equal("quick", layered.Layer.PaneId);
+    }
+
+    // Q5.2: Empty base must serialize to {type:"empty"} so the bridge can render Quick over no session.
+    [Fact]
+    public async Task Layered_over_empty_serializes_empty_base_contract()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+
+        var accepted = await page.ApplyLayoutAsync(
+            new TerminalLayout.Layered(
+                8,
+                new TerminalLayout.Empty(8),
+                new TerminalLayer("quick-pane", sizePercent: 90)));
+
+        Assert.True(accepted);
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyLayout"));
+        Assert.Contains(
+            """{"type":"layered","generation":8,"base":{"type":"empty"},"layer":{"paneId":"quick-pane","sizePercent":90}}""",
+            script);
     }
 
     [Fact]
@@ -397,7 +419,7 @@ public sealed class XtermPageOverlayLiveTests
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-unknown'},layer:{paneId:'rj-layer'}}",
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-unknown'}}",
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-base'}}",
-            "{type:'layered',generation:3,base:{type:'empty'},layer:{paneId:'rj-layer'}}",
+            "{type:'layered',generation:3,base:{type:'empty',paneId:'rj-base'},layer:{paneId:'rj-layer'}}",
             "{type:'layered',generation:3,base:{type:'layered'},layer:{paneId:'rj-layer'}}",
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:0}}",
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:101}}",
@@ -622,6 +644,32 @@ public sealed class XtermPageOverlayLiveTests
             "document.activeElement && document.activeElement.closest('[data-pane-id]') ? document.activeElement.closest('[data-pane-id]').dataset.paneId : null");
         Assert.Equal("\"pt-layer\"", active);
         Assert.Equal(1, Volatile.Read(ref layerFocusReports));
+    }
+
+    // Q5.2: a registered Quick pane renders as a centered 90% layer over an Empty base.
+    [Fact]
+    public async Task Layered_90pct_quick_over_empty_renders_centered_layer()
+    {
+        var (page, view) = await BootPageAsync();
+        var quickTerm = await _webView.RunAsync(_ => page.OpenTerminalAsync("qk-quick"));
+
+        var accepted = await ApplyAsync(page, new TerminalLayout.Layered(
+            1,
+            new TerminalLayout.Empty(1),
+            new TerminalLayer("qk-quick", sizePercent: 90)));
+        Assert.True(accepted);
+
+        var dom = await ReadOverlayDomAsync(view, "qk-quick-nonexistent-base", "qk-quick");
+        Assert.True(dom.LayerRegistered, "quick pane must remain registered");
+        Assert.Equal("block", dom.LayerDisplay);
+        Assert.Equal("absolute", dom.LayerPosition);
+        Assert.InRange(dom.LayerWidthRatio, 0.85, 0.95);
+        Assert.InRange(dom.LayerHeightRatio, 0.85, 0.95);
+        Assert.True(dom.LayerZIndex > 0, $"quick layer must have positive z-index, got {dom.LayerZIndex}");
+        Assert.Equal(1, dom.CatcherCount);
+        Assert.Equal("qk-quick", dom.ActivePaneId);
+        Assert.True(quickTerm.Cols > 0 && quickTerm.Rows > 0,
+            $"quick grid: {quickTerm.Cols}x{quickTerm.Rows}");
     }
 
     // ---- Helpers ----

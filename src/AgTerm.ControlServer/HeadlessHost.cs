@@ -73,6 +73,9 @@ public sealed record HeadlessHostOptions
     /// <summary>Live-only immutable search update callback. Invoked under the host gate and must
     /// return without blocking; a live host registers the renderer operation in its dispatch scope.</summary>
     public Action<HeadlessSearchUpdate>? SearchUpdated { get; init; }
+
+    /// <summary>Live-only Quick visibility callback. Invoked under the host gate.</summary>
+    public Action? QuickChanged { get; init; }
 }
 
 /// <summary>
@@ -130,7 +133,8 @@ public sealed class HeadlessHost : IDisposable
             dashboardBaseFontSize: options.DashboardBaseFontSize,
             homeDirectory: options.HomeDirectory,
             paneFocusRequested: options.PaneFocusRequested,
-            searchUpdated: options.SearchUpdated);
+            searchUpdated: options.SearchUpdated,
+            quickChanged: options.QuickChanged);
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.

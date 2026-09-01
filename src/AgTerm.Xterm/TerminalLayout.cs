@@ -109,8 +109,8 @@ public abstract record TerminalLayout(long Generation)
             ArgumentNullException.ThrowIfNull(baseLayout);
             ArgumentNullException.ThrowIfNull(layer);
 
-            if (baseLayout is not Single && baseLayout is not Split)
-                throw new ArgumentException("Base layout must be single or split.", nameof(baseLayout));
+            if (baseLayout is not Empty && baseLayout is not Single && baseLayout is not Split)
+                throw new ArgumentException("Base layout must be empty, single, or split.", nameof(baseLayout));
 
             if (baseLayout is Single singleBase)
             {

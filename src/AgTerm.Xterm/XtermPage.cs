@@ -195,6 +195,9 @@ public sealed class XtermPage
         writer.WriteStartObject();
         switch (baseLayout)
         {
+            case TerminalLayout.Empty:
+                writer.WriteString("type", "empty");
+                break;
             case TerminalLayout.Single single:
                 writer.WriteString("type", "single");
                 writer.WriteString("paneId", single.PaneId);

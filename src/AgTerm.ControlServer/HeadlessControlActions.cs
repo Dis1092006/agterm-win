@@ -109,6 +109,7 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly double _dashboardBaseFontSize;
     private readonly Action<string>? _paneFocusRequested;
     private readonly Action<HeadlessSearchUpdate>? _searchUpdated;
+    private readonly Action? _quickChanged;
 
     public HeadlessControlActions(AppStore store, ControlEventRing ring, Guid windowId,
                                   string windowName, string configDirectory,
@@ -119,7 +120,8 @@ public sealed class HeadlessControlActions : IControlActions
                                   double dashboardBaseFontSize = 13,
                                   string? homeDirectory = null,
                                   Action<string>? paneFocusRequested = null,
-                                  Action<HeadlessSearchUpdate>? searchUpdated = null)
+                                  Action<HeadlessSearchUpdate>? searchUpdated = null,
+                                  Action? quickChanged = null)
     {
         _store = store;
         _ring = ring;
@@ -136,6 +138,7 @@ public sealed class HeadlessControlActions : IControlActions
         _homeDirectory = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _paneFocusRequested = paneFocusRequested;
         _searchUpdated = searchUpdated;
+        _quickChanged = quickChanged;
         Zoom.TargetResolver = () => TerminalZoomController.ResolveTarget(_store, Quick.Visible);
     }
 
@@ -1527,10 +1530,18 @@ public sealed class HeadlessControlActions : IControlActions
             if (want)
                 return Err("terminal zoom active");
             if (Zoom.Target is TerminalZoomTarget.Quick) Zoom.Clear();
-            if (Quick.Visible) Quick.Visible = false;
+            if (Quick.Visible)
+            {
+                Quick.Visible = false;
+                _quickChanged?.Invoke();
+            }
             return Ok();
         }
-        if (want != Quick.Visible) Quick.Visible = want;
+        if (want != Quick.Visible)
+        {
+            Quick.Visible = want;
+            _quickChanged?.Invoke();
+        }
         return Ok();
     }
 

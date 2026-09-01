@@ -264,7 +264,7 @@ public class XtermPageLiveTests
     }
 
     [Fact]
-    public async Task Implemented_new_session_split_scratch_and_search_chords_produce_host_actions()
+    public async Task Implemented_new_session_split_scratch_search_and_quick_chords_produce_host_actions()
     {
         var (page, view) = await BootPageAsync();
         var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-s33"));
@@ -293,9 +293,12 @@ public class XtermPageLiveTests
         // Ctrl+F = ToggleSearch (implemented in Q4) → intercepted as a fourth host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
             "agterm.dispatchKey(\"live-s33\", {key:'f', ctrlKey:true})"));
+        // Ctrl+` = QuickTerminal (implemented in Q5) → intercepted as a fifth host chord
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"live-s33\", {key:'`', ctrlKey:true})"));
 
         var deadline = Environment.TickCount64 + 30000;
-        while (chords.Count < 4 && Environment.TickCount64 < deadline)
+        while (chords.Count < 5 && Environment.TickCount64 < deadline)
             await Task.Delay(50);
 
         Assert.Collection(
@@ -319,11 +322,17 @@ public class XtermPageLiveTests
             {
                 Assert.Equal("live-s33", hit.PaneId);
                 Assert.Equal(new PhysicalChord(true, false, false, "f"), hit.Chord);
+            },
+            hit =>
+            {
+                Assert.Equal("live-s33", hit.PaneId);
+                Assert.Equal(new PhysicalChord(true, false, false, "`"), hit.Chord);
             });
         Assert.DoesNotContain(data, d => d.Contains('\x04')); // Ctrl+D did not reach the terminal
         Assert.DoesNotContain(data, d => d.Contains('\x0E')); // Ctrl+N did not
         Assert.DoesNotContain(data, d => d.Contains('\x0A')); // Ctrl+J did not
         Assert.DoesNotContain(data, d => d.Contains('\x06')); // Ctrl+F did not
+        Assert.DoesNotContain(data, d => d.Contains('\x00')); // Ctrl+` did not
     }
 
     [Fact]

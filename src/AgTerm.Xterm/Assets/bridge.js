@@ -469,6 +469,11 @@ function validateLayeredBaseLayout(baseLayout) {
 
   if (typeof baseLayout.type !== "string") return null;
 
+  if (baseLayout.type === "empty") {
+    if (!hasOnlyKeys(baseLayout, ["type"])) return null;
+    return { type: "empty", paneIds: [] };
+  }
+
   if (baseLayout.type === "single") {
     if (!hasOnlyKeys(baseLayout, ["type", "paneId"])) return null;
     const paneId = normalizeKnownPaneId(baseLayout.paneId);
@@ -555,9 +560,11 @@ function applyLayeredPresentation(validLayered, shouldFocusLayer) {
   if (validLayered.base.type === "single") {
     if (!applySinglePresentation(validLayered.base.paneId, false, false))
       return false;
-  } else {
+  } else if (validLayered.base.type === "split") {
     if (!applySplitPresentation(validLayered.base.split, false, false))
       return false;
+  } else {
+    applyEmptyPresentation();
   }
 
   const layerPane = panes.get(validLayered.layerPaneId);

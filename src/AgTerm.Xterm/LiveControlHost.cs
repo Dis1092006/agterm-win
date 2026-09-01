@@ -106,7 +106,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             DeferBootstrap = true,
             PaneFocusRequested = QueuePaneFocusRequested,
             SearchUpdated = QueueSearchUpdated,
+            QuickChanged = QueueQuickChanged,
         });
+        _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
             _scopeFactory,
@@ -135,12 +137,19 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 {
                     BindOverlay(overlaySessionId, paneSurface);
                 }
+                else if (request.Kind == LiveSurfaceKind.Quick)
+                {
+                    BindQuick(paneSurface);
+                }
 
                 SurfaceRealized?.Invoke(request, paneSurface);
+                if (request.Kind == LiveSurfaceKind.Quick)
+                {
+                    Host.RunLocked(_storeCoordinator.PublishSelectionSnapshotLocked);
+                }
             },
             options.Log);
         _scopeFactory.SetBeforeComplete(() => Host.RunLocked(ReconcileSurfacesLocked));
-        _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         var bootstrapCancellationToken = options.BootstrapCancellationToken;
         var coordinator = _coordinator;
         using var bootstrapScope = _scopeFactory.Begin();
@@ -170,6 +179,17 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     public Task PerformFontActionAsync(string action, CancellationToken cancellationToken = default) =>
         StoreCoordinator.MutateAsync(
             _ => Host.Actions.Font(null, null, null, action),
+            cancellationToken);
+
+    public Task ToggleQuickTerminalAsync(CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(
+            _ =>
+            {
+                if (Host.Actions.Zoom.Target is null)
+                {
+                    Host.Actions.SetQuickTerminal("toggle");
+                }
+            },
             cancellationToken);
 
     public Task ApplyBaseFontSizeAsync(double fontSize, CancellationToken cancellationToken = default)
@@ -276,6 +296,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     /// <summary>An explicit control request to move keyboard focus to an exact live pane token.</summary>
     public event Action<string>? PaneFocusRequested;
+
+    private void QueueQuickChanged() =>
+        _storeCoordinator?.PublishSelectionSnapshotLocked();
 
     private void QueuePaneFocusRequested(string paneId)
     {
@@ -401,15 +424,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             }
         }
 
-        if (Host.Actions.Quick.Visible &&
-            Host.Store.ActiveSession is { } activeSession &&
-            Host.Actions.Quick.Surface is null)
+        if (Host.Actions.Quick.Visible && Host.Actions.Quick.Surface is null)
         {
-            var quickRequest = CaptureRequest(activeSession, LiveSurfaceKind.Quick);
-            if (quickRequest is not null)
-            {
-                coordinator.Reserve(quickRequest);
-            }
+            var pending = coordinator.Reserve(CaptureQuickRequest(Host.Store.ActiveSession));
+            _ = PublishQuickSettlementAsync(pending);
         }
 
     }
@@ -530,13 +548,6 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 sessionId = session.Id;
                 break;
 
-            case LiveSurfaceKind.Quick:
-                argv = shellArgv;
-                cwd = session.EffectiveCwd;
-                sessionId = null;
-                baseFontSize = _currentBaseFontSize;
-                break;
-
             default:
                 throw new NotSupportedException($"Unsupported surface kind: {kind}");
         }
@@ -557,6 +568,40 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 BaseFontSize = baseFontSize,
                 ReadClipboard = _options.ReadClipboard,
             });
+    }
+
+    private SurfaceOpenRequest CaptureQuickRequest(Session? activeSession) =>
+        new(
+            null,
+            LiveSurfaceKind.Quick,
+            new XtermSurfaceOptions
+            {
+                Argv = [ShellResolver.Resolve(_options.DefaultShell)],
+                Cwd = ExistingDirectoryOrNull(activeSession?.EffectiveCwd) ??
+                    ExistingDirectoryOrNull(_options.HomeDirectory),
+                BaseFontSize = _currentBaseFontSize,
+                ReadClipboard = _options.ReadClipboard,
+            });
+
+    private async Task PublishQuickSettlementAsync(PendingTerminalSurface pending)
+    {
+        if (await pending.Ready.ConfigureAwait(false) is not null)
+        {
+            return;
+        }
+
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+        {
+            return;
+        }
+
+        Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) == 0)
+            {
+                _storeCoordinator.PublishSelectionSnapshotLocked();
+            }
+        });
     }
 
     /// <summary>Live reports → session fields. Every mutation hops to the thread pool and takes
@@ -627,6 +672,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private void BindOverlay(Guid sessionId, XtermPaneSurface surface) =>
         _ = CloseOverlayOnExitAsync(sessionId, surface);
 
+    private void BindQuick(XtermPaneSurface surface) =>
+        _ = CloseQuickOnExitAsync(surface);
+
     /// <summary>The realized surface still is the session's current main pane.</summary>
     private static bool OwnsMainPane(Session? live, XtermPaneSurface surface) =>
         live is not null &&
@@ -644,6 +692,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private static bool OwnsOverlayPane(Session? live, XtermPaneSurface surface) =>
         live is not null &&
         ReferenceEquals(live.OverlaySurface, surface);
+
+    private bool OwnsQuickPane(XtermPaneSurface surface) =>
+        ReferenceEquals(Host.Actions.Quick.Surface, surface);
 
     private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
@@ -777,6 +828,37 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             {
                 Host.Store.CloseOverlay(live.Id);
             }
+            ReconcileSurfacesLocked();
+        });
+    }
+
+    private async Task CloseQuickOnExitAsync(XtermPaneSurface surface)
+    {
+        try
+        {
+            await surface.Pane.Exited.ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+        {
+            return;
+        }
+
+        Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0 || !OwnsQuickPane(surface))
+            {
+                return;
+            }
+
+            Host.Actions.Quick.Visible = false;
+            Host.Actions.Quick.Surface = null;
+            surface.Teardown();
+            _storeCoordinator.PublishSelectionSnapshotLocked();
             ReconcileSurfacesLocked();
         });
     }

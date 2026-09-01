@@ -271,6 +271,60 @@ public sealed class LiveSelectionSnapshotLayoutTests
         var scratch = Assert.IsType<TerminalLayout.Layered>(withoutRealizedOverlay.ToTerminalLayout(2));
         Assert.Equal("scratch-token", scratch.Layer.PaneId);
     }
+
+    // Q5.2: QuickVisible=true with a realized QuickPaneId wraps the session base in a 90% centered layer.
+    [Fact]
+    public void ToTerminalLayout_wraps_base_in_90pct_quick_layer_when_quick_is_visible_and_realized()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session", "workspace",
+            MainPaneId: "main-token",
+            QuickPaneId: "quick-token",
+            QuickVisible: true);
+
+        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(5));
+        Assert.IsType<TerminalLayout.Single>(layered.BaseLayout);
+        Assert.Equal("quick-token", layered.Layer.PaneId);
+        Assert.Equal(90, layered.Layer.SizePercent);
+        Assert.Equal(5, layered.Generation);
+    }
+
+    // Q5.2: Quick has higher priority than active Overlay and Scratch.
+    [Fact]
+    public void ToTerminalLayout_places_quick_above_overlay_and_scratch()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session", null,
+            MainPaneId: "main-token",
+            ScratchPaneId: "scratch-token",
+            ScratchActive: true,
+            OverlayPaneId: "overlay-token",
+            OverlayActive: true,
+            OverlaySizePercent: 70,
+            QuickPaneId: "quick-token",
+            QuickVisible: true);
+
+        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(1));
+        Assert.Equal("quick-token", layered.Layer.PaneId);
+        Assert.Equal(90, layered.Layer.SizePercent);
+    }
+
+    // Q5.2: Quick with SessionId=null (no active session) uses TerminalLayout.Empty as its base.
+    [Fact]
+    public void ToTerminalLayout_quick_over_empty_when_quick_visible_and_no_session()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            null,
+            null,
+            QuickPaneId: "quick-token",
+            QuickVisible: true);
+
+        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(3));
+        Assert.IsType<TerminalLayout.Empty>(layered.BaseLayout);
+        Assert.Equal("quick-token", layered.Layer.PaneId);
+        Assert.Equal(90, layered.Layer.SizePercent);
+        Assert.Equal(3, layered.Generation);
+    }
 }
 
 public sealed class MainWindowSplitWiringTests
@@ -313,8 +367,28 @@ public sealed class MainWindowSplitWiringTests
         Assert.Contains("[BuiltinAction.ToggleSplit]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleScratch]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleSearch]", source, StringComparison.Ordinal);
+        Assert.Contains("[BuiltinAction.QuickTerminal]", source, StringComparison.Ordinal);
+        Assert.Contains("host.ToggleQuickTerminalAsync", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusLeftPane]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusRightPane]", source, StringComparison.Ordinal);
+    }
+
+    // Q5.2: MainWindow must mount Quick surfaces and toggle terminal-only presentation from the snapshot.
+    [Fact]
+    public void MainWindow_mounts_quick_surface_and_drives_presentation_from_snapshot_QuickVisible()
+    {
+        var source = File.ReadAllText(Path.Combine(
+            FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        // Quick surfaces must be mounted in the same SurfaceRealized handler as Main/Scratch/Overlay.
+        Assert.Contains("LiveSurfaceKind.Quick", source, StringComparison.Ordinal);
+        // Snapshot-driven toggle: SetTerminalOnlyPresentation must be called with snapshot.QuickVisible.
+        Assert.Matches(
+            @"SetTerminalOnlyPresentation\(\s*snapshot\.QuickVisible && !string\.IsNullOrWhiteSpace\(snapshot\.QuickPaneId\)\);",
+            source);
+        Assert.Matches(
+            @"_acceptedPaneId = layered\.Layer\.PaneId;\s+FocusActiveTerminal\(\);",
+            source);
     }
 
     private static string FindRepoRoot()

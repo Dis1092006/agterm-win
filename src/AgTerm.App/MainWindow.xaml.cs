@@ -100,7 +100,18 @@ public sealed partial class MainWindow : Window
                     ApplyAcceptedBaseLayout(split, split.FocusedPaneId);
                     break;
                 case TerminalLayout.Layered layered:
-                    ApplyAcceptedBaseLayout(layered.BaseLayout, layered.Layer.PaneId);
+                    if (layered.BaseLayout is TerminalLayout.Empty)
+                    {
+                        _acceptedPaneId = layered.Layer.PaneId;
+                        FocusActiveTerminal();
+                        Title = "agterm";
+                        AppTitleBar.Title = "agterm";
+                        AppTitleBar.Subtitle = string.Empty;
+                    }
+                    else
+                    {
+                        ApplyAcceptedBaseLayout(layered.BaseLayout, layered.Layer.PaneId);
+                    }
                     break;
                 case TerminalLayout.Empty:
                     _acceptedPaneId = null;
@@ -197,6 +208,8 @@ public sealed partial class MainWindow : Window
                 var previousSelection = _selection;
                 _selection = snapshot;
                 _selectedSessionId = snapshot.SessionId;
+                SetTerminalOnlyPresentation(
+                    snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId));
                 SubmitLayout();
                 SubmitSearchPresentation(previousSelection, snapshot);
             });
@@ -204,7 +217,7 @@ public sealed partial class MainWindow : Window
 
         host.SurfaceRealized += (request, surface) =>
         {
-            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay)
+            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay or LiveSurfaceKind.Quick)
             {
                 DispatcherQueue.TryEnqueue(() => MountSurface(surface));
             }
@@ -253,7 +266,9 @@ public sealed partial class MainWindow : Window
                 selectedSession?.SearchNeedle ?? "",
                 selectedSession?.SearchDisplayText ?? "",
                 selectedSession?.SearchTotal,
-                selectedSession?.SearchSelected);
+                selectedSession?.SearchSelected,
+                host.Host.Actions.Quick.Surface?.PaneToken,
+                host.Host.Actions.Quick.Visible);
 
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
@@ -266,6 +281,8 @@ public sealed partial class MainWindow : Window
                 })
                 .OfType<XtermPaneSurface>()
                 .ToList();
+            if (host.Host.Actions.Quick.Surface is XtermPaneSurface quickSurface)
+                committedSurfaces.Add(quickSurface);
             return new StartupState(
                 selection,
                 committedSurfaces);
@@ -275,6 +292,8 @@ public sealed partial class MainWindow : Window
         {
             _selection = startup.Selection;
             _selectedSessionId = startup.Selection.SessionId;
+            SetTerminalOnlyPresentation(
+                startup.Selection.QuickVisible && !string.IsNullOrWhiteSpace(startup.Selection.QuickPaneId));
             foreach (var surface in startup.CommittedSurfaces)
                 MountSurface(surface);
             SubmitLayout();
@@ -350,6 +369,9 @@ public sealed partial class MainWindow : Window
                             store.OpenSearch(selectedSessionId);
                     });
                 }),
+            [BuiltinAction.QuickTerminal] = Async(
+                () => true,
+                () => host.ToggleQuickTerminalAsync()),
             [BuiltinAction.FocusLeftPane] = Async(
                 () => !string.IsNullOrWhiteSpace(_selection.MainPaneId) && !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
                 () =>

@@ -23,6 +23,7 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleSplit,
         BuiltinAction.ToggleScratch,
         BuiltinAction.ToggleSearch,
+        BuiltinAction.QuickTerminal,
         BuiltinAction.FocusLeftPane,
         BuiltinAction.FocusRightPane,
         BuiltinAction.ToggleFlaggedView,
@@ -48,7 +49,6 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleTerminalZoom,
         BuiltinAction.SelectTheme,
         BuiltinAction.ToggleFullscreen,
-        BuiltinAction.QuickTerminal,
         BuiltinAction.SessionPalette,
         BuiltinAction.CommandPalette,
         BuiltinAction.CustomCommandPalette,
@@ -317,6 +317,24 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
+    public async Task ExecuteChordAsync_ctrl_backtick_resolves_quick_terminal_invokes_once_returns_true()
+    {
+        // ctrl+` is the default chord for QuickTerminal; physical Ctrl+` decodes ctrl+` as second
+        // candidate (cmd+` has no default bind), so QuickTerminal wins.
+        var calls = 0;
+        var router = new WindowCommandRouter(AllNoOpHandlers(
+            replace: BuiltinAction.QuickTerminal,
+            replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })));
+        var hotkeys = new HotkeyRouter(Keymap.Empty);
+        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "`");
+
+        var result = await router.ExecuteChordAsync(hotkeys, physical);
+
+        Assert.True(result);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task ExecuteChordAsync_implemented_but_disabled_new_session_returns_false_invokes_none()
     {
         // Ctrl+N resolves NewSession (implemented), but CanExecute returns false → handler must not fire.
@@ -376,6 +394,8 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j"), chords);
         // Ctrl+F → cmd+f → ToggleSearch (implemented in Q4): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "f"), chords);
+        // Ctrl+` → ctrl+` → QuickTerminal (implemented in Q5): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "`"), chords);
         // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (unimplemented): must be absent
         Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
         // Ctrl+P → ctrl+p → SessionPalette (unimplemented): must be absent

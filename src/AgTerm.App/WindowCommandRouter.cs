@@ -58,7 +58,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.NextAttentionSession] = true,
             [BuiltinAction.FirstSession] = true,
             [BuiltinAction.LastSession] = true,
-            [BuiltinAction.QuickTerminal] = false,
+            [BuiltinAction.QuickTerminal] = true,
             [BuiltinAction.SessionPalette] = false,
             [BuiltinAction.CommandPalette] = false,
             [BuiltinAction.CustomCommandPalette] = false,
