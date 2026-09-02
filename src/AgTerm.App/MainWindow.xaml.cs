@@ -32,6 +32,9 @@ public sealed partial class MainWindow : Window
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
     private readonly WindowCloseCoordinator _closeCoordinator;
     private readonly PaletteTransitionCoordinator _paletteTransitions = new();
+    private readonly CustomCommandProcessRunner _customCommandRunner = new();
+    private readonly HotkeyGenerationRegistry _hotkeyStates = new();
+    private readonly SemaphoreSlim _hotkeyManifestGate = new(1, 1);
     private readonly SettingsStore _settingsStore;
     private readonly SettingsReloadCoordinator _settingsReloadCoordinator;
     private AppSettings _settings; // UI-thread confined
@@ -546,41 +549,63 @@ public sealed partial class MainWindow : Window
 
     // MARK: - hotkeys (keymap → HotkeyRouter → the same store/controller paths as the socket)
 
-    private HotkeyRouter? _hotkeys;
-
     /// <summary>Load keymap.conf, arm the router, and push the interception table into the page
     /// (in-terminal presses come back as chord messages). keymap.reload re-arms both.</summary>
     private async Task ArmHotkeysAsync(LiveControlHost host)
     {
         var page = await _pageTask;
-        void Arm(Keymap keymap)
+        async Task ArmAsync(Keymap keymap)
         {
-            _hotkeys = new HotkeyRouter(keymap);
             foreach (var diagnostic in WindowCommandRouter.EffectiveWindowsChordDiagnostics(keymap))
                 System.Diagnostics.Trace.TraceWarning($"keymap: {diagnostic.Message}");
-            PublishInterceptChords(page);
+            await PublishHotkeyManifestAsync(page, keymap);
         }
-        Arm(host.Host.Actions.LoadKeymap());
-        page.ChordPressed += (_, chord) => DispatcherQueue.TryEnqueue(() => HandleChord(chord));
-        host.Host.Actions.KeymapReloaded += keymap => DispatcherQueue.TryEnqueue(() => Arm(keymap));
+        await ArmAsync(host.Host.Actions.LoadKeymap());
+        page.BuiltinHotkeyPressed += hit => DispatcherQueue.TryEnqueue(() =>
+            HandleChord(hit.Chord, hit.Generation));
+        page.CustomCommandPressed += hit => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+            ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(
+                hit.CommandId,
+                CustomCommandSource.Hotkey,
+                hit.PaneId,
+                hit.Generation)),
+            $"Custom command {hit.CommandId} failed"));
+        host.Host.Actions.KeymapReloaded += keymap => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+            ArmAsync(keymap),
+            "Set reloaded hotkey manifest failed"));
     }
 
     private async Task RefreshInterceptChordsAsync()
     {
         var page = await _pageTask;
-        PublishInterceptChords(page);
+        await PublishHotkeyManifestAsync(page, _hotkeyStates.Active.Keymap);
     }
 
-    private void PublishInterceptChords(XtermPage page)
+    private async Task PublishHotkeyManifestAsync(XtermPage page, Keymap keymap)
     {
-        if (_hotkeys is not { } hotkeys)
-            return;
-
-        ObserveTaskFault(
-            page.SetInterceptChordsAsync(WindowCommandRouter.ImplementedInterceptChords(
-                hotkeys,
-                action => !IsPaletteAction(action) || _host?.ZoomActive != true)),
-            "Set intercept chords failed");
+        await _hotkeyManifestGate.WaitAsync();
+        var pending = _hotkeyStates.Prepare(keymap);
+        try
+        {
+            var manifest = pending.Router.CreateManifest(
+                pending.Generation,
+                action => WindowCommandRouter.ActionImplementations.TryGetValue(action, out var implemented) &&
+                    implemented &&
+                    (!IsPaletteAction(action) || _host?.ZoomActive != true));
+            if (await page.SetHotkeyManifestAsync(manifest))
+                _hotkeyStates.Commit(pending.Generation);
+            else
+                _hotkeyStates.Reject(pending.Generation);
+        }
+        catch
+        {
+            _hotkeyStates.Reject(pending.Generation);
+            throw;
+        }
+        finally
+        {
+            _hotkeyManifestGate.Release();
+        }
     }
 
     private static bool IsPaletteAction(BuiltinAction action) => action is
@@ -624,9 +649,12 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Dispatch a physical chord through the router to the same mutators the control
     /// socket drives. Returns whether an action fired.</summary>
-    private bool HandleChord(PhysicalChord physical)
+    private bool HandleChord(PhysicalChord physical, long? generation = null)
     {
-        if (_hotkeys?.Handle(physical) is not { } action)
+        var hotkeyState = generation is { } value
+            ? _hotkeyStates.Resolve(value)
+            : _hotkeyStates.Active;
+        if (hotkeyState?.Router.Handle(physical) is not { } action)
             return false;
 
         var router = _commandRouter;
@@ -657,12 +685,12 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(states);
 
         var host = await _hostReady.Task.WaitAsync(cancellationToken);
+        var keymap = _hotkeyStates.Active.Keymap;
         var snapshot = await host.StoreCoordinator.ReadAsync(
-            captureOutsideGate: host.Host.Actions.LoadKeymap,
-            readUnderGate: (store, keymap) => host.Host.Actions.Zoom.Target is null
+            store => host.Host.Actions.Zoom.Target is null
                 ? WindowPaletteProjection.Create(mode, store, keymap, action => states[action])
                 : null,
-            cancellationToken: cancellationToken);
+            cancellationToken);
         if (snapshot is null)
             return;
 
@@ -758,13 +786,55 @@ public sealed partial class MainWindow : Window
                     FocusActiveTerminal();
                 break;
             case WindowPaletteMode.CustomCommands:
-                // C3 resolves and executes the selected custom command from its stable id.
+                if (WindowPaletteProjection.ParseCustomCommandId(item.Id) is { } commandId)
+                {
+                    await ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(
+                        commandId,
+                        CustomCommandSource.Palette));
+                }
                 FocusActiveTerminal();
                 break;
             default:
                 FocusActiveTerminal();
                 break;
         }
+    }
+
+    private async Task ExecuteCustomCommandAsync(
+        CustomCommandExecutionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var hotkeyState = request.Source == CustomCommandSource.Hotkey &&
+            request.HotkeyGeneration is { } generation
+                ? _hotkeyStates.Resolve(generation)
+                : _hotkeyStates.Active;
+        if (hotkeyState is null)
+            return;
+
+        var paneId = WindowPaletteActions.CustomCommandPaneId(
+            _selection,
+            request.Source,
+            request.PaneId);
+        var selection = string.Empty;
+        if (paneId is not null && _surfaces.TryGetValue(paneId, out var surface))
+            selection = await surface.Pane.Terminal.GetSelectionAsync() ?? string.Empty;
+
+        var host = await _hostReady.Task.WaitAsync(cancellationToken);
+        var window = new CustomCommandWindowContext(
+            host.Host.WindowId,
+            host.Host.WindowName,
+            host.PipeName,
+            hotkeyState.Generation);
+        var immutableRequest = request with { PaneId = paneId, Selection = selection };
+        var invocation = await host.StoreCoordinator.ReadAsync(
+            store => CustomCommandInvocationResolver.Resolve(
+                store,
+                hotkeyState.Keymap,
+                immutableRequest,
+                window),
+            cancellationToken);
+        if (invocation is not null)
+            await _customCommandRunner.StartAsync(invocation, cancellationToken);
     }
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session

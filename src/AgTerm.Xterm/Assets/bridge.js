@@ -8,13 +8,15 @@
 //                                              {type:'resize', paneId, cols, rows}
 //                                              {type:'title', paneId, title}     OSC 0/1/2
 //                                              {type:'cwd', paneId, uri}         OSC 7 / OSC 9;9
-//                                              {type:'chord', paneId, ctrl, alt, shift, key}
+//                                              {type:'chord', paneId, generation, ctrl, alt, shift, key}
+//                                              {type:'customHotkey', paneId, generation, customCommandId, ctrl, alt, shift, key}
 //                                              {type:'pasteRequested', paneId}   right-click paste
 //   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize}) → {cols,rows},
 //     agterm.showPane(paneId), agterm.closePane(paneId), agterm.applyLayout(layout), and the per-pane reads/writes:
 //     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
 //     each takes paneId first; every call on an unknown paneId returns null. Page-global:
-//     agterm.setChords([{ctrl,alt,shift,key}]) — the hotkey table the panes intercept.
+//     agterm.setHotkeyManifest({generation,leaderTimeoutMs,builtinSingles,customBindings}) — atomic hotkey table.
+//     agterm.setChords([{ctrl,alt,shift,key}]) — compatibility built-in-only hotkey table.
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
 //     agterm.getRendererCapabilities(paneId).
 //     layout schema:
@@ -34,6 +36,11 @@ let visibleLayout = { type: "empty", paneIds: [] };
 let programmaticFocusPaneId = null;
 let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
+let hotkeyGeneration = 0;
+let customHotkeyBindings = [];
+let armedCustomChords = [];
+let customLeaderTimer = null;
+let customLeaderTimeoutMs = 1500;
 const container = document.getElementById("panes");
 const searchBarEl = document.getElementById("search-bar");
 const searchInputEl = document.getElementById("search-input");
@@ -1095,6 +1102,125 @@ function normalizeKey(key) {
   }
 }
 
+function samePhysicalChord(left, right) {
+  return (
+    left.ctrl === right.ctrl &&
+    left.alt === right.alt &&
+    left.shift === right.shift &&
+    left.key === right.key
+  );
+}
+
+function isChordPrefix(prefix, chords) {
+  if (prefix.length > chords.length) return false;
+  return prefix.every((chord, index) =>
+    samePhysicalChord(chord, chords[index]),
+  );
+}
+
+function resetCustomLeader() {
+  armedCustomChords = [];
+  if (customLeaderTimer !== null) clearTimeout(customLeaderTimer);
+  customLeaderTimer = null;
+}
+
+function armCustomLeader(chords) {
+  resetCustomLeader();
+  armedCustomChords = chords;
+  customLeaderTimer = setTimeout(resetCustomLeader, customLeaderTimeoutMs);
+}
+
+function processCustomChord(paneId, chord, allowRootRetry) {
+  const candidate = [...armedCustomChords, chord];
+  const exact = customHotkeyBindings.find(
+    (binding) =>
+      binding.chords.length === candidate.length &&
+      isChordPrefix(candidate, binding.chords),
+  );
+  if (exact) {
+    resetCustomLeader();
+    post({
+      type: "customHotkey",
+      paneId,
+      generation: hotkeyGeneration,
+      customCommandId: exact.commandId,
+      ctrl: chord.ctrl,
+      alt: chord.alt,
+      shift: chord.shift,
+      key: chord.key,
+    });
+    return true;
+  }
+
+  if (
+    customHotkeyBindings.some(
+      (binding) =>
+        candidate.length < binding.chords.length &&
+        isChordPrefix(candidate, binding.chords),
+    )
+  ) {
+    armCustomLeader(candidate);
+    return true;
+  }
+
+  const wasArmed = armedCustomChords.length > 0;
+  resetCustomLeader();
+  return wasArmed && allowRootRetry
+    ? processCustomChord(paneId, chord, false)
+    : false;
+}
+
+function validatePhysicalChord(chord) {
+  return (
+    chord &&
+    typeof chord === "object" &&
+    typeof chord.ctrl === "boolean" &&
+    typeof chord.alt === "boolean" &&
+    typeof chord.shift === "boolean" &&
+    typeof chord.key === "string" &&
+    chord.key.length > 0
+  );
+}
+
+function setHotkeyManifest(manifest) {
+  if (!manifest || typeof manifest !== "object") return false;
+  if (!Number.isSafeInteger(manifest.generation) || manifest.generation < 0)
+    return false;
+  if (manifest.generation < hotkeyGeneration) return false;
+  if (
+    !Number.isSafeInteger(manifest.leaderTimeoutMs) ||
+    manifest.leaderTimeoutMs <= 0 ||
+    !Array.isArray(manifest.builtinSingles) ||
+    !manifest.builtinSingles.every(validatePhysicalChord) ||
+    !Array.isArray(manifest.customBindings)
+  )
+    return false;
+
+  const customBindings = [];
+  for (const binding of manifest.customBindings) {
+    if (
+      !binding ||
+      typeof binding.commandId !== "string" ||
+      binding.commandId.length === 0 ||
+      !Array.isArray(binding.chords) ||
+      binding.chords.length === 0 ||
+      !binding.chords.every(validatePhysicalChord)
+    )
+      return false;
+    customBindings.push({
+      commandId: binding.commandId,
+      chords: binding.chords.map((chord) => ({ ...chord })),
+    });
+  }
+
+  resetCustomLeader();
+  hotkeyGeneration = manifest.generation;
+  customLeaderTimeoutMs = manifest.leaderTimeoutMs;
+  interceptChords = manifest.builtinSingles.map((chord) => ({ ...chord }));
+  customHotkeyBindings = customBindings;
+  return true;
+}
+
 const post = (msg) => window.chrome.webview.postMessage(msg);
 
 if (searchInputEl) {
@@ -1220,24 +1346,43 @@ function openPane(paneId, opts) {
   // back as a chord message instead (the host's KeybindMatcher dispatches it)
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== "keydown") return true;
+    if (ev.key === "Escape" && armedCustomChords.length > 0) {
+      resetCustomLeader();
+      if (ev.preventDefault) ev.preventDefault();
+      return false;
+    }
     const key = normalizeKey(ev.key);
     if (key === null) return true;
-    const hit = interceptChords.some(
-      (c) =>
-        c.ctrl === ev.ctrlKey &&
-        c.alt === ev.altKey &&
-        c.shift === ev.shiftKey &&
-        c.key === key,
-    );
-    if (!hit) return true;
-    post({
-      type: "chord",
-      paneId,
+    const chord = {
       ctrl: ev.ctrlKey,
       alt: ev.altKey,
       shift: ev.shiftKey,
       key,
-    });
+    };
+    const customWasArmed = armedCustomChords.length > 0;
+    let handled = customWasArmed
+      ? processCustomChord(paneId, chord, true)
+      : false;
+    const builtinHit =
+      !handled && interceptChords.some((c) => samePhysicalChord(c, chord));
+    if (builtinHit) {
+      resetCustomLeader();
+      post({
+        type: "chord",
+        paneId,
+        generation: hotkeyGeneration,
+        ctrl: ev.ctrlKey,
+        alt: ev.altKey,
+        shift: ev.shiftKey,
+        key,
+      });
+      handled = true;
+    } else if (!handled && !customWasArmed) {
+      handled = processCustomChord(paneId, chord, true);
+    }
+    if (!handled) {
+      return true;
+    }
     if (ev.preventDefault) ev.preventDefault();
     return false;
   });
@@ -1504,9 +1649,13 @@ window.agterm = {
   focus: (paneId) => focusPane(paneId, true),
   // page-global hotkey table (host-invoked so a following dispatch cannot outrun it)
   setChords: (items) => {
+    resetCustomLeader();
+    hotkeyGeneration += 1;
     interceptChords = items || [];
+    customHotkeyBindings = [];
     return interceptChords.length;
   },
+  setHotkeyManifest,
   syntheticKeyCodeFromKey: (key) => {
     if (typeof key !== "string") return 0;
     if (key.length === 1) return key.toUpperCase().charCodeAt(0);

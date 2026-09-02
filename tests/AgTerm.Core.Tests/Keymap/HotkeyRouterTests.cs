@@ -84,4 +84,57 @@ public class HotkeyRouterTests
         Assert.Equal(chords.Count, chords.Distinct().Count());                 // ⌘F/⌃⌘F fold once
         Assert.DoesNotContain(chords, c => c is { Ctrl: false, Alt: false });  // nothing unmodified
     }
+
+    [Fact]
+    public void CreateManifest_maps_custom_single_and_leader_with_generation_and_timeout()
+    {
+        var single = new CustomCommand("single", "echo single", "ctrl+k", Guid.NewGuid());
+        var leader = new CustomCommand("leader", "echo leader", "ctrl+a>b", Guid.NewGuid());
+        var paletteOnly = new CustomCommand("palette", "echo palette", "", Guid.NewGuid());
+        var keymap = new KeymapTable(
+            new Dictionary<BuiltinAction, Chord>(),
+            [single, leader, paletteOnly]);
+
+        var manifest = new HotkeyRouter(keymap).CreateManifest(
+            generation: 9,
+            canExecute: action => action == BuiltinAction.NewSession,
+            leaderTimeoutMs: 275);
+
+        Assert.Equal(9, manifest.Generation);
+        Assert.Equal(275, manifest.LeaderTimeoutMs);
+        Assert.Equal([Press("n", ctrl: true)], manifest.BuiltinSingles);
+        Assert.Equal(2, manifest.CustomBindings.Count);
+        Assert.Equal([Press("k", ctrl: true)],
+            manifest.CustomBindings.Single(binding => binding.CommandId == single.Id).Chords);
+        Assert.Equal([Press("a", ctrl: true), Press("b")],
+            manifest.CustomBindings.Single(binding => binding.CommandId == leader.Id).Chords);
+        Assert.DoesNotContain(manifest.CustomBindings, binding => binding.CommandId == paletteOnly.Id);
+    }
+
+    [Fact]
+    public void CreateManifest_prunes_custom_first_chord_shadowed_by_active_builtin_after_Windows_fold()
+    {
+        var command = new CustomCommand("shadowed", "echo shadowed", "ctrl+n", Guid.NewGuid());
+        var keymap = new KeymapTable(new Dictionary<BuiltinAction, Chord>(), [command]);
+
+        var manifest = new HotkeyRouter(keymap).CreateManifest(
+            1,
+            action => action == BuiltinAction.NewSession);
+
+        Assert.Empty(manifest.CustomBindings);
+        Assert.Equal([Press("n", ctrl: true)], manifest.BuiltinSingles);
+    }
+
+    [Fact]
+    public void CreateManifest_prunes_later_custom_binding_with_effective_prefix_conflict()
+    {
+        var first = new CustomCommand("first", "echo first", "ctrl+a>b", Guid.NewGuid());
+        var later = new CustomCommand("later", "echo later", "cmd+a", Guid.NewGuid());
+        var keymap = new KeymapTable(new Dictionary<BuiltinAction, Chord>(), [first, later]);
+
+        var manifest = new HotkeyRouter(keymap).CreateManifest(1, _ => false);
+
+        var binding = Assert.Single(manifest.CustomBindings);
+        Assert.Equal(first.Id, binding.CommandId);
+    }
 }

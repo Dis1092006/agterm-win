@@ -183,8 +183,22 @@ available in the headless host"` (после резолюции цели — `no
   (`agterm.setChords`); совпавший keydown НЕ уходит в шелл, а возвращается хосту
   `{type:'chord',…}` (xterm `attachCustomKeyEventHandler`). Плата за cmd→Ctrl: забиндённые
   Ctrl-чорды (Ctrl+N/W/F/…) не доходят до шелла — как и было бы в Windows Terminal с
-  такими биндами; лечится `map`-ом. Кастом-команды и палитры — фаза 5 (их чорды пока
-  не перехватываются). Полная таблица действий — README.
+  такими биндами; лечится `map`-ом. Полная таблица действий — README.
+
+- **Custom-command shell and chord adaptation.** Upstream executes each custom command as an
+  opaque `/bin/sh -c` line. Windows resolves `pwsh.exe` from `PATH` first and runs
+  `-NoLogo -NoProfile -NonInteractive -Command <line>`; when PowerShell 7 is unavailable it
+  falls back to `%COMSPEC% /d /c "<line>"`. The cmd fallback uses its command-string quoting
+  rule so quotes already written by the command author around Windows paths remain part of the
+  shell line. The runtime does not tokenize the line or add quotes around `{AGT_X}` expansions.
+  It exports the same ten `AGT_*` values, with `AGT_SOCKET` containing the literal named-pipe
+  override used by `agtermctl`, and uses the active session cwd when one exists. A sessionless
+  keybind may run only when its command body does not reference session, workspace, or selection
+  values; the palette path still requires an active session. The shared WebView2 receives one
+  generation-stamped manifest containing active built-ins and parsed custom single/leader chords.
+  Replacement is atomic and cancels any armed leader; stale generation events no-op in the host.
+  A 1.5-second leader timeout and Escape abandon the prefix, and an unmatched continuation is
+  retried at the root before it is returned to the terminal.
 
 - **Сайдбар: не портированное в фазе 4.** Finder-folder-drop (перетаскивание каталогов
   из Explorer в сайдбар) не реализован; спринг-раскрытие свёрнутого воркспейса под

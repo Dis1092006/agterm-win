@@ -1,5 +1,6 @@
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
+using AgTerm.Xterm;
 
 namespace AgTerm.App;
 
@@ -23,4 +24,23 @@ public static class WindowPaletteActions
         BuiltinAction.ShowAttention or
         BuiltinAction.FocusLeftPane or
         BuiltinAction.FocusRightPane);
+
+    public static string? CustomCommandPaneId(
+        LiveSelectionSnapshot selection,
+        CustomCommandSource source,
+        string? firedPaneId)
+    {
+        if (source == CustomCommandSource.Hotkey &&
+            firedPaneId is not null &&
+            (firedPaneId == selection.MainPaneId ||
+             firedPaneId == selection.SplitPaneId ||
+             firedPaneId == selection.ScratchPaneId))
+        {
+            return firedPaneId;
+        }
+
+        return selection.SplitFocused && !string.IsNullOrWhiteSpace(selection.SplitPaneId)
+            ? selection.SplitPaneId
+            : selection.MainPaneId;
+    }
 }

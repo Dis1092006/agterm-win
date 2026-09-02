@@ -235,6 +235,39 @@ public sealed class WindowPaletteActionsTests
     }
 
     [Fact]
+    public void Custom_command_context_uses_exact_terminal_panes_and_falls_back_from_quick_or_overlay()
+    {
+        var selection = new LiveSelectionSnapshot(
+            Guid.NewGuid(),
+            "session",
+            MainPaneId: "main",
+            SplitPaneId: "split",
+            IsSplit: true,
+            SplitFocused: true,
+            ScratchPaneId: "scratch",
+            ScratchActive: true,
+            OverlayPaneId: "overlay",
+            OverlayActive: true,
+            QuickPaneId: "quick",
+            QuickVisible: true);
+
+        Assert.Equal("split", WindowPaletteActions.CustomCommandPaneId(
+            selection, CustomCommandSource.Palette, null));
+        Assert.Equal("main", WindowPaletteActions.CustomCommandPaneId(
+            selection with { SplitPaneId = null }, CustomCommandSource.Palette, null));
+        Assert.Equal("main", WindowPaletteActions.CustomCommandPaneId(
+            selection, CustomCommandSource.Hotkey, "main"));
+        Assert.Equal("split", WindowPaletteActions.CustomCommandPaneId(
+            selection, CustomCommandSource.Hotkey, "split"));
+        Assert.Equal("scratch", WindowPaletteActions.CustomCommandPaneId(
+            selection, CustomCommandSource.Hotkey, "scratch"));
+        Assert.Equal("split", WindowPaletteActions.CustomCommandPaneId(
+            selection, CustomCommandSource.Hotkey, "quick"));
+        Assert.Equal("split", WindowPaletteActions.CustomCommandPaneId(
+            selection, CustomCommandSource.Hotkey, "overlay"));
+    }
+
+    [Fact]
     public async Task Command_acceptance_rechecks_router_CanExecute_after_palette_open()
     {
         var enabled = true;

@@ -113,6 +113,10 @@ public sealed class XtermPage
     /// window's hotkey dispatcher handles it (the shell never saw the key).</summary>
     public event Action<string, Core.Keymap.PhysicalChord>? ChordPressed;
 
+    public event Action<Core.Keymap.BuiltinHotkeyEvent>? BuiltinHotkeyPressed;
+
+    public event Action<Core.Keymap.CustomHotkeyEvent>? CustomCommandPressed;
+
     /// <summary>Raised when the page requests host-side paste for a known pane id.</summary>
     public event Action<string>? PasteRequested;
 
@@ -132,6 +136,20 @@ public sealed class XtermPage
         var items = chords.Select(c => new { ctrl = c.Ctrl, alt = c.Alt, shift = c.Shift, key = c.Key });
         return _host.ExecuteScriptAsync(
             $"agterm.setChords({JsonSerializer.Serialize(items, XtermTerminal.ScriptLiteral)})");
+    }
+
+    public async Task<bool> SetHotkeyManifestAsync(Core.Keymap.HotkeyManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.Generation < 0)
+            throw new ArgumentOutOfRangeException(nameof(manifest));
+        if (manifest.LeaderTimeoutMs <= 0)
+            throw new ArgumentOutOfRangeException(nameof(manifest));
+
+        var payload = JsonSerializer.Serialize(manifest, RendererSettingsScriptLiteral);
+        var raw = await _host.ExecuteScriptAsync($"agterm.setHotkeyManifest({payload})")
+            .ConfigureAwait(false);
+        return JsonSerializer.Deserialize<bool?>(raw) == true;
     }
 
     internal Task<string> ExecuteScriptAsync(string script) => _host.ExecuteScriptAsync(script);
@@ -245,8 +263,39 @@ public sealed class XtermPage
         }
         if (msg is { Type: "chord", PaneId: { } chordPane, Key: { } key })
         {
-            ChordPressed?.Invoke(chordPane,
-                new Core.Keymap.PhysicalChord(msg.Ctrl ?? false, msg.Alt ?? false, msg.Shift ?? false, key));
+            var chord = new Core.Keymap.PhysicalChord(
+                msg.Ctrl ?? false,
+                msg.Alt ?? false,
+                msg.Shift ?? false,
+                key);
+            ChordPressed?.Invoke(chordPane, chord);
+            if (msg.Generation is { } builtinGeneration)
+                BuiltinHotkeyPressed?.Invoke(new Core.Keymap.BuiltinHotkeyEvent(
+                    chordPane,
+                    builtinGeneration,
+                    chord));
+            return;
+        }
+        if (msg is
+            {
+                Type: "customHotkey",
+                PaneId: { } customPane,
+                CustomCommandId: { } commandId,
+                Generation: { } generation,
+                Key: { } customKey,
+            } &&
+            _terminals.ContainsKey(customPane) &&
+            Guid.TryParseExact(commandId, "D", out var customCommandId))
+        {
+            CustomCommandPressed?.Invoke(new Core.Keymap.CustomHotkeyEvent(
+                customPane,
+                customCommandId,
+                generation,
+                new Core.Keymap.PhysicalChord(
+                    msg.Ctrl ?? false,
+                    msg.Alt ?? false,
+                    msg.Shift ?? false,
+                    customKey)));
             return;
         }
         if (msg?.Type == "pasteRequested")
@@ -318,6 +367,8 @@ internal sealed record BridgeMessage
     [JsonPropertyName("alt")] public bool? Alt { get; init; }
     [JsonPropertyName("shift")] public bool? Shift { get; init; }
     [JsonPropertyName("key")] public string? Key { get; init; }
+    [JsonPropertyName("generation")] public long? Generation { get; init; }
+    [JsonPropertyName("customCommandId")] public string? CustomCommandId { get; init; }
     [JsonPropertyName("leftPaneId")] public string? LeftPaneId { get; init; }
     [JsonPropertyName("rightPaneId")] public string? RightPaneId { get; init; }
     [JsonPropertyName("ratio")] public double? Ratio { get; init; }

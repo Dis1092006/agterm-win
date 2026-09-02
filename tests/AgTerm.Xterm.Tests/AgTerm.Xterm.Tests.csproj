@@ -35,6 +35,7 @@
     <Compile Include="..\..\src\AgTerm.App\PaletteLayout.cs" Link="App\PaletteLayout.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteStatusColor.cs" Link="App\PaletteStatusColor.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteTransitionCoordinator.cs" Link="App\PaletteTransitionCoordinator.cs" />
+    <Compile Include="..\..\src\AgTerm.App\HotkeyGenerationRegistry.cs" Link="App\HotkeyGenerationRegistry.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowPaletteActions.cs" Link="App\WindowPaletteActions.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowPaletteProjection.cs" Link="App\WindowPaletteProjection.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowCommandRouter.cs" Link="App\WindowCommandRouter.cs" />

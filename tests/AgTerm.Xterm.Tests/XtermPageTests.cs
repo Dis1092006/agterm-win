@@ -195,6 +195,47 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task SetHotkeyManifest_serializes_custom_bindings_and_routes_generation_stamped_event()
+    {
+        var page = await InitializedAsync();
+        await page.OpenTerminalAsync("p1");
+        var commandId = Guid.NewGuid();
+        var manifest = new AgTerm.Core.Keymap.HotkeyManifest(
+            Generation: 7,
+            LeaderTimeoutMs: 250,
+            BuiltinSingles: [new(true, false, false, "n")],
+            CustomBindings:
+            [
+                new(commandId,
+                [
+                    new(true, false, false, "a"),
+                    new(false, false, false, "b"),
+                ]),
+            ]);
+
+        _host.ScriptResult = _ => "true";
+        await page.SetHotkeyManifestAsync(manifest);
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.setHotkeyManifest"));
+        Assert.Contains("\"generation\":7", script);
+        Assert.Contains("\"leaderTimeoutMs\":250", script);
+        Assert.Contains(commandId.ToString("D"), script, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"chords\":[{\"ctrl\":true", script);
+
+        AgTerm.Core.Keymap.CustomHotkeyEvent? observed = null;
+        page.CustomCommandPressed += hit => observed = hit;
+        _host.RaiseMessage($$"""
+            {"type":"customHotkey","paneId":"p1","generation":7,"customCommandId":"{{commandId:D}}","ctrl":false,"alt":false,"shift":false,"key":"b"}
+            """);
+
+        Assert.NotNull(observed);
+        Assert.Equal("p1", observed!.PaneId);
+        Assert.Equal(commandId, observed.CommandId);
+        Assert.Equal(7, observed.Generation);
+        Assert.Equal(new(false, false, false, "b"), observed.Chord);
+    }
+
+    [Fact]
     public async Task ClosePane_runs_the_close_script_and_unroutes_the_terminal()
     {
         var page = await InitializedAsync();
