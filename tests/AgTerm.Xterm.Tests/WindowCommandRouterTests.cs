@@ -22,6 +22,7 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleSidebar,
         BuiltinAction.ToggleSplit,
         BuiltinAction.ToggleScratch,
+        BuiltinAction.ToggleTerminalZoom,
         BuiltinAction.ToggleSearch,
         BuiltinAction.QuickTerminal,
         BuiltinAction.SessionPalette,
@@ -50,7 +51,6 @@ public class WindowCommandRouterTests
         BuiltinAction.RenameWorkspace,
         BuiltinAction.DeleteWorkspace,
         BuiltinAction.ReopenRecent,
-        BuiltinAction.ToggleTerminalZoom,
         BuiltinAction.SelectTheme,
         BuiltinAction.ToggleFullscreen,
         BuiltinAction.Dashboard,
@@ -423,6 +423,8 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "f"), chords);
         // Ctrl+` → ctrl+` → QuickTerminal (implemented in Q5): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "`"), chords);
+        // Ctrl+Shift+Enter → cmd+shift+return → ToggleTerminalZoom (implemented in D1): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "return"), chords);
         // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (unimplemented): must be absent
         Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
         // Ctrl+P → ctrl+p → SessionPalette (implemented in C2): must be present

@@ -25,7 +25,9 @@ public sealed record LiveSelectionSnapshot(
     int? SearchTotal = null,
     int? SearchSelected = null,
     string? QuickPaneId = null,
-    bool QuickVisible = false)
+    bool QuickVisible = false,
+    string? ZoomPaneId = null,
+    bool DashboardOpen = false)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -53,6 +55,15 @@ public sealed record LiveSelectionSnapshot(
                 ? SplitPaneId
                 : MainPaneId;
             baseLayout = new TerminalLayout.Single(generation, paneId, DisplayName, WorkspaceName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(ZoomPaneId))
+        {
+            return new TerminalLayout.Zoomed(
+                generation,
+                ZoomPaneId,
+                DisplayName,
+                WorkspaceName);
         }
 
         if (QuickVisible && !string.IsNullOrWhiteSpace(QuickPaneId))
@@ -307,6 +318,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
 
     private LiveSelectionSnapshot CaptureSelectionSnapshot()
     {
+        _host.Actions.ReconcileSurfaceZoom();
         var selectedSessionId = _host.Store.SelectedSessionId;
         if (selectedSessionId is not { } id)
         {
@@ -315,7 +327,9 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
                 null,
                 null,
                 QuickPaneId: _host.Actions.Quick.Surface?.PaneToken,
-                QuickVisible: _host.Actions.Quick.Visible);
+                QuickVisible: _host.Actions.Quick.Visible,
+                ZoomPaneId: CaptureZoomPaneId(),
+                DashboardOpen: _host.Actions.Dashboard.IsOpen);
         }
 
         var selectedSession = _host.Store.SessionWithId(id);
@@ -344,7 +358,30 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             selectedSession?.SearchTotal,
             selectedSession?.SearchSelected,
             _host.Actions.Quick.Surface?.PaneToken,
-            _host.Actions.Quick.Visible);
+            _host.Actions.Quick.Visible,
+            CaptureZoomPaneId(),
+            _host.Actions.Dashboard.IsOpen);
+    }
+
+    private string? CaptureZoomPaneId() => _host.Actions.Zoom.Target switch
+    {
+        TerminalZoomTarget.Quick => _host.Actions.Quick.Surface?.PaneToken,
+        TerminalZoomTarget.Session target => CaptureSessionZoomPaneId(target),
+        null => null,
+        _ => throw new InvalidOperationException("Unknown terminal zoom target."),
+    };
+
+    private string? CaptureSessionZoomPaneId(TerminalZoomTarget.Session target)
+    {
+        var session = _host.Store.SessionWithId(target.SessionId);
+        return target.Surface switch
+        {
+            TerminalZoomSurface.Primary => session?.Surface?.PaneToken,
+            TerminalZoomSurface.Split => session?.SplitSurface?.PaneToken,
+            TerminalZoomSurface.Scratch => session?.ScratchSurface?.PaneToken,
+            TerminalZoomSurface.Overlay => session?.OverlaySurface?.PaneToken,
+            _ => throw new ArgumentOutOfRangeException(nameof(target)),
+        };
     }
 
     internal void PublishSelectionSnapshotLocked() =>

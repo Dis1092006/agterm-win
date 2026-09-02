@@ -42,7 +42,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.ResetFontSize] = true,
             [BuiltinAction.ToggleSplit] = true,
             [BuiltinAction.ToggleScratch] = true,
-            [BuiltinAction.ToggleTerminalZoom] = false,
+            [BuiltinAction.ToggleTerminalZoom] = true,
             [BuiltinAction.ToggleSearch] = true,
             [BuiltinAction.ToggleSidebar] = true,
             [BuiltinAction.SelectTheme] = false,

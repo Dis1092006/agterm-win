@@ -138,7 +138,9 @@ public sealed class XtermPage
             $"agterm.setChords({JsonSerializer.Serialize(items, XtermTerminal.ScriptLiteral)})");
     }
 
-    public async Task<bool> SetHotkeyManifestAsync(Core.Keymap.HotkeyManifest manifest)
+    public async Task<bool> SetHotkeyManifestAsync(
+        Core.Keymap.HotkeyManifest manifest,
+        IReadOnlyList<Core.Keymap.PhysicalChord>? zoomPassthroughSingles = null)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.Generation < 0)
@@ -146,7 +148,14 @@ public sealed class XtermPage
         if (manifest.LeaderTimeoutMs <= 0)
             throw new ArgumentOutOfRangeException(nameof(manifest));
 
-        var payload = JsonSerializer.Serialize(manifest, RendererSettingsScriptLiteral);
+        var payload = JsonSerializer.Serialize(new
+        {
+            manifest.Generation,
+            manifest.LeaderTimeoutMs,
+            manifest.BuiltinSingles,
+            manifest.CustomBindings,
+            ZoomPassthroughSingles = zoomPassthroughSingles ?? Array.Empty<Core.Keymap.PhysicalChord>(),
+        }, RendererSettingsScriptLiteral);
         var raw = await _host.ExecuteScriptAsync($"agterm.setHotkeyManifest({payload})")
             .ConfigureAwait(false);
         return JsonSerializer.Deserialize<bool?>(raw) == true;
@@ -180,6 +189,11 @@ public sealed class XtermPage
                 writer.WriteNumber("generation", single.Generation);
                 writer.WriteString("paneId", single.PaneId);
                 writer.WriteString("title", single.Title);
+                break;
+            case TerminalLayout.Zoomed zoomed:
+                writer.WriteString("type", "zoomed");
+                writer.WriteNumber("generation", zoomed.Generation);
+                writer.WriteString("paneId", zoomed.PaneId);
                 break;
             case TerminalLayout.Split split:
                 writer.WriteString("type", "split");

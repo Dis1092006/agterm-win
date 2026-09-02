@@ -382,9 +382,9 @@ public sealed class MainWindowSplitWiringTests
 
         // Quick surfaces must be mounted in the same SurfaceRealized handler as Main/Scratch/Overlay.
         Assert.Contains("LiveSurfaceKind.Quick", source, StringComparison.Ordinal);
-        // Snapshot-driven toggle: SetTerminalOnlyPresentation must be called with snapshot.QuickVisible.
+        // Snapshot-driven toggle: realized Quick or an exact zoom pane enters terminal-only presentation.
         Assert.Matches(
-            @"SetTerminalOnlyPresentation\(\s*snapshot\.QuickVisible && !string\.IsNullOrWhiteSpace\(snapshot\.QuickPaneId\)\);",
+            @"SetTerminalOnlyPresentation\(\s*snapshot\.QuickVisible && !string\.IsNullOrWhiteSpace\(snapshot\.QuickPaneId\)\s+\|\| !string\.IsNullOrWhiteSpace\(snapshot\.ZoomPaneId\)\);",
             source);
         Assert.Matches(
             @"_acceptedPaneId = layered\.Layer\.PaneId;\s+FocusActiveTerminal\(\);",

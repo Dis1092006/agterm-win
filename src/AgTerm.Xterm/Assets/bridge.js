@@ -38,6 +38,7 @@ let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
 let hotkeyGeneration = 0;
 let customHotkeyBindings = [];
+let zoomPassthroughChords = [];
 let armedCustomChords = [];
 let customLeaderTimer = null;
 let customLeaderTimeoutMs = 1500;
@@ -298,7 +299,8 @@ function setVisibleLayout(nextLayout) {
 
 function visibleFocusedPaneId() {
   if (!visibleLayout) return null;
-  if (visibleLayout.type === "single") return visibleLayout.paneId;
+  if (visibleLayout.type === "single" || visibleLayout.type === "zoomed")
+    return visibleLayout.paneId;
   if (visibleLayout.type === "split") return visibleLayout.focusedPaneId;
   if (visibleLayout.type === "layered") return visibleLayout.layerPaneId;
   return null;
@@ -1192,6 +1194,9 @@ function setHotkeyManifest(manifest) {
     manifest.leaderTimeoutMs <= 0 ||
     !Array.isArray(manifest.builtinSingles) ||
     !manifest.builtinSingles.every(validatePhysicalChord) ||
+    (manifest.zoomPassthroughSingles !== undefined &&
+      (!Array.isArray(manifest.zoomPassthroughSingles) ||
+        !manifest.zoomPassthroughSingles.every(validatePhysicalChord))) ||
     !Array.isArray(manifest.customBindings)
   )
     return false;
@@ -1217,6 +1222,9 @@ function setHotkeyManifest(manifest) {
   hotkeyGeneration = manifest.generation;
   customLeaderTimeoutMs = manifest.leaderTimeoutMs;
   interceptChords = manifest.builtinSingles.map((chord) => ({ ...chord }));
+  zoomPassthroughChords = (manifest.zoomPassthroughSingles || []).map(
+    (chord) => ({ ...chord }),
+  );
   customHotkeyBindings = customBindings;
   return true;
 }
@@ -1364,7 +1372,12 @@ function openPane(paneId, opts) {
       ? processCustomChord(paneId, chord, true)
       : false;
     const builtinHit =
-      !handled && interceptChords.some((c) => samePhysicalChord(c, chord));
+      !handled &&
+      !(
+        visibleLayout?.type === "zoomed" &&
+        zoomPassthroughChords.some((c) => samePhysicalChord(c, chord))
+      ) &&
+      interceptChords.some((c) => samePhysicalChord(c, chord));
     if (builtinHit) {
       resetCustomLeader();
       post({
@@ -1485,6 +1498,17 @@ function applyLayout(layout) {
     const shouldFocus = visibleFocusedPaneId() !== layout.paneId;
     if (!applySinglePresentation(layout.paneId, true, shouldFocus))
       return false;
+    highestAcceptedLayoutGeneration = generation;
+    return true;
+  }
+
+  if (layout.type === "zoomed") {
+    if (!hasOnlyKeys(layout, ["type", "generation", "paneId"])) return false;
+    const paneId = normalizeKnownPaneId(layout.paneId);
+    if (!paneId) return false;
+    const shouldFocus = visibleFocusedPaneId() !== paneId;
+    if (!applySinglePresentation(paneId, true, shouldFocus)) return false;
+    setVisibleLayout({ type: "zoomed", paneIds: [paneId], paneId });
     highestAcceptedLayoutGeneration = generation;
     return true;
   }
@@ -1653,6 +1677,7 @@ window.agterm = {
     hotkeyGeneration += 1;
     interceptChords = items || [];
     customHotkeyBindings = [];
+    zoomPassthroughChords = [];
     return interceptChords.length;
   },
   setHotkeyManifest,

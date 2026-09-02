@@ -79,6 +79,15 @@ public sealed record HeadlessHostOptions
 
     /// <summary>Live-only zoom active-state callback. Invoked under the host gate.</summary>
     public Action<bool>? ZoomActiveChanged { get; init; }
+
+    /// <summary>Live-only zoom target callback. Invoked under the host gate after any target change.</summary>
+    public Action? ZoomChanged { get; init; }
+
+    /// <summary>Live-only dashboard state callback. Invoked under the host gate after open or close.</summary>
+    public Action? DashboardChanged { get; init; }
+
+    /// <summary>Optional live-only availability check for a realized zoom target pane.</summary>
+    public Func<TerminalZoomTarget, bool>? ZoomTargetAvailable { get; init; }
 }
 
 /// <summary>
@@ -138,7 +147,10 @@ public sealed class HeadlessHost : IDisposable
             paneFocusRequested: options.PaneFocusRequested,
             searchUpdated: options.SearchUpdated,
             quickChanged: options.QuickChanged,
-            zoomActiveChanged: options.ZoomActiveChanged);
+            zoomActiveChanged: options.ZoomActiveChanged,
+            zoomChanged: options.ZoomChanged,
+            dashboardChanged: options.DashboardChanged,
+            zoomTargetAvailable: options.ZoomTargetAvailable);
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.

@@ -108,6 +108,9 @@ public sealed partial class MainWindow : Window
                 case TerminalLayout.Single single:
                     ApplyAcceptedBaseLayout(single, single.PaneId);
                     break;
+                case TerminalLayout.Zoomed zoomed:
+                    ApplyAcceptedBaseLayout(zoomed, zoomed.PaneId);
+                    break;
                 case TerminalLayout.Split split:
                     ApplyAcceptedBaseLayout(split, split.FocusedPaneId);
                     break;
@@ -221,7 +224,8 @@ public sealed partial class MainWindow : Window
                 _selection = snapshot;
                 _selectedSessionId = snapshot.SessionId;
                 SetTerminalOnlyPresentation(
-                    snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId));
+                    snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId)
+                    || !string.IsNullOrWhiteSpace(snapshot.ZoomPaneId));
                 SubmitLayout();
                 SubmitSearchPresentation(previousSelection, snapshot);
             });
@@ -307,7 +311,8 @@ public sealed partial class MainWindow : Window
             _selection = startup.Selection;
             _selectedSessionId = startup.Selection.SessionId;
             SetTerminalOnlyPresentation(
-                startup.Selection.QuickVisible && !string.IsNullOrWhiteSpace(startup.Selection.QuickPaneId));
+                startup.Selection.QuickVisible && !string.IsNullOrWhiteSpace(startup.Selection.QuickPaneId)
+                || !string.IsNullOrWhiteSpace(startup.Selection.ZoomPaneId));
             foreach (var surface in startup.CommittedSurfaces)
                 MountSurface(surface);
             SubmitLayout();
@@ -368,6 +373,9 @@ public sealed partial class MainWindow : Window
 
                     return host.StoreCoordinator.MutateAsync(store => store.ToggleScratch(selectedSessionId));
                 }),
+            [BuiltinAction.ToggleTerminalZoom] = Async(
+                () => true,
+                () => host.ToggleTerminalZoomAsync()),
             [BuiltinAction.ToggleSearch] = Async(
                 HasSelectedSession,
                 () =>
@@ -486,8 +494,9 @@ public sealed partial class MainWindow : Window
         var (title, workspaceName) = baseLayout switch
         {
             TerminalLayout.Single single => (single.Title, single.WorkspaceName),
+            TerminalLayout.Zoomed zoomed => (zoomed.Title ?? string.Empty, zoomed.WorkspaceName),
             TerminalLayout.Split split => (split.Title ?? string.Empty, split.WorkspaceName),
-            _ => throw new ArgumentOutOfRangeException(nameof(baseLayout), baseLayout, "Base layout must be single or split."),
+            _ => throw new ArgumentOutOfRangeException(nameof(baseLayout), baseLayout, "Base layout must be single, split, or zoomed."),
         };
 
         Title = $"{title} — agterm";
@@ -590,9 +599,11 @@ public sealed partial class MainWindow : Window
             var manifest = pending.Router.CreateManifest(
                 pending.Generation,
                 action => WindowCommandRouter.ActionImplementations.TryGetValue(action, out var implemented) &&
-                    implemented &&
-                    (!IsPaletteAction(action) || _host?.ZoomActive != true));
-            if (await page.SetHotkeyManifestAsync(manifest))
+                    implemented);
+            var zoomPassthroughSingles = pending.Router.InterceptChords
+                .Where(chord => pending.Router.Handle(chord) is { } action && IsPaletteAction(action))
+                .ToArray();
+            if (await page.SetHotkeyManifestAsync(manifest, zoomPassthroughSingles))
                 _hotkeyStates.Commit(pending.Generation);
             else
                 _hotkeyStates.Reject(pending.Generation);

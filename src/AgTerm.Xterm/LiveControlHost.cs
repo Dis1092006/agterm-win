@@ -1,5 +1,6 @@
 using AgTerm.ControlServer;
 using AgTerm.Core.Model;
+using AgTerm.Core.Protocol;
 using AgTerm.Terminal;
 using System.Threading;
 
@@ -114,6 +115,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             SearchUpdated = QueueSearchUpdated,
             QuickChanged = QueueQuickChanged,
             ZoomActiveChanged = QueueZoomActiveChanged,
+            ZoomChanged = QueueZoomChanged,
+            DashboardChanged = QueueDashboardChanged,
+            ZoomTargetAvailable = IsZoomTargetRealized,
         });
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         _coordinator = new LiveSurfaceCoordinator(
@@ -199,6 +203,11 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     Host.Actions.SetQuickTerminal("toggle");
                 }
             },
+            cancellationToken);
+
+    public Task ToggleTerminalZoomAsync(CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(
+            _ => Host.Actions.SetSurfaceZoom(null, null, ControlToggleMode.Toggle),
             cancellationToken);
 
     public Task ApplyBaseFontSizeAsync(double fontSize, CancellationToken cancellationToken = default)
@@ -402,6 +411,41 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private void QueueQuickChanged() =>
         _storeCoordinator?.PublishSelectionSnapshotLocked();
+
+    private void QueueZoomChanged()
+    {
+        if (Host.Actions.Zoom.Target is TerminalZoomTarget.Session
+            && Host.Actions.Quick.Visible)
+        {
+            Host.Actions.SetQuickTerminal("hide");
+        }
+
+        if (Host.Actions.Zoom.Target is not null && Host.Actions.Dashboard.IsOpen)
+            Host.Actions.Dashboard.Close();
+
+        _storeCoordinator?.PublishSelectionSnapshotLocked();
+    }
+
+    private void QueueDashboardChanged() =>
+        _storeCoordinator?.PublishSelectionSnapshotLocked();
+
+    private bool IsZoomTargetRealized(TerminalZoomTarget target)
+    {
+        var paneToken = target switch
+        {
+            TerminalZoomTarget.Quick => Host.Actions.Quick.Surface?.PaneToken,
+            TerminalZoomTarget.Session sessionTarget => sessionTarget.Surface switch
+            {
+                TerminalZoomSurface.Primary => Host.Store.SessionWithId(sessionTarget.SessionId)?.Surface?.PaneToken,
+                TerminalZoomSurface.Split => Host.Store.SessionWithId(sessionTarget.SessionId)?.SplitSurface?.PaneToken,
+                TerminalZoomSurface.Scratch => Host.Store.SessionWithId(sessionTarget.SessionId)?.ScratchSurface?.PaneToken,
+                TerminalZoomSurface.Overlay => Host.Store.SessionWithId(sessionTarget.SessionId)?.OverlaySurface?.PaneToken,
+                _ => throw new ArgumentOutOfRangeException(nameof(target)),
+            },
+            _ => throw new ArgumentOutOfRangeException(nameof(target)),
+        };
+        return !string.IsNullOrWhiteSpace(paneToken);
+    }
 
     private void QueuePaneFocusRequested(string paneId)
     {

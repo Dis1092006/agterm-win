@@ -52,6 +52,13 @@ public abstract record TerminalLayout(long Generation)
     public sealed record Single(long Generation, string PaneId, string Title, string? WorkspaceName = null)
         : TerminalLayout(Generation);
 
+    public sealed record Zoomed(
+        long Generation,
+        string PaneId,
+        string? Title = null,
+        string? WorkspaceName = null)
+        : TerminalLayout(Generation);
+
     public sealed record Split : TerminalLayout
     {
         public Split(
