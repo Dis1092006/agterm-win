@@ -58,6 +58,9 @@ public sealed record LiveControlHostOptions
 
     /// <summary>Optional cancellation signal for constructor-time bootstrap only.</summary>
     public CancellationToken BootstrapCancellationToken { get; init; } = CancellationToken.None;
+
+    internal Func<Action, Task> NotificationScheduler { get; init; } =
+        static notification => Task.Run(notification);
 }
 
 /// <summary>
@@ -81,6 +84,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private HeadlessHost? _host;
     private Task? _shutdownTask;
     private int _shutdownStarted;
+    private int _zoomActive;
+    private readonly Queue<bool> _pendingZoomStates = new();
+    private Task? _zoomNotificationTask;
 
     public LiveControlHost(LiveControlHostOptions options)
     {
@@ -107,6 +113,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             PaneFocusRequested = QueuePaneFocusRequested,
             SearchUpdated = QueueSearchUpdated,
             QuickChanged = QueueQuickChanged,
+            ZoomActiveChanged = QueueZoomActiveChanged,
         });
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         _coordinator = new LiveSurfaceCoordinator(
@@ -171,6 +178,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     }
 
     public string PipeName => Host.PipeName;
+
+    public bool ZoomActive => Volatile.Read(ref _zoomActive) != 0;
 
     public ILiveStoreCoordinator StoreCoordinator => _storeCoordinator;
 
@@ -296,6 +305,100 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     /// <summary>An explicit control request to move keyboard focus to an exact live pane token.</summary>
     public event Action<string>? PaneFocusRequested;
+
+    public event Action<bool>? ZoomActiveChanged;
+
+    private void QueueZoomActiveChanged(bool active)
+    {
+        Volatile.Write(ref _zoomActive, active ? 1 : 0);
+        lock (_focusRequestLock)
+        {
+            _pendingZoomStates.Enqueue(active);
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+                return;
+            if (_zoomNotificationTask is not null)
+                return;
+
+            var delivery = ScheduleZoomNotificationWorker();
+            _zoomNotificationTask = delivery;
+            _focusRequestTasks.Add(delivery);
+        }
+    }
+
+    private Task ScheduleZoomNotificationWorker()
+    {
+        var schedulerReturned = 0;
+        var invokedBeforeReturn = 0;
+        Task? delivery = null;
+        try
+        {
+            delivery = _options.NotificationScheduler(() =>
+            {
+                if (Volatile.Read(ref schedulerReturned) == 0)
+                {
+                    Interlocked.Exchange(ref invokedBeforeReturn, 1);
+                    return;
+                }
+
+                DeliverZoomActiveChanges(delivery!);
+            });
+        }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"Zoom notification scheduler failed: {ex}");
+        }
+        finally
+        {
+            Volatile.Write(ref schedulerReturned, 1);
+        }
+
+        if (delivery is not null &&
+            !delivery.IsCompleted &&
+            Volatile.Read(ref invokedBeforeReturn) == 0)
+        {
+            return delivery;
+        }
+
+        Task? deferred = null;
+        deferred = Task.Run(() => DeliverZoomActiveChanges(deferred!));
+        return deferred;
+    }
+
+    private void DeliverZoomActiveChanges(Task delivery)
+    {
+        while (true)
+        {
+            bool active;
+            lock (_focusRequestLock)
+            {
+                if (Volatile.Read(ref _shutdownStarted) != 0)
+                {
+                    _pendingZoomStates.Clear();
+                    _zoomNotificationTask = null;
+                    _focusRequestTasks.Remove(delivery);
+                    return;
+                }
+
+                if (_pendingZoomStates.Count == 0)
+                {
+                    _zoomNotificationTask = null;
+                    _focusRequestTasks.Remove(delivery);
+                    return;
+                }
+
+                active = _pendingZoomStates.Dequeue();
+            }
+
+            try
+            {
+                ZoomActiveChanged?.Invoke(active);
+            }
+            catch (Exception ex)
+            {
+                _options.Log?.Invoke($"Zoom active-state subscriber failed: {ex}");
+            }
+        }
+    }
 
     private void QueueQuickChanged() =>
         _storeCoordinator?.PublishSelectionSnapshotLocked();

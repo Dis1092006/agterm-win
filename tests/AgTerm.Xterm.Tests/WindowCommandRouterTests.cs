@@ -24,6 +24,10 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleScratch,
         BuiltinAction.ToggleSearch,
         BuiltinAction.QuickTerminal,
+        BuiltinAction.SessionPalette,
+        BuiltinAction.CommandPalette,
+        BuiltinAction.CustomCommandPalette,
+        BuiltinAction.ShowAttention,
         BuiltinAction.FocusLeftPane,
         BuiltinAction.FocusRightPane,
         BuiltinAction.ToggleFlaggedView,
@@ -49,10 +53,6 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleTerminalZoom,
         BuiltinAction.SelectTheme,
         BuiltinAction.ToggleFullscreen,
-        BuiltinAction.SessionPalette,
-        BuiltinAction.CommandPalette,
-        BuiltinAction.CustomCommandPalette,
-        BuiltinAction.ShowAttention,
         BuiltinAction.Dashboard,
     ];
 
@@ -334,6 +334,33 @@ public class WindowCommandRouterTests
         Assert.Equal(1, calls);
     }
 
+    [Theory]
+    [InlineData(BuiltinAction.SessionPalette, false, "p")]
+    [InlineData(BuiltinAction.CommandPalette, true, "p")]
+    [InlineData(BuiltinAction.CustomCommandPalette, true, "o")]
+    [InlineData(BuiltinAction.ShowAttention, true, "i")]
+    public async Task ExecuteChordAsync_routes_C2_palette_chords(
+        BuiltinAction action,
+        bool shift,
+        string key)
+    {
+        var calls = 0;
+        var router = new WindowCommandRouter(AllNoOpHandlers(
+            replace: action,
+            replacement: new WindowCommandHandler(() => true, () =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            })));
+
+        var result = await router.ExecuteChordAsync(
+            new HotkeyRouter(Keymap.Empty),
+            new PhysicalChord(Ctrl: true, Alt: false, Shift: shift, Key: key));
+
+        Assert.True(result);
+        Assert.Equal(1, calls);
+    }
+
     [Fact]
     public async Task ExecuteChordAsync_implemented_but_disabled_new_session_returns_false_invokes_none()
     {
@@ -398,8 +425,14 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "`"), chords);
         // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (unimplemented): must be absent
         Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
-        // Ctrl+P → ctrl+p → SessionPalette (unimplemented): must be absent
-        Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "p"), chords);
+        // Ctrl+P → ctrl+p → SessionPalette (implemented in C2): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "p"), chords);
+        // Ctrl+Shift+P → ctrl+shift+p → CommandPalette (implemented in C2): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "p"), chords);
+        // Ctrl+Shift+O → ctrl+shift+o → CustomCommandPalette (implemented in C2): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "o"), chords);
+        // Ctrl+Shift+I → ctrl+shift+i → ShowAttention (implemented in C2): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "i"), chords);
         // Ctrl+Shift+D → cmd+shift+d → Dashboard (unimplemented): must be absent
         Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "d"), chords);
 
@@ -421,6 +454,29 @@ public class WindowCommandRouterTests
                 WindowCommandRouter.ActionImplementations.TryGetValue(winner.Value, out var isImpl) && isImpl,
                 $"chord Ctrl={chord.Ctrl} Alt={chord.Alt} Shift={chord.Shift} Key={chord.Key} resolves to {winner} which is not implemented");
         }
+    }
+
+    [Fact]
+    public void ImplementedInterceptChords_excludes_palette_actions_when_they_cannot_execute()
+    {
+        var hotkeys = new HotkeyRouter(Keymap.Empty);
+        var paletteActions = new HashSet<BuiltinAction>
+        {
+            BuiltinAction.SessionPalette,
+            BuiltinAction.CommandPalette,
+            BuiltinAction.CustomCommandPalette,
+            BuiltinAction.ShowAttention,
+        };
+
+        var chords = WindowCommandRouter.ImplementedInterceptChords(
+            hotkeys,
+            action => !paletteActions.Contains(action));
+
+        Assert.DoesNotContain(new PhysicalChord(true, false, false, "p"), chords);
+        Assert.DoesNotContain(new PhysicalChord(true, false, true, "p"), chords);
+        Assert.DoesNotContain(new PhysicalChord(true, false, true, "o"), chords);
+        Assert.DoesNotContain(new PhysicalChord(true, false, true, "i"), chords);
+        Assert.Contains(new PhysicalChord(true, false, false, "`"), chords);
     }
 
     [Fact]

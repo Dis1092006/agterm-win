@@ -110,6 +110,7 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly Action<string>? _paneFocusRequested;
     private readonly Action<HeadlessSearchUpdate>? _searchUpdated;
     private readonly Action? _quickChanged;
+    private readonly Action<bool>? _zoomActiveChanged;
 
     public HeadlessControlActions(AppStore store, ControlEventRing ring, Guid windowId,
                                   string windowName, string configDirectory,
@@ -121,7 +122,8 @@ public sealed class HeadlessControlActions : IControlActions
                                   string? homeDirectory = null,
                                   Action<string>? paneFocusRequested = null,
                                   Action<HeadlessSearchUpdate>? searchUpdated = null,
-                                  Action? quickChanged = null)
+                                  Action? quickChanged = null,
+                                  Action<bool>? zoomActiveChanged = null)
     {
         _store = store;
         _ring = ring;
@@ -139,6 +141,7 @@ public sealed class HeadlessControlActions : IControlActions
         _paneFocusRequested = paneFocusRequested;
         _searchUpdated = searchUpdated;
         _quickChanged = quickChanged;
+        _zoomActiveChanged = zoomActiveChanged;
         Zoom.TargetResolver = () => TerminalZoomController.ResolveTarget(_store, Quick.Visible);
     }
 
@@ -870,7 +873,7 @@ public sealed class HeadlessControlActions : IControlActions
             if (mode != ControlToggleMode.Off
                 && !TerminalZoomController.IsTargetValid(quickTarget, _store, Quick.Visible))
                 return Err("surface not available: quick");
-            Zoom.Set(mode, quickTarget);
+            ApplyZoom(mode, quickTarget);
             return new ControlResponse { Ok = true, Result = new ControlResult { Id = "quick" } };
         }
         if (TerminalSurfaceId.FromRawValue(rawTarget) is not { } surfaceId)
@@ -883,7 +886,7 @@ public sealed class HeadlessControlActions : IControlActions
         if (mode != ControlToggleMode.Off
             && !TerminalZoomController.IsTargetValid(zoomTarget, _store, Quick.Visible))
             return Err($"surface not available: {surfaceId.RawValue}");
-        Zoom.Set(mode, zoomTarget);
+        ApplyZoom(mode, zoomTarget);
         return new ControlResponse { Ok = true, Result = new ControlResult { Id = surfaceId.RawValue } };
     }
 
@@ -904,8 +907,29 @@ public sealed class HeadlessControlActions : IControlActions
                 return Err($"surface not available: {zoomTarget.ControlId}");
             effectiveTarget = zoomTarget;
         }
-        Zoom.Set(mode, effectiveTarget);
+        ApplyZoom(mode, effectiveTarget);
         return new ControlResponse { Ok = true, Result = new ControlResult { Id = effectiveTarget.ControlId } };
+    }
+
+    private void ApplyZoom(ControlToggleMode mode, TerminalZoomTarget target)
+    {
+        var wasActive = Zoom.Target is not null;
+        Zoom.Set(mode, target);
+        PublishZoomActiveChange(wasActive);
+    }
+
+    private void ClearZoom()
+    {
+        var wasActive = Zoom.Target is not null;
+        Zoom.Clear();
+        PublishZoomActiveChange(wasActive);
+    }
+
+    private void PublishZoomActiveChange(bool wasActive)
+    {
+        var isActive = Zoom.Target is not null;
+        if (wasActive != isActive)
+            _zoomActiveChanged?.Invoke(isActive);
     }
 
     // MARK: - dashboard
@@ -951,7 +975,7 @@ public sealed class HeadlessControlActions : IControlActions
             }
             var (members, droppedPanes) = store.DashboardMembers(sessionIds, DashboardMaxCells);
             // zoom and dashboard are mutually exclusive: drop any active zoom on open.
-            Zoom.Clear();
+            ClearZoom();
             Dashboard.Open(members, fontMode);
             // set the applied size synchronously so the dashboardFontSize tree read-back is
             // authoritative at command return (the upstream setAppliedFontSize call).
@@ -1529,7 +1553,7 @@ public sealed class HeadlessControlActions : IControlActions
             // quick terminal first, then hides. Only SHOWING one under the zoom layer stays blocked.
             if (want)
                 return Err("terminal zoom active");
-            if (Zoom.Target is TerminalZoomTarget.Quick) Zoom.Clear();
+            if (Zoom.Target is TerminalZoomTarget.Quick) ClearZoom();
             if (Quick.Visible)
             {
                 Quick.Visible = false;

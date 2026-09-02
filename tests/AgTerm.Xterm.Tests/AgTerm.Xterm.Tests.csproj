@@ -30,8 +30,13 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\AgTerm.App\PaletteController.cs" Link="App\PaletteController.cs" />
+    <Compile Include="..\..\src\AgTerm.App\PaletteAutoFollowLease.cs" Link="App\PaletteAutoFollowLease.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteItemViewModel.cs" Link="App\PaletteItemViewModel.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteLayout.cs" Link="App\PaletteLayout.cs" />
+    <Compile Include="..\..\src\AgTerm.App\PaletteStatusColor.cs" Link="App\PaletteStatusColor.cs" />
+    <Compile Include="..\..\src\AgTerm.App\PaletteTransitionCoordinator.cs" Link="App\PaletteTransitionCoordinator.cs" />
+    <Compile Include="..\..\src\AgTerm.App\WindowPaletteActions.cs" Link="App\WindowPaletteActions.cs" />
+    <Compile Include="..\..\src\AgTerm.App\WindowPaletteProjection.cs" Link="App\WindowPaletteProjection.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowCommandRouter.cs" Link="App\WindowCommandRouter.cs" />
     <Compile Include="..\..\src\AgTerm.App\SettingsReloadCoordinator.cs" Link="App\SettingsReloadCoordinator.cs" />
   </ItemGroup>

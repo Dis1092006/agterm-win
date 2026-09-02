@@ -31,6 +31,25 @@ public sealed class PaletteControllerTests
     }
 
     [Fact]
+    public void Open_can_preserve_caller_order_for_empty_query_but_typed_query_still_ranks()
+    {
+        var controller = new PaletteController();
+
+        controller.Open(
+        [
+            Item("blocked", "Zulu Blocked"),
+            Item("active", "Alpha Active"),
+            Item("completed", "Beta Completed"),
+        ], preserveInputOrderForEmptyQuery: true);
+
+        Assert.Equal(["blocked", "active", "completed"], controller.FilteredItems.Select(item => item.Id));
+
+        controller.SetQuery("a");
+
+        Assert.Equal(["active", "completed"], controller.FilteredItems.Select(item => item.Id));
+    }
+
+    [Fact]
     public void SetQuery_matches_title_or_subtitle_and_resets_selection_to_first_result()
     {
         var controller = new PaletteController();
@@ -206,6 +225,9 @@ public sealed class PaletteViewSourceTests
         Assert.Contains("SizeChanged=\"OnPaletteSizeChanged\"", source, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.Name=\"Palette results\"", source, StringComparison.Ordinal);
         Assert.Contains("IsItemClickEnabled=\"True\"", source, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{x:Bind StatusGlyph, Mode=OneWay}\"", source, StringComparison.Ordinal);
+        Assert.Contains("Converter={StaticResource PaletteStatusBrushConverter}", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Loaded=\"OnStatusGlyphLoaded\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WebView2", source, StringComparison.Ordinal);
     }
 
@@ -226,6 +248,7 @@ public sealed class PaletteViewSourceTests
         Assert.Contains("DispatcherQueue.TryEnqueue", source, StringComparison.Ordinal);
         Assert.Contains("ItemAccepted", source, StringComparison.Ordinal);
         Assert.Contains("Cancelled", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("OnStatusGlyphLoaded", source, StringComparison.Ordinal);
         Assert.DoesNotContain("AppStore", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Session", source, StringComparison.Ordinal);
         Assert.DoesNotContain("BuiltinAction", source, StringComparison.Ordinal);
@@ -240,9 +263,8 @@ public sealed class PaletteViewSourceTests
         Assert.Contains("OpenPaletteAsync", source, StringComparison.Ordinal);
         Assert.Contains("host.StoreCoordinator.ReadAsync", source, StringComparison.Ordinal);
         Assert.Contains("captureOutsideGate: host.Host.Actions.LoadKeymap", source, StringComparison.Ordinal);
-        Assert.Contains("readUnderGate: (store, keymap) => project(store, keymap)", source, StringComparison.Ordinal);
-        Assert.Contains(".ToArray()", source, StringComparison.Ordinal);
-        Assert.Contains("PaletteOverlay.Open(placeholder, items)", source, StringComparison.Ordinal);
+        Assert.Contains("WindowPaletteProjection.Create(mode, store, keymap", source, StringComparison.Ordinal);
+        Assert.Contains("PaletteOverlay.Open(", source, StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()

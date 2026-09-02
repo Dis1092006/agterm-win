@@ -7,6 +7,7 @@ public sealed class PaletteController
 {
     private IReadOnlyList<PaletteItemViewModel> _allItems = Array.Empty<PaletteItemViewModel>();
     private IReadOnlyList<PaletteItemViewModel> _filteredItems = Array.Empty<PaletteItemViewModel>();
+    private bool _preserveInputOrderForEmptyQuery;
 
     public event Action? Changed;
 
@@ -23,7 +24,9 @@ public sealed class PaletteController
             ? _filteredItems[SelectedIndex]
             : null;
 
-    public void Open(IEnumerable<PaletteItemViewModel> items)
+    public void Open(
+        IEnumerable<PaletteItemViewModel> items,
+        bool preserveInputOrderForEmptyQuery = false)
     {
         ArgumentNullException.ThrowIfNull(items);
 
@@ -32,6 +35,7 @@ public sealed class PaletteController
             throw new ArgumentException("Palette item ids must be unique.", nameof(items));
 
         _allItems = new ReadOnlyCollection<PaletteItemViewModel>(snapshot);
+        _preserveInputOrderForEmptyQuery = preserveInputOrderForEmptyQuery;
         Query = string.Empty;
         SelectedIndex = 0;
         IsOpen = true;
@@ -96,11 +100,18 @@ public sealed class PaletteController
         SelectedIndex = 0;
         _allItems = Array.Empty<PaletteItemViewModel>();
         _filteredItems = Array.Empty<PaletteItemViewModel>();
+        _preserveInputOrderForEmptyQuery = false;
         Changed?.Invoke();
     }
 
     private void Refilter()
     {
+        if (_preserveInputOrderForEmptyQuery && string.IsNullOrWhiteSpace(Query))
+        {
+            _filteredItems = _allItems;
+            return;
+        }
+
         var ranked = FuzzyMatcher.Rank(
             Query.Trim(),
             _allItems,

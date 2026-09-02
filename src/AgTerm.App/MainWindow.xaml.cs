@@ -31,6 +31,7 @@ public sealed partial class MainWindow : Window
     private readonly Task<XtermPage> _pageTask;
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
     private readonly WindowCloseCoordinator _closeCoordinator;
+    private readonly PaletteTransitionCoordinator _paletteTransitions = new();
     private readonly SettingsStore _settingsStore;
     private readonly SettingsReloadCoordinator _settingsReloadCoordinator;
     private AppSettings _settings; // UI-thread confined
@@ -46,6 +47,8 @@ public sealed partial class MainWindow : Window
     private long _searchPresentationGeneration; // UI-thread confined
     private bool _terminalOnlyPresentation;
     private bool _draggingDivider;
+    private readonly PaletteAutoFollowLease _paletteAutoFollow = new();
+    private WindowPaletteMode? _openPaletteMode;
 
     private sealed record StartupState(
         LiveSelectionSnapshot Selection,
@@ -58,6 +61,12 @@ public sealed partial class MainWindow : Window
         _rendererSettings = RendererSettingsSnapshot.From(_settings);
 
         InitializeComponent();
+        PaletteOverlay.ItemAccepted += item => ObserveTaskFault(
+            HandlePaletteItemAcceptedAsync(item),
+            "Palette item acceptance failed");
+        PaletteOverlay.Cancelled += () => ObserveTaskFault(
+            _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync()),
+            "Palette cancellation failed");
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
             load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
             runOnUi: work =>
@@ -232,6 +241,8 @@ public sealed partial class MainWindow : Window
                     FocusTerminal(paneId);
             });
         };
+        host.ZoomActiveChanged += _ => DispatcherQueue.TryEnqueue(() =>
+            ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed"));
 
         var startup = await host.StoreCoordinator.ReadAsync(store =>
         {
@@ -372,6 +383,18 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.QuickTerminal] = Async(
                 () => true,
                 () => host.ToggleQuickTerminalAsync()),
+            [BuiltinAction.SessionPalette] = Async(
+                () => !host.ZoomActive,
+                () => ToggleWindowPaletteAsync(WindowPaletteMode.Sessions)),
+            [BuiltinAction.CommandPalette] = Async(
+                () => !host.ZoomActive,
+                () => ToggleWindowPaletteAsync(WindowPaletteMode.Commands)),
+            [BuiltinAction.CustomCommandPalette] = Async(
+                () => !host.ZoomActive,
+                () => ToggleWindowPaletteAsync(WindowPaletteMode.CustomCommands)),
+            [BuiltinAction.ShowAttention] = Async(
+                () => !host.ZoomActive,
+                () => ToggleWindowPaletteAsync(WindowPaletteMode.Attention)),
             [BuiltinAction.FocusLeftPane] = Async(
                 () => !string.IsNullOrWhiteSpace(_selection.MainPaneId) && !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
                 () =>
@@ -535,14 +558,36 @@ public sealed partial class MainWindow : Window
             _hotkeys = new HotkeyRouter(keymap);
             foreach (var diagnostic in WindowCommandRouter.EffectiveWindowsChordDiagnostics(keymap))
                 System.Diagnostics.Trace.TraceWarning($"keymap: {diagnostic.Message}");
-            ObserveTaskFault(
-                page.SetInterceptChordsAsync(WindowCommandRouter.ImplementedInterceptChords(_hotkeys)),
-                "Set intercept chords failed");
+            PublishInterceptChords(page);
         }
         Arm(host.Host.Actions.LoadKeymap());
         page.ChordPressed += (_, chord) => DispatcherQueue.TryEnqueue(() => HandleChord(chord));
         host.Host.Actions.KeymapReloaded += keymap => DispatcherQueue.TryEnqueue(() => Arm(keymap));
     }
+
+    private async Task RefreshInterceptChordsAsync()
+    {
+        var page = await _pageTask;
+        PublishInterceptChords(page);
+    }
+
+    private void PublishInterceptChords(XtermPage page)
+    {
+        if (_hotkeys is not { } hotkeys)
+            return;
+
+        ObserveTaskFault(
+            page.SetInterceptChordsAsync(WindowCommandRouter.ImplementedInterceptChords(
+                hotkeys,
+                action => !IsPaletteAction(action) || _host?.ZoomActive != true)),
+            "Set intercept chords failed");
+    }
+
+    private static bool IsPaletteAction(BuiltinAction action) => action is
+        BuiltinAction.SessionPalette or
+        BuiltinAction.CommandPalette or
+        BuiltinAction.CustomCommandPalette or
+        BuiltinAction.ShowAttention;
 
     private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
@@ -605,18 +650,121 @@ public sealed partial class MainWindow : Window
     }
 
     private async Task OpenPaletteAsync(
-        string placeholder,
-        Func<AppStore, Keymap, IReadOnlyList<PaletteItemViewModel>> project,
+        WindowPaletteMode mode,
+        IReadOnlyDictionary<BuiltinAction, WindowCommandState> states,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(states);
 
         var host = await _hostReady.Task.WaitAsync(cancellationToken);
-        var items = await host.StoreCoordinator.ReadAsync(
+        var snapshot = await host.StoreCoordinator.ReadAsync(
             captureOutsideGate: host.Host.Actions.LoadKeymap,
-            readUnderGate: (store, keymap) => project(store, keymap).ToArray(),
+            readUnderGate: (store, keymap) => host.Host.Actions.Zoom.Target is null
+                ? WindowPaletteProjection.Create(mode, store, keymap, action => states[action])
+                : null,
             cancellationToken: cancellationToken);
-        PaletteOverlay.Open(placeholder, items);
+        if (snapshot is null)
+            return;
+
+        await _paletteAutoFollow.AcquireAsync(() =>
+            host.StoreCoordinator.MutateAsync(
+                store => store.SuppressAutoFollow(),
+                cancellationToken));
+        try
+        {
+            _openPaletteMode = mode;
+            PaletteOverlay.Open(
+                snapshot.Placeholder,
+                snapshot.Items,
+                snapshot.PreserveInputOrderForEmptyQuery);
+        }
+        catch
+        {
+            await _paletteAutoFollow.ReleaseAsync(() =>
+                host.StoreCoordinator.MutateAsync(
+                    store => store.ResumeAutoFollow(),
+                    CancellationToken.None));
+            throw;
+        }
+    }
+
+    private Task ToggleWindowPaletteAsync(WindowPaletteMode mode) =>
+        _paletteTransitions.RunAsync(() => ToggleWindowPaletteCoreAsync(mode));
+
+    private async Task ToggleWindowPaletteCoreAsync(WindowPaletteMode mode)
+    {
+        if (PaletteOverlay.IsOpen && _openPaletteMode == mode)
+        {
+            PaletteOverlay.Close();
+            await FinishPaletteCloseAsync();
+            return;
+        }
+
+        var router = _commandRouter;
+        if (router is null)
+            return;
+
+        var states = BuiltinActions.All.ToDictionary(action => action, router.GetState);
+        await OpenPaletteAsync(mode, states);
+    }
+
+    private async Task FinishPaletteCloseAsync(bool restoreFocus = true)
+    {
+        if (_host is { } host)
+        {
+            await _paletteAutoFollow.ReleaseAsync(() =>
+                host.StoreCoordinator.MutateAsync(store => store.ResumeAutoFollow()));
+        }
+
+        _openPaletteMode = null;
+        if (restoreFocus)
+            FocusActiveTerminal();
+    }
+
+    private async Task HandlePaletteItemAcceptedAsync(PaletteItemViewModel item)
+    {
+        WindowPaletteMode? mode = null;
+        await _paletteTransitions.RunAsync(async () =>
+        {
+            mode = _openPaletteMode;
+            await FinishPaletteCloseAsync(restoreFocus: false);
+        });
+
+        switch (mode)
+        {
+            case WindowPaletteMode.Sessions:
+            case WindowPaletteMode.Attention:
+                if (WindowPaletteProjection.ParseSessionId(item.Id) is { } sessionId &&
+                    _host is { } sessionHost)
+                {
+                    var selectionChanged = false;
+                    await sessionHost.StoreCoordinator.MutateAsync(store =>
+                        selectionChanged = WindowPaletteActions.SelectSession(store, sessionId));
+                    if (!selectionChanged)
+                        FocusActiveTerminal();
+                }
+                else
+                    FocusActiveTerminal();
+                break;
+            case WindowPaletteMode.Commands:
+                if (WindowPaletteProjection.ParseAction(item.Id) is { } action &&
+                    _commandRouter is { } router)
+                {
+                    var executed = await router.ExecuteAsync(action);
+                    if (!executed || WindowPaletteActions.ShouldRestoreTerminalFocus(action))
+                        FocusActiveTerminal();
+                }
+                else
+                    FocusActiveTerminal();
+                break;
+            case WindowPaletteMode.CustomCommands:
+                // C3 resolves and executes the selected custom command from its stable id.
+                FocusActiveTerminal();
+                break;
+            default:
+                FocusActiveTerminal();
+                break;
+        }
     }
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session

@@ -59,10 +59,10 @@ public sealed class WindowCommandRouter
             [BuiltinAction.FirstSession] = true,
             [BuiltinAction.LastSession] = true,
             [BuiltinAction.QuickTerminal] = true,
-            [BuiltinAction.SessionPalette] = false,
-            [BuiltinAction.CommandPalette] = false,
-            [BuiltinAction.CustomCommandPalette] = false,
-            [BuiltinAction.ShowAttention] = false,
+            [BuiltinAction.SessionPalette] = true,
+            [BuiltinAction.CommandPalette] = true,
+            [BuiltinAction.CustomCommandPalette] = true,
+            [BuiltinAction.ShowAttention] = true,
             [BuiltinAction.Dashboard] = false,
         });
 
@@ -71,7 +71,9 @@ public sealed class WindowCommandRouter
         .Select(pair => pair.Key)
         .ToHashSet();
 
-    public static IReadOnlyList<PhysicalChord> ImplementedInterceptChords(HotkeyRouter hotkeys)
+    public static IReadOnlyList<PhysicalChord> ImplementedInterceptChords(
+        HotkeyRouter hotkeys,
+        Func<BuiltinAction, bool>? canExecute = null)
     {
         ArgumentNullException.ThrowIfNull(hotkeys);
 
@@ -86,7 +88,10 @@ public sealed class WindowCommandRouter
                 continue;
             }
 
-            if (ActionImplementations.TryGetValue(winner.Value, out var implemented) && implemented && seen.Add(chord))
+            if (ActionImplementations.TryGetValue(winner.Value, out var implemented) &&
+                implemented &&
+                (canExecute?.Invoke(winner.Value) ?? true) &&
+                seen.Add(chord))
             {
                 result.Add(chord);
             }

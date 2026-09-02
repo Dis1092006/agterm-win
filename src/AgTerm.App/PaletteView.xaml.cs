@@ -27,6 +27,14 @@ public sealed partial class PaletteView : UserControl
 
     public void Open(string placeholder, IReadOnlyList<PaletteItemViewModel> items)
     {
+        Open(placeholder, items, preserveInputOrderForEmptyQuery: false);
+    }
+
+    public void Open(
+        string placeholder,
+        IReadOnlyList<PaletteItemViewModel> items,
+        bool preserveInputOrderForEmptyQuery)
+    {
         if (string.IsNullOrWhiteSpace(placeholder))
             throw new ArgumentException("Palette placeholder is required.", nameof(placeholder));
         ArgumentNullException.ThrowIfNull(items);
@@ -34,7 +42,7 @@ public sealed partial class PaletteView : UserControl
         QueryBox.PlaceholderText = placeholder;
         Visibility = Visibility.Visible;
         ApplyAvailableHeight(ActualHeight);
-        _controller.Open(items);
+        _controller.Open(items, preserveInputOrderForEmptyQuery);
         FocusQueryBox();
         DispatcherQueue.TryEnqueue(FocusQueryBox);
     }

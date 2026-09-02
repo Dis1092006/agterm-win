@@ -68,6 +68,34 @@ public sealed class HeadlessHostTests : IDisposable
     }
 
     [Fact]
+    public void ZoomActiveChanged_reports_only_successful_active_state_transitions()
+    {
+        var changes = new List<bool>();
+        var stateDir = Directory.CreateTempSubdirectory("agterm-zoom-callback-").FullName;
+        try
+        {
+            using var host = new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-zoom-callback-" + Guid.NewGuid().ToString("N"),
+                ZoomActiveChanged = changes.Add,
+            });
+            host.Start();
+            var client = new ControlPipeClient(host.PipeName);
+
+            Assert.True(client.Send(new ControlRequest { Cmd = Command.SurfaceZoom }).Ok);
+            Assert.True(client.Send(new ControlRequest { Cmd = Command.SurfaceZoom }).Ok);
+
+            Assert.Equal([true, false], changes);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public void SessionNewReturnsAnUppercaseIdAndTheSessionExists()
     {
         var id = NewSession();
