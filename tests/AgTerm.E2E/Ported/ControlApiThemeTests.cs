@@ -16,6 +16,32 @@ namespace AgTerm.E2E.Ported;
 public class ControlApiThemeTests : ControlApiTestCase
 {
     [Fact]
+    public void DarkOnlySeedsBuiltinLightAndBareResetClearsBothSlots()
+    {
+        using var host = new HeadlessHost(new HeadlessHostOptions
+        {
+            StateDir = StateDir,
+            ConfigDir = StateDir,
+            PipeName = "agterm-e2e-" + Guid.NewGuid().ToString("N"),
+            AvailableThemes = new[] { "agterm", "Dracula", "Builtin Light" },
+        });
+        host.Start();
+
+        var darkOnly = Send(host, """{"cmd":"theme.set","args":{"dark":"Dracula"}}""");
+        Assert.True(darkOnly["ok"]?.GetValue<bool>());
+        Assert.Equal("Builtin Light", darkOnly["result"]?["light"]?.GetValue<string>());
+        Assert.Equal("Dracula", darkOnly["result"]?["dark"]?.GetValue<string>());
+        Assert.True(darkOnly["result"]?["sync"]?.GetValue<bool>());
+
+        var reset = Send(host, """{"cmd":"theme.set"}""");
+        Assert.True(reset["ok"]?.GetValue<bool>());
+        Assert.False(reset["result"]?["sync"]?.GetValue<bool>());
+        Assert.False(reset["result"]!.AsObject().ContainsKey("theme"));
+        Assert.False(reset["result"]!.AsObject().ContainsKey("light"));
+        Assert.False(reset["result"]!.AsObject().ContainsKey("dark"));
+    }
+
+    [Fact]
     public void ThemeSyncWithSystemAppearance()
     {
         // the upstream app ships a bundled theme catalogue and launches with the "agterm" theme

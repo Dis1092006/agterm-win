@@ -1,5 +1,6 @@
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
+using AgTerm.Xterm;
 
 namespace AgTerm.App;
 
@@ -9,6 +10,7 @@ public enum WindowPaletteMode
     Commands,
     CustomCommands,
     Attention,
+    Themes,
 }
 
 public sealed record WindowPaletteSnapshot(
@@ -30,7 +32,9 @@ public static class WindowPaletteProjection
         WindowPaletteMode mode,
         AppStore store,
         Keymap keymap,
-        Func<BuiltinAction, WindowCommandState> stateProvider)
+        Func<BuiltinAction, WindowCommandState> stateProvider,
+        ThemeCatalog? themeCatalog = null,
+        string? currentTheme = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(keymap);
@@ -55,6 +59,10 @@ public static class WindowPaletteProjection
                 "Go to a session that needs attention…",
                 SessionItems(store.AttentionSessions, store, includeStatus: true),
                 PreserveInputOrderForEmptyQuery: true),
+            WindowPaletteMode.Themes => new(
+                mode,
+                "Select a theme…",
+                ThemeItems(themeCatalog ?? ThemeCatalog.Default, currentTheme)),
             _ => throw new ArgumentOutOfRangeException(nameof(mode)),
         };
     }
@@ -72,6 +80,26 @@ public static class WindowPaletteProjection
             Guid.TryParseExact(itemId[prefix.Length..], "D", out var id)
                 ? id
                 : null;
+    }
+
+    public static bool TryParseThemeName(string itemId, out string? name)
+    {
+        const string prefix = "theme:";
+        const string defaultId = "theme:__default__";
+        if (itemId == defaultId)
+        {
+            name = null;
+            return true;
+        }
+
+        if (itemId.StartsWith(prefix, StringComparison.Ordinal) && itemId.Length > prefix.Length)
+        {
+            name = itemId[prefix.Length..];
+            return true;
+        }
+
+        name = null;
+        return false;
     }
 
     private static IReadOnlyList<PaletteItemViewModel> SessionItems(
@@ -110,6 +138,24 @@ public static class WindowPaletteProjection
             command.Name,
             shortcut: string.IsNullOrWhiteSpace(command.Shortcut) ? null : command.Shortcut))
         .ToArray();
+
+    private static IReadOnlyList<PaletteItemViewModel> ThemeItems(
+        ThemeCatalog catalog,
+        string? currentTheme)
+    {
+        var items = new List<PaletteItemViewModel>
+        {
+            new(
+                "theme:__default__",
+                "Default terminal",
+                badge: currentTheme is null ? "Current" : null),
+        };
+        items.AddRange(catalog.Names.Select(name => new PaletteItemViewModel(
+            $"theme:{name}",
+            name,
+            badge: name == currentTheme ? "Current" : null)));
+        return items;
+    }
 
     private static string CommandTitle(BuiltinAction action, AppStore store) => action switch
     {

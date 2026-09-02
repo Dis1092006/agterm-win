@@ -265,7 +265,28 @@ const DEFAULT_RENDERER_SETTINGS = Object.freeze({
   scrollback: 10000,
   rightClickPaste: true,
   screenReaderMode: false,
+  ansiColors: null,
+  preservePaneFontSizes: false,
 });
+
+const ANSI_THEME_KEYS = Object.freeze([
+  "black",
+  "red",
+  "green",
+  "yellow",
+  "blue",
+  "magenta",
+  "cyan",
+  "white",
+  "brightBlack",
+  "brightRed",
+  "brightGreen",
+  "brightYellow",
+  "brightBlue",
+  "brightMagenta",
+  "brightCyan",
+  "brightWhite",
+]);
 
 let rendererSettings = { ...DEFAULT_RENDERER_SETTINGS };
 
@@ -1130,6 +1151,18 @@ function normalizeCursorStyle(value, fallback) {
   return fallback;
 }
 
+function normalizeAnsiColors(value, fallback) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== ANSI_THEME_KEYS.length ||
+    value.some(
+      (color) => typeof color !== "string" || color.trim().length === 0,
+    )
+  )
+    return fallback;
+  return value.map((color) => color.trim());
+}
+
 function normalizeRendererSettings(payload, fallback) {
   const source = payload && typeof payload === "object" ? payload : {};
   return {
@@ -1185,6 +1218,11 @@ function normalizeRendererSettings(payload, fallback) {
       source.screenReaderMode,
       fallback.screenReaderMode,
     ),
+    ansiColors: normalizeAnsiColors(source.ansiColors, fallback.ansiColors),
+    preservePaneFontSizes: normalizeBoolean(
+      source.preservePaneFontSizes,
+      fallback.preservePaneFontSizes,
+    ),
   };
 }
 
@@ -1208,7 +1246,7 @@ function effectiveThemeBackground(backgroundColor, backgroundOpacity) {
 }
 
 function buildTheme(settings) {
-  return {
+  const theme = {
     foreground: settings.foregroundColor,
     background: effectiveThemeBackground(
       settings.backgroundColor,
@@ -1217,6 +1255,12 @@ function buildTheme(settings) {
     cursor: settings.cursorColor,
     selectionBackground: settings.selectionBackgroundColor,
   };
+  if (settings.ansiColors !== null) {
+    ANSI_THEME_KEYS.forEach((key, index) => {
+      theme[key] = settings.ansiColors[index];
+    });
+  }
+  return theme;
 }
 
 function buildTerminalOptions(settings, fontSizeOverride) {
@@ -1280,7 +1324,8 @@ function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
 function applyRendererSettings(settings) {
   rendererSettings = normalizeRendererSettings(settings, rendererSettings);
   for (const [paneId, pane] of panes) {
-    pane.sessionFontSize = rendererSettings.fontSize;
+    if (!rendererSettings.preservePaneFontSizes)
+      pane.sessionFontSize = rendererSettings.fontSize;
     const dashboardFontSize =
       visibleLayout?.type === "dashboard" &&
       visibleLayout.paneIds.includes(paneId) &&
@@ -1320,6 +1365,10 @@ function getRendererSettings(paneId) {
     scrollback: termOptions.scrollback,
     rightClickPaste: rendererSettings.rightClickPaste,
     screenReaderMode: !!termOptions.screenReaderMode,
+    ansiColors:
+      rendererSettings.ansiColors === null
+        ? null
+        : ANSI_THEME_KEYS.map((key) => theme[key]),
   };
 }
 

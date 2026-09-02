@@ -263,7 +263,7 @@ public sealed class PaletteViewSourceTests
         Assert.Contains("OpenPaletteAsync", source, StringComparison.Ordinal);
         Assert.Contains("host.StoreCoordinator.ReadAsync", source, StringComparison.Ordinal);
         Assert.Contains("var keymap = _hotkeyStates.Active.Keymap", source, StringComparison.Ordinal);
-        Assert.Contains("WindowPaletteProjection.Create(mode, store, keymap", source, StringComparison.Ordinal);
+        Assert.Matches(@"WindowPaletteProjection\.Create\(\s*mode,\s*store,\s*keymap,", source);
         Assert.Contains("PaletteOverlay.Open(", source, StringComparison.Ordinal);
     }
 

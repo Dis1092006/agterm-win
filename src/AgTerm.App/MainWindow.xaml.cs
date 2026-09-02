@@ -1,5 +1,6 @@
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
+using AgTerm.Core.Protocol;
 using AgTerm.ControlServer;
 using AgTerm.Xterm;
 using Microsoft.UI.Windowing;
@@ -8,6 +9,7 @@ using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
+using Windows.UI.ViewManagement;
 
 namespace AgTerm.App;
 
@@ -25,7 +27,9 @@ public sealed partial class MainWindow : Window
 {
     private readonly Dictionary<string, XtermPaneSurface> _surfaces = new(); // UI-thread confined; keyed by pane token
     private readonly AppWindow _appWindow;
+    private readonly FullscreenController _fullscreen;
     private readonly CancellationTokenSource _bootstrapCancellation = new();
+    private CancellationTokenSource? _notificationBannerCancellation;
     private readonly TaskCompletionSource<LiveControlHost> _hostReady =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task<XtermPage> _pageTask;
@@ -37,8 +41,13 @@ public sealed partial class MainWindow : Window
     private readonly SemaphoreSlim _hotkeyManifestGate = new(1, 1);
     private readonly SettingsStore _settingsStore;
     private readonly SettingsReloadCoordinator _settingsReloadCoordinator;
+    private readonly ThemeCatalog _themeCatalog = ThemeCatalog.Default;
+    private readonly UISettings _uiSettings = new();
+    private readonly WindowsAppNotificationPresenter _notificationPresenter;
+    private readonly SemaphoreSlim _themeApplyGate = new(1, 1);
     private AppSettings _settings; // UI-thread confined
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
+    private bool _systemDark; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private WindowCommandRouter? _commandRouter; // UI-thread confined
@@ -49,6 +58,8 @@ public sealed partial class MainWindow : Window
     private long _layoutGeneration; // UI-thread confined
     private long _searchPresentationGeneration; // UI-thread confined
     private bool _terminalOnlyPresentation;
+    private bool _terminalCompositionOnly;
+    private AppWindowPresenterKind _restorePresenterKind = AppWindowPresenterKind.Default;
     private bool _draggingDivider;
     private readonly PaletteAutoFollowLease _paletteAutoFollow = new();
     private WindowPaletteMode? _openPaletteMode;
@@ -61,9 +72,15 @@ public sealed partial class MainWindow : Window
     {
         _settingsStore = new SettingsStore();
         _settings = _settingsStore.Load();
-        _rendererSettings = RendererSettingsSnapshot.From(_settings);
+        _systemDark = IsSystemAppearanceDark();
+        var initialTheme = LiveThemeSettings.Resolve(_settings, _themeCatalog, _systemDark);
+        _rendererSettings = initialTheme.RendererSettings;
 
         InitializeComponent();
+        _notificationPresenter = new WindowsAppNotificationPresenter(
+            message => System.Diagnostics.Trace.TraceWarning(message));
+        ApplyThemeChrome(initialTheme.UseDarkChrome);
+        _uiSettings.ColorValuesChanged += OnSystemColorValuesChanged;
         PaletteOverlay.ItemAccepted += item => ObserveTaskFault(
             HandlePaletteItemAcceptedAsync(item),
             "Palette item acceptance failed");
@@ -95,6 +112,8 @@ public sealed partial class MainWindow : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
         _appWindow = AppWindow.GetFromWindowId(windowId);
+        _fullscreen = new FullscreenController(ApplyFullscreen);
+        _appWindow.Changed += OnAppWindowChanged;
         _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
         _layoutCoordinator = new TerminalLayoutCoordinator(async layout =>
         {
@@ -157,7 +176,12 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _appWindow.Closing -= OnAppWindowClosing;
+            _appWindow.Changed -= OnAppWindowChanged;
+            _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
             _bootstrapCancellation.Cancel();
+            _notificationBannerCancellation?.Cancel();
+            _notificationBannerCancellation?.Dispose();
+            _notificationPresenter.Dispose();
             _settingsReloadCoordinator.Dispose();
             _layoutCoordinator.Dispose();
             ObserveTaskFault(
@@ -170,6 +194,16 @@ public sealed partial class MainWindow : Window
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
         args.Cancel = _closeCoordinator.ShouldCancelClose();
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!args.DidPresenterChange)
+            return;
+
+        var isFullscreen = sender.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+        _fullscreen.Synchronize(isFullscreen);
+        SetTerminalOnlyPresentation(isFullscreen || _terminalCompositionOnly);
     }
 
     private async Task ShutdownForCloseAsync()
@@ -212,6 +246,9 @@ public sealed partial class MainWindow : Window
                 BaseFontSize = _rendererSettings.FontSize,
                 ConfigDir = _settings.ConfigDirectory,
                 ConfigReload = OnConfigReload,
+                AvailableThemes = _themeCatalog.Names,
+                InitialTheme = LiveThemeSettings.From(_settings),
+                NotificationSettings = _settings,
                 IsUiThread = () => DispatcherQueue.HasThreadAccess,
                 BootstrapCancellationToken = _bootstrapCancellation.Token,
             }));
@@ -234,7 +271,7 @@ public sealed partial class MainWindow : Window
                 var previousSelection = _selection;
                 _selection = snapshot;
                 _selectedSessionId = snapshot.SessionId;
-                SetTerminalOnlyPresentation(
+                SetTerminalCompositionOnly(
                     snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId)
                     || !string.IsNullOrWhiteSpace(snapshot.ZoomPaneId)
                     || snapshot.DashboardOpen);
@@ -262,6 +299,12 @@ public sealed partial class MainWindow : Window
         };
         host.ZoomActiveChanged += _ => DispatcherQueue.TryEnqueue(() =>
             ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed"));
+        host.ThemeChanged += state => DispatcherQueue.TryEnqueue(() =>
+            ObserveTaskFault(ApplyLiveThemeAsync(state), "Theme apply failed"));
+        host.NotificationRequested += notification => DispatcherQueue.TryEnqueue(() =>
+            ShowNotification(notification));
+        host.StatusNotificationRequested += soundName => DispatcherQueue.TryEnqueue(() =>
+            PlayNotificationSound(soundName, "session.status"));
 
         var startup = await host.StoreCoordinator.ReadAsync(store =>
         {
@@ -322,7 +365,7 @@ public sealed partial class MainWindow : Window
         {
             _selection = startup.Selection;
             _selectedSessionId = startup.Selection.SessionId;
-            SetTerminalOnlyPresentation(
+            SetTerminalCompositionOnly(
                 startup.Selection.QuickVisible && !string.IsNullOrWhiteSpace(startup.Selection.QuickPaneId)
                 || !string.IsNullOrWhiteSpace(startup.Selection.ZoomPaneId));
             foreach (var surface in startup.CommittedSurfaces)
@@ -421,6 +464,12 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.Dashboard] = Async(
                 () => !host.ZoomActive,
                 () => host.ToggleDashboardAsync()),
+            [BuiltinAction.SelectTheme] = Async(
+                () => !host.ZoomActive,
+                () => ToggleWindowPaletteAsync(WindowPaletteMode.Themes)),
+            [BuiltinAction.ToggleFullscreen] = Sync(
+                () => true,
+                _fullscreen.Toggle),
             [BuiltinAction.FocusLeftPane] = Async(
                 () => !string.IsNullOrWhiteSpace(_selection.MainPaneId) && !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
                 () =>
@@ -500,6 +549,30 @@ public sealed partial class MainWindow : Window
 
         if (!enabled && _latestSidebarSnapshot is { } snapshot)
             ApplySidebarChrome(snapshot);
+    }
+
+    private void SetTerminalCompositionOnly(bool enabled)
+    {
+        _terminalCompositionOnly = enabled;
+        SetTerminalOnlyPresentation(enabled || _fullscreen.IsFullscreen);
+    }
+
+    private void ApplyFullscreen(bool enabled)
+    {
+        if (enabled)
+        {
+            _restorePresenterKind = _appWindow.Presenter.Kind;
+            _appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        }
+        else
+        {
+            var restoreKind = _restorePresenterKind == AppWindowPresenterKind.FullScreen
+                ? AppWindowPresenterKind.Default
+                : _restorePresenterKind;
+            _appWindow.SetPresenter(restoreKind);
+        }
+
+        SetTerminalOnlyPresentation(enabled || _terminalCompositionOnly);
     }
 
     /// <summary>Applies title/subtitle from a Single/Split base layout and updates the accepted
@@ -718,9 +791,19 @@ public sealed partial class MainWindow : Window
 
         var host = await _hostReady.Task.WaitAsync(cancellationToken);
         var keymap = _hotkeyStates.Active.Keymap;
+        var currentTheme = LiveThemeSettings.Resolve(
+            _settings,
+            _themeCatalog,
+            _systemDark).Theme?.Name;
         var snapshot = await host.StoreCoordinator.ReadAsync(
             store => host.Host.Actions.Zoom.Target is null
-                ? WindowPaletteProjection.Create(mode, store, keymap, action => states[action])
+                ? WindowPaletteProjection.Create(
+                    mode,
+                    store,
+                    keymap,
+                    action => states[action],
+                    _themeCatalog,
+                    currentTheme)
                 : null,
             cancellationToken);
         if (snapshot is null)
@@ -823,6 +906,15 @@ public sealed partial class MainWindow : Window
                     await ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(
                         commandId,
                         CustomCommandSource.Palette));
+                }
+                FocusActiveTerminal();
+                break;
+            case WindowPaletteMode.Themes:
+                if (WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName) &&
+                    _host is { } themeHost)
+                {
+                    await themeHost.StoreCoordinator.MutateAsync(_ =>
+                        themeHost.Host.Actions.SetTheme(new ControlArgs { Name = themeName }));
                 }
                 FocusActiveTerminal();
                 break;
@@ -1147,22 +1239,159 @@ public sealed partial class MainWindow : Window
 
     private async Task ApplySettingsAsync(AppSettings settings)
     {
-        var snapshot = RendererSettingsSnapshot.From(settings);
-
-        if (_host is { } host)
+        await _themeApplyGate.WaitAsync();
+        try
         {
-            // Upstream's explicit config reload clears per-session zoom even when the configured
-            // base font is unchanged; only automatic appearance flips preserve zoom.
-            await host.ApplyBaseFontSizeAsync(snapshot.FontSize);
-        }
+            var presentation = LiveThemeSettings.Resolve(settings, _themeCatalog, _systemDark);
 
+            if (_host is { } host)
+            {
+                host.SetNotificationSettings(settings);
+                // Upstream's explicit config reload clears per-session zoom even when the configured
+                // base font is unchanged; only automatic appearance flips preserve zoom.
+                await host.ApplyBaseFontSizeAsync(presentation.RendererSettings.FontSize);
+            }
+
+            await ApplyThemePresentationAsync(settings, presentation);
+        }
+        finally
+        {
+            _themeApplyGate.Release();
+        }
+    }
+
+    private async Task ApplyLiveThemeAsync(HeadlessThemeSnapshot state)
+    {
+        await _themeApplyGate.WaitAsync();
+        try
+        {
+            var settings = LiveThemeSettings.Apply(_settings, state);
+            var presentation = LiveThemeSettings.Resolve(
+                settings,
+                _themeCatalog,
+                _systemDark,
+                preservePaneFontSizes: true);
+            await ApplyThemePresentationAsync(settings, presentation);
+            try
+            {
+                await Task.Run(() => _settingsStore.Save(settings));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError(
+                    $"Theme settings save failed: {ex.GetBaseException().Message}");
+            }
+        }
+        finally
+        {
+            _themeApplyGate.Release();
+        }
+    }
+
+    private async Task ApplySystemAppearanceAsync()
+    {
+        await _themeApplyGate.WaitAsync();
+        try
+        {
+            var systemDark = IsSystemAppearanceDark();
+            if (systemDark == _systemDark)
+                return;
+
+            _systemDark = systemDark;
+            var presentation = LiveThemeSettings.Resolve(
+                _settings,
+                _themeCatalog,
+                _systemDark,
+                preservePaneFontSizes: true);
+            await ApplyThemePresentationAsync(_settings, presentation);
+        }
+        finally
+        {
+            _themeApplyGate.Release();
+        }
+    }
+
+    private async Task ApplyThemePresentationAsync(
+        AppSettings settings,
+        LiveThemePresentation presentation)
+    {
         var page = await _pageTask;
-        await page.ApplyRendererSettingsAsync(snapshot);
+        await page.ApplyRendererSettingsAsync(presentation.RendererSettings);
 
         _settings = settings;
-        _rendererSettings = snapshot;
+        _rendererSettings = presentation.RendererSettings;
         Sidebar.ApplySettings(settings);
-        ApplyComposition(snapshot);
+        ApplyComposition(presentation.RendererSettings);
+        ApplyThemeChrome(presentation.UseDarkChrome);
+    }
+
+    private void OnSystemColorValuesChanged(UISettings sender, object args)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+            ObserveTaskFault(ApplySystemAppearanceAsync(), "System theme apply failed"));
+    }
+
+    private bool IsSystemAppearanceDark()
+    {
+        var background = _uiSettings.GetColorValue(UIColorType.Background);
+        var luminance = 0.299 * background.R / 255.0
+            + 0.587 * background.G / 255.0
+            + 0.114 * background.B / 255.0;
+        return luminance < 0.5;
+    }
+
+    private void ApplyThemeChrome(bool useDarkChrome)
+    {
+        RootGrid.RequestedTheme = useDarkChrome ? ElementTheme.Dark : ElementTheme.Light;
+    }
+
+    private void ShowNotification(LiveBannerNotification notification)
+    {
+        if (_notificationPresenter.TryShow(notification))
+            return;
+
+        NotificationBanner.Title = string.IsNullOrWhiteSpace(notification.Title)
+            ? "agterm"
+            : notification.Title;
+        NotificationBanner.Message = notification.Body;
+        NotificationBanner.IsOpen = true;
+        PlayNotificationSound(notification.SoundName, "notify");
+
+        _notificationBannerCancellation?.Cancel();
+        _notificationBannerCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _notificationBannerCancellation = cancellation;
+        ObserveTaskFault(
+            CloseNotificationBannerAsync(cancellation),
+            "Notification banner close failed");
+    }
+
+    private async Task CloseNotificationBannerAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(6), cancellation.Token);
+            if (!ReferenceEquals(_notificationBannerCancellation, cancellation))
+                return;
+
+            NotificationBanner.IsOpen = false;
+            _notificationBannerCancellation = null;
+            cancellation.Dispose();
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+    }
+
+    private static void PlayNotificationSound(string? soundName, string source)
+    {
+        if (string.IsNullOrWhiteSpace(soundName))
+            return;
+        if (WindowsNotificationSound.TryPlay(soundName))
+            return;
+
+        System.Diagnostics.Trace.TraceWarning(
+            $"Unsupported Windows notification sound '{soundName}' from {source}; no sound was played.");
     }
 
     private void ApplyComposition(RendererSettingsSnapshot snapshot)

@@ -18,6 +18,10 @@ public sealed record RendererSettingsSnapshot(
     bool RightClickPaste,
     bool ScreenReaderMode)
 {
+    public IReadOnlyList<string>? AnsiColors { get; init; }
+
+    public bool PreservePaneFontSizes { get; init; }
+
     private const string DefaultFontFamily = "Cascadia Mono, Consolas, monospace";
     private const double DefaultFontSize = 14.0;
     // Theme/DarkTheme/FollowSystemAppearance resolution belongs to D3's live theme catalog.
@@ -35,7 +39,10 @@ public sealed record RendererSettingsSnapshot(
     private const bool DefaultRightClickPaste = true;
     private const bool DefaultScreenReaderMode = false;
 
-    public static RendererSettingsSnapshot From(AppSettings settings)
+    public static RendererSettingsSnapshot From(
+        AppSettings settings,
+        TerminalTheme? theme = null,
+        bool preservePaneFontSizes = false)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
@@ -52,10 +59,10 @@ public sealed record RendererSettingsSnapshot(
         return new RendererSettingsSnapshot(
             fontFamily,
             fontSize,
-            DefaultForegroundColor,
-            DefaultBackgroundColor,
-            DefaultCursorColor,
-            DefaultSelectionBackgroundColor,
+            theme?.ForegroundColor ?? DefaultForegroundColor,
+            theme?.BackgroundColor ?? DefaultBackgroundColor,
+            theme?.CursorColor ?? DefaultCursorColor,
+            theme?.SelectionBackgroundColor ?? DefaultSelectionBackgroundColor,
             backgroundOpacity,
             backgroundBlur,
             DefaultCursorBlink,
@@ -63,6 +70,10 @@ public sealed record RendererSettingsSnapshot(
             scrollSensitivity,
             DefaultScrollback,
             rightClickPaste,
-            DefaultScreenReaderMode);
+            DefaultScreenReaderMode)
+        {
+            AnsiColors = theme?.AnsiColors,
+            PreservePaneFontSizes = preservePaneFontSizes,
+        };
     }
 }

@@ -40,6 +40,8 @@
     <Compile Include="..\..\src\AgTerm.App\WindowPaletteProjection.cs" Link="App\WindowPaletteProjection.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowCommandRouter.cs" Link="App\WindowCommandRouter.cs" />
     <Compile Include="..\..\src\AgTerm.App\SettingsReloadCoordinator.cs" Link="App\SettingsReloadCoordinator.cs" />
+    <Compile Include="..\..\src\AgTerm.App\FullscreenController.cs" Link="App\FullscreenController.cs" />
+    <Compile Include="..\..\src\AgTerm.App\WindowsNotificationSound.cs" Link="App\WindowsNotificationSound.cs" />
   </ItemGroup>
 
 </Project>

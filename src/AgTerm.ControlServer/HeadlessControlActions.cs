@@ -87,6 +87,12 @@ public sealed class HeadlessThemeSlots
     public string? Current => Sync ? null : Light;
 }
 
+public sealed record HeadlessThemeSnapshot(string? Light, string? Dark, bool Sync);
+
+public sealed record LiveNotificationRequest(Guid SessionId, string Title, string Body);
+
+public sealed record LiveStatusNotificationRequest(Guid SessionId, AgentStatus Status, string? SoundName);
+
 /// <summary>
 /// The headless host's IControlActions: the port of the upstream app-side ControlServer action arms
 /// (ControlServer+SessionActions/+SurfaceIO/+AppCommands/+WorkspaceCommands/+WindowCommands and the
@@ -121,6 +127,8 @@ public sealed class HeadlessControlActions : IControlActions
     /// <summary>Upstream DashboardLayout.minFontSize — the auto-size floor.</summary>
     public const double DashboardMinFontSize = 6;
 
+    private const string DefaultLightTheme = "Builtin Light";
+
     private const int OnItemIndex = -1; // upstream SidebarDrop.onItemIndex (a drop ON a row)
 
     private readonly AppStore _store;
@@ -138,6 +146,9 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly Action<bool>? _zoomActiveChanged;
     private readonly Action? _zoomChanged;
     private readonly Action? _dashboardChanged;
+    private readonly Action<HeadlessThemeSnapshot>? _themeChanged;
+    private readonly Func<LiveNotificationRequest, bool>? _notificationRequested;
+    private readonly Action<LiveStatusNotificationRequest>? _statusNotificationRequested;
     private readonly Func<TerminalZoomTarget, bool>? _zoomTargetAvailable;
 
     public HeadlessControlActions(AppStore store, ControlEventRing ring, Guid windowId,
@@ -154,6 +165,9 @@ public sealed class HeadlessControlActions : IControlActions
                                   Action<bool>? zoomActiveChanged = null,
                                   Action? zoomChanged = null,
                                   Action? dashboardChanged = null,
+                                  Action<HeadlessThemeSnapshot>? themeChanged = null,
+                                  Func<LiveNotificationRequest, bool>? notificationRequested = null,
+                                  Action<LiveStatusNotificationRequest>? statusNotificationRequested = null,
                                   Func<TerminalZoomTarget, bool>? zoomTargetAvailable = null)
     {
         _store = store;
@@ -175,6 +189,9 @@ public sealed class HeadlessControlActions : IControlActions
         _zoomActiveChanged = zoomActiveChanged;
         _zoomChanged = zoomChanged;
         _dashboardChanged = dashboardChanged;
+        _themeChanged = themeChanged;
+        _notificationRequested = notificationRequested;
+        _statusNotificationRequested = statusNotificationRequested;
         _zoomTargetAvailable = zoomTargetAvailable;
         Zoom.TargetResolver = () => TerminalZoomController.ResolveTarget(_store, Quick.Visible);
     }
@@ -747,6 +764,11 @@ public sealed class HeadlessControlActions : IControlActions
             var resolvedPane = (update.PaneId is { } token ? session?.PaneRole(token) : null) ?? update.Pane;
             store.SetAgentIndicator(new AgentIndicator(update.Status, update.Blink ?? false,
                 update.AutoReset ?? false, update.Color, update.Shape, resolvedPane), id);
+            if (!string.IsNullOrWhiteSpace(update.Sound) || update.Status == AgentStatus.Blocked)
+            {
+                _statusNotificationRequested?.Invoke(
+                    new LiveStatusNotificationRequest(id, update.Status, update.Sound));
+            }
             return OkId(id);
         });
     }
@@ -1502,13 +1524,20 @@ public sealed class HeadlessControlActions : IControlActions
         {
             if (store.SessionWithId(id) is not { } session)
                 return Err($"no such session: {target ?? "active"}");
-            if (store.RecordNotificationEvent(id, title ?? "", body) is null)
+            var resolvedTitle = string.IsNullOrEmpty(title) ? session.DisplayName : title;
+            if (store.RecordNotificationEvent(id, resolvedTitle, body) is null)
                 return Err("session's window is not open");
             session.UnseenCount += 1;
+            var bannerRequested = _notificationRequested?.Invoke(
+                new LiveNotificationRequest(id, resolvedTitle, body)) == true;
             return new ControlResponse
             {
                 Ok = true,
-                Result = new ControlResult { Id = Uuid(id), Text = ControlNotify.BannersOffNote },
+                Result = new ControlResult
+                {
+                    Id = Uuid(id),
+                    Text = bannerRequested ? null : ControlNotify.BannersOffNote,
+                },
             };
         });
     }
@@ -1538,12 +1567,18 @@ public sealed class HeadlessControlActions : IControlActions
         else if (dark is not null)
         {
             Theme.Dark = dark;
-            if (lightSlot is not null) Theme.Light = lightSlot;
+            if (lightSlot is not null)
+                Theme.Light = lightSlot;
+            else if (string.IsNullOrEmpty(Theme.Light))
+                Theme.Light = DefaultLightTheme;
         }
         else
         {
             Theme.Light = lightSlot; // null = bare theme set: reset to the ghostty built-in
+            if (lightSlot is null)
+                Theme.Dark = null;
         }
+        _themeChanged?.Invoke(new HeadlessThemeSnapshot(Theme.Light, Theme.Dark, Theme.Sync));
         return ThemeStateResponse(themes: null);
     }
 

@@ -109,6 +109,29 @@ public sealed class WindowPaletteProjectionTests
     }
 
     [Fact]
+    public void Themes_uses_stable_catalog_ids_and_marks_the_current_theme()
+    {
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.Themes,
+            new AppStore(),
+            Keymap.Empty,
+            StateProvider(),
+            ThemeCatalog.Default,
+            currentTheme: "agterm");
+
+        Assert.Equal("Select a theme…", snapshot.Placeholder);
+        Assert.Equal(
+            ["theme:__default__", "theme:agterm", "theme:Builtin Light", "theme:Dracula"],
+            snapshot.Items.Select(item => item.Id));
+        Assert.Equal("Current", snapshot.Items.Single(item => item.Id == "theme:agterm").Badge);
+        Assert.True(WindowPaletteProjection.TryParseThemeName("theme:__default__", out var defaultTheme));
+        Assert.Null(defaultTheme);
+        Assert.True(WindowPaletteProjection.TryParseThemeName("theme:Dracula", out var dracula));
+        Assert.Equal("Dracula", dracula);
+        Assert.False(WindowPaletteProjection.TryParseThemeName("Dracula", out _));
+    }
+
+    [Fact]
     public void Open_palette_snapshot_does_not_change_after_keymap_reload_but_reopen_uses_new_commands()
     {
         var first = new CustomCommand("First", "echo first", "", Guid.NewGuid());
@@ -138,6 +161,7 @@ public sealed class WindowPaletteProjectionTests
     [InlineData(WindowPaletteMode.Commands, "Run an action…")]
     [InlineData(WindowPaletteMode.CustomCommands, "Run a custom command…")]
     [InlineData(WindowPaletteMode.Attention, "Go to a session that needs attention…")]
+    [InlineData(WindowPaletteMode.Themes, "Select a theme…")]
     public void Mode_defines_the_expected_placeholder(WindowPaletteMode mode, string placeholder)
     {
         var snapshot = WindowPaletteProjection.Create(mode, new AppStore(), Keymap.Empty, StateProvider());

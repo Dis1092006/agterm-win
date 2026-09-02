@@ -86,6 +86,15 @@ public sealed record HeadlessHostOptions
     /// <summary>Live-only dashboard state callback. Invoked under the host gate after open or close.</summary>
     public Action? DashboardChanged { get; init; }
 
+    /// <summary>Live-only immutable theme callback. Invoked under the host gate after validation.</summary>
+    public Action<HeadlessThemeSnapshot>? ThemeChanged { get; init; }
+
+    /// <summary>Live-only immutable notification callback. Invoked under the host gate after recording.</summary>
+    public Func<LiveNotificationRequest, bool>? NotificationRequested { get; init; }
+
+    /// <summary>Live-only immutable status notification callback. Invoked after the status mutation.</summary>
+    public Action<LiveStatusNotificationRequest>? StatusNotificationRequested { get; init; }
+
     /// <summary>Optional live-only availability check for a realized zoom target pane.</summary>
     public Func<TerminalZoomTarget, bool>? ZoomTargetAvailable { get; init; }
 }
@@ -150,6 +159,9 @@ public sealed class HeadlessHost : IDisposable
             zoomActiveChanged: options.ZoomActiveChanged,
             zoomChanged: options.ZoomChanged,
             dashboardChanged: options.DashboardChanged,
+            themeChanged: options.ThemeChanged,
+            notificationRequested: options.NotificationRequested,
+            statusNotificationRequested: options.StatusNotificationRequested,
             zoomTargetAvailable: options.ZoomTargetAvailable);
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:

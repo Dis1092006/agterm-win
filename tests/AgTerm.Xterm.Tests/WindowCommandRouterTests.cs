@@ -30,6 +30,8 @@ public class WindowCommandRouterTests
         BuiltinAction.CustomCommandPalette,
         BuiltinAction.ShowAttention,
         BuiltinAction.Dashboard,
+        BuiltinAction.SelectTheme,
+        BuiltinAction.ToggleFullscreen,
         BuiltinAction.FocusLeftPane,
         BuiltinAction.FocusRightPane,
         BuiltinAction.ToggleFlaggedView,
@@ -52,8 +54,6 @@ public class WindowCommandRouterTests
         BuiltinAction.RenameWorkspace,
         BuiltinAction.DeleteWorkspace,
         BuiltinAction.ReopenRecent,
-        BuiltinAction.SelectTheme,
-        BuiltinAction.ToggleFullscreen,
     ];
 
     [Fact]
@@ -178,7 +178,6 @@ public class WindowCommandRouterTests
 
     [Theory]
     [InlineData(BuiltinAction.NewWindow)]
-    [InlineData(BuiltinAction.SelectTheme)]
     public void CanExecute_returns_false_for_unimplemented_action(BuiltinAction action)
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());
@@ -220,7 +219,6 @@ public class WindowCommandRouterTests
 
     [Theory]
     [InlineData(BuiltinAction.NewWindow)]
-    [InlineData(BuiltinAction.SelectTheme)]
     public async Task ExecuteAsync_returns_false_for_unimplemented_action(BuiltinAction action)
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());

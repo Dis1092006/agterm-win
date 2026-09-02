@@ -87,5 +87,17 @@
         <local:PaletteView x:Name="PaletteOverlay"
                            Grid.RowSpan="2"
                            Canvas.ZIndex="100" />
+
+        <InfoBar x:Name="NotificationBanner"
+                 Grid.Row="1"
+                 Margin="16"
+                 MaxWidth="480"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Top"
+                 IsClosable="True"
+                 IsOpen="False"
+                 Severity="Informational"
+                 AutomationProperties.Name="Notification"
+                 Canvas.ZIndex="90" />
     </Grid>
 </Window>

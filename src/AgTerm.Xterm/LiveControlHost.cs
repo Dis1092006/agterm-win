@@ -26,6 +26,8 @@ public sealed record LiveControlHostOptions
 
     public IReadOnlyList<string> AvailableThemes { get; init; } = Array.Empty<string>();
 
+    public HeadlessThemeSnapshot? InitialTheme { get; init; }
+
     public string? HomeDirectory { get; init; }
 
     /// <summary>The configured default shell; null = the ShellResolver policy (pwsh → cmd).</summary>
@@ -36,6 +38,8 @@ public sealed record LiveControlHostOptions
 
     /// <summary>Default base font size for newly realized surfaces.</summary>
     public double BaseFontSize { get; init; } = 14;
+
+    public AppSettings NotificationSettings { get; init; } = new();
 
     /// <summary>When true, restored foreground/override commands are sent as startup input.</summary>
     public bool RestoreRunningCommand { get; init; }
@@ -62,6 +66,8 @@ public sealed record LiveControlHostOptions
 
     internal Func<Action, Task> NotificationScheduler { get; init; } =
         static notification => Task.Run(notification);
+
+    internal Func<TimeSpan>? NotificationClock { get; init; }
 }
 
 /// <summary>
@@ -89,11 +95,27 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private bool _dashboardTransientActive;
     private readonly Queue<bool> _pendingZoomStates = new();
     private Task? _zoomNotificationTask;
+    private readonly Queue<HeadlessThemeSnapshot> _pendingThemeStates = new();
+    private Task? _themeNotificationTask;
+    private AppSettings _notificationSettings;
+    private readonly Func<TimeSpan> _notificationClock;
+    private readonly SoundThrottle _soundThrottle = new(TimeSpan.FromMilliseconds(200));
+    private readonly Queue<LiveNotificationDelivery> _pendingNotificationDeliveries = new();
+    private Task? _notificationDeliveryTask;
+
+    private abstract record LiveNotificationDelivery
+    {
+        public sealed record Banner(LiveBannerNotification Notification) : LiveNotificationDelivery;
+        public sealed record Status(string SoundName) : LiveNotificationDelivery;
+    }
 
     public LiveControlHost(LiveControlHostOptions options)
     {
         _options = options;
         _currentBaseFontSize = options.BaseFontSize;
+        _notificationSettings = options.NotificationSettings;
+        var notificationStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        _notificationClock = options.NotificationClock ?? (() => notificationStopwatch.Elapsed);
         _scopeFactory = new LiveDispatchScopeFactory();
         Host = new HeadlessHost(new HeadlessHostOptions
         {
@@ -119,8 +141,18 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             ZoomActiveChanged = QueueZoomActiveChanged,
             ZoomChanged = QueueZoomChanged,
             DashboardChanged = QueueDashboardChanged,
+            ThemeChanged = QueueThemeChanged,
+            NotificationRequested = QueueNotificationRequested,
+            StatusNotificationRequested = QueueStatusNotificationRequested,
             ZoomTargetAvailable = IsZoomTargetRealized,
         });
+        if (options.InitialTheme is { } initialTheme)
+        {
+            if (initialTheme.Sync != (initialTheme.Dark is not null))
+                throw new ArgumentException("Initial theme sync state must match the dark slot.", nameof(options));
+            Host.Actions.Theme.Light = initialTheme.Light;
+            Host.Actions.Theme.Dark = initialTheme.Dark;
+        }
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
@@ -402,6 +434,18 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public event Action<bool>? ZoomActiveChanged;
 
+    public event Action<HeadlessThemeSnapshot>? ThemeChanged;
+
+    public event Action<LiveBannerNotification>? NotificationRequested;
+
+    public event Action<string>? StatusNotificationRequested;
+
+    public void SetNotificationSettings(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        Volatile.Write(ref _notificationSettings, settings);
+    }
+
     private void QueueZoomActiveChanged(bool active)
     {
         Volatile.Write(ref _zoomActive, active ? 1 : 0);
@@ -490,6 +534,223 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             catch (Exception ex)
             {
                 _options.Log?.Invoke($"Zoom active-state subscriber failed: {ex}");
+            }
+        }
+    }
+
+    private void QueueThemeChanged(HeadlessThemeSnapshot state)
+    {
+        lock (_focusRequestLock)
+        {
+            _pendingThemeStates.Enqueue(state);
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+                return;
+            if (_themeNotificationTask is not null)
+                return;
+
+            var delivery = ScheduleThemeNotificationWorker();
+            _themeNotificationTask = delivery;
+            _focusRequestTasks.Add(delivery);
+        }
+    }
+
+    private Task ScheduleThemeNotificationWorker()
+    {
+        var schedulerReturned = 0;
+        var invokedBeforeReturn = 0;
+        Task? delivery = null;
+        try
+        {
+            delivery = _options.NotificationScheduler(() =>
+            {
+                if (Volatile.Read(ref schedulerReturned) == 0)
+                {
+                    Interlocked.Exchange(ref invokedBeforeReturn, 1);
+                    return;
+                }
+
+                DeliverThemeChanges(delivery!);
+            });
+        }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"Theme notification scheduler failed: {ex}");
+        }
+        finally
+        {
+            Volatile.Write(ref schedulerReturned, 1);
+        }
+
+        if (delivery is not null &&
+            !delivery.IsCompleted &&
+            Volatile.Read(ref invokedBeforeReturn) == 0)
+        {
+            return delivery;
+        }
+
+        Task? deferred = null;
+        deferred = Task.Run(() => DeliverThemeChanges(deferred!));
+        return deferred;
+    }
+
+    private void DeliverThemeChanges(Task delivery)
+    {
+        while (true)
+        {
+            HeadlessThemeSnapshot state;
+            lock (_focusRequestLock)
+            {
+                if (Volatile.Read(ref _shutdownStarted) != 0)
+                {
+                    _pendingThemeStates.Clear();
+                    _themeNotificationTask = null;
+                    _focusRequestTasks.Remove(delivery);
+                    return;
+                }
+
+                if (_pendingThemeStates.Count == 0)
+                {
+                    _themeNotificationTask = null;
+                    _focusRequestTasks.Remove(delivery);
+                    return;
+                }
+
+                state = _pendingThemeStates.Dequeue();
+            }
+
+            try
+            {
+                ThemeChanged?.Invoke(state);
+            }
+            catch (Exception ex)
+            {
+                _options.Log?.Invoke($"Theme subscriber failed: {ex}");
+            }
+        }
+    }
+
+    private bool QueueNotificationRequested(LiveNotificationRequest request)
+    {
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+        {
+            return false;
+        }
+
+        var notification = LiveNotificationPolicy.ForNotify(
+            request,
+            Volatile.Read(ref _notificationSettings));
+        if (notification is null)
+            return false;
+
+        QueueNotificationDelivery(new LiveNotificationDelivery.Banner(notification));
+        return true;
+    }
+
+    private void QueueStatusNotificationRequested(LiveStatusNotificationRequest request)
+    {
+        var soundName = LiveNotificationPolicy.StatusSound(
+            request,
+            Volatile.Read(ref _notificationSettings));
+        if (soundName is not null && _soundThrottle.Allow(soundName, _notificationClock()))
+            QueueNotificationDelivery(new LiveNotificationDelivery.Status(soundName));
+    }
+
+    private void QueueNotificationDelivery(LiveNotificationDelivery notification)
+    {
+        lock (_focusRequestLock)
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+                return;
+
+            _pendingNotificationDeliveries.Enqueue(notification);
+            if (_notificationDeliveryTask is not null)
+                return;
+
+            var delivery = ScheduleNotificationDeliveryWorker();
+            _notificationDeliveryTask = delivery;
+            _focusRequestTasks.Add(delivery);
+        }
+    }
+
+    private Task ScheduleNotificationDeliveryWorker()
+    {
+        var schedulerReturned = 0;
+        var invokedBeforeReturn = 0;
+        Task? delivery = null;
+        try
+        {
+            delivery = _options.NotificationScheduler(() =>
+            {
+                if (Volatile.Read(ref schedulerReturned) == 0)
+                {
+                    Interlocked.Exchange(ref invokedBeforeReturn, 1);
+                    return;
+                }
+
+                DeliverNotifications(delivery!);
+            });
+        }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"Notification scheduler failed: {ex}");
+        }
+        finally
+        {
+            Volatile.Write(ref schedulerReturned, 1);
+        }
+
+        if (delivery is not null &&
+            !delivery.IsCompleted &&
+            Volatile.Read(ref invokedBeforeReturn) == 0)
+        {
+            return delivery;
+        }
+
+        Task? deferred = null;
+        deferred = Task.Run(() => DeliverNotifications(deferred!));
+        return deferred;
+    }
+
+    private void DeliverNotifications(Task delivery)
+    {
+        while (true)
+        {
+            LiveNotificationDelivery notification;
+            lock (_focusRequestLock)
+            {
+                if (Volatile.Read(ref _shutdownStarted) != 0)
+                {
+                    _pendingNotificationDeliveries.Clear();
+                    _notificationDeliveryTask = null;
+                    _focusRequestTasks.Remove(delivery);
+                    return;
+                }
+
+                if (_pendingNotificationDeliveries.Count == 0)
+                {
+                    _notificationDeliveryTask = null;
+                    _focusRequestTasks.Remove(delivery);
+                    return;
+                }
+
+                notification = _pendingNotificationDeliveries.Dequeue();
+            }
+
+            try
+            {
+                switch (notification)
+                {
+                    case LiveNotificationDelivery.Banner banner:
+                        NotificationRequested?.Invoke(banner.Notification);
+                        break;
+                    case LiveNotificationDelivery.Status status:
+                        StatusNotificationRequested?.Invoke(status.SoundName);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _options.Log?.Invoke($"Notification subscriber failed: {ex}");
             }
         }
     }
