@@ -29,6 +29,7 @@ public class WindowCommandRouterTests
         BuiltinAction.CommandPalette,
         BuiltinAction.CustomCommandPalette,
         BuiltinAction.ShowAttention,
+        BuiltinAction.Dashboard,
         BuiltinAction.FocusLeftPane,
         BuiltinAction.FocusRightPane,
         BuiltinAction.ToggleFlaggedView,
@@ -53,7 +54,6 @@ public class WindowCommandRouterTests
         BuiltinAction.ReopenRecent,
         BuiltinAction.SelectTheme,
         BuiltinAction.ToggleFullscreen,
-        BuiltinAction.Dashboard,
     ];
 
     [Fact]
@@ -178,7 +178,7 @@ public class WindowCommandRouterTests
 
     [Theory]
     [InlineData(BuiltinAction.NewWindow)]
-    [InlineData(BuiltinAction.Dashboard)]
+    [InlineData(BuiltinAction.SelectTheme)]
     public void CanExecute_returns_false_for_unimplemented_action(BuiltinAction action)
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());
@@ -220,7 +220,7 @@ public class WindowCommandRouterTests
 
     [Theory]
     [InlineData(BuiltinAction.NewWindow)]
-    [InlineData(BuiltinAction.Dashboard)]
+    [InlineData(BuiltinAction.SelectTheme)]
     public async Task ExecuteAsync_returns_false_for_unimplemented_action(BuiltinAction action)
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());
@@ -435,8 +435,8 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "o"), chords);
         // Ctrl+Shift+I → ctrl+shift+i → ShowAttention (implemented in C2): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "i"), chords);
-        // Ctrl+Shift+D → cmd+shift+d → Dashboard (unimplemented): must be absent
-        Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "d"), chords);
+        // Ctrl+Shift+D → cmd+shift+d → Dashboard (implemented in D2): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "d"), chords);
 
         // returned chords are distinct
         Assert.Equal(chords.Count, chords.Distinct().Count());

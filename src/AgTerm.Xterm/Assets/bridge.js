@@ -11,18 +11,23 @@
 //                                              {type:'chord', paneId, generation, ctrl, alt, shift, key}
 //                                              {type:'customHotkey', paneId, generation, customCommandId, ctrl, alt, shift, key}
 //                                              {type:'pasteRequested', paneId}   right-click paste
+//                                              {type:'dashboardHighlight'|'dashboardActivate', controlRef}
+//                                              {type:'dashboardClose'}
 //   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize}) → {cols,rows},
 //     agterm.showPane(paneId), agterm.closePane(paneId), agterm.applyLayout(layout), and the per-pane reads/writes:
 //     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
 //     each takes paneId first; every call on an unknown paneId returns null. Page-global:
-//     agterm.setHotkeyManifest({generation,leaderTimeoutMs,builtinSingles,customBindings}) — atomic hotkey table.
+//     agterm.setHotkeyManifest({generation,leaderTimeoutMs,builtinSingles,customBindings,
+//       zoomPassthroughSingles,dashboardToggleSingles}) — atomic hotkey table.
 //     agterm.setChords([{ctrl,alt,shift,key}]) — compatibility built-in-only hotkey table.
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
 //     agterm.getRendererCapabilities(paneId).
 //     layout schema:
 //       {type:'single', generation, paneId, title} |
 //       {type:'empty', generation} |
+//       {type:'zoomed', generation, paneId} |
 //       {type:'split', generation, leftPaneId, rightPaneId, ratio, focusedPaneId} |
+//       {type:'dashboard', generation, cells:[{paneId,controlRef}], highlightedControlRef, fontSize?} |
 //       {type:'layered', generation,
 //          base:{type:'single', paneId} | {type:'split', leftPaneId, rightPaneId, ratio, focusedPaneId},
 //          layer:{paneId, sizePercent?, backgroundColor?}}.
@@ -39,6 +44,7 @@ let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns
 let hotkeyGeneration = 0;
 let customHotkeyBindings = [];
 let zoomPassthroughChords = [];
+let dashboardToggleChords = [];
 let armedCustomChords = [];
 let customLeaderTimer = null;
 let customLeaderTimeoutMs = 1500;
@@ -60,6 +66,7 @@ let splitDividerEl = null;
 let splitDragState = null;
 let splitFitRafHandle = 0;
 let overlayCatcherEl = null;
+let dashboardActivationTimer = null;
 
 function searchDecorations() {
   return {
@@ -303,6 +310,8 @@ function visibleFocusedPaneId() {
     return visibleLayout.paneId;
   if (visibleLayout.type === "split") return visibleLayout.focusedPaneId;
   if (visibleLayout.type === "layered") return visibleLayout.layerPaneId;
+  if (visibleLayout.type === "dashboard")
+    return visibleLayout.highlightedPaneId;
   return null;
 }
 
@@ -367,6 +376,24 @@ function clearSplitPresentation() {
   container.style.display = "";
   container.style.gridTemplateColumns = "";
   container.style.gridTemplateRows = "";
+}
+
+function clearDashboardPresentation() {
+  if (dashboardActivationTimer !== null) {
+    clearTimeout(dashboardActivationTimer);
+    dashboardActivationTimer = null;
+  }
+  container.classList.remove("dashboard-layout");
+  container.style.gridTemplateColumns = "";
+  container.style.gridTemplateRows = "";
+  for (const [, pane] of panes) {
+    if (typeof pane.sessionFontSize === "number")
+      pane.term.options.fontSize = pane.sessionFontSize;
+    pane.el.classList.remove("dashboard-cell", "dashboard-highlighted");
+    delete pane.el.dataset.dashboardControlRef;
+    pane.el.style.gridColumn = "";
+    pane.el.style.gridRow = "";
+  }
 }
 
 function removeOverlayCatcher() {
@@ -700,6 +727,7 @@ function applySinglePresentation(paneId, shouldFitAndReport, shouldFocus) {
 
   clearLayeredPresentationStyles();
   clearSplitPresentation();
+  clearDashboardPresentation();
   for (const [id, p] of panes)
     p.el.style.display = id === paneId ? "block" : "none";
   pane.el.style.gridColumn = "";
@@ -715,6 +743,7 @@ function applySinglePresentation(paneId, shouldFitAndReport, shouldFocus) {
 function applyEmptyPresentation() {
   clearLayeredPresentationStyles();
   clearSplitPresentation();
+  clearDashboardPresentation();
   hideAllPanes();
   setVisibleLayout({ type: "empty", paneIds: [] });
 }
@@ -726,6 +755,7 @@ function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
 
   clearLayeredPresentationStyles();
   clearSplitPresentation();
+  clearDashboardPresentation();
   const divider = ensureSplitDivider();
 
   container.style.display = "grid";
@@ -768,6 +798,221 @@ function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
   if (shouldFocus) focusPane(splitLayout.focusedPaneId, true);
 
   return true;
+}
+
+function validateDashboardLayout(layout) {
+  if (
+    !hasOnlyKeys(layout, [
+      "type",
+      "generation",
+      "cells",
+      "highlightedControlRef",
+      "fontSize",
+    ]) ||
+    !Array.isArray(layout.cells) ||
+    layout.cells.length < 1 ||
+    layout.cells.length > 9 ||
+    typeof layout.highlightedControlRef !== "string" ||
+    layout.highlightedControlRef.length === 0
+  ) {
+    return null;
+  }
+
+  if (
+    layout.fontSize !== undefined &&
+    (typeof layout.fontSize !== "number" ||
+      !Number.isFinite(layout.fontSize) ||
+      layout.fontSize <= 0)
+  ) {
+    return null;
+  }
+
+  const seenPaneIds = new Set();
+  const seenControlRefs = new Set();
+  const cells = [];
+  for (const cell of layout.cells) {
+    if (!hasOnlyKeys(cell, ["paneId", "controlRef"])) return null;
+    const paneId = normalizeKnownPaneId(cell.paneId);
+    if (
+      !paneId ||
+      typeof cell.controlRef !== "string" ||
+      cell.controlRef.length === 0
+    )
+      return null;
+    if (seenPaneIds.has(paneId) || seenControlRefs.has(cell.controlRef))
+      return null;
+    seenPaneIds.add(paneId);
+    seenControlRefs.add(cell.controlRef);
+    cells.push({ paneId, controlRef: cell.controlRef });
+  }
+
+  const highlighted = cells.find(
+    (cell) => cell.controlRef === layout.highlightedControlRef,
+  );
+  if (!highlighted) return null;
+  return {
+    cells,
+    highlightedControlRef: layout.highlightedControlRef,
+    highlightedPaneId: highlighted.paneId,
+    fontSize: layout.fontSize ?? null,
+  };
+}
+
+function applyDashboardPresentation(dashboard) {
+  clearLayeredPresentationStyles();
+  clearSplitPresentation();
+  clearDashboardPresentation();
+
+  const count = dashboard.cells.length;
+  const columns = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / columns);
+  container.classList.add("dashboard-layout");
+  container.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+  container.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+
+  const paneIds = dashboard.cells.map((cell) => cell.paneId);
+  for (const [id, pane] of panes) {
+    const index = paneIds.indexOf(id);
+    pane.el.style.display = index >= 0 ? "block" : "none";
+    if (index < 0) continue;
+    const cell = dashboard.cells[index];
+    pane.el.classList.add("dashboard-cell");
+    pane.el.classList.toggle(
+      "dashboard-highlighted",
+      cell.controlRef === dashboard.highlightedControlRef,
+    );
+    pane.el.dataset.dashboardControlRef = cell.controlRef;
+    if (dashboard.fontSize !== null)
+      pane.term.options.fontSize = dashboard.fontSize;
+  }
+
+  setVisibleLayout({
+    type: "dashboard",
+    paneIds,
+    cells: dashboard.cells,
+    highlightedControlRef: dashboard.highlightedControlRef,
+    highlightedPaneId: dashboard.highlightedPaneId,
+    fontSize: dashboard.fontSize,
+  });
+  fitAndReportPaneIds(paneIds);
+  focusPane(dashboard.highlightedPaneId, false);
+  return true;
+}
+
+function setDashboardHighlight(controlRef, emitEvent) {
+  if (!visibleLayout || visibleLayout.type !== "dashboard") return false;
+  const cell = visibleLayout.cells.find(
+    (candidate) => candidate.controlRef === controlRef,
+  );
+  if (!cell) return false;
+
+  visibleLayout.highlightedControlRef = cell.controlRef;
+  visibleLayout.highlightedPaneId = cell.paneId;
+  for (const candidate of visibleLayout.cells) {
+    panes
+      .get(candidate.paneId)
+      ?.el.classList.toggle(
+        "dashboard-highlighted",
+        candidate.controlRef === controlRef,
+      );
+  }
+  if (emitEvent) post({ type: "dashboardHighlight", controlRef });
+  return true;
+}
+
+function moveDashboardHighlight(direction) {
+  if (!visibleLayout || visibleLayout.type !== "dashboard") return false;
+  const cells = visibleLayout.cells;
+  const from = cells.findIndex(
+    (cell) => cell.controlRef === visibleLayout.highlightedControlRef,
+  );
+  if (from < 0) return false;
+  const columns = Math.ceil(Math.sqrt(cells.length));
+  const column = from % columns;
+  const row = Math.floor(from / columns);
+  let to = from;
+  if (direction === "left" && column > 0) to = from - 1;
+  if (direction === "right" && column + 1 < columns && from + 1 < cells.length)
+    to = from + 1;
+  if (direction === "up" && row > 0) to = from - columns;
+  if (direction === "down" && (row + 1) * columns + column < cells.length)
+    to = (row + 1) * columns + column;
+  return setDashboardHighlight(cells[to].controlRef, to !== from);
+}
+
+function onDashboardKeyDown(ev) {
+  if (!visibleLayout || visibleLayout.type !== "dashboard") return;
+  const directions = {
+    ArrowLeft: "left",
+    ArrowRight: "right",
+    ArrowUp: "up",
+    ArrowDown: "down",
+  };
+  if (directions[ev.key]) {
+    moveDashboardHighlight(directions[ev.key]);
+  } else if (ev.key === "Enter") {
+    post({
+      type: "dashboardActivate",
+      controlRef: visibleLayout.highlightedControlRef,
+    });
+  } else if (ev.key === "Escape") {
+    post({ type: "dashboardClose" });
+  } else {
+    const key = normalizeKey(ev.key);
+    const chord = key
+      ? {
+          ctrl: ev.ctrlKey,
+          alt: ev.altKey,
+          shift: ev.shiftKey,
+          key,
+        }
+      : null;
+    if (
+      chord &&
+      dashboardToggleChords.some((candidate) =>
+        samePhysicalChord(candidate, chord),
+      )
+    ) {
+      post({
+        type: "chord",
+        paneId: visibleLayout.highlightedPaneId,
+        generation: hotkeyGeneration,
+        ctrl: chord.ctrl,
+        alt: chord.alt,
+        shift: chord.shift,
+        key: chord.key,
+      });
+    }
+  }
+  if (ev.preventDefault) ev.preventDefault();
+  if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+}
+
+function onDashboardClick(ev) {
+  if (!visibleLayout || visibleLayout.type !== "dashboard") return;
+  const cellElement = ev.target?.closest?.("[data-dashboard-control-ref]");
+  const controlRef = cellElement?.dataset?.dashboardControlRef;
+  if (!controlRef || !setDashboardHighlight(controlRef, true)) return;
+  if (ev.preventDefault) ev.preventDefault();
+  if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+
+  if (dashboardActivationTimer !== null) clearTimeout(dashboardActivationTimer);
+  const expectedLayout = visibleLayout;
+  dashboardActivationTimer = setTimeout(() => {
+    dashboardActivationTimer = null;
+    if (
+      visibleLayout === expectedLayout &&
+      visibleLayout.highlightedControlRef === controlRef
+    ) {
+      post({ type: "dashboardActivate", controlRef });
+    }
+  }, 180);
+}
+
+function onDashboardPointerDown(ev) {
+  if (!visibleLayout || visibleLayout.type !== "dashboard") return;
+  if (ev.preventDefault) ev.preventDefault();
+  if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
 }
 
 function ratioFromClientX(clientX) {
@@ -1034,8 +1279,16 @@ function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
 
 function applyRendererSettings(settings) {
   rendererSettings = normalizeRendererSettings(settings, rendererSettings);
-  for (const [, pane] of panes)
-    applyRendererSettingsToPane(pane, rendererSettings);
+  for (const [paneId, pane] of panes) {
+    pane.sessionFontSize = rendererSettings.fontSize;
+    const dashboardFontSize =
+      visibleLayout?.type === "dashboard" &&
+      visibleLayout.paneIds.includes(paneId) &&
+      visibleLayout.fontSize !== null
+        ? visibleLayout.fontSize
+        : pane.sessionFontSize;
+    applyRendererSettingsToPane(pane, rendererSettings, dashboardFontSize);
+  }
   applyPageBackground(rendererSettings);
   fitAndReportVisiblePanes();
   return panes.size;
@@ -1197,6 +1450,9 @@ function setHotkeyManifest(manifest) {
     (manifest.zoomPassthroughSingles !== undefined &&
       (!Array.isArray(manifest.zoomPassthroughSingles) ||
         !manifest.zoomPassthroughSingles.every(validatePhysicalChord))) ||
+    (manifest.dashboardToggleSingles !== undefined &&
+      (!Array.isArray(manifest.dashboardToggleSingles) ||
+        !manifest.dashboardToggleSingles.every(validatePhysicalChord))) ||
     !Array.isArray(manifest.customBindings)
   )
     return false;
@@ -1225,11 +1481,18 @@ function setHotkeyManifest(manifest) {
   zoomPassthroughChords = (manifest.zoomPassthroughSingles || []).map(
     (chord) => ({ ...chord }),
   );
+  dashboardToggleChords = (manifest.dashboardToggleSingles || []).map(
+    (chord) => ({ ...chord }),
+  );
   customHotkeyBindings = customBindings;
   return true;
 }
 
 const post = (msg) => window.chrome.webview.postMessage(msg);
+
+document.addEventListener("keydown", onDashboardKeyDown, true);
+container.addEventListener("pointerdown", onDashboardPointerDown, true);
+container.addEventListener("click", onDashboardClick, true);
 
 if (searchInputEl) {
   searchInputEl.addEventListener("input", () => runSearchFromBar("next", true));
@@ -1296,6 +1559,7 @@ function openPane(paneId, opts) {
     fitAddon,
     searchAddon,
     serializeAddon,
+    sessionFontSize: term.options.fontSize,
     overlayBackgroundColor: null,
     lastSearch: { index: -1, count: 0 },
     appliedSearch: { needle: "", selected: null },
@@ -1513,6 +1777,13 @@ function applyLayout(layout) {
     return true;
   }
 
+  if (layout.type === "dashboard") {
+    const dashboard = validateDashboardLayout(layout);
+    if (!dashboard || !applyDashboardPresentation(dashboard)) return false;
+    highestAcceptedLayoutGeneration = generation;
+    return true;
+  }
+
   if (layout.type === "split") {
     const validSplitLayout = validateSplitLayout(layout);
     if (!validSplitLayout) return false;
@@ -1574,8 +1845,16 @@ window.chrome.webview.addEventListener("message", (e) => {
       pane.term.write(b64ToBytes(msg.data));
       break;
     case "options":
-      if (typeof msg.fontSize === "number")
-        pane.term.options.fontSize = msg.fontSize;
+      if (typeof msg.fontSize === "number") {
+        pane.sessionFontSize = msg.fontSize;
+        if (
+          visibleLayout?.type !== "dashboard" ||
+          !visibleLayout.paneIds.includes(msg.paneId) ||
+          visibleLayout.fontSize === null
+        ) {
+          pane.term.options.fontSize = msg.fontSize;
+        }
+      }
       fitAndReport(msg.paneId);
       break;
   }
@@ -1665,9 +1944,16 @@ window.agterm = {
     }),
   setFontSize: (paneId, px) =>
     withPane(paneId, (p) => {
-      p.term.options.fontSize = px;
+      p.sessionFontSize = px;
+      if (
+        visibleLayout?.type !== "dashboard" ||
+        !visibleLayout.paneIds.includes(paneId) ||
+        visibleLayout.fontSize === null
+      ) {
+        p.term.options.fontSize = px;
+      }
       fitAndReport(paneId);
-      return p.term.options.fontSize;
+      return p.sessionFontSize;
     }),
   getFontSize: (paneId) => withPane(paneId, (p) => p.term.options.fontSize),
   focus: (paneId) => focusPane(paneId, true),
@@ -1678,6 +1964,7 @@ window.agterm = {
     interceptChords = items || [];
     customHotkeyBindings = [];
     zoomPassthroughChords = [];
+    dashboardToggleChords = [];
     return interceptChords.length;
   },
   setHotkeyManifest,

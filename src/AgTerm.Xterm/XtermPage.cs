@@ -128,6 +128,12 @@ public sealed class XtermPage
 
     public event Action<string>? SearchClosed;
 
+    public event Action<string>? DashboardHighlighted;
+
+    public event Action<string>? DashboardActivated;
+
+    public event Action? DashboardClosed;
+
     /// <summary>Push the hotkey table every pane intercepts (replaces the previous table; empty
     /// clears the interception). Call after keymap load/reload, on the WebView2 UI thread — a
     /// script call, so nothing dispatched afterwards can outrun the table.</summary>
@@ -140,7 +146,8 @@ public sealed class XtermPage
 
     public async Task<bool> SetHotkeyManifestAsync(
         Core.Keymap.HotkeyManifest manifest,
-        IReadOnlyList<Core.Keymap.PhysicalChord>? zoomPassthroughSingles = null)
+        IReadOnlyList<Core.Keymap.PhysicalChord>? zoomPassthroughSingles = null,
+        IReadOnlyList<Core.Keymap.PhysicalChord>? dashboardToggleSingles = null)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.Generation < 0)
@@ -155,6 +162,7 @@ public sealed class XtermPage
             manifest.BuiltinSingles,
             manifest.CustomBindings,
             ZoomPassthroughSingles = zoomPassthroughSingles ?? Array.Empty<Core.Keymap.PhysicalChord>(),
+            DashboardToggleSingles = dashboardToggleSingles ?? Array.Empty<Core.Keymap.PhysicalChord>(),
         }, RendererSettingsScriptLiteral);
         var raw = await _host.ExecuteScriptAsync($"agterm.setHotkeyManifest({payload})")
             .ConfigureAwait(false);
@@ -194,6 +202,22 @@ public sealed class XtermPage
                 writer.WriteString("type", "zoomed");
                 writer.WriteNumber("generation", zoomed.Generation);
                 writer.WriteString("paneId", zoomed.PaneId);
+                break;
+            case TerminalLayout.Dashboard dashboard:
+                writer.WriteString("type", "dashboard");
+                writer.WriteNumber("generation", dashboard.Generation);
+                writer.WriteStartArray("cells");
+                foreach (var cell in dashboard.Cells)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("paneId", cell.PaneId);
+                    writer.WriteString("controlRef", cell.ControlRef);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+                writer.WriteString("highlightedControlRef", dashboard.HighlightedControlRef);
+                if (dashboard.FontSize is { } fontSize)
+                    writer.WriteNumber("fontSize", fontSize);
                 break;
             case TerminalLayout.Split split:
                 writer.WriteString("type", "split");
@@ -356,6 +380,24 @@ public sealed class XtermPage
             return;
         }
 
+        if (msg is { Type: "dashboardHighlight", ControlRef: { Length: > 0 } highlightedControlRef })
+        {
+            DashboardHighlighted?.Invoke(highlightedControlRef);
+            return;
+        }
+
+        if (msg is { Type: "dashboardActivate", ControlRef: { Length: > 0 } activatedControlRef })
+        {
+            DashboardActivated?.Invoke(activatedControlRef);
+            return;
+        }
+
+        if (msg?.Type == "dashboardClose")
+        {
+            DashboardClosed?.Invoke();
+            return;
+        }
+
         if (msg?.PaneId is { } paneId && _terminals.TryGetValue(paneId, out var terminal))
             terminal.HandleMessage(msg);
     }
@@ -389,4 +431,5 @@ internal sealed record BridgeMessage
     [JsonPropertyName("needle")] public string? Needle { get; init; }
     [JsonPropertyName("count")] public int? Count { get; init; }
     [JsonPropertyName("selected")] public int? Selected { get; init; }
+    [JsonPropertyName("controlRef")] public string? ControlRef { get; init; }
 }

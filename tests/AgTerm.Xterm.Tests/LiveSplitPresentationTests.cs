@@ -384,7 +384,7 @@ public sealed class MainWindowSplitWiringTests
         Assert.Contains("LiveSurfaceKind.Quick", source, StringComparison.Ordinal);
         // Snapshot-driven toggle: realized Quick or an exact zoom pane enters terminal-only presentation.
         Assert.Matches(
-            @"SetTerminalOnlyPresentation\(\s*snapshot\.QuickVisible && !string\.IsNullOrWhiteSpace\(snapshot\.QuickPaneId\)\s+\|\| !string\.IsNullOrWhiteSpace\(snapshot\.ZoomPaneId\)\);",
+            @"SetTerminalOnlyPresentation\(\s*snapshot\.QuickVisible && !string\.IsNullOrWhiteSpace\(snapshot\.QuickPaneId\)\s+\|\| !string\.IsNullOrWhiteSpace\(snapshot\.ZoomPaneId\)\s+\|\| snapshot\.DashboardOpen\);",
             source);
         Assert.Matches(
             @"_acceptedPaneId = layered\.Layer\.PaneId;\s+FocusActiveTerminal\(\);",

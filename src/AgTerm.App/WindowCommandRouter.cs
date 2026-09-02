@@ -63,7 +63,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.CommandPalette] = true,
             [BuiltinAction.CustomCommandPalette] = true,
             [BuiltinAction.ShowAttention] = true,
-            [BuiltinAction.Dashboard] = false,
+            [BuiltinAction.Dashboard] = true,
         });
 
     private static readonly HashSet<BuiltinAction> ImplementedActions = ActionImplementations

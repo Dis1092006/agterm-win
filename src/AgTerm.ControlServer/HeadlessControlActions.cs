@@ -44,6 +44,31 @@ public sealed class HeadlessDashboard
         FontMode = new DashboardFontMode.Untouched();
         AppliedFontSize = null;
     }
+
+    public bool Highlight(DashboardMember member)
+    {
+        if (!Members.Contains(member) || Highlighted == member)
+            return false;
+        Highlighted = member;
+        return true;
+    }
+
+    public bool Reconcile(IReadOnlySet<DashboardMember> existing)
+    {
+        var survivors = Members.Where(existing.Contains).ToArray();
+        if (survivors.Length == Members.Count)
+            return false;
+        if (survivors.Length == 0)
+        {
+            Close();
+            return true;
+        }
+
+        Members = survivors;
+        if (Highlighted is not { } highlighted || !survivors.Contains(highlighted))
+            Highlighted = survivors[0];
+        return true;
+    }
 }
 
 /// <summary>In-memory theme slots — the headless stand-in for the upstream SettingsModel theme
@@ -106,7 +131,7 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly string _homeDirectory;
     private readonly bool _restoreRunningCommand;
     private readonly bool _closeGraceUndoEnabled;
-    private readonly double _dashboardBaseFontSize;
+    private double _dashboardBaseFontSize;
     private readonly Action<string>? _paneFocusRequested;
     private readonly Action<HeadlessSearchUpdate>? _searchUpdated;
     private readonly Action? _quickChanged;
@@ -959,6 +984,25 @@ public sealed class HeadlessControlActions : IControlActions
     private bool IsZoomTargetAvailable(TerminalZoomTarget target) =>
         TerminalZoomController.IsTargetValid(target, _store, Quick.Visible)
         && (_zoomTargetAvailable?.Invoke(target) ?? true);
+
+    public void SetDashboardBaseFontSize(double fontSize)
+    {
+        if (!double.IsFinite(fontSize) || fontSize <= 0)
+            throw new ArgumentOutOfRangeException(nameof(fontSize));
+        _dashboardBaseFontSize = fontSize;
+        RecomputeDashboardFontSize();
+    }
+
+    public void RecomputeDashboardFontSize()
+    {
+        if (Dashboard.IsOpen)
+        {
+            Dashboard.AppliedFontSize = AppliedDashboardFontSize(
+                Dashboard.FontMode,
+                Dashboard.Members.Count,
+                _dashboardBaseFontSize);
+        }
+    }
 
     // MARK: - dashboard
 

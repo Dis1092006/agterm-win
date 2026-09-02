@@ -27,7 +27,10 @@ public sealed record LiveSelectionSnapshot(
     string? QuickPaneId = null,
     bool QuickVisible = false,
     string? ZoomPaneId = null,
-    bool DashboardOpen = false)
+    bool DashboardOpen = false,
+    IReadOnlyList<TerminalDashboardCell>? DashboardCells = null,
+    string? DashboardHighlighted = null,
+    double? DashboardFontSize = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -55,6 +58,16 @@ public sealed record LiveSelectionSnapshot(
                 ? SplitPaneId
                 : MainPaneId;
             baseLayout = new TerminalLayout.Single(generation, paneId, DisplayName, WorkspaceName);
+        }
+
+        if (DashboardCells is { Count: > 0 } dashboardCells
+            && !string.IsNullOrWhiteSpace(DashboardHighlighted))
+        {
+            return new TerminalLayout.Dashboard(
+                generation,
+                dashboardCells,
+                DashboardHighlighted,
+                DashboardFontSize);
         }
 
         if (!string.IsNullOrWhiteSpace(ZoomPaneId))
@@ -320,6 +333,13 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     {
         _host.Actions.ReconcileSurfaceZoom();
         var selectedSessionId = _host.Store.SelectedSessionId;
+        var dashboardCells = CaptureDashboardCells();
+        var dashboardHighlighted = _host.Actions.Dashboard.IsOpen
+            ? _host.Actions.Dashboard.Highlighted?.ControlRef
+            : null;
+        var dashboardFontSize = _host.Actions.Dashboard.IsOpen
+            ? _host.Actions.Dashboard.AppliedFontSize
+            : null;
         if (selectedSessionId is not { } id)
         {
             return new LiveSelectionSnapshot(
@@ -329,7 +349,10 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
                 QuickPaneId: _host.Actions.Quick.Surface?.PaneToken,
                 QuickVisible: _host.Actions.Quick.Visible,
                 ZoomPaneId: CaptureZoomPaneId(),
-                DashboardOpen: _host.Actions.Dashboard.IsOpen);
+                DashboardOpen: _host.Actions.Dashboard.IsOpen,
+                DashboardCells: dashboardCells,
+                DashboardHighlighted: dashboardHighlighted,
+                DashboardFontSize: dashboardFontSize);
         }
 
         var selectedSession = _host.Store.SessionWithId(id);
@@ -360,7 +383,31 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             _host.Actions.Quick.Surface?.PaneToken,
             _host.Actions.Quick.Visible,
             CaptureZoomPaneId(),
-            _host.Actions.Dashboard.IsOpen);
+            _host.Actions.Dashboard.IsOpen,
+            dashboardCells,
+            dashboardHighlighted,
+            dashboardFontSize);
+    }
+
+    private IReadOnlyList<TerminalDashboardCell> CaptureDashboardCells()
+    {
+        if (!_host.Actions.Dashboard.IsOpen)
+            return Array.Empty<TerminalDashboardCell>();
+
+        var cells = new List<TerminalDashboardCell>(_host.Actions.Dashboard.Members.Count);
+        foreach (var member in _host.Actions.Dashboard.Members)
+        {
+            var session = _host.Store.SessionWithId(member.Session);
+            var paneId = member.Surface switch
+            {
+                TerminalZoomSurface.Primary => session?.Surface?.PaneToken,
+                TerminalZoomSurface.Split => session?.SplitSurface?.PaneToken,
+                _ => null,
+            };
+            if (!string.IsNullOrWhiteSpace(paneId))
+                cells.Add(new TerminalDashboardCell(paneId, member.ControlRef));
+        }
+        return cells.ToArray();
     }
 
     private string? CaptureZoomPaneId() => _host.Actions.Zoom.Target switch

@@ -86,6 +86,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private Task? _shutdownTask;
     private int _shutdownStarted;
     private int _zoomActive;
+    private bool _dashboardTransientActive;
     private readonly Queue<bool> _pendingZoomStates = new();
     private Task? _zoomNotificationTask;
 
@@ -104,6 +105,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             ConfigReload = options.ConfigReload,
             HomeDirectory = options.HomeDirectory,
             RestoreRunningCommand = options.RestoreRunningCommand,
+            DashboardBaseFontSize = options.BaseFontSize,
             Log = options.Log,
             SurfaceRealizer = ReserveSurface,
             DispatchScopeFactory = _scopeFactory,
@@ -210,6 +212,85 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             _ => Host.Actions.SetSurfaceZoom(null, null, ControlToggleMode.Toggle),
             cancellationToken);
 
+    public Task ToggleDashboardAsync(CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(
+            _ =>
+            {
+                if (Host.Actions.Zoom.Target is not null)
+                    return;
+                Host.Actions.SetDashboard(
+                    Array.Empty<string>(),
+                    window: null,
+                    close: Host.Actions.Dashboard.IsOpen,
+                    new DashboardFontMode.Auto(),
+                    mru: !Host.Actions.Dashboard.IsOpen);
+            },
+            cancellationToken);
+
+    public Task CloseDashboardAsync(CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(
+            _ => Host.Actions.SetDashboard(
+                Array.Empty<string>(),
+                window: null,
+                close: true,
+                new DashboardFontMode.Untouched(),
+                mru: false),
+            cancellationToken);
+
+    public async Task<bool> HighlightDashboardMemberAsync(
+        string controlRef,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(controlRef))
+            return false;
+
+        var highlighted = false;
+        await StoreCoordinator.MutateAsync(_ =>
+        {
+            var member = Host.Actions.Dashboard.Members
+                .FirstOrDefault(candidate => candidate.ControlRef == controlRef);
+            if (member.ControlRef != controlRef || !Host.Actions.Dashboard.Highlight(member))
+                return;
+            highlighted = true;
+            _storeCoordinator.PublishSelectionSnapshotLocked();
+        }, cancellationToken).ConfigureAwait(false);
+        return highlighted;
+    }
+
+    public async Task<bool> ActivateDashboardMemberAsync(
+        string controlRef,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(controlRef))
+            return false;
+
+        var activated = false;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            var member = Host.Actions.Dashboard.Members
+                .FirstOrDefault(candidate => candidate.ControlRef == controlRef);
+            if (member.ControlRef != controlRef || store.SessionWithId(member.Session) is not { } session)
+                return;
+            var paneId = member.Surface switch
+            {
+                TerminalZoomSurface.Primary => session.Surface?.PaneToken,
+                TerminalZoomSurface.Split => session.SplitSurface?.PaneToken,
+                _ => null,
+            };
+            if (string.IsNullOrWhiteSpace(paneId))
+                return;
+
+            store.SelectSession(member.Session);
+            session.SplitFocused = member.Surface == TerminalZoomSurface.Split;
+            store.NotifySidebar();
+            Host.Actions.Dashboard.Close();
+            SyncDashboardTransientStateLocked();
+            _storeCoordinator.PublishSelectionSnapshotLocked();
+            activated = true;
+        }, cancellationToken).ConfigureAwait(false);
+        return activated;
+    }
+
     public Task ApplyBaseFontSizeAsync(double fontSize, CancellationToken cancellationToken = default)
     {
         if (!double.IsFinite(fontSize) || fontSize <= 0)
@@ -218,6 +299,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         return StoreCoordinator.MutateAsync(store =>
         {
             _currentBaseFontSize = fontSize;
+            Host.Actions.SetDashboardBaseFontSize(fontSize);
             store.ResetSessionFontSizes();
 
             foreach (var session in store.Workspaces.SelectMany(workspace => workspace.Sessions))
@@ -227,6 +309,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     paneSurface.ApplyBaseFontSize(fontSize);
                 }
             }
+
+            if (Host.Actions.Dashboard.IsOpen)
+                _storeCoordinator.PublishSelectionSnapshotLocked();
         }, cancellationToken);
     }
 
@@ -423,11 +508,35 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         if (Host.Actions.Zoom.Target is not null && Host.Actions.Dashboard.IsOpen)
             Host.Actions.Dashboard.Close();
 
+        SyncDashboardTransientStateLocked();
         _storeCoordinator?.PublishSelectionSnapshotLocked();
     }
 
-    private void QueueDashboardChanged() =>
+    private void QueueDashboardChanged()
+    {
+        ReconcileDashboardLocked();
+        SyncDashboardTransientStateLocked();
         _storeCoordinator?.PublishSelectionSnapshotLocked();
+    }
+
+    private void SyncDashboardTransientStateLocked()
+    {
+        var isOpen = Host.Actions.Dashboard.IsOpen;
+        if (isOpen == _dashboardTransientActive)
+            return;
+
+        _dashboardTransientActive = isOpen;
+        if (isOpen)
+        {
+            Host.Store.SuppressAutoFollow();
+            if (Host.Actions.Quick.Visible)
+                Host.Actions.SetQuickTerminal("hide");
+        }
+        else
+        {
+            Host.Store.ResumeAutoFollow();
+        }
+    }
 
     private bool IsZoomTargetRealized(TerminalZoomTarget target)
     {
@@ -577,6 +686,30 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             _ = PublishQuickSettlementAsync(pending);
         }
 
+        if (ReconcileDashboardLocked())
+            _storeCoordinator.PublishSelectionSnapshotLocked();
+    }
+
+    private bool ReconcileDashboardLocked()
+    {
+        if (!Host.Actions.Dashboard.IsOpen)
+            return false;
+
+        var existing = new HashSet<DashboardMember>();
+        foreach (var session in Host.Store.Workspaces.SelectMany(workspace => workspace.Sessions))
+        {
+            if (!string.IsNullOrWhiteSpace(session.Surface?.PaneToken))
+                existing.Add(new DashboardMember(session.Id, TerminalZoomSurface.Primary));
+            if (!string.IsNullOrWhiteSpace(session.SplitSurface?.PaneToken))
+                existing.Add(new DashboardMember(session.Id, TerminalZoomSurface.Split));
+        }
+
+        if (!Host.Actions.Dashboard.Reconcile(existing))
+            return false;
+
+        Host.Actions.RecomputeDashboardFontSize();
+        SyncDashboardTransientStateLocked();
+        return true;
     }
 
     private void ReserveIfMissing(

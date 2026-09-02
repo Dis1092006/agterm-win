@@ -1,5 +1,22 @@
 namespace AgTerm.Xterm;
 
+public sealed record TerminalDashboardCell
+{
+    public TerminalDashboardCell(string paneId, string controlRef)
+    {
+        if (string.IsNullOrWhiteSpace(paneId))
+            throw new ArgumentException("Pane id is required.", nameof(paneId));
+        if (string.IsNullOrWhiteSpace(controlRef))
+            throw new ArgumentException("Control reference is required.", nameof(controlRef));
+        PaneId = paneId.Trim();
+        ControlRef = controlRef.Trim();
+    }
+
+    public string PaneId { get; }
+
+    public string ControlRef { get; }
+}
+
 public sealed record TerminalLayer
 {
     public TerminalLayer(string paneId, int? sizePercent = null, string? backgroundColor = null)
@@ -58,6 +75,47 @@ public abstract record TerminalLayout(long Generation)
         string? Title = null,
         string? WorkspaceName = null)
         : TerminalLayout(Generation);
+
+    public sealed record Dashboard : TerminalLayout
+    {
+        public Dashboard(
+            long generation,
+            IReadOnlyList<TerminalDashboardCell> cells,
+            string highlightedControlRef,
+            double? fontSize = null)
+            : base(generation)
+        {
+            ArgumentNullException.ThrowIfNull(cells);
+            if (cells.Count is < 1 or > 9)
+                throw new ArgumentException("Dashboard must contain 1..9 cells.", nameof(cells));
+            if (string.IsNullOrWhiteSpace(highlightedControlRef))
+                throw new ArgumentException("Highlighted control reference is required.", nameof(highlightedControlRef));
+            if (fontSize is { } size && (!double.IsFinite(size) || size <= 0))
+                throw new ArgumentOutOfRangeException(nameof(fontSize), "Dashboard font size must be positive and finite.");
+
+            var copy = cells.ToArray();
+            if (copy.Any(cell => cell is null))
+                throw new ArgumentException("Dashboard cells cannot contain null.", nameof(cells));
+            if (copy.Select(cell => cell.PaneId).Distinct(StringComparer.Ordinal).Count() != copy.Length)
+                throw new ArgumentException("Dashboard pane ids must be distinct.", nameof(cells));
+            if (copy.Select(cell => cell.ControlRef).Distinct(StringComparer.Ordinal).Count() != copy.Length)
+                throw new ArgumentException("Dashboard control references must be distinct.", nameof(cells));
+
+            highlightedControlRef = highlightedControlRef.Trim();
+            if (!copy.Any(cell => cell.ControlRef == highlightedControlRef))
+                throw new ArgumentException("Highlighted control reference must identify a dashboard cell.", nameof(highlightedControlRef));
+
+            Cells = Array.AsReadOnly(copy);
+            HighlightedControlRef = highlightedControlRef;
+            FontSize = fontSize;
+        }
+
+        public IReadOnlyList<TerminalDashboardCell> Cells { get; }
+
+        public string HighlightedControlRef { get; }
+
+        public double? FontSize { get; }
+    }
 
     public sealed record Split : TerminalLayout
     {

@@ -111,6 +111,14 @@ public sealed partial class MainWindow : Window
                 case TerminalLayout.Zoomed zoomed:
                     ApplyAcceptedBaseLayout(zoomed, zoomed.PaneId);
                     break;
+                case TerminalLayout.Dashboard dashboard:
+                    _acceptedPaneId = dashboard.Cells
+                        .First(cell => cell.ControlRef == dashboard.HighlightedControlRef)
+                        .PaneId;
+                    Title = "Dashboard — agterm";
+                    AppTitleBar.Title = "Dashboard";
+                    AppTitleBar.Subtitle = string.Empty;
+                    break;
                 case TerminalLayout.Split split:
                     ApplyAcceptedBaseLayout(split, split.FocusedPaneId);
                     break;
@@ -182,6 +190,9 @@ public sealed partial class MainWindow : Window
         page.PaneFocusChanged += OnPagePaneFocusChanged;
         page.SearchUpdated += OnPageSearchUpdated;
         page.SearchClosed += OnPageSearchClosed;
+        page.DashboardHighlighted += OnPageDashboardHighlighted;
+        page.DashboardActivated += OnPageDashboardActivated;
+        page.DashboardClosed += OnPageDashboardClosed;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
@@ -225,7 +236,8 @@ public sealed partial class MainWindow : Window
                 _selectedSessionId = snapshot.SessionId;
                 SetTerminalOnlyPresentation(
                     snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId)
-                    || !string.IsNullOrWhiteSpace(snapshot.ZoomPaneId));
+                    || !string.IsNullOrWhiteSpace(snapshot.ZoomPaneId)
+                    || snapshot.DashboardOpen);
                 SubmitLayout();
                 SubmitSearchPresentation(previousSelection, snapshot);
             });
@@ -406,6 +418,9 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.ShowAttention] = Async(
                 () => !host.ZoomActive,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.Attention)),
+            [BuiltinAction.Dashboard] = Async(
+                () => !host.ZoomActive,
+                () => host.ToggleDashboardAsync()),
             [BuiltinAction.FocusLeftPane] = Async(
                 () => !string.IsNullOrWhiteSpace(_selection.MainPaneId) && !string.IsNullOrWhiteSpace(_selection.SplitPaneId),
                 () =>
@@ -603,7 +618,13 @@ public sealed partial class MainWindow : Window
             var zoomPassthroughSingles = pending.Router.InterceptChords
                 .Where(chord => pending.Router.Handle(chord) is { } action && IsPaletteAction(action))
                 .ToArray();
-            if (await page.SetHotkeyManifestAsync(manifest, zoomPassthroughSingles))
+            var dashboardToggleSingles = pending.Router.InterceptChords
+                .Where(chord => pending.Router.Handle(chord) == BuiltinAction.Dashboard)
+                .ToArray();
+            if (await page.SetHotkeyManifestAsync(
+                    manifest,
+                    zoomPassthroughSingles,
+                    dashboardToggleSingles))
                 _hotkeyStates.Commit(pending.Generation);
             else
                 _hotkeyStates.Reject(pending.Generation);
@@ -1075,6 +1096,36 @@ public sealed partial class MainWindow : Window
                     store.CloseSearch(owner.Id, paneId);
             }),
             "Search close failed");
+    }
+
+    private void OnPageDashboardHighlighted(string controlRef)
+    {
+        if (_host is { } host)
+        {
+            ObserveTaskFault(
+                host.HighlightDashboardMemberAsync(controlRef),
+                "Dashboard highlight failed");
+        }
+    }
+
+    private void OnPageDashboardActivated(string controlRef)
+    {
+        if (_host is { } host)
+        {
+            ObserveTaskFault(
+                host.ActivateDashboardMemberAsync(controlRef),
+                "Dashboard activation failed");
+        }
+    }
+
+    private void OnPageDashboardClosed()
+    {
+        if (_host is { } host)
+        {
+            ObserveTaskFault(
+                host.CloseDashboardAsync(),
+                "Dashboard close failed");
+        }
     }
 
     private async Task PasteIntoSurfaceAsync(XtermPaneSurface surface)
