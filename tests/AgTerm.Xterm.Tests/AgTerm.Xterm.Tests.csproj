@@ -29,6 +29,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\AgTerm.App\PaletteController.cs" Link="App\PaletteController.cs" />
+    <Compile Include="..\..\src\AgTerm.App\PaletteItemViewModel.cs" Link="App\PaletteItemViewModel.cs" />
+    <Compile Include="..\..\src\AgTerm.App\PaletteLayout.cs" Link="App\PaletteLayout.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowCommandRouter.cs" Link="App\WindowCommandRouter.cs" />
     <Compile Include="..\..\src\AgTerm.App\SettingsReloadCoordinator.cs" Link="App\SettingsReloadCoordinator.cs" />
   </ItemGroup>

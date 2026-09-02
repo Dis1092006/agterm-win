@@ -1,0 +1,260 @@
+using AgTerm.App;
+
+namespace AgTerm.Xterm.Tests;
+
+public sealed class PaletteControllerTests
+{
+    private static PaletteItemViewModel Item(
+        string id,
+        string title,
+        string? subtitle = null,
+        string? shortcut = null,
+        string? badge = null) =>
+        new(id, title, subtitle, shortcut, badge);
+
+    [Fact]
+    public void Open_copies_the_fresh_item_snapshot_and_alphabetizes_empty_query()
+    {
+        var source = new List<PaletteItemViewModel>
+        {
+            Item("beta", "beta"),
+            Item("alpha", "Alpha"),
+        };
+        var controller = new PaletteController();
+
+        controller.Open(source);
+        source.Clear();
+
+        Assert.True(controller.IsOpen);
+        Assert.Equal(["alpha", "beta"], controller.FilteredItems.Select(item => item.Id));
+        Assert.Equal("alpha", controller.SelectedItem?.Id);
+    }
+
+    [Fact]
+    public void SetQuery_matches_title_or_subtitle_and_resets_selection_to_first_result()
+    {
+        var controller = new PaletteController();
+        controller.Open(
+        [
+            Item("toggle", "Toggle Split", "panes"),
+            Item("reload", "Reload", "split config"),
+            Item("close", "Close Session"),
+        ]);
+        controller.MoveSelection(2);
+
+        controller.SetQuery("split");
+
+        Assert.Equal(["reload", "toggle"], controller.FilteredItems.Select(item => item.Id));
+        Assert.Equal(0, controller.SelectedIndex);
+        Assert.Equal("reload", controller.SelectedItem?.Id);
+    }
+
+    [Fact]
+    public void MoveSelection_clamps_at_both_ends_and_does_nothing_for_empty_results()
+    {
+        var controller = new PaletteController();
+        controller.Open([Item("a", "Alpha"), Item("b", "Beta")]);
+
+        controller.MoveSelection(-1);
+        Assert.Equal(0, controller.SelectedIndex);
+
+        controller.MoveSelection(10);
+        Assert.Equal(1, controller.SelectedIndex);
+
+        controller.SetQuery("no match");
+        controller.MoveSelection(1);
+        Assert.Equal(0, controller.SelectedIndex);
+        Assert.Null(controller.SelectedItem);
+    }
+
+    [Fact]
+    public void SelectIndex_uses_the_same_filtered_array_as_keyboard_acceptance()
+    {
+        var controller = new PaletteController();
+        controller.Open([Item("a", "Alpha"), Item("b", "Beta")]);
+
+        controller.SelectIndex(1);
+
+        Assert.Equal("b", controller.SelectedItem?.Id);
+        Assert.Throws<ArgumentOutOfRangeException>(() => controller.SelectIndex(2));
+    }
+
+    [Fact]
+    public void AcceptSelected_returns_the_rendered_selection_and_closes()
+    {
+        var controller = new PaletteController();
+        controller.Open([Item("a", "Alpha"), Item("b", "Beta")]);
+        controller.MoveSelection(1);
+
+        var accepted = controller.AcceptSelected();
+
+        Assert.Equal("b", accepted?.Id);
+        Assert.False(controller.IsOpen);
+        Assert.Empty(controller.FilteredItems);
+        Assert.Null(controller.SelectedItem);
+    }
+
+    [Fact]
+    public void AcceptSelected_with_no_results_stays_open_and_Close_clears_transient_state()
+    {
+        var controller = new PaletteController();
+        controller.Open([Item("a", "Alpha")]);
+        controller.SetQuery("missing");
+
+        Assert.Null(controller.AcceptSelected());
+        Assert.True(controller.IsOpen);
+
+        controller.Close();
+
+        Assert.False(controller.IsOpen);
+        Assert.Equal(string.Empty, controller.Query);
+        Assert.Empty(controller.FilteredItems);
+    }
+
+    [Fact]
+    public void Open_rejects_duplicate_or_blank_stable_ids()
+    {
+        var controller = new PaletteController();
+
+        Assert.Throws<ArgumentException>(() => controller.Open([Item("", "Blank")]));
+        Assert.Throws<ArgumentException>(() => controller.Open(
+        [
+            Item("same", "One"),
+            Item("same", "Two"),
+        ]));
+    }
+
+    [Fact]
+    public void Item_exposes_concise_automation_name_and_immutable_search_keys()
+    {
+        var item = Item("build", "Build", "Current workspace", "Ctrl+B", "custom");
+
+        Assert.Equal("Build, Current workspace, custom, Ctrl+B", item.AutomationName);
+        Assert.Equal(["Build", "Current workspace"], item.SearchKeys);
+    }
+}
+
+public sealed class PaletteLayoutTests
+{
+    [Theory]
+    [InlineData(800, 320)]
+    [InlineData(459, 320)]
+    [InlineData(400, 301)]
+    [InlineData(219, 120)]
+    [InlineData(160, 61)]
+    [InlineData(100, 48)]
+    public void ResultHeight_is_stable_until_the_window_requires_it_to_shrink(
+        double availableHeight,
+        double expected)
+    {
+        Assert.Equal(expected, PaletteLayout.ResultHeight(availableHeight));
+    }
+
+    [Theory]
+    [InlineData(459, 64)]
+    [InlineData(458, 24)]
+    public void PanelTopMargin_compacts_below_full_panel_height(
+        double availableHeight,
+        double expected)
+    {
+        Assert.Equal(expected, PaletteLayout.PanelTopMargin(availableHeight));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void ResultHeight_rejects_invalid_available_height(double availableHeight)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => PaletteLayout.ResultHeight(availableHeight));
+    }
+}
+
+public sealed class PaletteViewSourceTests
+{
+    [Fact]
+    public void MainWindow_hosts_palette_after_its_single_WebView_as_a_full_window_sibling()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml"));
+        var webViewIndex = source.IndexOf("<WebView2", StringComparison.Ordinal);
+        var paletteIndex = source.IndexOf("<local:PaletteView", StringComparison.Ordinal);
+
+        Assert.True(webViewIndex >= 0);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(source, "<WebView2").Cast<object>());
+        Assert.True(paletteIndex > webViewIndex, "PaletteView must be a later sibling so it renders over WebView2.");
+        Assert.Contains("x:Name=\"PaletteOverlay\"", source, StringComparison.Ordinal);
+        Assert.Contains("Grid.RowSpan=\"2\"", source, StringComparison.Ordinal);
+        Assert.Contains("Canvas.ZIndex=\"100\"", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Xaml_defines_a_stable_accessible_overlay_without_a_second_WebView()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "PaletteView.xaml"));
+
+        Assert.Contains("x:Class=\"AgTerm.App.PaletteView\"", source, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"DismissSurface\"", source, StringComparison.Ordinal);
+        Assert.Contains("Tapped=\"OnDismissSurfaceTapped\"", source, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"PalettePanel\"", source, StringComparison.Ordinal);
+        Assert.Contains("MaxWidth=\"520\"", source, StringComparison.Ordinal);
+        Assert.Contains("CornerRadius=\"8\"", source, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"QueryBox\"", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Filter palette items\"", source, StringComparison.Ordinal);
+        Assert.Contains("KeyDown=\"OnQueryBoxKeyDown\"", source, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"ResultsList\"", source, StringComparison.Ordinal);
+        Assert.Contains("MaxHeight=\"320\"", source, StringComparison.Ordinal);
+        Assert.Contains("SizeChanged=\"OnPaletteSizeChanged\"", source, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Palette results\"", source, StringComparison.Ordinal);
+        Assert.Contains("IsItemClickEnabled=\"True\"", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("WebView2", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Code_behind_accepts_only_immutable_presentation_items_and_handles_keyboard_and_focus()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "PaletteView.xaml.cs"));
+
+        Assert.Contains(
+            "public void Open(string placeholder, IReadOnlyList<PaletteItemViewModel> items)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("VirtualKey.Down", source, StringComparison.Ordinal);
+        Assert.Contains("VirtualKey.Up", source, StringComparison.Ordinal);
+        Assert.Contains("VirtualKey.Enter", source, StringComparison.Ordinal);
+        Assert.Contains("VirtualKey.Escape", source, StringComparison.Ordinal);
+        Assert.Contains("QueryBox.Focus(FocusState.Programmatic)", source, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueue.TryEnqueue", source, StringComparison.Ordinal);
+        Assert.Contains("ItemAccepted", source, StringComparison.Ordinal);
+        Assert.Contains("Cancelled", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("AppStore", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Session", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("BuiltinAction", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ILiveStoreCoordinator", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MainWindow_palette_opening_materializes_store_and_keymap_projection_through_coordinator()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        Assert.Contains("OpenPaletteAsync", source, StringComparison.Ordinal);
+        Assert.Contains("host.StoreCoordinator.ReadAsync", source, StringComparison.Ordinal);
+        Assert.Contains("captureOutsideGate: host.Host.Actions.LoadKeymap", source, StringComparison.Ordinal);
+        Assert.Contains("readUnderGate: (store, keymap) => project(store, keymap)", source, StringComparison.Ordinal);
+        Assert.Contains(".ToArray()", source, StringComparison.Ordinal);
+        Assert.Contains("PaletteOverlay.Open(placeholder, items)", source, StringComparison.Ordinal);
+    }
+
+    private static string FindRepoRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "AgTerm.slnx")))
+                return directory.FullName;
+        }
+
+        throw new DirectoryNotFoundException("Could not find the repository root.");
+    }
+}

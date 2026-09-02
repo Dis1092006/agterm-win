@@ -373,6 +373,12 @@ public sealed class SidebarControllerTests : IDisposable
             return (Task<T>)(object)tcs.Task;
         }
 
+        public Task<TResult> ReadAsync<TSnapshot, TResult>(
+            Func<TSnapshot> captureOutsideGate,
+            Func<AppStore, TSnapshot, TResult> readUnderGate,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task MutateAsync(Action<AppStore> mutate, CancellationToken cancellationToken = default)
         {
             MutateAsyncCallCount++;

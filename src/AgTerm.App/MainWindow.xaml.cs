@@ -604,6 +604,21 @@ public sealed partial class MainWindow : Window
             _sidebar?.NewSessionInActiveWorkspace(folder.Path);
     }
 
+    private async Task OpenPaletteAsync(
+        string placeholder,
+        Func<AppStore, Keymap, IReadOnlyList<PaletteItemViewModel>> project,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+
+        var host = await _hostReady.Task.WaitAsync(cancellationToken);
+        var items = await host.StoreCoordinator.ReadAsync(
+            captureOutsideGate: host.Host.Actions.LoadKeymap,
+            readUnderGate: (store, keymap) => project(store, keymap).ToArray(),
+            cancellationToken: cancellationToken);
+        PaletteOverlay.Open(placeholder, items);
+    }
+
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session
     /// and drop the handle when its shell exits. Called from the host's dispatch thread.</summary>
     private Task<IHeadlessSurface> OpenSurfaceAsync(SurfaceOpenRequest request, CancellationToken cancellationToken)

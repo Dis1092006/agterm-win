@@ -104,6 +104,33 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
         Assert.NotSame(customCtx, delegateCtx);
     }
 
+    [Fact]
+    public async Task ReadAsync_external_snapshot_capture_runs_before_entering_the_host_gate()
+    {
+        using var coordinator = BuildCoordinator();
+
+        var result = await coordinator.ReadAsync(
+            captureOutsideGate: () =>
+            {
+                using var gateEntered = new ManualResetEventSlim();
+                var workspaceCount = 0;
+                var competingGateEntry = new Thread(() =>
+                {
+                    _host.RunLocked(() => workspaceCount = _host.Store.Workspaces.Count);
+                    gateEntered.Set();
+                });
+                competingGateEntry.Start();
+                if (!gateEntered.Wait(TimeSpan.FromSeconds(5)))
+                    throw new TimeoutException("External capture ran while the host gate was held.");
+                competingGateEntry.Join();
+                return workspaceCount;
+            },
+            readUnderGate: (store, capturedWorkspaceCount) =>
+                (Captured: capturedWorkspaceCount, UnderGate: store.Workspaces.Count));
+
+        Assert.Equal(result.UnderGate, result.Captured);
+    }
+
     // =========================================================================
     // Group 2 — MutateAsync runs off context; ReadAsync observes mutation
     // =========================================================================

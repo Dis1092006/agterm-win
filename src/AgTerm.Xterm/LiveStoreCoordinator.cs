@@ -91,6 +91,13 @@ public interface ILiveStoreCoordinator : IDisposable
     /// enter the host gate. Return only immutable/materialized values from read.</summary>
     Task<T> ReadAsync<T>(Func<AppStore, T> read, CancellationToken cancellationToken = default);
 
+    /// <summary>Capture external immutable state off UI and before the host gate, then combine it
+    /// with AppStore under serialized access.</summary>
+    Task<TResult> ReadAsync<TSnapshot, TResult>(
+        Func<TSnapshot> captureOutsideGate,
+        Func<AppStore, TSnapshot, TResult> readUnderGate,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Safe to call from UI code; mutation is scheduled off UI and serialized by the
     /// host gate.</summary>
     Task MutateAsync(Action<AppStore> mutate, CancellationToken cancellationToken = default);
@@ -174,6 +181,37 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
                 cancellationToken.ThrowIfCancellationRequested();
                 ThrowIfDisposed();
                 result = read(_host.Store);
+            });
+        }, cancellationToken).ConfigureAwait(false);
+
+        return result;
+    }
+
+    public async Task<TResult> ReadAsync<TSnapshot, TResult>(
+        Func<TSnapshot> captureOutsideGate,
+        Func<AppStore, TSnapshot, TResult> readUnderGate,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(captureOutsideGate);
+        ArgumentNullException.ThrowIfNull(readUnderGate);
+        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        TResult result = default!;
+        await _scheduler(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfDisposed();
+            ThrowIfUiThread();
+
+            var snapshot = captureOutsideGate();
+            cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfDisposed();
+            _host.RunLocked(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ThrowIfDisposed();
+                result = readUnderGate(_host.Store, snapshot);
             });
         }, cancellationToken).ConfigureAwait(false);
 
