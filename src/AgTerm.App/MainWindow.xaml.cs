@@ -25,6 +25,8 @@ namespace AgTerm.App;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
+    private readonly LiveApplicationHost _applicationHost;
+    private readonly Guid _windowId;
     private readonly Dictionary<string, XtermPaneSurface> _surfaces = new(); // UI-thread confined; keyed by pane token
     private readonly AppWindow _appWindow;
     private readonly FullscreenController _fullscreen;
@@ -68,8 +70,10 @@ public sealed partial class MainWindow : Window
         LiveSelectionSnapshot Selection,
         IReadOnlyList<XtermPaneSurface> CommittedSurfaces);
 
-    public MainWindow()
+    public MainWindow(LiveApplicationHost applicationHost, Guid windowId)
     {
+        _applicationHost = applicationHost;
+        _windowId = windowId;
         _settingsStore = new SettingsStore();
         _settings = _settingsStore.Load();
         _systemDark = IsSystemAppearanceDark();
@@ -109,11 +113,12 @@ public sealed partial class MainWindow : Window
                 router.ExecuteAsync(BuiltinAction.ToggleSidebar),
                 "Title bar toggle sidebar failed");
         };
-        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
+        var nativeWindowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
-        _appWindow = AppWindow.GetFromWindowId(windowId);
+        _appWindow = AppWindow.GetFromWindowId(nativeWindowId);
         _fullscreen = new FullscreenController(ApplyFullscreen);
         _appWindow.Changed += OnAppWindowChanged;
+        Activated += OnWindowActivated;
         _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
         _layoutCoordinator = new TerminalLayoutCoordinator(async layout =>
         {
@@ -177,6 +182,7 @@ public sealed partial class MainWindow : Window
         {
             _appWindow.Closing -= OnAppWindowClosing;
             _appWindow.Changed -= OnAppWindowChanged;
+            Activated -= OnWindowActivated;
             _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
             _bootstrapCancellation.Cancel();
             _notificationBannerCancellation?.Cancel();
@@ -189,6 +195,16 @@ public sealed partial class MainWindow : Window
                 "Window closed disposal failed");
         };
         ObserveTaskFault(StartHostAsync(), "StartHostAsync failed");
+    }
+
+    internal Task Ready => _hostReady.Task;
+
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+            return;
+
+        _applicationHost.ReportActivated(_windowId);
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -209,8 +225,7 @@ public sealed partial class MainWindow : Window
     private async Task ShutdownForCloseAsync()
     {
         _bootstrapCancellation.Cancel();
-        var host = await _hostReady.Task.ConfigureAwait(false);
-        await host.ShutdownAsync().ConfigureAwait(false);
+        await _applicationHost.CloseWindowAsync(_windowId).ConfigureAwait(false);
     }
 
     /// <summary>Boot the window's single terminal page: one WebView2, one terminal.html, N panes.</summary>
@@ -239,19 +254,21 @@ public sealed partial class MainWindow : Window
         LiveControlHost host;
         try
         {
-            host = await Task.Run(() => new LiveControlHost(new LiveControlHostOptions
-            {
-                OpenSurface = OpenSurfaceAsync,
-                ReadClipboard = ReadClipboardText,
-                BaseFontSize = _rendererSettings.FontSize,
-                ConfigDir = _settings.ConfigDirectory,
-                ConfigReload = OnConfigReload,
-                AvailableThemes = _themeCatalog.Names,
-                InitialTheme = LiveThemeSettings.From(_settings),
-                NotificationSettings = _settings,
-                IsUiThread = () => DispatcherQueue.HasThreadAccess,
-                BootstrapCancellationToken = _bootstrapCancellation.Token,
-            }));
+            host = await Task.Run(() => _applicationHost.AttachWindow(
+                _windowId,
+                new LiveControlHostOptions
+                {
+                    OpenSurface = OpenSurfaceAsync,
+                    ReadClipboard = ReadClipboardText,
+                    BaseFontSize = _rendererSettings.FontSize,
+                    ConfigDir = _settings.ConfigDirectory,
+                    ConfigReload = OnConfigReload,
+                    AvailableThemes = _themeCatalog.Names,
+                    InitialTheme = LiveThemeSettings.From(_settings),
+                    NotificationSettings = _settings,
+                    IsUiThread = () => DispatcherQueue.HasThreadAccess,
+                    BootstrapCancellationToken = _bootstrapCancellation.Token,
+                }));
         }
         catch (Exception ex)
         {
@@ -505,12 +522,11 @@ public sealed partial class MainWindow : Window
 
         DispatcherQueue.TryEnqueue(() =>
         {
-            Sidebar.Attach(sidebar, _settings);
+            Sidebar.Attach(sidebar, _settings, this);
             Sidebar.RowActivated += FocusActiveTerminal;
             sidebar.SnapshotChanged += ApplyChrome;
             sidebar.Start();
         });
-        host.Start();
         ObserveTaskFault(ArmHotkeysAsync(host), "Arm hotkeys failed");
     }
 
@@ -910,11 +926,9 @@ public sealed partial class MainWindow : Window
                 FocusActiveTerminal();
                 break;
             case WindowPaletteMode.Themes:
-                if (WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName) &&
-                    _host is { } themeHost)
+                if (WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName))
                 {
-                    await themeHost.StoreCoordinator.MutateAsync(_ =>
-                        themeHost.Host.Actions.SetTheme(new ControlArgs { Name = themeName }));
+                    await _applicationHost.SetThemeAsync(new ControlArgs { Name = themeName });
                 }
                 FocusActiveTerminal();
                 break;

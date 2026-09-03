@@ -208,7 +208,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         return Task.Run(work);
     }
 
-    private readonly HeadlessHost _host;
+    private readonly ILiveControlRuntime _host;
     private readonly LiveDispatchScopeFactory _scopes;
     private readonly Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> _openSurface;
     private readonly TimeSpan _realizeBudget;
@@ -231,7 +231,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         Action<string>? log = null,
         Func<Func<Task>, Task>? schedule = null)
         : this(
-            host,
+            new HeadlessControlRuntime(host),
             scopes,
             openSurface,
             realizeBudget,
@@ -251,6 +251,25 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
 
     public LiveSurfaceCoordinator(
         HeadlessHost host,
+        LiveDispatchScopeFactory scopes,
+        Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> openSurface,
+        TimeSpan realizeBudget,
+        Action<SurfaceOpenRequest, IHeadlessSurface>? committed = null,
+        Action<string>? log = null,
+        Func<Func<Task>, Task>? schedule = null)
+        : this(
+            new HeadlessControlRuntime(host),
+            scopes,
+            openSurface,
+            realizeBudget,
+            committed,
+            log,
+            schedule)
+    {
+    }
+
+    internal LiveSurfaceCoordinator(
+        ILiveControlRuntime host,
         LiveDispatchScopeFactory scopes,
         Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> openSurface,
         TimeSpan realizeBudget,

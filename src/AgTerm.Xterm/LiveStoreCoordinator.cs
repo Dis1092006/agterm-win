@@ -137,7 +137,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
 {
     private const string UiThreadGateError = "Cannot enter host gate from UI thread.";
 
-    private readonly HeadlessHost _host;
+    private readonly ILiveControlRuntime _host;
     private readonly Func<bool> _isUiThread;
     private readonly Func<Action, CancellationToken, Task> _scheduler;
     private readonly Action? _afterMutation;
@@ -156,12 +156,31 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     public event Action<LiveSelectionSnapshot>? SelectionSnapshotChanged;
 
     public LiveStoreCoordinator(HeadlessHost host, Func<bool> isUiThread, Action? afterMutation = null)
-        : this(host, isUiThread, static (work, cancellationToken) => Task.Run(work, cancellationToken), afterMutation)
+        : this(new HeadlessControlRuntime(host), isUiThread,
+            static (work, cancellationToken) => Task.Run(work, cancellationToken), afterMutation)
+    {
+    }
+
+    internal LiveStoreCoordinator(
+        ILiveControlRuntime host,
+        Func<bool> isUiThread,
+        Action? afterMutation = null)
+        : this(host, isUiThread,
+            static (work, cancellationToken) => Task.Run(work, cancellationToken), afterMutation)
     {
     }
 
     internal LiveStoreCoordinator(
         HeadlessHost host,
+        Func<bool> isUiThread,
+        Func<Action, CancellationToken, Task> scheduler,
+        Action? afterMutation = null)
+        : this(new HeadlessControlRuntime(host), isUiThread, scheduler, afterMutation)
+    {
+    }
+
+    internal LiveStoreCoordinator(
+        ILiveControlRuntime host,
         Func<bool> isUiThread,
         Func<Action, CancellationToken, Task> scheduler,
         Action? afterMutation = null)

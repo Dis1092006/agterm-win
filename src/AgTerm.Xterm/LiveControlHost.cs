@@ -88,7 +88,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private readonly object _shutdownLock = new();
     private readonly object _focusRequestLock = new();
     private readonly HashSet<Task> _focusRequestTasks = new();
-    private HeadlessHost? _host;
+    private ILiveControlRuntime? _host;
     private Task? _shutdownTask;
     private int _shutdownStarted;
     private int _zoomActive;
@@ -110,42 +110,93 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     }
 
     public LiveControlHost(LiveControlHostOptions options)
+        : this(options, windowHost: null, applicationPipeName: null, useWindowHost: false)
     {
+    }
+
+    internal LiveControlHost(
+        LiveControlHostOptions options,
+        LiveWindowHost windowHost,
+        string applicationPipeName)
+        : this(options, windowHost, applicationPipeName, useWindowHost: true)
+    {
+    }
+
+    private LiveControlHost(
+        LiveControlHostOptions options,
+        LiveWindowHost? windowHost,
+        string? applicationPipeName,
+        bool useWindowHost)
+    {
+        _ = useWindowHost;
         _options = options;
         _currentBaseFontSize = options.BaseFontSize;
         _notificationSettings = options.NotificationSettings;
         var notificationStopwatch = System.Diagnostics.Stopwatch.StartNew();
         _notificationClock = options.NotificationClock ?? (() => notificationStopwatch.Elapsed);
         _scopeFactory = new LiveDispatchScopeFactory();
-        Host = new HeadlessHost(new HeadlessHostOptions
+        if (windowHost is null)
         {
-            StateDir = options.StateDir,
-            ConfigDir = options.ConfigDir,
-            PipeName = options.PipeName,
-            WindowName = options.WindowName,
-            AvailableThemes = options.AvailableThemes,
-            ConfigReload = options.ConfigReload,
-            HomeDirectory = options.HomeDirectory,
-            RestoreRunningCommand = options.RestoreRunningCommand,
-            DashboardBaseFontSize = options.BaseFontSize,
-            Log = options.Log,
-            SurfaceRealizer = ReserveSurface,
-            DispatchScopeFactory = _scopeFactory,
-            // the live app's eager deck: every session's pane exists from creation/restore, so
-            // session.type works into background sessions without a select (phase 4 DoD)
-            EagerSurfaceRealization = true,
-            DeferBootstrap = true,
-            PaneFocusRequested = QueuePaneFocusRequested,
-            SearchUpdated = QueueSearchUpdated,
-            QuickChanged = QueueQuickChanged,
-            ZoomActiveChanged = QueueZoomActiveChanged,
-            ZoomChanged = QueueZoomChanged,
-            DashboardChanged = QueueDashboardChanged,
-            ThemeChanged = QueueThemeChanged,
-            NotificationRequested = QueueNotificationRequested,
-            StatusNotificationRequested = QueueStatusNotificationRequested,
-            ZoomTargetAvailable = IsZoomTargetRealized,
-        });
+            Host = new HeadlessControlRuntime(new HeadlessHost(new HeadlessHostOptions
+            {
+                StateDir = options.StateDir,
+                ConfigDir = options.ConfigDir,
+                PipeName = options.PipeName,
+                WindowName = options.WindowName,
+                AvailableThemes = options.AvailableThemes,
+                ConfigReload = options.ConfigReload,
+                HomeDirectory = options.HomeDirectory,
+                RestoreRunningCommand = options.RestoreRunningCommand,
+                DashboardBaseFontSize = options.BaseFontSize,
+                Log = options.Log,
+                SurfaceRealizer = ReserveSurface,
+                DispatchScopeFactory = _scopeFactory,
+                EagerSurfaceRealization = true,
+                DeferBootstrap = true,
+                PaneFocusRequested = QueuePaneFocusRequested,
+                SearchUpdated = QueueSearchUpdated,
+                QuickChanged = QueueQuickChanged,
+                ZoomActiveChanged = QueueZoomActiveChanged,
+                ZoomChanged = QueueZoomChanged,
+                DashboardChanged = QueueDashboardChanged,
+                ThemeChanged = QueueThemeChanged,
+                NotificationRequested = QueueNotificationRequested,
+                StatusNotificationRequested = QueueStatusNotificationRequested,
+                ZoomTargetAvailable = IsZoomTargetRealized,
+            }));
+        }
+        else
+        {
+            var runtime = new WindowControlRuntime(
+                windowHost,
+                applicationPipeName ?? throw new ArgumentNullException(nameof(applicationPipeName)));
+            Host = runtime;
+            var configDirectory = options.ConfigDir
+                ?? options.StateDir
+                ?? PersistenceStore.DefaultDirectory;
+            var actions = new HeadlessControlActions(
+                runtime.Store,
+                runtime.Ring,
+                runtime.WindowId,
+                runtime.WindowName,
+                configDirectory,
+                options.AvailableThemes,
+                options.ConfigReload,
+                options.RestoreRunningCommand,
+                dashboardBaseFontSize: options.BaseFontSize,
+                homeDirectory: options.HomeDirectory,
+                paneFocusRequested: QueuePaneFocusRequested,
+                searchUpdated: QueueSearchUpdated,
+                quickChanged: QueueQuickChanged,
+                zoomActiveChanged: QueueZoomActiveChanged,
+                zoomChanged: QueueZoomChanged,
+                dashboardChanged: QueueDashboardChanged,
+                themeChanged: QueueThemeChanged,
+                notificationRequested: QueueNotificationRequested,
+                statusNotificationRequested: QueueStatusNotificationRequested,
+                zoomTargetAvailable: IsZoomTargetRealized);
+            windowHost.AttachLive(actions, ReserveSurface, _scopeFactory);
+        }
         if (options.InitialTheme is { } initialTheme)
         {
             if (initialTheme.Sync != (initialTheme.Dark is not null))
@@ -208,7 +259,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         bootstrapScope.CompleteAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
-    public HeadlessHost Host
+    public ILiveControlRuntime Host
     {
         get => _host ?? throw new InvalidOperationException(
             "LiveControlHost invariant violated: Host is not initialized.");
@@ -216,6 +267,14 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     }
 
     public string PipeName => Host.PipeName;
+
+    public Guid WindowId => Host.WindowId;
+
+    public AppStore Store => Host.Store;
+
+    public ControlEventRing Ring => Host.Ring;
+
+    public HeadlessControlActions Actions => Host.Actions;
 
     public bool ZoomActive => Volatile.Read(ref _zoomActive) != 0;
 
@@ -1554,5 +1613,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 _options.Log?.Invoke($"LiveControlHost shutdown teardown failure: {ex}");
             }
         }
+
+        Host.DetachLive();
     }
 }

@@ -23,6 +23,7 @@ public sealed partial class SidebarView : UserControl
 {
     private readonly ObservableCollection<SidebarRowViewModel> _items = new();
     private SidebarController? _controller;
+    private Window? _ownerWindow;
     private AppSettings _settings = new();
     private SidebarSnapshot? _snapshot;
     private string? _shapeKey;
@@ -42,9 +43,10 @@ public sealed partial class SidebarView : UserControl
     /// terminal after the select lands.</summary>
     public event Action? RowActivated;
 
-    public void Attach(SidebarController controller, AppSettings settings)
+    public void Attach(SidebarController controller, AppSettings settings, Window ownerWindow)
     {
         _controller = controller;
+        _ownerWindow = ownerWindow;
         ApplySettings(settings);
         controller.SnapshotChanged += Apply;
     }
@@ -440,7 +442,8 @@ public sealed partial class SidebarView : UserControl
         var picker = new Windows.Storage.Pickers.FolderPicker();
         picker.FileTypeFilter.Add("*");
         WinRT.Interop.InitializeWithWindow.Initialize(picker,
-            WinRT.Interop.WindowNative.GetWindowHandle(App.Window!));
+            WinRT.Interop.WindowNative.GetWindowHandle(_ownerWindow
+                ?? throw new InvalidOperationException("Sidebar has no owning window.")));
         if (await picker.PickSingleFolderAsync() is { } folder)
             _controller?.NewSession(workspaceId, folder.Path);
     }

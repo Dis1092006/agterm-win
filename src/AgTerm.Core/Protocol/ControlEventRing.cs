@@ -25,9 +25,9 @@ public sealed record ControlEventReadResult
 
 /// <summary>
 /// Bounded, non-destructive event history for one app process: an app-run-scoped ring the control
-/// server reads with cursor + kind filter. Not thread-safe by design — the host confines it to the
-/// same context that mutates the model and dispatches control requests (the Swift original is
-/// @MainActor for the same reason).
+/// server reads with cursor + kind filter. Append and read are internally serialized because the
+/// live application shares one ring across independently gated windows; single-window hosts retain
+/// the same sequence and cursor behavior.
 /// </summary>
 public sealed class ControlEventRing
 {
@@ -36,6 +36,7 @@ public sealed class ControlEventRing
     private readonly int _capacity;
     private readonly Guid _runId;
     private readonly Func<DateTimeOffset> _now;
+    private readonly object _gate = new();
     private readonly List<ControlEvent> _entries = new();
     private ulong _currentSequence;
 
@@ -50,21 +51,24 @@ public sealed class ControlEventRing
     /// <summary>Append one event, assigning the next sequence and current Unix timestamp.</summary>
     public ControlEvent Append(ControlEventDraft draft)
     {
-        _currentSequence += 1;
-        var evt = new ControlEvent
+        lock (_gate)
         {
-            Seq = _currentSequence,
-            Ts = _now().ToUnixTimeMilliseconds() / 1000.0,
-            Kind = draft.Kind,
-            Window = draft.Window,
-            Workspace = draft.Workspace,
-            Session = draft.Session,
-            Payload = draft.Payload,
-        };
-        _entries.Add(evt);
-        if (_entries.Count > _capacity)
-            _entries.RemoveRange(0, _entries.Count - _capacity);
-        return evt;
+            _currentSequence += 1;
+            var evt = new ControlEvent
+            {
+                Seq = _currentSequence,
+                Ts = _now().ToUnixTimeMilliseconds() / 1000.0,
+                Kind = draft.Kind,
+                Window = draft.Window,
+                Workspace = draft.Workspace,
+                Session = draft.Session,
+                Payload = draft.Payload,
+            };
+            _entries.Add(evt);
+            if (_entries.Count > _capacity)
+                _entries.RemoveRange(0, _entries.Count - _capacity);
+            return evt;
+        }
     }
 
     /// <summary>
@@ -74,31 +78,34 @@ public sealed class ControlEventRing
     public ControlEventReadResult Read(ControlEventCursor? cursor,
         IReadOnlySet<ControlEventKind>? kinds = null, int limit = 100)
     {
-        var anchor = new ControlEventBatch { Run = _runId, Next = _currentSequence, Items = Array.Empty<ControlEvent>() };
-        if (cursor is not { } c)
-            return new ControlEventReadResult { Batch = anchor };
-        if (c.Run != _runId)
-            return new ControlEventReadResult { Batch = anchor, Error = ControlEventReadError.RunChanged };
-        if (c.After > _currentSequence)
-            return new ControlEventReadResult { Batch = anchor, Error = ControlEventReadError.CursorAhead };
-        if (_entries.Count > 0 && c.After < _entries[0].Seq - 1)
-            return new ControlEventReadResult { Batch = anchor, Error = ControlEventReadError.CursorExpired };
+        lock (_gate)
+        {
+            var anchor = new ControlEventBatch { Run = _runId, Next = _currentSequence, Items = Array.Empty<ControlEvent>() };
+            if (cursor is not { } c)
+                return new ControlEventReadResult { Batch = anchor };
+            if (c.Run != _runId)
+                return new ControlEventReadResult { Batch = anchor, Error = ControlEventReadError.RunChanged };
+            if (c.After > _currentSequence)
+                return new ControlEventReadResult { Batch = anchor, Error = ControlEventReadError.CursorAhead };
+            if (_entries.Count > 0 && c.After < _entries[0].Seq - 1)
+                return new ControlEventReadResult { Batch = anchor, Error = ControlEventReadError.CursorExpired };
 
-        var items = new List<ControlEvent>();
-        foreach (var evt in _entries)
-        {
-            if (evt.Seq <= c.After) continue;
-            if (kinds is not null && !kinds.Contains(evt.Kind)) continue;
-            items.Add(evt);
-            if (items.Count == limit)
-                return new ControlEventReadResult
-                {
-                    Batch = new ControlEventBatch { Run = _runId, Next = evt.Seq, Items = items.ToArray() },
-                };
+            var items = new List<ControlEvent>();
+            foreach (var evt in _entries)
+            {
+                if (evt.Seq <= c.After) continue;
+                if (kinds is not null && !kinds.Contains(evt.Kind)) continue;
+                items.Add(evt);
+                if (items.Count == limit)
+                    return new ControlEventReadResult
+                    {
+                        Batch = new ControlEventBatch { Run = _runId, Next = evt.Seq, Items = items.ToArray() },
+                    };
+            }
+            return new ControlEventReadResult
+            {
+                Batch = new ControlEventBatch { Run = _runId, Next = _currentSequence, Items = items.ToArray() },
+            };
         }
-        return new ControlEventReadResult
-        {
-            Batch = new ControlEventBatch { Run = _runId, Next = _currentSequence, Items = items.ToArray() },
-        };
     }
 }
