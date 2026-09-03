@@ -29,10 +29,7 @@ public sealed partial class AppStore
                 var insertAt = Math.Max(0, Math.Min(recent.SessionIndex, Workspaces[index].Sessions.Count));
                 Workspaces[index].Sessions.Insert(insertAt, session);
                 EmitSessionCreated(session, Workspaces[index].Id);
-                SelectedSessionId = session.Id;
-                ReplaceSidebarSelection(SelectedSessionId);
-                AutoUnfocusIfOutsideFocus(SelectedSessionId);
-                RecordRecency();
+                SelectSession(session.Id);
                 Save();
                 return true;
             }
@@ -52,12 +49,10 @@ public sealed partial class AppStore
                 Workspaces.Add(workspace);
                 foreach (var session in workspace.Sessions) EmitSessionCreated(session, workspace.Id);
                 if (workspace.Sessions.Count == 0) ScheduleTreeChanged();
-                SelectedSessionId = (recent.SelectedSessionId is { } selected
+                var target = (recent.SelectedSessionId is { } selected
                         && workspace.Sessions.Any(s => s.Id == selected) ? selected : (Guid?)null)
                     ?? workspace.Sessions.FirstOrDefault()?.Id;
-                ReplaceSidebarSelection(SelectedSessionId);
-                AutoUnfocusIfOutsideFocus(SelectedSessionId);
-                RecordRecency();
+                if (target is { } resolved) SelectSession(resolved);
                 Save();
                 return true;
             }

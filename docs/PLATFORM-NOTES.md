@@ -200,10 +200,32 @@ available in the headless host"` (после резолюции цели — `no
   A 1.5-second leader timeout and Escape abandon the prefix, and an unmatched continuation is
   retried at the root before it is returned to the terminal.
 
-- **Сайдбар: не портированное в фазе 4.** Finder-folder-drop (перетаскивание каталогов
-  из Explorer в сайдбар) не реализован; спринг-раскрытие свёрнутого воркспейса под
-  драгом — нет (WinUI DnD не даёт hover-таймера бесплатно); подтверждение Clear Flagged
-  и confirm-close-session модалки — фаза 5 (настройки уже читаются из AppSettings).
+- **Sidebar folder import.** Explorer directory drops use the WinUI storage-item format and a
+  copy operation. Drops are accepted only in tree mode. A row drop targets that row's workspace;
+  empty space falls back to the focused workspace and then the current workspace. Non-directory
+  items are ignored, source order is preserved, and one session is created for each of at most 20
+  accepted directories. Spring-hover expansion of a collapsed workspace remains a Windows
+  adaptation: WinUI drag-and-drop does not expose a stable hover-expand lifecycle, and adding a
+  separate timer would conflict with ListView reorder feedback.
+
+- **Close and flagged confirmations.** GUI session closes honor `confirmCloseSession`; single and
+  multi-session dialogs snapshot immutable targets, run outside the store and application gates,
+  and revalidate the complete target set before applying the close. A stale multi-session target
+  aborts the whole operation. Clear Flagged always confirms a non-empty bulk change and removes
+  flags only from the sessions shown by that prompt. The named-pipe control API does not show GUI
+  dialogs and keeps its existing response semantics.
+
+- **Close undo and recent items.** `closeGraceUndoEnabled` defaults to enabled, matching upstream.
+  A per-window InfoBar presents the current three-second pending close and undoes its exact ID.
+  Grace expiry runs through the owning host gate, and window shutdown finalizes hidden pending
+  records while still awaiting their exact terminal surfaces. Persistent recent items are shared
+  by all application windows; Ctrl+Shift+T restores the latest item into the invoking window, and
+  concurrent windows cannot consume the same item twice.
+
+- **Live failure presentation.** Terminal spawn and WebView2 initialization failures, settings
+  reload failures, and live theme apply failures use one closable in-window error InfoBar. The
+  existing failed-terminal row state remains visible. Failure presentation is UI-only: surface,
+  config, and theme wire responses and error strings are unchanged.
 
 ## Phase 4.5: live orchestration
 

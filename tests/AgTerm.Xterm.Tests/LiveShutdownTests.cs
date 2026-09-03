@@ -364,6 +364,29 @@ public sealed class LiveShutdownTests : IDisposable
     }
 
     [Fact]
+    public async Task ShutdownAsync_awaits_surfaces_held_by_pending_close_records()
+    {
+        var surfaces = new List<RecordingSurface>();
+        using var host = BuildLiveHost(_stateDir, surfaces);
+        await WaitForCommittedRecordingSurfaceCountAsync(host, 1);
+        var sessionId = await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+
+        await host.StoreCoordinator.MutateAsync(store =>
+        {
+            var session = store.SessionWithId(sessionId)!;
+            session.SplitSurface = session.Surface;
+            Assert.True(store.SoftCloseSession(sessionId, grace: 60));
+        });
+        await host.ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        var surface = Assert.Single(surfaces);
+        Assert.Equal(1, surface.StopOutputCount);
+        Assert.Equal(1, surface.ShutdownAsyncCount);
+        Assert.Equal(0, surface.TeardownCount);
+        host.Host.RunLocked(() => Assert.Null(host.Host.Store.PendingCloseSummary));
+    }
+
+    [Fact]
     public async Task ShutdownAsync_saves_snapshot_before_surface_teardown()
     {
         var dir = Directory.CreateTempSubdirectory("agterm-l3-h2-").FullName;

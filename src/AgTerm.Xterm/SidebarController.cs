@@ -32,9 +32,11 @@ public sealed record SidebarSnapshot
     public bool SidebarVisible { get; init; }
     public SidebarMode Mode { get; init; }
     public double SidebarWidth { get; init; }
+    public Guid? CurrentWorkspaceId { get; init; }
     public Guid? FocusedWorkspaceId { get; init; }
     public string? FocusedWorkspaceName { get; init; }
     public int FlaggedCount { get; init; }
+    public PendingCloseSummary? PendingClose { get; init; }
 }
 
 /// <summary>
@@ -53,6 +55,7 @@ public sealed class SidebarController : IDisposable
     private readonly Action<Action> _runOnUi;
     private readonly string _homeDirectory;
     private readonly Action<string>? _log;
+    private readonly Func<SidebarConfirmationRequest, Task<bool>> _confirm;
     private int _started;
     private int _disposed;
     private long _latestRequestedGeneration;
@@ -61,13 +64,15 @@ public sealed class SidebarController : IDisposable
         ILiveStoreCoordinator coordinator,
         Action<Action> runOnUi,
         string? homeDirectory = null,
-        Action<string>? log = null)
+        Action<string>? log = null,
+        Func<SidebarConfirmationRequest, Task<bool>>? confirm = null)
     {
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _runOnUi = runOnUi ?? throw new ArgumentNullException(nameof(runOnUi));
         _homeDirectory = homeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _log = log;
+        _confirm = confirm ?? (_ => Task.FromResult(true));
     }
 
     public event Action<SidebarSnapshot>? SnapshotChanged;
@@ -124,6 +129,34 @@ public sealed class SidebarController : IDisposable
 
     public void ClearFlags() => Mutate(store => store.ClearFlags());
 
+    public async Task ClearFlagsAsync(CancellationToken cancellationToken = default)
+    {
+        var flaggedIds = await _coordinator.ReadAsync(store =>
+            store.FlaggedSessions.Select(session => session.Id).ToArray(), cancellationToken);
+        if (flaggedIds.Length == 0) return;
+
+        var message = flaggedIds.Length == 1
+            ? "This unflags 1 session. The session itself is not closed."
+            : $"This unflags {flaggedIds.Length} sessions. The sessions themselves are not closed.";
+        var request = new SidebarConfirmationRequest(
+            SidebarConfirmationKind.ClearFlagged,
+            "Clear flagged sessions?",
+            message,
+            "Clear");
+        if (!await _confirm(request)) return;
+
+        await _coordinator.MutateAsync(store =>
+        {
+            var existingIds = flaggedIds
+                .Where(id => store.SessionWithId(id) is not null)
+                .ToArray();
+            if (existingIds.Length > 0) store.SetFlag(false, existingIds);
+        }, cancellationToken);
+    }
+
+    public void RequestClearFlags() =>
+        FireAndForget(() => ClearFlagsAsync(), "SidebarController clear flagged failed");
+
     public void ClearStatuses(IReadOnlyList<Guid> sessionIds) => Mutate(store =>
     {
         foreach (var id in sessionIds) store.SetAgentIndicator(new AgentIndicator(), id);
@@ -140,10 +173,58 @@ public sealed class SidebarController : IDisposable
         foreach (var id in sessionIds) store.CloseSession(id);
     });
 
+    public async Task CloseSessionsAsync(
+        IReadOnlyList<Guid> sessionIds,
+        SidebarCloseOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sessionIds);
+        var sessions = await _coordinator.ReadAsync(store => sessionIds
+            .Distinct()
+            .Select(store.SessionWithId)
+            .OfType<Session>()
+            .Select(session => new SessionCloseSnapshot(session.Id, session.DisplayName))
+            .ToArray(), cancellationToken);
+        if (sessions.Length == 0) return;
+
+        if (options.Confirm)
+        {
+            var request = CloseConfirmation(sessions, options.GraceUndo);
+            if (!await _confirm(request)) return;
+        }
+
+        await _coordinator.MutateAsync(store =>
+        {
+            var existingIds = sessions
+                .Where(session => store.SessionWithId(session.Id) is not null)
+                .Select(session => session.Id)
+                .ToArray();
+            if (existingIds.Length != sessions.Length) return;
+
+            if (options.GraceUndo)
+                store.SoftCloseSessions(existingIds);
+            else
+                foreach (var id in existingIds) store.CloseSession(id);
+        }, cancellationToken);
+    }
+
+    public void RequestCloseSessions(
+        IReadOnlyList<Guid> sessionIds,
+        SidebarCloseOptions options) =>
+        FireAndForget(
+            () => CloseSessionsAsync(sessionIds, options),
+            "SidebarController close sessions failed");
+
     /// <summary>The workspace-row "New Session" / "+": a fresh shell in the workspace, selected
     /// and realized like the toolbar path.</summary>
     public void NewSession(Guid workspaceId, string? cwd = null) =>
         Mutate(store => store.AddSession(workspaceId, cwd ?? _homeDirectory));
+
+    public void ImportDirectories(IReadOnlyList<DirectoryImportRequest> requests) => Mutate(store =>
+    {
+        foreach (var request in requests)
+            store.AddSession(request.WorkspaceId, request.DirectoryPath);
+    });
 
     public void DeleteWorkspace(Guid workspaceId) => Mutate(store =>
     {
@@ -245,6 +326,34 @@ public sealed class SidebarController : IDisposable
 
     public void UndoClose() => Mutate(store => store.UndoPendingClose());
 
+    public void UndoClose(Guid pendingCloseId) =>
+        Mutate(store => store.UndoPendingClose(pendingCloseId));
+
+    private static SidebarConfirmationRequest CloseConfirmation(
+        IReadOnlyList<SessionCloseSnapshot> sessions, bool graceUndo)
+    {
+        if (sessions.Count == 1)
+        {
+            return new SidebarConfirmationRequest(
+                SidebarConfirmationKind.CloseSession,
+                $"Close “{sessions[0].DisplayName}”?",
+                graceUndo
+                    ? "The session will close after a short undo window."
+                    : "The session will close immediately and can be reopened from File > Open Recent.",
+                "Close");
+        }
+
+        return new SidebarConfirmationRequest(
+            SidebarConfirmationKind.CloseSessions,
+            $"Close {sessions.Count} Sessions?",
+            graceUndo
+                ? "The sessions will close after a short undo window."
+                : "The sessions will close immediately and can be reopened from File > Open Recent.",
+            "Close");
+    }
+
+    private sealed record SessionCloseSnapshot(Guid Id, string DisplayName);
+
     private void Mutate(Action<AppStore> action) =>
         FireAndForget(
             () => _coordinator.MutateAsync(action),
@@ -313,11 +422,13 @@ public sealed class SidebarController : IDisposable
             SidebarVisible = store.SidebarVisible,
             Mode = store.SidebarMode,
             SidebarWidth = store.SidebarWidth,
+            CurrentWorkspaceId = store.CurrentWorkspaceId,
             FocusedWorkspaceId = store.FocusedWorkspaceId,
             FocusedWorkspaceName = store.FocusedWorkspaceId is { } focused
                 ? store.Workspaces.FirstOrDefault(w => w.Id == focused)?.Name
                 : null,
             FlaggedCount = store.FlaggedSessions.Count,
+            PendingClose = store.PendingCloseSummary,
         };
     }
 

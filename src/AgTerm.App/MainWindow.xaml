@@ -99,5 +99,34 @@
                  Severity="Informational"
                  AutomationProperties.Name="Notification"
                  Canvas.ZIndex="90" />
+
+            <InfoBar x:Name="FailureBanner"
+                 Grid.Row="1"
+                 Margin="16"
+                 MaxWidth="560"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Top"
+                 IsClosable="True"
+                 IsOpen="False"
+                 Severity="Error"
+                 AutomationProperties.Name="Application error"
+                 Canvas.ZIndex="95" />
+
+        <InfoBar x:Name="CloseUndoBanner"
+                 Grid.Row="1"
+                 Margin="16"
+                 MaxWidth="480"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Bottom"
+                 IsClosable="False"
+                 IsOpen="False"
+                 Severity="Success"
+                 AutomationProperties.Name="Recently closed item"
+                 Canvas.ZIndex="90">
+            <InfoBar.ActionButton>
+                <Button Click="OnUndoCloseClick"
+                        AutomationProperties.Name="Undo close">Undo</Button>
+            </InfoBar.ActionButton>
+        </InfoBar>
     </Grid>
 </Window>

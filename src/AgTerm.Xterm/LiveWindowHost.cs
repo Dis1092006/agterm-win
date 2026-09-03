@@ -28,6 +28,7 @@ public sealed class LiveWindowHost
         string stateDirectory,
         string homeDirectory,
         ControlEventRing ring,
+        RecentClosedStore recentClosedStore,
         bool seedIfEmpty,
         bool launchRestore)
     {
@@ -43,10 +44,14 @@ public sealed class LiveWindowHost
         var bootstrapping = true;
         Store = new AppStore(
             persistence: _persistence,
+            recentClosedStore: recentClosedStore,
             controlEventSink: draft =>
             {
                 if (!bootstrapping) ring.Append(draft with { Window = windowTag });
-            });
+            })
+        {
+            PendingCloseFinalizationScheduler = action => RunLocked(action),
+        };
 
         var snapshot = _persistence.Load();
         if (snapshot.Workspaces.Length > 0)

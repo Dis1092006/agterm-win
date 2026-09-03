@@ -214,6 +214,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
     private readonly TimeSpan _realizeBudget;
     private readonly Action<SurfaceOpenRequest, IHeadlessSurface>? _committed;
     private readonly Action<string>? _log;
+    private readonly Action<LiveFailureNotice>? _failureReported;
     private readonly Func<Func<Task>, Task> _schedule;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly object _activeGate = new();
@@ -229,7 +230,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         TimeSpan realizeBudget,
         Action<Guid, IHeadlessSurface>? committed,
         Action<string>? log = null,
-        Func<Func<Task>, Task>? schedule = null)
+        Func<Func<Task>, Task>? schedule = null,
+        Action<LiveFailureNotice>? failureReported = null)
         : this(
             new HeadlessControlRuntime(host),
             scopes,
@@ -245,7 +247,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
                     }
                 },
             log,
-            schedule)
+                schedule,
+                failureReported)
     {
     }
 
@@ -256,7 +259,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         TimeSpan realizeBudget,
         Action<SurfaceOpenRequest, IHeadlessSurface>? committed = null,
         Action<string>? log = null,
-        Func<Func<Task>, Task>? schedule = null)
+        Func<Func<Task>, Task>? schedule = null,
+        Action<LiveFailureNotice>? failureReported = null)
         : this(
             new HeadlessControlRuntime(host),
             scopes,
@@ -264,7 +268,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
             realizeBudget,
             committed,
             log,
-            schedule)
+            schedule,
+            failureReported)
     {
     }
 
@@ -275,7 +280,8 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         TimeSpan realizeBudget,
         Action<SurfaceOpenRequest, IHeadlessSurface>? committed = null,
         Action<string>? log = null,
-        Func<Func<Task>, Task>? schedule = null)
+        Func<Func<Task>, Task>? schedule = null,
+        Action<LiveFailureNotice>? failureReported = null)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _scopes = scopes ?? throw new ArgumentNullException(nameof(scopes));
@@ -283,6 +289,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         _realizeBudget = realizeBudget;
         _committed = committed;
         _log = log;
+        _failureReported = failureReported;
         _schedule = schedule ?? ScheduleWithTaskRun;
     }
 
@@ -549,6 +556,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         catch (Exception ex)
         {
             _log?.Invoke($"LiveSurfaceCoordinator opener failed for {DescribeSlot(slot)}: {ex}");
+            ReportFailure(ex);
             ClearPendingSlot(slot, pending);
             pending.Settle(null);
             Untrack(pending);
@@ -633,6 +641,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         catch (Exception ex)
         {
             _log?.Invoke($"LiveSurfaceCoordinator realize failed for {DescribeSlot(slot)}: {ex}");
+            ReportFailure(ex);
             ClearPendingSlot(slot, pending);
             pending.Settle(null);
             Untrack(pending);
@@ -685,6 +694,21 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
 
         Untrack(pending);
+    }
+
+    private void ReportFailure(Exception exception)
+    {
+        if (_failureReported is null) return;
+        try
+        {
+            _failureReported(new LiveFailureNotice(
+                "Terminal failed to start",
+                exception.GetBaseException().Message));
+        }
+        catch (Exception callbackException)
+        {
+            _log?.Invoke($"LiveSurfaceCoordinator failure subscriber failed: {callbackException}");
+        }
     }
 
     private void Track(PendingTerminalSurface pending)

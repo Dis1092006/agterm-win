@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
     private readonly WindowCloseCoordinator _closeCoordinator;
     private readonly PaletteTransitionCoordinator _paletteTransitions = new();
+    private readonly ContentDialogCoordinator _contentDialogs = new();
     private readonly CustomCommandProcessRunner _customCommandRunner = new();
     private readonly HotkeyGenerationRegistry _hotkeyStates = new();
     private readonly SemaphoreSlim _hotkeyManifestGate = new(1, 1);
@@ -69,6 +70,7 @@ public sealed partial class MainWindow : Window
     private AppWindowPresenterKind _restorePresenterKind = AppWindowPresenterKind.Default;
     private bool _draggingDivider;
     private bool _closeWithoutShutdown;
+    private Guid? _pendingCloseId;
     private readonly PaletteAutoFollowLease _paletteAutoFollow = new();
     private WindowPaletteMode? _openPaletteMode;
 
@@ -105,8 +107,7 @@ public sealed partial class MainWindow : Window
                     throw new InvalidOperationException("Failed to enqueue settings reload.");
             },
             apply: ApplySettingsAsync,
-            error: ex => System.Diagnostics.Trace.TraceError(
-                $"Settings reload failed: {ex.GetBaseException().Message}"));
+            error: ReportSettingsReloadFailure);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppTitleBar.PaneToggleRequested += (_, _) =>
@@ -126,6 +127,9 @@ public sealed partial class MainWindow : Window
         _appWindow.Changed += OnAppWindowChanged;
         Activated += OnWindowActivated;
         _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
+        ObserveTaskFault(
+            ReportPageInitializationFailureAsync(_pageTask),
+            "WebView2 initialization failure reporting failed");
         _layoutCoordinator = new TerminalLayoutCoordinator(async layout =>
         {
             var page = await _pageTask;
@@ -195,6 +199,7 @@ public sealed partial class MainWindow : Window
             _notificationBannerCancellation?.Cancel();
             _notificationBannerCancellation?.Dispose();
             _notificationPresenter.Dispose();
+            _contentDialogs.Dispose();
             _settingsReloadCoordinator.Dispose();
             _layoutCoordinator.Dispose();
             ObserveTaskFault(
@@ -404,6 +409,20 @@ public sealed partial class MainWindow : Window
         return page;
     }
 
+    private async Task ReportPageInitializationFailureAsync(Task<XtermPage> pageTask)
+    {
+        try
+        {
+            await pageTask;
+        }
+        catch (Exception ex)
+        {
+            ShowFailure(new LiveFailureNotice(
+                "Terminal view failed to initialize",
+                $"{ex.GetBaseException().Message} Install or repair the Microsoft Edge WebView2 Runtime."));
+        }
+    }
+
     private async Task StartHostAsync()
     {
         // constructed off the UI thread: the bootstrap realizes the restored/default selected
@@ -423,6 +442,7 @@ public sealed partial class MainWindow : Window
                     AvailableThemes = _themeCatalog.Names,
                     InitialTheme = LiveThemeSettings.From(_settings),
                     NotificationSettings = _settings,
+                    FailureReported = QueueFailureNotice,
                     IsUiThread = () => DispatcherQueue.HasThreadAccess,
                     BootstrapCancellationToken = _bootstrapCancellation.Token,
                 }));
@@ -474,7 +494,7 @@ public sealed partial class MainWindow : Window
         host.ZoomActiveChanged += _ => DispatcherQueue.TryEnqueue(() =>
             ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed"));
         host.ThemeChanged += state => DispatcherQueue.TryEnqueue(() =>
-            ObserveTaskFault(ApplyLiveThemeAsync(state), "Theme apply failed"));
+            ObserveTaskFault(ApplyLiveThemeWithFailureAsync(state), "Theme apply failed"));
         host.NotificationRequested += notification => DispatcherQueue.TryEnqueue(() =>
             ShowNotification(notification));
         host.StatusNotificationRequested += soundName => DispatcherQueue.TryEnqueue(() =>
@@ -551,7 +571,8 @@ public sealed partial class MainWindow : Window
         var sidebar = new SidebarController(
             host.StoreCoordinator,
             runOnUi: work => DispatcherQueue.TryEnqueue(() => work()),
-            log: message => System.Diagnostics.Debug.WriteLine(message));
+            log: message => System.Diagnostics.Debug.WriteLine(message),
+            confirm: ConfirmSidebarActionAsync);
         _sidebar = sidebar;
 
         static WindowCommandHandler Sync(Func<bool> canExecute, Action execute)
@@ -587,7 +608,14 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.OpenDirectory] = Async(() => true, OpenDirectoryIntoActiveAsync),
             [BuiltinAction.RenameSession] = Sync(HasSelectedSession, Sidebar.BeginRenameSelected),
             [BuiltinAction.DuplicateSession] = Sync(HasSelectedSession, sidebar.DuplicateActiveSession),
-            [BuiltinAction.CloseSession] = Sync(HasSelectedSession, sidebar.CloseActiveSession),
+            [BuiltinAction.CloseSession] = Async(
+                HasSelectedSession,
+                () => _selectedSessionId is { } selectedSessionId
+                    ? sidebar.CloseSessionsAsync(new[] { selectedSessionId }, CurrentSidebarCloseOptions())
+                    : Task.CompletedTask),
+            [BuiltinAction.ReopenRecent] = Async(
+                () => true,
+                async () => _ = await _applicationHost.ReopenLatestRecentClosedAsync(_windowId)),
             [BuiltinAction.UndoClose] = Sync(() => true, sidebar.UndoClose),
             [BuiltinAction.ClearStatus] = Sync(HasSelectedSession, sidebar.ClearActiveStatus),
             [BuiltinAction.IncreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("increase_font_size:1")),
@@ -699,28 +727,52 @@ public sealed partial class MainWindow : Window
 
     private async Task RenameCurrentWindowAsync()
     {
-        var currentName = _applicationHost.Windows
-            .First(window => window.Id == _windowId)
-            .Name;
-        var input = new TextBox { Text = currentName };
-        var dialog = new ContentDialog
+        await _contentDialogs.RunAsync(async () =>
         {
-            XamlRoot = Content.XamlRoot,
-            Title = "Rename window",
-            PrimaryButtonText = "Rename",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            Content = input,
-        };
-        dialog.Opened += (_, _) =>
-        {
-            input.Focus(FocusState.Programmatic);
-            input.SelectAll();
-        };
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-            return;
+            var currentName = _applicationHost.Windows
+                .First(window => window.Id == _windowId)
+                .Name;
+            var input = new TextBox { Text = currentName };
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                Title = "Rename window",
+                PrimaryButtonText = "Rename",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+                Content = input,
+            };
+            dialog.Opened += (_, _) =>
+            {
+                input.Focus(FocusState.Programmatic);
+                input.SelectAll();
+            };
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                EnsureWindowCommandSucceeded(_applicationHost.RenameWindow(_windowId, input.Text));
 
-        EnsureWindowCommandSucceeded(_applicationHost.RenameWindow(_windowId, input.Text));
+            return true;
+        });
+    }
+
+    private SidebarCloseOptions CurrentSidebarCloseOptions() => new(
+        _settings.ConfirmCloseSession == true,
+        _settings.CloseGraceUndoEnabled ?? true);
+
+    private async Task<bool> ConfirmSidebarActionAsync(SidebarConfirmationRequest request)
+    {
+        return await _contentDialogs.RunAsync(async () =>
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                Title = request.Title,
+                Content = request.Message,
+                PrimaryButtonText = request.PrimaryButtonText,
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        });
     }
 
     private static void EnsureWindowCommandSucceeded(ControlResponse response)
@@ -733,10 +785,33 @@ public sealed partial class MainWindow : Window
     private void ApplyChrome(SidebarSnapshot snapshot)
     {
         _latestSidebarSnapshot = snapshot;
+        ApplyPendingClose(snapshot.PendingClose);
         if (_terminalOnlyPresentation)
             return;
 
         ApplySidebarChrome(snapshot);
+    }
+
+    private void ApplyPendingClose(PendingCloseSummary? pendingClose)
+    {
+        _pendingCloseId = pendingClose?.Id;
+        CloseUndoBanner.IsOpen = pendingClose is not null;
+        if (pendingClose is null) return;
+
+        CloseUndoBanner.Title = pendingClose.Kind switch
+        {
+            PendingCloseKind.Session => "Session closed",
+            PendingCloseKind.Sessions => "Sessions closed",
+            PendingCloseKind.Workspace => "Workspace closed",
+            _ => "Item closed",
+        };
+        CloseUndoBanner.Message = pendingClose.Title;
+    }
+
+    private void OnUndoCloseClick(object sender, RoutedEventArgs e)
+    {
+        if (_pendingCloseId is not { } pendingCloseId || _sidebar is not { } sidebar) return;
+        sidebar.UndoClose(pendingCloseId);
     }
 
     private void ApplySidebarChrome(SidebarSnapshot snapshot)
@@ -1501,6 +1576,21 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task ApplyLiveThemeWithFailureAsync(HeadlessThemeSnapshot state)
+    {
+        try
+        {
+            await ApplyLiveThemeAsync(state);
+        }
+        catch (Exception ex)
+        {
+            ShowFailure(new LiveFailureNotice(
+                "Theme could not be applied",
+                ex.GetBaseException().Message));
+            throw;
+        }
+    }
+
     private async Task ApplySystemAppearanceAsync()
     {
         await _themeApplyGate.WaitAsync();
@@ -1577,6 +1667,32 @@ public sealed partial class MainWindow : Window
         ObserveTaskFault(
             CloseNotificationBannerAsync(cancellation),
             "Notification banner close failed");
+    }
+
+    private void ReportSettingsReloadFailure(Exception exception)
+    {
+        var message = exception.GetBaseException().Message;
+        System.Diagnostics.Trace.TraceError($"Settings reload failed: {message}");
+        QueueFailureNotice(new LiveFailureNotice("Config reload failed", message));
+    }
+
+    private void QueueFailureNotice(LiveFailureNotice notice)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            ShowFailure(notice);
+            return;
+        }
+
+        if (!DispatcherQueue.TryEnqueue(() => ShowFailure(notice)))
+            System.Diagnostics.Trace.TraceError($"Failure notice could not be shown: {notice.Title}: {notice.Message}");
+    }
+
+    private void ShowFailure(LiveFailureNotice notice)
+    {
+        FailureBanner.Title = notice.Title;
+        FailureBanner.Message = notice.Message;
+        FailureBanner.IsOpen = true;
     }
 
     private async Task CloseNotificationBannerAsync(CancellationTokenSource cancellation)

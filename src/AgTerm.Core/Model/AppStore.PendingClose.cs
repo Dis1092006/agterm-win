@@ -216,7 +216,10 @@ public sealed partial class AppStore
         return true;
     }
 
-    internal void FinalizePendingClose(Guid id)
+    internal void FinalizePendingClose(Guid id) =>
+        FinalizePendingClose(id, teardownSurfaces: true, save: true);
+
+    private void FinalizePendingClose(Guid id, bool teardownSurfaces, bool save)
     {
         if (!PendingCloseRecords.Remove(id, out var record)) return;
         if (PendingCloseTasks.Remove(id, out var task)) task.Cancel();
@@ -224,14 +227,15 @@ public sealed partial class AppStore
         switch (record)
         {
             case PendingCloseRecord.Sessions sessions:
-                foreach (var close in sessions.Close.Sessions) HardFinalizePendingSession(close.Session);
+                foreach (var close in sessions.Close.Sessions)
+                    HardFinalizePendingSession(close.Session, teardownSurfaces);
                 break;
             case PendingCloseRecord.Workspace workspace:
-                HardFinalizePendingWorkspace(workspace.Close.Workspace);
+                HardFinalizePendingWorkspace(workspace.Close.Workspace, teardownSurfaces);
                 break;
         }
         if (PendingCloseSummary?.Id == id) PromotePendingCloseSummary();
-        Save();
+        if (save) Save();
     }
 
     public void FinalizeAllPendingCloses()
@@ -242,10 +246,42 @@ public sealed partial class AppStore
         }
     }
 
+    public IReadOnlyList<ITerminalSurface> PreparePendingClosesForShutdown()
+    {
+        var surfaces = new HashSet<ITerminalSurface>(ReferenceEqualityComparer.Instance);
+        foreach (var record in PendingCloseRecords.Values)
+        {
+            var sessions = record switch
+            {
+                PendingCloseRecord.Sessions pending =>
+                    pending.Close.Sessions.Select(close => close.Session),
+                PendingCloseRecord.Workspace pending => pending.Close.Workspace.Sessions,
+                _ => Array.Empty<Session>(),
+            };
+            foreach (var session in sessions)
+            {
+                Add(session.Surface);
+                Add(session.SplitSurface);
+                Add(session.ScratchSurface);
+                Add(session.OverlaySurface);
+            }
+        }
+
+        foreach (var id in PendingCloseRecords.Keys.ToArray())
+            FinalizePendingClose(id, teardownSurfaces: false, save: false);
+        return surfaces.ToArray();
+
+        void Add(ITerminalSurface? surface)
+        {
+            if (surface is not null) surfaces.Add(surface);
+        }
+    }
+
     private void ShowPendingCloseSummary(Guid id)
     {
         if (!PendingCloseRecords.TryGetValue(id, out var record)) return;
         PendingCloseSummary = Summary(id, record);
+        NotifySidebar();
     }
 
     private void PromotePendingCloseSummary()
@@ -254,9 +290,11 @@ public sealed partial class AppStore
             || !PendingCloseRecords.TryGetValue(PendingCloseOrder[^1], out var record))
         {
             PendingCloseSummary = null;
+            NotifySidebar();
             return;
         }
         PendingCloseSummary = Summary(PendingCloseOrder[^1], record);
+        NotifySidebar();
     }
 
     private static PendingCloseSummary Summary(Guid id, PendingCloseRecord record)
@@ -287,7 +325,12 @@ public sealed partial class AppStore
         _ = Task.Delay(delay, cts.Token).ContinueWith(
             t =>
             {
-                if (!t.IsCanceled) FinalizePendingClose(id);
+                if (t.IsCanceled) return;
+                var finalize = () => FinalizePendingClose(id);
+                if (PendingCloseFinalizationScheduler is { } schedule)
+                    schedule(finalize);
+                else
+                    finalize();
             },
             CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
@@ -392,10 +435,7 @@ public sealed partial class AppStore
             ?? (close.Sessions.Count > 0 ? close.Sessions[0].Session.Id : null);
         if (target is { } resolved)
         {
-            SelectedSessionId = resolved;
-            ReplaceSidebarSelection(SelectedSessionId);
-            AutoUnfocusIfOutsideFocus(SelectedSessionId);
-            RecordRecency();
+            SelectSession(resolved);
         }
     }
 
@@ -422,27 +462,27 @@ public sealed partial class AppStore
         }
         var target = close.SelectedSessionId ?? close.Workspace.Sessions.FirstOrDefault()?.Id;
         if (target is not { } resolved) return;
-        SelectedSessionId = resolved;
-        ReplaceSidebarSelection(SelectedSessionId);
-        AutoUnfocusIfOutsideFocus(SelectedSessionId);
-        RecordRecency();
+        SelectSession(resolved);
     }
 
-    private void HardFinalizePendingSession(Session session)
+    private void HardFinalizePendingSession(Session session, bool teardownSurfaces = true)
     {
-        session.Surface?.Teardown();
-        session.SplitSurface?.Teardown();
-        session.OverlaySurface?.Teardown();
-        session.ScratchSurface?.Teardown();
+        if (teardownSurfaces)
+        {
+            session.Surface?.Teardown();
+            session.SplitSurface?.Teardown();
+            session.OverlaySurface?.Teardown();
+            session.ScratchSurface?.Teardown();
+        }
         WatermarkStorage.RemoveRenderedText(session.Id);
         RemoveFromRecency(session.Id);
     }
 
-    private void HardFinalizePendingWorkspace(Workspace workspace)
+    private void HardFinalizePendingWorkspace(Workspace workspace, bool teardownSurfaces = true)
     {
         foreach (var session in workspace.Sessions)
         {
-            HardFinalizePendingSession(session);
+            HardFinalizePendingSession(session, teardownSurfaces);
         }
     }
 }

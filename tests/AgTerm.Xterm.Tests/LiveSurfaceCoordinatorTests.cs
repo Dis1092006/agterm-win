@@ -53,11 +53,12 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
         Func<SurfaceOpenRequest, CancellationToken, Task<IHeadlessSurface>> opener,
         TimeSpan? realizeBudget = null,
         Action<SurfaceOpenRequest, IHeadlessSurface>? committed = null,
-        Action<string>? log = null) =>
+        Action<string>? log = null,
+        Action<LiveFailureNotice>? failureReported = null) =>
         new LiveSurfaceCoordinator(
             host, scopes, opener,
             realizeBudget ?? TimeSpan.FromSeconds(15),
-            committed, log);
+            committed, log, failureReported: failureReported);
 
     /// <summary>Polls condition every 10 ms until it returns true or budget elapses.</summary>
     private static async Task SpinUntilAsync(Func<bool> condition, TimeSpan budget)
@@ -660,6 +661,29 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
         // Pending still reports unrealized shapes
         Assert.False(pending.Inject("x"));
         Assert.Null(pending.ReadScreenText(false, null));
+    }
+
+    [Fact]
+    public async Task Coordinator_creation_failure_reports_one_immutable_UI_notice()
+    {
+        using var host = BuildHost();
+        var scopes = new LiveDispatchScopeFactory();
+        var sessionId = host.Store.ActiveSession!.Id;
+        var notices = new List<LiveFailureNotice>();
+        using var coordinator = BuildCoordinator(
+            host,
+            scopes,
+            (_, _) => Task.FromException<IHeadlessSurface>(new InvalidOperationException("shell missing")),
+            failureReported: notices.Add);
+        using var scope = scopes.Begin();
+
+        host.RunLocked(() => coordinator.Reserve(new SurfaceOpenRequest(
+            sessionId, LiveSurfaceKind.Main, DefaultOptions(_stateDir))));
+        await scope.CompleteAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        var notice = Assert.Single(notices);
+        Assert.Equal("Terminal failed to start", notice.Title);
+        Assert.Equal("shell missing", notice.Message);
     }
 
     [Fact]

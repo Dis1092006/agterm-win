@@ -34,7 +34,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.RenameSession] = true,
             [BuiltinAction.DuplicateSession] = true,
             [BuiltinAction.CloseSession] = true,
-            [BuiltinAction.ReopenRecent] = false,
+            [BuiltinAction.ReopenRecent] = true,
             [BuiltinAction.UndoClose] = true,
             [BuiltinAction.ClearStatus] = true,
             [BuiltinAction.IncreaseFontSize] = true,

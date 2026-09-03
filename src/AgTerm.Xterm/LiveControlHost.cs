@@ -49,6 +49,8 @@ public sealed record LiveControlHostOptions
 
     public Action<string>? Log { get; init; }
 
+    public Action<LiveFailureNotice>? FailureReported { get; init; }
+
     /// <summary>Reports whether the current callback is running on the owning UI thread.</summary>
     public Func<bool> IsUiThread { get; init; } = static () => false;
 
@@ -244,7 +246,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     Host.RunLocked(_storeCoordinator.PublishSelectionSnapshotLocked);
                 }
             },
-            options.Log);
+            options.Log,
+            failureReported: options.FailureReported);
         _scopeFactory.SetBeforeComplete(() => Host.RunLocked(ReconcileSurfacesLocked));
         var bootstrapCancellationToken = options.BootstrapCancellationToken;
         var coordinator = _coordinator;
@@ -1545,6 +1548,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         {
             var distinctSurfaces = new HashSet<ITerminalSurface>(ReferenceEqualityComparer.Instance);
             var orderedSurfaces = new List<ITerminalSurface>();
+
+            foreach (var surface in Host.Store.PreparePendingClosesForShutdown())
+                AddSurface(surface);
 
             foreach (var session in Host.Store.Workspaces.SelectMany(w => w.Sessions))
             {

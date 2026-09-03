@@ -31,6 +31,8 @@ public sealed class LiveApplicationHost : IDisposable
     private readonly string _stateDirectory;
     private readonly string _homeDirectory;
     private readonly ILiveWindowController? _windowController;
+    private readonly RecentClosedStore _recentClosedStore;
+    private readonly SemaphoreSlim _recentClosedGate = new(1, 1);
     private readonly Dictionary<Guid, LiveWindowHost> _openWindows = new();
     private readonly Dictionary<Guid, LiveWindowHost> _closingWindows = new();
     private readonly List<LiveWindowEntry> _windows = new();
@@ -47,6 +49,7 @@ public sealed class LiveApplicationHost : IDisposable
         _homeDirectory = options.HomeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _windowController = options.WindowController;
+        _recentClosedStore = new RecentClosedStore(_stateDirectory);
         Ring = new ControlEventRing();
 
         var index = LoadIndex();
@@ -135,9 +138,42 @@ public sealed class LiveApplicationHost : IDisposable
 
     public ControlEventRing Ring { get; }
 
+    public IReadOnlyList<RecentClosedItem> RecentClosedItems => _recentClosedStore.Load();
+
     public string PipeName { get; }
 
     public bool IsListening => _server.IsListening;
+
+    public async Task<bool> ReopenLatestRecentClosedAsync(
+        Guid targetWindowId,
+        CancellationToken cancellationToken = default)
+    {
+        await _recentClosedGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                LiveWindowHost window;
+                lock (_gate)
+                {
+                    ObjectDisposedException.ThrowIf(_disposed, this);
+                    if (!_openWindows.TryGetValue(targetWindowId, out window!)) return false;
+                }
+
+                var item = _recentClosedStore.Load().FirstOrDefault();
+                if (item is null) return false;
+                var restored = false;
+                window.RunLocked(() => restored = window.Store.RestoreRecentClosed(item));
+                if (restored) _recentClosedStore.Remove(item.Id);
+                return restored;
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _recentClosedGate.Release();
+        }
+    }
 
     public void Start()
     {
@@ -1128,6 +1164,7 @@ public sealed class LiveApplicationHost : IDisposable
             _stateDirectory,
             homeDirectory,
             Ring,
+            _recentClosedStore,
             seedIfEmpty,
             launchRestore);
 

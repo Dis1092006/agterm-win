@@ -142,6 +142,7 @@ public sealed class HeadlessHost : IDisposable
             // must realize like any control-driven show
             SurfaceRealizer = options.SurfaceRealizer,
             EagerSurfaceRealization = options.EagerSurfaceRealization,
+            PendingCloseFinalizationScheduler = action => RunLocked(action),
         };
         var configDir = options.ConfigDir ?? options.StateDir ?? PersistenceStore.DefaultDirectory;
         Actions = new HeadlessControlActions(Store, Ring, WindowId,

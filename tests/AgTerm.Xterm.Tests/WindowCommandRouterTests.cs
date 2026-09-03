@@ -17,6 +17,7 @@ public class WindowCommandRouterTests
         BuiltinAction.RenameSession,
         BuiltinAction.DuplicateSession,
         BuiltinAction.CloseSession,
+        BuiltinAction.ReopenRecent,
         BuiltinAction.UndoClose,
         BuiltinAction.ClearStatus,
         BuiltinAction.IncreaseFontSize,
@@ -53,7 +54,6 @@ public class WindowCommandRouterTests
     [
         BuiltinAction.RenameWorkspace,
         BuiltinAction.DeleteWorkspace,
-        BuiltinAction.ReopenRecent,
     ];
 
     [Fact]
@@ -423,8 +423,8 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "`"), chords);
         // Ctrl+Shift+Enter → cmd+shift+return → ToggleTerminalZoom (implemented in D1): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "return"), chords);
-        // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (unimplemented): must be absent
-        Assert.DoesNotContain(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
+        // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (implemented in U1): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
         // Ctrl+P → ctrl+p → SessionPalette (implemented in C2): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "p"), chords);
         // Ctrl+Shift+P → ctrl+shift+p → CommandPalette (implemented in C2): must be present

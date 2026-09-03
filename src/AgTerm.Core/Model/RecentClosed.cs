@@ -90,6 +90,7 @@ public sealed record RecentClosedState
 /// </summary>
 public sealed class RecentClosedStore
 {
+    private readonly object _gate = new();
     private readonly string _directory;
     private readonly string _fileName;
     private readonly int _limit;
@@ -105,42 +106,54 @@ public sealed class RecentClosedStore
 
     public List<RecentClosedItem> Load()
     {
-        try
+        lock (_gate)
         {
-            var state = ControlJson.Deserialize<RecentClosedState>(File.ReadAllText(FilePath));
-            if (state is null || state.Version != RecentClosedState.CurrentVersion)
+            try
+            {
+                var state = ControlJson.Deserialize<RecentClosedState>(File.ReadAllText(FilePath));
+                if (state is null || state.Version != RecentClosedState.CurrentVersion)
+                    return new List<RecentClosedItem>();
+                return state.Items.Take(_limit).ToList();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException
+                                          or NotSupportedException)
+            {
                 return new List<RecentClosedItem>();
-            return state.Items.Take(_limit).ToList();
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException
-                                      or NotSupportedException)
-        {
-            return new List<RecentClosedItem>();
+            }
         }
     }
 
     public void Record(RecentClosedItem item)
     {
-        var items = Load();
-        items.RemoveAll(existing =>
+        lock (_gate)
         {
-            if (existing.Id == item.Id) return true;
-            return (existing.Kind, item.Kind) switch
+            var items = Load();
+            items.RemoveAll(existing =>
             {
-                (RecentClosedKind.Session, RecentClosedKind.Session) =>
-                    existing.Session?.Snapshot.Id == item.Session?.Snapshot.Id,
-                (RecentClosedKind.Workspace, RecentClosedKind.Workspace) =>
-                    existing.Workspace?.Snapshot.Id == item.Workspace?.Snapshot.Id,
-                _ => false,
-            };
-        });
-        items.Insert(0, item);
-        Save(items.Take(_limit).ToList());
+                if (existing.Id == item.Id) return true;
+                return (existing.Kind, item.Kind) switch
+                {
+                    (RecentClosedKind.Session, RecentClosedKind.Session) =>
+                        existing.Session?.Snapshot.Id == item.Session?.Snapshot.Id,
+                    (RecentClosedKind.Workspace, RecentClosedKind.Workspace) =>
+                        existing.Workspace?.Snapshot.Id == item.Workspace?.Snapshot.Id,
+                    _ => false,
+                };
+            });
+            items.Insert(0, item);
+            Save(items.Take(_limit).ToList());
+        }
     }
 
-    public void Remove(Guid id) => Save(Load().Where(item => item.Id != id).ToList());
+    public void Remove(Guid id)
+    {
+        lock (_gate) Save(Load().Where(item => item.Id != id).ToList());
+    }
 
-    public void Clear() => Save(new List<RecentClosedItem>());
+    public void Clear()
+    {
+        lock (_gate) Save(new List<RecentClosedItem>());
+    }
 
     private void Save(List<RecentClosedItem> items)
     {

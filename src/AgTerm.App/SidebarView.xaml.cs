@@ -8,6 +8,8 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 using Windows.UI;
 using Windows.System;
 
@@ -89,6 +91,9 @@ public sealed partial class SidebarView : UserControl
         SyncSelection(snapshot);
         FlaggedToggle.IsChecked = snapshot.Mode == SidebarMode.Flagged;
         FlaggedToggle.IsEnabled = snapshot.Mode == SidebarMode.Flagged || snapshot.FlaggedCount > 0;
+        ClearFlaggedButton.Visibility = snapshot.FlaggedCount > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         FocusPill.Visibility = snapshot.FocusedWorkspaceName is null
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -404,7 +409,7 @@ public sealed partial class SidebarView : UserControl
             flyout.Items.Add(Item("Reveal in Explorer", () => _controller?.RevealSession(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
         flyout.Items.Add(Item(plural ? $"Close {targets.Count} Sessions" : "Close Session",
-            () => _controller?.CloseSessions(targets)));
+            () => _controller?.RequestCloseSessions(targets, CurrentCloseOptions())));
         return flyout;
     }
 
@@ -460,10 +465,17 @@ public sealed partial class SidebarView : UserControl
     private void OnFlaggedToggleClick(object sender, RoutedEventArgs e) =>
         _controller?.ToggleFlaggedView();
 
+    private void OnClearFlaggedClick(object sender, RoutedEventArgs e) =>
+        _controller?.RequestClearFlags();
+
     private void OnFocusPillClick(object sender, RoutedEventArgs e) => _controller?.ClearFocus();
 
     private void OnNewWorkspaceClick(object sender, RoutedEventArgs e) =>
         _controller?.NewWorkspace();
+
+    private SidebarCloseOptions CurrentCloseOptions() => new(
+        _settings.ConfirmCloseSession == true,
+        _settings.CloseGraceUndoEnabled ?? true);
 
     // MARK: - drag reorder
 
@@ -500,13 +512,37 @@ public sealed partial class SidebarView : UserControl
 
     private void OnListDragOver(object sender, DragEventArgs e)
     {
-        e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        if (e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.AcceptedOperation = _snapshot?.Mode == SidebarMode.Tree
+                ? DataPackageOperation.Copy
+                : DataPackageOperation.None;
+            e.Handled = true;
+            return;
+        }
+
+        e.AcceptedOperation = DataPackageOperation.Move;
     }
 
-    private void OnListDrop(object sender, DragEventArgs e)
+    private async void OnListDrop(object sender, DragEventArgs e)
     {
         if (_snapshot is not { } snapshot || _controller is null) return;
         var position = e.GetPosition(RowsList);
+
+        if (e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.Handled = true;
+            var deferral = e.GetDeferral();
+            try
+            {
+                await ImportDroppedDirectoriesAsync(e.DataView, position, snapshot, _controller);
+            }
+            finally
+            {
+                deferral.Complete();
+            }
+            return;
+        }
 
         if (_draggedWorkspace is { } workspace)
         {
@@ -536,6 +572,33 @@ public sealed partial class SidebarView : UserControl
         _draggedSessions = Array.Empty<Guid>();
         _draggedWorkspace = null;
         e.Handled = true;
+    }
+
+    private async Task ImportDroppedDirectoriesAsync(DataPackageView dataView,
+        Windows.Foundation.Point position, SidebarSnapshot snapshot, SidebarController controller)
+    {
+        var workspaceId = SidebarDrop.ResolveDirectoryWorkspace(snapshot.Mode,
+            WorkspaceAt(position), snapshot.FocusedWorkspaceId, snapshot.CurrentWorkspaceId);
+        if (workspaceId is null) return;
+
+        var storageItems = await dataView.GetStorageItemsAsync();
+        var paths = storageItems.OfType<StorageFolder>().Select(folder => folder.Path);
+        controller.ImportDirectories(DirectoryImportPolicy.CreateRequests(workspaceId, paths));
+    }
+
+    private Guid? WorkspaceAt(Windows.Foundation.Point position)
+    {
+        Guid? workspaceId = null;
+        for (var i = 0; i < _items.Count; i++)
+        {
+            if (_items[i].IsWorkspace) workspaceId = _items[i].Id;
+            if (RowsList.ContainerFromIndex(i) is not ListViewItem container) continue;
+            var bounds = container.TransformToVisual(RowsList)
+                .TransformBounds(new Windows.Foundation.Rect(0, 0,
+                    container.ActualWidth, container.ActualHeight));
+            if (bounds.Contains(position)) return workspaceId;
+        }
+        return null;
     }
 
     private int SessionCount(Guid workspaceId)

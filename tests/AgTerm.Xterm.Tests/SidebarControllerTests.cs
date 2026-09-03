@@ -146,6 +146,21 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task ImportDirectories_adds_one_ordered_session_per_request()
+    {
+        var workspaceId = Latest.Workspaces.Single().Id;
+        var first = Directory.CreateDirectory(Path.Combine(_stateDir, "first")).FullName;
+        var second = Directory.CreateDirectory(Path.Combine(_stateDir, "second")).FullName;
+        var requests = DirectoryImportPolicy.CreateRequests(workspaceId, new[] { first, second });
+
+        _controller.ImportDirectories(requests);
+
+        var importedCwds = await _coordinator.ReadAsync(store => store.Workspaces.Single().Sessions
+            .Skip(1).Select(session => session.InitialCwd).ToArray());
+        Assert.Equal(new[] { first, second }, importedCwds);
+    }
+
+    [Fact]
     public void Hotkey_variants_act_on_the_active_session_and_workspace()
     {
         var initial = Latest.SelectedSessionId!.Value;

@@ -67,6 +67,8 @@ public sealed partial class AppStore
     internal readonly List<Guid> PendingCloseOrder = new();
     internal readonly Dictionary<Guid, CancellationTokenSource> PendingCloseTasks = new();
 
+    public Action<Action>? PendingCloseFinalizationScheduler { get; set; }
+
     private readonly PersistenceStore _persistence;
     internal readonly RecentClosedStore? RecentClosedStore;
     internal Action? RecentClosedDidChange;
