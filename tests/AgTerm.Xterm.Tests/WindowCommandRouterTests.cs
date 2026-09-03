@@ -8,6 +8,9 @@ public class WindowCommandRouterTests
     // Actions implemented in the current MainWindow.HandleChord switch (phase 4.5C).
     private static readonly HashSet<BuiltinAction> ImplementedActions =
     [
+        BuiltinAction.NewWindow,
+        BuiltinAction.RenameWindow,
+        BuiltinAction.DeleteWindow,
         BuiltinAction.NewWorkspace,
         BuiltinAction.NewSession,
         BuiltinAction.OpenDirectory,
@@ -48,9 +51,6 @@ public class WindowCommandRouterTests
     // Actions not yet implemented; arrive in phase 5.
     private static readonly HashSet<BuiltinAction> UnimplementedActions =
     [
-        BuiltinAction.NewWindow,
-        BuiltinAction.RenameWindow,
-        BuiltinAction.DeleteWindow,
         BuiltinAction.RenameWorkspace,
         BuiltinAction.DeleteWorkspace,
         BuiltinAction.ReopenRecent,
@@ -116,7 +116,7 @@ public class WindowCommandRouterTests
     public void Constructor_throws_ArgumentException_when_unimplemented_action_handler_is_present()
     {
         var handlers = AllNoOpHandlers();
-        handlers[BuiltinAction.NewWindow] = new WindowCommandHandler(() => true, () => Task.CompletedTask);
+        handlers[BuiltinAction.RenameWorkspace] = new WindowCommandHandler(() => true, () => Task.CompletedTask);
         Assert.Throws<ArgumentException>(() => new WindowCommandRouter(handlers));
     }
 
@@ -153,7 +153,7 @@ public class WindowCommandRouterTests
     public void GetState_returns_Implemented_false_for_unimplemented_action()
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());
-        var state = router.GetState(BuiltinAction.NewWindow);
+        var state = router.GetState(BuiltinAction.RenameWorkspace);
         Assert.False(state.Implemented);
         Assert.False(state.CanExecute);
     }
@@ -177,7 +177,7 @@ public class WindowCommandRouterTests
     }
 
     [Theory]
-    [InlineData(BuiltinAction.NewWindow)]
+    [InlineData(BuiltinAction.RenameWorkspace)]
     public void CanExecute_returns_false_for_unimplemented_action(BuiltinAction action)
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());
@@ -218,7 +218,7 @@ public class WindowCommandRouterTests
     }
 
     [Theory]
-    [InlineData(BuiltinAction.NewWindow)]
+    [InlineData(BuiltinAction.RenameWorkspace)]
     public async Task ExecuteAsync_returns_false_for_unimplemented_action(BuiltinAction action)
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());

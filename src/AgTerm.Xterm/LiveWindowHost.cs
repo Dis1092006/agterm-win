@@ -4,17 +4,23 @@ using AgTerm.ControlServer;
 
 namespace AgTerm.Xterm;
 
+internal sealed record LiveWindowSessionEvent(Guid WorkspaceId, Guid SessionId, string Name);
+
 public sealed class LiveWindowHost
 {
     private readonly object _gate = new();
+    private readonly object _dispatchLifecycleGate = new();
     private readonly SemaphoreSlim _dispatchGate = new(1, 1);
     private readonly PersistenceStore _persistence;
     private ControlDispatcher _dispatcher;
     private IControlDispatchScopeFactory? _dispatchScopeFactory;
-    private int _acceptingDispatch = 1;
+    private bool _acceptingDispatch = true;
+    private int _acceptedDispatches;
+    private TaskCompletionSource<object?>? _dispatchIdle;
     private bool _liveAttached;
     private readonly string _stateDirectory;
     private readonly string _homeDirectory;
+    private string _windowName;
 
     internal LiveWindowHost(
         Guid windowId,
@@ -22,10 +28,11 @@ public sealed class LiveWindowHost
         string stateDirectory,
         string homeDirectory,
         ControlEventRing ring,
-        bool seedIfEmpty)
+        bool seedIfEmpty,
+        bool launchRestore)
     {
         WindowId = windowId;
-        WindowName = windowName;
+        _windowName = windowName;
         Ring = ring;
         _stateDirectory = stateDirectory;
         _homeDirectory = homeDirectory;
@@ -44,7 +51,7 @@ public sealed class LiveWindowHost
         var snapshot = _persistence.Load();
         if (snapshot.Workspaces.Length > 0)
         {
-            Store.Restore(snapshot, launchRestore: true);
+            Store.Restore(snapshot, launchRestore);
         }
         else if (seedIfEmpty)
         {
@@ -53,7 +60,7 @@ public sealed class LiveWindowHost
         }
         else
         {
-            Store.Restore(snapshot, launchRestore: true);
+            Store.Restore(snapshot, launchRestore);
         }
         Store.Save();
         bootstrapping = false;
@@ -64,7 +71,13 @@ public sealed class LiveWindowHost
 
     public Guid WindowId { get; }
 
-    public string WindowName { get; }
+    public string WindowName
+    {
+        get
+        {
+            lock (_gate) return _windowName;
+        }
+    }
 
     public ControlEventRing Ring { get; }
 
@@ -79,15 +92,21 @@ public sealed class LiveWindowHost
         IControlDispatchScope? scope = null;
         ControlResponse? response;
         await _dispatchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var accepted = false;
         try
         {
-            if (Volatile.Read(ref _acceptingDispatch) == 0)
+            lock (_dispatchLifecycleGate)
             {
-                return new ControlResponse
+                if (!_acceptingDispatch)
                 {
-                    Ok = false,
-                    Error = "window not open — window.select it first",
-                };
+                    return new ControlResponse
+                    {
+                        Ok = false,
+                        Error = "window not open — window.select it first",
+                    };
+                }
+                _acceptedDispatches++;
+                accepted = true;
             }
 
             lock (_gate)
@@ -105,29 +124,66 @@ public sealed class LiveWindowHost
                 }
             }
         }
+        catch
+        {
+            if (accepted)
+            {
+                CompleteAcceptedDispatch();
+                accepted = false;
+            }
+            throw;
+        }
         finally
         {
             _dispatchGate.Release();
         }
-        if (scope is null)
-            return response;
-
-        using (scope)
+        try
         {
-            await scope.CompleteAsync(cancellationToken).ConfigureAwait(false);
+            if (scope is null)
+                return response;
+
+            using (scope)
+            {
+                await scope.CompleteAsync(cancellationToken).ConfigureAwait(false);
+            }
+            return response;
         }
-        return response;
+        finally
+        {
+            if (accepted)
+                CompleteAcceptedDispatch();
+        }
     }
 
     internal void StopDispatching()
     {
-        Interlocked.Exchange(ref _acceptingDispatch, 0);
+        lock (_dispatchLifecycleGate) _acceptingDispatch = false;
     }
 
-    internal async Task WaitForDispatchQuiescenceAsync()
+    internal Task WaitForDispatchQuiescenceAsync()
     {
-        await _dispatchGate.WaitAsync().ConfigureAwait(false);
-        _dispatchGate.Release();
+        lock (_dispatchLifecycleGate)
+        {
+            return _acceptedDispatches == 0
+                ? Task.CompletedTask
+                : (_dispatchIdle ??= new TaskCompletionSource<object?>(
+                    TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+        }
+    }
+
+    private void CompleteAcceptedDispatch()
+    {
+        TaskCompletionSource<object?>? idle = null;
+        lock (_dispatchLifecycleGate)
+        {
+            _acceptedDispatches--;
+            if (_acceptedDispatches == 0)
+            {
+                idle = _dispatchIdle;
+                _dispatchIdle = null;
+            }
+        }
+        idle?.TrySetResult(null);
     }
 
     internal void RunLocked(Action action)
@@ -151,6 +207,26 @@ public sealed class LiveWindowHost
         lock (_gate)
         {
             return Store.Workspaces.Select(workspace => workspace.Id).ToArray();
+        }
+    }
+
+    internal LiveWindowSessionEvent[] CaptureLifecycleSessions()
+    {
+        lock (_gate)
+        {
+            return Store.Workspaces
+                .SelectMany(workspace => workspace.Sessions.Select(session =>
+                    new LiveWindowSessionEvent(workspace.Id, session.Id, session.DisplayName)))
+                .ToArray();
+        }
+    }
+
+    internal (int? AutoFollowMs, bool SidebarVisible) CaptureWindowListState()
+    {
+        lock (_gate)
+        {
+            var tree = Store.ControlTree();
+            return (tree.AutoFollowMs, Store.SidebarVisible);
         }
     }
 
@@ -209,12 +285,26 @@ public sealed class LiveWindowHost
         lock (_gate) Store.ResetSessionFontSizes();
     }
 
+    internal void Rename(string name)
+    {
+        lock (_gate)
+        {
+            _windowName = name;
+            Actions.WindowRename(WindowId.ToString("D"), name);
+        }
+    }
+
+    internal void CancelPendingSave()
+    {
+        lock (_gate) Store.CancelPendingSave();
+    }
+
     private HeadlessControlActions CreateActions() =>
         new(
             Store,
             Ring,
             WindowId,
-            WindowName,
+            _windowName,
             configDirectory: _stateDirectory,
             homeDirectory: _homeDirectory);
 }

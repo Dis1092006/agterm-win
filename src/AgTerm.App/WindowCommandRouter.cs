@@ -23,9 +23,9 @@ public sealed class WindowCommandRouter
     public static IReadOnlyDictionary<BuiltinAction, bool> ActionImplementations { get; } =
         new ReadOnlyDictionary<BuiltinAction, bool>(new Dictionary<BuiltinAction, bool>
         {
-            [BuiltinAction.NewWindow] = false,
-            [BuiltinAction.RenameWindow] = false,
-            [BuiltinAction.DeleteWindow] = false,
+            [BuiltinAction.NewWindow] = true,
+            [BuiltinAction.RenameWindow] = true,
+            [BuiltinAction.DeleteWindow] = true,
             [BuiltinAction.NewWorkspace] = true,
             [BuiltinAction.RenameWorkspace] = false,
             [BuiltinAction.DeleteWorkspace] = false,

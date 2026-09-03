@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
@@ -5,7 +6,9 @@ using AgTerm.ControlServer;
 using AgTerm.Xterm;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.Graphics;
 using Windows.UI;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
@@ -33,6 +36,8 @@ public sealed partial class MainWindow : Window
     private readonly CancellationTokenSource _bootstrapCancellation = new();
     private CancellationTokenSource? _notificationBannerCancellation;
     private readonly TaskCompletionSource<LiveControlHost> _hostReady =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<object?> _closedCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task<XtermPage> _pageTask;
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
@@ -63,6 +68,7 @@ public sealed partial class MainWindow : Window
     private bool _terminalCompositionOnly;
     private AppWindowPresenterKind _restorePresenterKind = AppWindowPresenterKind.Default;
     private bool _draggingDivider;
+    private bool _closeWithoutShutdown;
     private readonly PaletteAutoFollowLease _paletteAutoFollow = new();
     private WindowPaletteMode? _openPaletteMode;
 
@@ -180,6 +186,7 @@ public sealed partial class MainWindow : Window
         _appWindow.Closing += OnAppWindowClosing;
         Closed += (_, _) =>
         {
+            _closedCompletion.TrySetResult(null);
             _appWindow.Closing -= OnAppWindowClosing;
             _appWindow.Changed -= OnAppWindowChanged;
             Activated -= OnWindowActivated;
@@ -199,6 +206,151 @@ public sealed partial class MainWindow : Window
 
     internal Task Ready => _hostReady.Task;
 
+    internal Guid WindowId => _windowId;
+
+    internal void ActivateWindow() => Activate();
+
+    internal Task RequestManagedCloseAsync()
+    {
+        _closeCoordinator.ShouldCancelClose();
+        return _closedCompletion.Task;
+    }
+
+    internal Task CloseFailedOpenAsync()
+    {
+        _closeWithoutShutdown = true;
+        Close();
+        return _closedCompletion.Task;
+    }
+
+    internal LiveWindowPresentation CaptureWindowPresentation()
+    {
+        var displays = DisplayArea.FindAll();
+        var currentDisplay = DisplayArea.GetFromWindowId(
+            _appWindow.Id,
+            DisplayAreaFallback.Primary);
+        var displayIndex = Enumerable.Range(0, displays.Count)
+            .FirstOrDefault(index => displays[index].DisplayId.Equals(currentDisplay.DisplayId));
+        var scale = DisplayScale(currentDisplay);
+        var displayBounds = currentDisplay.OuterBounds;
+        var position = _appWindow.Position;
+        var size = _appWindow.Size;
+        return new LiveWindowPresentation(
+            LiveWindowGeometry.Capture(
+                position.X,
+                position.Y,
+                size.Width,
+                size.Height,
+                displayIndex,
+                DisplayMetrics(displayBounds, scale)),
+            Fullscreen: _appWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen,
+            Zoomed: _appWindow.Presenter is OverlappedPresenter presenter
+                && presenter.State == OverlappedPresenterState.Maximized);
+    }
+
+    internal void ResizeWindow(int width, int height)
+    {
+        var display = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary);
+        var scale = DisplayScale(display);
+        var maximumWidth = Math.Max(1, LiveWindowGeometry.ToPoints(display.WorkArea.Width, scale));
+        var maximumHeight = Math.Max(1, LiveWindowGeometry.ToPoints(display.WorkArea.Height, scale));
+        var minimumWidth = Math.Min(320, maximumWidth);
+        var minimumHeight = Math.Min(240, maximumHeight);
+        _appWindow.Resize(new SizeInt32(
+            LiveWindowGeometry.ToPixels(Math.Clamp(width, minimumWidth, maximumWidth), scale),
+            LiveWindowGeometry.ToPixels(Math.Clamp(height, minimumHeight, maximumHeight), scale)));
+    }
+
+    internal LiveWindowMoveResult MoveWindow(int x, int y, int? display)
+    {
+        var displays = DisplayArea.FindAll();
+        var currentDisplay = DisplayArea.GetFromWindowId(
+            _appWindow.Id,
+            DisplayAreaFallback.Primary);
+        var currentIndex = Enumerable.Range(0, displays.Count)
+            .FirstOrDefault(index => displays[index].DisplayId.Equals(currentDisplay.DisplayId));
+        var targetIndex = display ?? currentIndex;
+        if (targetIndex < 0 || targetIndex >= displays.Count)
+            return new LiveWindowMoveResult(false, displays.Count);
+
+        var target = displays[targetIndex];
+        var scale = DisplayScale(target);
+        var displayBounds = target.OuterBounds;
+        var position = LiveWindowGeometry.ClampMove(
+            x,
+            y,
+            _appWindow.Size.Width,
+            _appWindow.Size.Height,
+            DisplayMetrics(displayBounds, scale));
+        _appWindow.Move(new PointInt32(position.X, position.Y));
+        return new LiveWindowMoveResult(true, displays.Count);
+    }
+
+    internal void ToggleWindowZoom()
+    {
+        if (_appWindow.Presenter is not OverlappedPresenter presenter)
+            return;
+        if (presenter.State == OverlappedPresenterState.Maximized)
+            presenter.Restore();
+        else
+            presenter.Maximize();
+    }
+
+    internal void ToggleWindowFullscreen() => _fullscreen.Toggle();
+
+    private static LiveDisplayMetrics DisplayMetrics(RectInt32 bounds, double scale) =>
+        new(bounds.X, bounds.Y, bounds.Width, bounds.Height, scale);
+
+    private static double DisplayScale(DisplayArea display)
+    {
+        var bounds = display.OuterBounds;
+        var monitor = NativeMethods.MonitorFromPoint(
+            new NativePoint(
+                bounds.X + bounds.Width / 2,
+                bounds.Y + bounds.Height / 2),
+            NativeMethods.MonitorDefaultToNearest);
+        if (monitor != IntPtr.Zero
+            && NativeMethods.GetDpiForMonitor(
+                monitor,
+                MonitorDpiType.Effective,
+                out var dpiX,
+                out _) >= 0
+            && dpiX > 0)
+        {
+            return dpiX / 96d;
+        }
+        return 1;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly struct NativePoint(int x, int y)
+    {
+        public readonly int X = x;
+        public readonly int Y = y;
+    }
+
+    private enum MonitorDpiType
+    {
+        Effective = 0,
+    }
+
+    private static class NativeMethods
+    {
+        internal const uint MonitorDefaultToNearest = 2;
+
+        [DllImport("user32.dll")]
+        internal static extern IntPtr MonitorFromPoint(
+            NativePoint point,
+            uint flags);
+
+        [DllImport("shcore.dll")]
+        internal static extern int GetDpiForMonitor(
+            IntPtr monitor,
+            MonitorDpiType dpiType,
+            out uint dpiX,
+            out uint dpiY);
+    }
+
     private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
     {
         if (args.WindowActivationState == WindowActivationState.Deactivated)
@@ -209,6 +361,11 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        if (_closeWithoutShutdown)
+        {
+            args.Cancel = false;
+            return;
+        }
         args.Cancel = _closeCoordinator.ShouldCancelClose();
     }
 
@@ -415,6 +572,16 @@ public sealed partial class MainWindow : Window
 
         _commandRouter = new WindowCommandRouter(new Dictionary<BuiltinAction, WindowCommandHandler>
         {
+            [BuiltinAction.NewWindow] = Async(
+                () => true,
+                async () => EnsureWindowCommandSucceeded(await _applicationHost.CreateWindowAsync())),
+            [BuiltinAction.RenameWindow] = Async(
+                () => true,
+                RenameCurrentWindowAsync),
+            [BuiltinAction.DeleteWindow] = Async(
+                () => _applicationHost.Windows.Count > 1,
+                async () => EnsureWindowCommandSucceeded(
+                    await _applicationHost.DeleteWindowAsync(_windowId))),
             [BuiltinAction.NewWorkspace] = Sync(() => true, () => sidebar.NewWorkspace()),
             [BuiltinAction.NewSession] = Sync(() => true, () => sidebar.NewSessionInActiveWorkspace()),
             [BuiltinAction.OpenDirectory] = Async(() => true, OpenDirectoryIntoActiveAsync),
@@ -528,6 +695,38 @@ public sealed partial class MainWindow : Window
             sidebar.Start();
         });
         ObserveTaskFault(ArmHotkeysAsync(host), "Arm hotkeys failed");
+    }
+
+    private async Task RenameCurrentWindowAsync()
+    {
+        var currentName = _applicationHost.Windows
+            .First(window => window.Id == _windowId)
+            .Name;
+        var input = new TextBox { Text = currentName };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = Content.XamlRoot,
+            Title = "Rename window",
+            PrimaryButtonText = "Rename",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = input,
+        };
+        dialog.Opened += (_, _) =>
+        {
+            input.Focus(FocusState.Programmatic);
+            input.SelectAll();
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        EnsureWindowCommandSucceeded(_applicationHost.RenameWindow(_windowId, input.Text));
+    }
+
+    private static void EnsureWindowCommandSucceeded(ControlResponse response)
+    {
+        if (!response.Ok)
+            throw new InvalidOperationException(response.Error ?? "Window command failed.");
     }
 
     /// <summary>Window-level chrome from a sidebar snapshot: column width and visibility.</summary>

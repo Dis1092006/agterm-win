@@ -743,7 +743,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Window_commands_keep_the_active_headless_adapter_until_W2()
+    public void Registry_list_works_without_a_controller_while_mutations_keep_the_headless_fallback()
     {
         var firstId = Guid.NewGuid();
         var secondId = Guid.NewGuid();
@@ -775,8 +775,8 @@ public sealed class LiveWindowRegistryTests : IDisposable
 
         Assert.True(list.Ok, list.Error);
         Assert.Equal(
-            firstId.ToString("D").ToUpperInvariant(),
-            Assert.Single(list.Result!.Windows!).Id);
+            new[] { firstId, secondId }.Select(id => id.ToString("D").ToUpperInvariant()),
+            list.Result!.Windows!.Select(window => window.Id));
         Assert.False(rename.Ok);
         Assert.Equal($"no such window: {secondId:D}", rename.Error);
         Assert.Equal(new[] { "first", "second" }, application.Windows.Select(window => window.Name));

@@ -12,6 +12,8 @@ public sealed record LiveApplicationHostOptions
     public string? PipeName { get; init; }
 
     public string? HomeDirectory { get; init; }
+
+    public ILiveWindowController? WindowController { get; init; }
 }
 
 public sealed record LiveWindowEntry(
@@ -27,6 +29,8 @@ public sealed class LiveApplicationHost : IDisposable
 {
     private readonly object _gate = new();
     private readonly string _stateDirectory;
+    private readonly string _homeDirectory;
+    private readonly ILiveWindowController? _windowController;
     private readonly Dictionary<Guid, LiveWindowHost> _openWindows = new();
     private readonly Dictionary<Guid, LiveWindowHost> _closingWindows = new();
     private readonly List<LiveWindowEntry> _windows = new();
@@ -40,17 +44,19 @@ public sealed class LiveApplicationHost : IDisposable
     {
         options ??= new LiveApplicationHostOptions();
         _stateDirectory = options.StateDir ?? PersistenceStore.DefaultDirectory;
+        _homeDirectory = options.HomeDirectory
+            ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        _windowController = options.WindowController;
         Ring = new ControlEventRing();
 
-        var homeDirectory = options.HomeDirectory
-            ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var index = LoadIndex();
         if (index is not null)
         {
             _windows.AddRange(index.Windows);
             foreach (var entry in index.Windows.Where(window => window.IsOpen))
             {
-                _openWindows.Add(entry.Id, CreateWindowHost(entry, homeDirectory, seedIfEmpty: false));
+                _openWindows.Add(entry.Id, CreateWindowHost(
+                    entry, _homeDirectory, seedIfEmpty: false, launchRestore: true));
             }
             FrontmostWindowId = index.Frontmost;
             if (_openWindows.Count == 0)
@@ -62,15 +68,16 @@ public sealed class LiveApplicationHost : IDisposable
                 SetOpen(fallback.Id, isOpen: true);
                 _openWindows.Add(
                     fallback.Id,
-                    CreateWindowHost(fallback, homeDirectory, seedIfEmpty: false));
+                    CreateWindowHost(
+                        fallback, _homeDirectory, seedIfEmpty: false, launchRestore: true));
             }
         }
         else
         {
-            if (!RecoverOrphanedWindows(homeDirectory)
-                && !MigrateLegacy(homeDirectory))
+            if (!RecoverOrphanedWindows(_homeDirectory)
+                && !MigrateLegacy(_homeDirectory))
             {
-                SeedFreshWindow(homeDirectory);
+                SeedFreshWindow(_homeDirectory);
             }
         }
         SaveIndex();
@@ -148,6 +155,31 @@ public sealed class LiveApplicationHost : IDisposable
             cancellationToken).ConfigureAwait(false)
             ?? new ControlResponse { Ok = false, Error = "no such window: active" };
     }
+
+    public Task<ControlResponse> CreateWindowAsync(
+        string? name = null,
+        CancellationToken cancellationToken = default) =>
+        _windowController is null
+            ? Task.FromResult(new ControlResponse
+            {
+                Ok = false,
+                Error = HeadlessControlActions.WindowManagementUnavailable,
+            })
+            : NewWindowAsync(name, cancellationToken);
+
+    public ControlResponse RenameWindow(Guid windowId, string name) =>
+        RenameWindow(windowId.ToString("D"), name);
+
+    public Task<ControlResponse> DeleteWindowAsync(
+        Guid windowId,
+        CancellationToken cancellationToken = default) =>
+        _windowController is null
+            ? Task.FromResult(new ControlResponse
+            {
+                Ok = false,
+                Error = HeadlessControlActions.WindowManagementUnavailable,
+            })
+            : DeleteWindowAsync(windowId.ToString("D"), cancellationToken);
 
     public LiveWindowHost GetOpenWindow(Guid windowId)
     {
@@ -240,6 +272,10 @@ public sealed class LiveApplicationHost : IDisposable
         try
         {
             await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
+            EmitWindowLifecycleEvents(
+                windowId,
+                window.CaptureLifecycleSessions(),
+                ControlEventKind.SessionClosed);
             if (attachment is not null)
                 await attachment.ShutdownAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -277,6 +313,26 @@ public sealed class LiveApplicationHost : IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Cmd == Command.WindowList)
+            return await ListWindowsAsync(cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowNew && _windowController is not null)
+            return await NewWindowAsync(request.Args?.Name, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowSelect && _windowController is not null)
+            return await SelectWindowAsync(request.Target, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowClose && _windowController is not null)
+            return await CloseWindowCommandAsync(request.Target, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowRename && _windowController is not null)
+            return RenameWindow(request.Target, request.Args?.Name);
+        if (request.Cmd == Command.WindowDelete && _windowController is not null)
+            return await DeleteWindowAsync(request.Target, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowResize && _windowController is not null)
+            return await ResizeWindowAsync(request, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowMove && _windowController is not null)
+            return await MoveWindowAsync(request, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowZoom && _windowController is not null)
+            return await ToggleWindowZoomAsync(request.Target, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowFullscreen && _windowController is not null)
+            return await ToggleWindowFullscreenAsync(request.Target, cancellationToken).ConfigureAwait(false);
         if (IsWindowCommand(request.Cmd))
             return await DispatchActiveWindowAdapterAsync(request, cancellationToken).ConfigureAwait(false);
         if (IsAppGlobalMutation(request.Cmd))
@@ -423,6 +479,435 @@ public sealed class LiveApplicationHost : IDisposable
         return await window.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task<ControlResponse> NewWindowAsync(
+        string? requestedName,
+        CancellationToken cancellationToken)
+    {
+        Guid windowId;
+        LiveWindowHost window;
+        Guid? previousFrontmost;
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            previousFrontmost = _frontmostWindowId;
+            windowId = Guid.NewGuid();
+            var name = string.IsNullOrWhiteSpace(requestedName)
+                ? $"window {_windows.Count + 1}"
+                : requestedName.Trim();
+            var entry = new LiveWindowEntry(windowId, name, IsOpen: true);
+            _windows.Add(entry);
+            window = CreateWindowHost(
+                entry, _homeDirectory, seedIfEmpty: true, launchRestore: false);
+            _openWindows.Add(windowId, window);
+            _frontmostWindowId = windowId;
+            SaveIndexLocked();
+        }
+
+        try
+        {
+            await _windowController!.OpenWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await RollbackFailedOpenAsync(
+                windowId,
+                window,
+                removeEntry: true,
+                previousFrontmost).ConfigureAwait(false);
+            throw;
+        }
+        EmitWindowLifecycleEvents(
+            windowId,
+            window.CaptureLifecycleSessions(),
+            ControlEventKind.SessionCreated);
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult
+            {
+                Id = windowId.ToString("D").ToUpperInvariant(),
+            },
+        };
+    }
+
+    private async Task<ControlResponse> SelectWindowAsync(
+        string? target,
+        CancellationToken cancellationToken)
+    {
+        Guid windowId;
+        bool wasOpen;
+        Guid? previousFrontmost;
+        LiveWindowHost? reopenedWindow = null;
+        lock (_gate)
+        {
+            var resolution = ResolveWindowLocked(target);
+            if (resolution.Error is not null)
+                return resolution.Error;
+
+            var entry = resolution.Entry!;
+            windowId = entry.Id;
+            previousFrontmost = _frontmostWindowId;
+            wasOpen = _openWindows.ContainsKey(windowId);
+            if (!wasOpen)
+            {
+                SetOpen(windowId, isOpen: true);
+                reopenedWindow = CreateWindowHost(
+                    entry,
+                    _homeDirectory,
+                    seedIfEmpty: false,
+                    launchRestore: false);
+                _openWindows.Add(
+                    windowId,
+                    reopenedWindow);
+                SaveIndexLocked();
+            }
+        }
+
+        if (wasOpen)
+            await _windowController!.ActivateWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+        else
+        {
+            try
+            {
+                await _windowController!.OpenWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await RollbackFailedOpenAsync(
+                    windowId,
+                    reopenedWindow!,
+                    removeEntry: false,
+                    previousFrontmost).ConfigureAwait(false);
+                throw;
+            }
+            EmitWindowLifecycleEvents(
+                windowId,
+                reopenedWindow!.CaptureLifecycleSessions(),
+                ControlEventKind.SessionCreated);
+        }
+        return OkWindowId(windowId);
+    }
+
+    private async Task<ControlResponse> CloseWindowCommandAsync(
+        string? target,
+        CancellationToken cancellationToken)
+    {
+        Guid windowId;
+        bool isOpen;
+        lock (_gate)
+        {
+            var resolution = ResolveWindowLocked(target);
+            if (resolution.Error is not null)
+                return resolution.Error;
+            windowId = resolution.Entry!.Id;
+            isOpen = _openWindows.ContainsKey(windowId);
+        }
+
+        if (isOpen)
+            await _windowController!.CloseWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+        return OkWindowId(windowId);
+    }
+
+    private ControlResponse RenameWindow(string? target, string? requestedName)
+    {
+        var name = string.IsNullOrWhiteSpace(requestedName) ? null : requestedName.Trim();
+        if (name is null)
+        {
+            return new ControlResponse
+            {
+                Ok = false,
+                Error = "window.rename requires a name",
+            };
+        }
+
+        Guid windowId;
+        LiveWindowHost? openWindow;
+        lock (_gate)
+        {
+            var resolution = ResolveWindowLocked(target);
+            if (resolution.Error is not null)
+                return resolution.Error;
+
+            windowId = resolution.Entry!.Id;
+            var index = _windows.FindIndex(window => window.Id == windowId);
+            if (_windows[index].Name == name)
+                return OkWindowId(windowId);
+            _windows[index] = _windows[index] with { Name = name };
+            _openWindows.TryGetValue(windowId, out openWindow);
+            SaveIndexLocked();
+        }
+        openWindow?.Rename(name);
+        EmitTreeChanged(windowId);
+        return OkWindowId(windowId);
+    }
+
+    private async Task RollbackFailedOpenAsync(
+        Guid windowId,
+        LiveWindowHost window,
+        bool removeEntry,
+        Guid? previousFrontmost)
+    {
+        LiveControlHost? attachment;
+        window.StopDispatching();
+        lock (_gate)
+        {
+            _openWindows.Remove(windowId);
+            _attachments.Remove(windowId, out attachment);
+            _attachingWindows.Remove(windowId);
+            if (removeEntry)
+                _windows.RemoveAll(entry => entry.Id == windowId);
+            else
+                SetOpen(windowId, isOpen: false);
+            _frontmostWindowId = previousFrontmost is { } previous
+                && _openWindows.ContainsKey(previous)
+                    ? previous
+                    : ActiveWindowIdLocked();
+            SaveIndexLocked();
+        }
+
+        await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
+        if (attachment is not null)
+            await attachment.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
+        window.CancelPendingSave();
+        if (removeEntry)
+            File.Delete(WindowSnapshotPath(windowId));
+    }
+
+    private async Task<ControlResponse> DeleteWindowAsync(
+        string? target,
+        CancellationToken cancellationToken)
+    {
+        Guid windowId;
+        bool isOpen;
+        LiveWindowHost? loadedWindow;
+        lock (_gate)
+        {
+            var resolution = ResolveWindowLocked(target);
+            if (resolution.Error is not null)
+                return resolution.Error;
+            if (_windows.Count == 1)
+            {
+                return new ControlResponse
+                {
+                    Ok = false,
+                    Error = "cannot delete last window",
+                };
+            }
+            windowId = resolution.Entry!.Id;
+            isOpen = _openWindows.TryGetValue(windowId, out loadedWindow);
+        }
+        var sessionIds = loadedWindow?.CaptureSessionIds()
+            ?? LoadWindowSessionIds(windowId);
+
+        if (isOpen)
+        {
+            await _windowController!.CloseWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+            await CloseWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+        }
+        loadedWindow?.CancelPendingSave();
+
+        lock (_gate)
+        {
+            var index = _windows.FindIndex(window => window.Id == windowId);
+            if (index >= 0)
+                _windows.RemoveAt(index);
+            if (_frontmostWindowId == windowId)
+                _frontmostWindowId = ActiveWindowIdLocked();
+            SaveIndexLocked();
+        }
+
+        File.Delete(WindowSnapshotPath(windowId));
+        foreach (var sessionId in sessionIds)
+            WatermarkStorage.RemoveRenderedText(sessionId, _stateDirectory);
+        if (!isOpen)
+            EmitTreeChanged(windowId);
+        return OkWindowId(windowId);
+    }
+
+    private Guid[] LoadWindowSessionIds(Guid windowId) =>
+        new PersistenceStore(
+            Path.Combine(_stateDirectory, "windows"),
+            $"{windowId:D}.json")
+            .Load()
+            .Workspaces
+            .SelectMany(workspace => workspace.Sessions)
+            .Select(session => session.Id)
+            .ToArray();
+
+    private string WindowSnapshotPath(Guid windowId) =>
+        Path.Combine(_stateDirectory, "windows", $"{windowId:D}.json");
+
+    private void EmitWindowLifecycleEvents(
+        Guid windowId,
+        IReadOnlyList<LiveWindowSessionEvent> sessions,
+        ControlEventKind kind)
+    {
+        var window = windowId.ToString("D").ToUpperInvariant();
+        foreach (var session in sessions)
+        {
+            Ring.Append(new ControlEventDraft
+            {
+                Kind = kind,
+                Window = window,
+                Workspace = session.WorkspaceId.ToString("D").ToUpperInvariant(),
+                Session = session.SessionId.ToString("D").ToUpperInvariant(),
+                Payload = new ControlEventPayload { Name = session.Name },
+            });
+        }
+        Ring.Append(new ControlEventDraft
+        {
+            Kind = ControlEventKind.TreeChanged,
+            Window = window,
+        });
+    }
+
+    private void EmitTreeChanged(Guid windowId)
+    {
+        Ring.Append(new ControlEventDraft
+        {
+            Kind = ControlEventKind.TreeChanged,
+            Window = windowId.ToString("D").ToUpperInvariant(),
+        });
+    }
+
+    private async Task<ControlResponse> ResizeWindowAsync(
+        ControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Args?.Width is not { } width || request.Args?.Height is not { } height
+            || width <= 0 || height <= 0)
+        {
+            return new ControlResponse
+            {
+                Ok = false,
+                Error = "window.resize requires positive width and height",
+            };
+        }
+
+        var resolution = ResolveOpenWindow(request.Target);
+        if (resolution.Error is not null)
+            return resolution.Error;
+        await _windowController!.ResizeWindowAsync(
+            resolution.WindowId!.Value,
+            width,
+            height,
+            cancellationToken).ConfigureAwait(false);
+        return OkWindowId(resolution.WindowId.Value);
+    }
+
+    private async Task<ControlResponse> MoveWindowAsync(
+        ControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Args?.X is not { } x || request.Args?.Y is not { } y)
+        {
+            return new ControlResponse
+            {
+                Ok = false,
+                Error = "window.move requires x and y",
+            };
+        }
+
+        if (request.Args.Display is { } display)
+        {
+            var displayCount = await _windowController!.GetDisplayCountAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (display < 0 || display >= displayCount)
+            {
+                return new ControlResponse
+                {
+                    Ok = false,
+                    Error = $"display {display} out of range (have {displayCount})",
+                };
+            }
+        }
+
+        var resolution = ResolveOpenWindow(request.Target);
+        if (resolution.Error is not null)
+            return resolution.Error;
+        var windowId = resolution.WindowId!.Value;
+        var moved = await _windowController!.MoveWindowAsync(
+            windowId,
+            x,
+            y,
+            request.Args.Display,
+            cancellationToken).ConfigureAwait(false);
+        if (!moved.Applied)
+        {
+            return new ControlResponse
+            {
+                Ok = false,
+                Error = $"display {request.Args.Display} out of range (have {moved.DisplayCount})",
+            };
+        }
+        return OkWindowId(windowId);
+    }
+
+    private async Task<ControlResponse> ToggleWindowZoomAsync(
+        string? target,
+        CancellationToken cancellationToken)
+    {
+        var resolution = ResolveOpenWindow(target);
+        if (resolution.Error is not null)
+            return resolution.Error;
+        var windowId = resolution.WindowId!.Value;
+        await _windowController!.ToggleZoomAsync(windowId, cancellationToken).ConfigureAwait(false);
+        return OkWindowId(windowId);
+    }
+
+    private async Task<ControlResponse> ToggleWindowFullscreenAsync(
+        string? target,
+        CancellationToken cancellationToken)
+    {
+        var resolution = ResolveOpenWindow(target);
+        if (resolution.Error is not null)
+            return resolution.Error;
+        var windowId = resolution.WindowId!.Value;
+        await _windowController!.ToggleFullscreenAsync(windowId, cancellationToken).ConfigureAwait(false);
+        return OkWindowId(windowId);
+    }
+
+    private async Task<ControlResponse> ListWindowsAsync(CancellationToken cancellationToken)
+    {
+        LiveWindowEntry[] entries;
+        Dictionary<Guid, LiveWindowHost> openWindows;
+        Guid? activeWindowId;
+        lock (_gate)
+        {
+            entries = _windows.ToArray();
+            openWindows = new Dictionary<Guid, LiveWindowHost>(_openWindows);
+            activeWindowId = ActiveWindowIdLocked();
+        }
+
+        var windows = new List<ControlWindowNode>(entries.Length);
+        foreach (var entry in entries)
+        {
+            var isOpen = openWindows.TryGetValue(entry.Id, out var window);
+            var state = isOpen ? window!.CaptureWindowListState() : default;
+            var presentation = isOpen && _windowController is not null
+                ? await _windowController.CaptureWindowAsync(entry.Id, cancellationToken)
+                    .ConfigureAwait(false)
+                : null;
+            windows.Add(new ControlWindowNode
+            {
+                Id = entry.Id.ToString("D").ToUpperInvariant(),
+                Name = entry.Name,
+                Open = isOpen,
+                Active = isOpen && entry.Id == activeWindowId,
+                AutoFollowMs = isOpen ? state.AutoFollowMs : null,
+                SidebarVisible = isOpen ? state.SidebarVisible : null,
+                Geometry = presentation?.Geometry,
+                Fullscreen = presentation?.Fullscreen,
+                Zoomed = presentation?.Zoomed,
+            });
+        }
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult { Windows = windows.ToArray() },
+        };
+    }
+
     private async Task<ControlResponse?> DispatchActiveWindowAdapterAsync(
         ControlRequest request,
         CancellationToken cancellationToken)
@@ -445,6 +930,53 @@ public sealed class LiveApplicationHost : IDisposable
         }
         return await window.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
     }
+
+    private (LiveWindowEntry? Entry, ControlResponse? Error) ResolveWindowLocked(string? target)
+    {
+        var normalized = target is null ? "active" : target.Trim();
+        var resolution = ControlResolve.Resolve(
+            normalized,
+            _windows.Select(window => window.Id).ToArray(),
+            ActiveWindowIdLocked());
+        if (resolution.Kind != TargetResolution.Outcome.Resolved)
+        {
+            return (null, new ControlResponse
+            {
+                Ok = false,
+                Error = ControlResolve.ErrorMessage("window", normalized, resolution),
+            });
+        }
+        return (_windows.First(window => window.Id == resolution.Id), null);
+    }
+
+    private (Guid? WindowId, ControlResponse? Error) ResolveOpenWindow(string? target)
+    {
+        lock (_gate)
+        {
+            var resolution = ResolveWindowLocked(target);
+            if (resolution.Error is not null)
+                return (null, resolution.Error);
+            var windowId = resolution.Entry!.Id;
+            if (!_openWindows.ContainsKey(windowId))
+            {
+                return (null, new ControlResponse
+                {
+                    Ok = false,
+                    Error = "window not open — window.select it first",
+                });
+            }
+            return (windowId, null);
+        }
+    }
+
+    private static ControlResponse OkWindowId(Guid windowId) => new()
+    {
+        Ok = true,
+        Result = new ControlResult
+        {
+            Id = windowId.ToString("D").ToUpperInvariant(),
+        },
+    };
 
     private async Task<ControlResponse?> DispatchAppGlobalAsync(
         ControlRequest request,
@@ -588,14 +1120,16 @@ public sealed class LiveApplicationHost : IDisposable
     private LiveWindowHost CreateWindowHost(
         LiveWindowEntry entry,
         string homeDirectory,
-        bool seedIfEmpty) =>
+        bool seedIfEmpty,
+        bool launchRestore) =>
         new(
             entry.Id,
             entry.Name,
             _stateDirectory,
             homeDirectory,
             Ring,
-            seedIfEmpty);
+            seedIfEmpty,
+            launchRestore);
 
     private void SetOpen(Guid windowId, bool isOpen)
     {
@@ -635,7 +1169,8 @@ public sealed class LiveApplicationHost : IDisposable
             _windows.Add(entry);
             _openWindows.Add(
                 entry.Id,
-                CreateWindowHost(entry, homeDirectory, seedIfEmpty: false));
+                CreateWindowHost(
+                    entry, homeDirectory, seedIfEmpty: false, launchRestore: true));
         }
         FrontmostWindowId = _windows[0].Id;
         return true;
@@ -655,7 +1190,8 @@ public sealed class LiveApplicationHost : IDisposable
         _windows.Add(entry);
         _openWindows.Add(
             windowId,
-            CreateWindowHost(entry, homeDirectory, seedIfEmpty: false));
+            CreateWindowHost(
+                entry, homeDirectory, seedIfEmpty: false, launchRestore: true));
         FrontmostWindowId = windowId;
         return true;
     }
@@ -667,7 +1203,8 @@ public sealed class LiveApplicationHost : IDisposable
         _windows.Add(entry);
         _openWindows.Add(
             windowId,
-            CreateWindowHost(entry, homeDirectory, seedIfEmpty: true));
+            CreateWindowHost(
+                entry, homeDirectory, seedIfEmpty: true, launchRestore: false));
         FrontmostWindowId = windowId;
     }
 
