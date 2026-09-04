@@ -93,6 +93,20 @@ dotnet build src/AgTerm.App -p:Platform=x64           # direct project build —
                                                       # architecture" (AnyCPU default)
 ```
 
+**Publish (for daily use).** `tools\publish.ps1` puts the two exes you actually run into `out\`,
+single-file, with nothing else beside them:
+
+```powershell
+.\tools\publish.ps1                                   # x64 → out\AgTerm.App.exe + out\agtermctl.exe
+.\tools\publish.ps1 -Platform ARM64                   # same for ARM64
+.\tools\publish.ps1 -OutDir C:\tools\agterm           # somewhere on PATH
+.\tools\publish.ps1 -SelfContainedCli                 # agtermctl without needing the .NET 8 runtime
+```
+
+`AgTerm.App.exe` is ~162 MB: it is self-contained, so the Windows App SDK and the .NET runtime are
+inside it and no install is required. `agtermctl.exe` is ~1 MB and framework-dependent (needs .NET 8);
+`-SelfContainedCli` makes it standalone at ~65 MB. `out\` is gitignored.
+
 **Run (manual).** The exe lands at
 `src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe`.
 A bare launch uses the real state (`~\.agterm-win` — the home directory, not `%LOCALAPPDATA%`;
