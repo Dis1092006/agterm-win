@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using Xunit;
 
@@ -101,7 +102,28 @@ public class AgtermctlEndToEndTests : ControlApiTestCase
             dir = Path.GetDirectoryName(dir);
         }
         Assert.NotNull(dir);
-        return Path.Combine(dir!, "src", "AgTerm.Cli", "bin", "Debug", "net8.0", "agtermctl.exe");
+
+        // Look in the build output roots rather than pinning one layout: the SDK artifacts output
+        // layout (UseArtifactsOutput) puts the exe under artifacts\bin\AgTerm.Cli\<pivot>\, while a
+        // plain per-project build puts it under src\AgTerm.Cli\bin\<config>\<tfm>\.
+        //
+        // A cross-compiled exe must be skipped, not merely deprioritized: publishing for another
+        // architecture (an ARM64 publish on an x64 host) leaves an agtermctl.exe under these same
+        // roots, and starting it fails with "not a valid application for this OS platform". Any path
+        // naming a foreign architecture is therefore excluded, and the newest survivor wins.
+        var foreign = (RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "x64" : "arm64");
+        var roots = new[]
+        {
+            Path.Combine(dir!, "artifacts", "bin", "AgTerm.Cli"),
+            Path.Combine(dir!, "src", "AgTerm.Cli", "bin"),
+        };
+        var candidate = roots
+            .Where(Directory.Exists)
+            .SelectMany(root => Directory.EnumerateFiles(root, "agtermctl.exe", SearchOption.AllDirectories))
+            .Where(path => !path.Contains(foreign, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+        return candidate ?? Path.Combine(roots[0], "debug", "agtermctl.exe");
     }
 
     private static JsonObject FindSession(JsonObject treeResult, string id)

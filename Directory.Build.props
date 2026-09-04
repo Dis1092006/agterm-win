@@ -1,0 +1,10 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- SDK artifacts output layout (.NET 8+): every project's bin/obj/publish output is gathered
+         under artifacts\ instead of scattered per-project bin\ and obj\ directories.
+         https://learn.microsoft.com/dotnet/core/sdk/artifacts-output -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+  </PropertyGroup>
+
+</Project>

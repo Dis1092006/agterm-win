@@ -93,22 +93,28 @@ dotnet build src/AgTerm.App -p:Platform=x64           # direct project build —
                                                       # architecture" (AnyCPU default)
 ```
 
-**Publish (for daily use).** `tools\publish.ps1` puts the two exes you actually run into `out\`,
+Build output follows the SDK's [artifacts output layout](https://learn.microsoft.com/dotnet/core/sdk/artifacts-output)
+(`UseArtifactsOutput` in `Directory.Build.props`), so everything lands under `artifacts\` instead of a
+`bin\`/`obj\` pair per project: `artifacts\bin\<Project>\debug\`, `artifacts\obj\<Project>\`, and
+publish output under `artifacts\publish\`.
+
+**Publish (for daily use).** `publish.proj` puts the two exes you actually run into one directory,
 single-file, with nothing else beside them:
 
 ```powershell
-.\tools\publish.ps1                                   # x64 → out\AgTerm.App.exe + out\agtermctl.exe
-.\tools\publish.ps1 -Platform ARM64                   # same for ARM64
-.\tools\publish.ps1 -OutDir C:\tools\agterm           # somewhere on PATH
-.\tools\publish.ps1 -SelfContainedCli                 # agtermctl without needing the .NET 8 runtime
+dotnet build publish.proj                                  # x64 → artifacts\publish\agterm\release_x64\
+dotnet build publish.proj -p:RunnablePlatform=ARM64        # same for ARM64
+dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm # somewhere on PATH
+dotnet build publish.proj -p:SelfContainedCli=true         # agtermctl without needing the .NET 8 runtime
 ```
 
 `AgTerm.App.exe` is ~162 MB: it is self-contained, so the Windows App SDK and the .NET runtime are
 inside it and no install is required. `agtermctl.exe` is ~1 MB and framework-dependent (needs .NET 8);
-`-SelfContainedCli` makes it standalone at ~65 MB. `out\` is gitignored.
+`-p:SelfContainedCli=true` makes it standalone at ~65 MB.
 
-**Run (manual).** The exe lands at
-`src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe`.
+**Run (manual).** After `dotnet build`, the app exe lands at
+`artifacts\bin\AgTerm.App\debug\AgTerm.App.exe` and the CLI at
+`artifacts\bin\AgTerm.Cli\debug\agtermctl.exe`.
 A bare launch uses the real state (`~\.agterm-win` — the home directory, not `%LOCALAPPDATA%`;
 `docs/PLATFORM-NOTES.md` records why). For experiments, run an **isolated
 instance** — a separate state dir also derives a separate control pipe, so it never touches your
@@ -116,17 +122,17 @@ real workspaces:
 
 ```powershell
 $env:AGTERM_STATE_DIR = "$env:TEMP\agterm-dev"
-& ".\src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe"
+& ".\artifacts\bin\AgTerm.App\debug\AgTerm.App.exe"
 ```
 
 `agtermctl` finds the app only when both derive the same pipe: run it from a shell with the same
 `AGTERM_STATE_DIR` (or pass `--socket` explicitly). One app instance per state dir — the pipe is
-shared. The CLI exe: `src\AgTerm.Cli\bin\Debug\net8.0\agtermctl.exe`.
+shared.
 
 **Run (Rider).** Open `AgTerm.slnx` and pick the **`Debug | x64`** solution configuration (the same
 AnyCPU trap). Rider detects WinUI 3 as **UWP** and its auto-created UWP run configuration has no
 environment-variables support — don't use it. Instead add a **“.NET Executable”** configuration:
-exe path = `src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe`, Before launch =
+exe path = `artifacts\bin\AgTerm.App\debug\AgTerm.App.exe`, Before launch =
 Build Project `AgTerm.App` (with `Debug | x64` active). Keep two copies: `App (dev)` with
 `AGTERM_STATE_DIR=<explicit temp path>\agterm-dev` (Rider does not expand `%TEMP%`) and `App (real)`
 with none. C# debugging is ordinary .NET; the xterm.js side lives in WebView2 — inspect it with
