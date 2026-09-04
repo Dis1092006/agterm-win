@@ -48,7 +48,8 @@ public sealed class LiveWindowHost
             controlEventSink: draft =>
             {
                 if (!bootstrapping) ring.Append(draft with { Window = windowTag });
-            })
+            },
+            stateDirectory: stateDirectory)
         {
             PendingCloseFinalizationScheduler = action => RunLocked(action),
         };

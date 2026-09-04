@@ -22,7 +22,7 @@ public static class ControlPipeName
         if (getEnv("AGTERM_CONTROL_SOCKET") is { Length: > 0 } explicitName) return explicitName;
         var socketPath = ControlResolve.SocketPath(
             stateDir: getEnv("AGTERM_STATE_DIR"),
-            appSupport: PersistenceStore.DefaultDirectory);
+            appSupport: PersistenceStore.RealUserDirectory);
         return Derive(socketPath);
     }
 

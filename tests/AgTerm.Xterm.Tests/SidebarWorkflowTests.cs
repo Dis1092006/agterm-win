@@ -590,8 +590,9 @@ public sealed class SidebarWorkflowTests : IDisposable
     [Fact]
     public async Task Pending_close_grace_expiry_uses_the_injected_host_scheduler()
     {
-        var persistence = new PersistenceStore(Path.Combine(_stateDir, "scheduled"));
-        var store = new AppStore(persistence: persistence);
+        var scheduledDir = Path.Combine(_stateDir, "scheduled");
+        var persistence = new PersistenceStore(scheduledDir);
+        var store = new AppStore(persistence: persistence, stateDirectory: scheduledDir);
         var workspace = store.AddWorkspace("workspace");
         var session = store.AddSession(workspace.Id, _stateDir)!;
         var scheduled = new TaskCompletionSource<Action>(

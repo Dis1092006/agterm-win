@@ -7,8 +7,11 @@ internal static class AppStoreFixtures
 {
     /// <summary>A store backed by a throwaway temp directory so mutation-time saves never touch the
     /// real state path. PersistenceStore creates the directory lazily on first write.</summary>
-    public static AppStore MakeStore() =>
-        new(persistence: new PersistenceStore(TempDir()));
+    public static AppStore MakeStore()
+    {
+        var dir = TempDir();
+        return new(persistence: new PersistenceStore(dir), stateDirectory: dir);
+    }
 
     /// <summary>The same throwaway store, plus the Open Recent store it records closes into and the
     /// persistence it writes through, for the paths that read back what a close or a restore persisted.</summary>
@@ -18,7 +21,8 @@ internal static class AppStoreFixtures
         var dir = TempDir();
         var recentClosed = new RecentClosedStore(dir);
         var persistence = new PersistenceStore(dir);
-        return (new AppStore(persistence: persistence, recentClosedStore: recentClosed),
+        return (new AppStore(persistence: persistence, recentClosedStore: recentClosed,
+                stateDirectory: dir),
             recentClosed, persistence);
     }
 

@@ -19,7 +19,8 @@ public class AppStoreSidebarChangedTests : IDisposable
     public AppStoreSidebarChangedTests()
     {
         _store = new AppStore(persistence: new PersistenceStore(_dir),
-                              controlEventSink: _ring.Add);
+                              controlEventSink: _ring.Add,
+                              stateDirectory: _dir);
         _store.SidebarChanged += () => _raised++;
     }
 

@@ -9,7 +9,7 @@ public sealed class WindowPaletteProjectionTests
     [Fact]
     public void Sessions_uses_navigable_sessions_with_workspace_and_subtitle_context()
     {
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var visibleWorkspace = store.AddWorkspace("Visible");
         var hiddenWorkspace = store.AddWorkspace("Hidden");
         var visible = store.AddSession(visibleWorkspace.Id, @"C:\visible", select: false)!;
@@ -40,7 +40,7 @@ public sealed class WindowPaletteProjectionTests
     [Fact]
     public void Attention_uses_all_non_idle_sessions_and_preserves_attention_order_for_empty_query()
     {
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var firstWorkspace = store.AddWorkspace("One");
         var secondWorkspace = store.AddWorkspace("Two");
         var completed = store.AddSession(firstWorkspace.Id, @"C:\completed", select: false)!;
@@ -65,7 +65,8 @@ public sealed class WindowPaletteProjectionTests
     [Fact]
     public void Commands_filters_by_router_state_and_uses_dynamic_titles_and_live_shortcuts()
     {
-        var store = new AppStore { SidebarMode = SidebarMode.Flagged };
+        var store = TestStores.Scratch();
+        store.SidebarMode = SidebarMode.Flagged;
         var workspace = store.AddWorkspace("Work");
         var session = store.AddSession(workspace.Id, @"C:\work")!;
         session.Flagged = true;
@@ -97,7 +98,7 @@ public sealed class WindowPaletteProjectionTests
 
         var snapshot = WindowPaletteProjection.Create(
             WindowPaletteMode.CustomCommands,
-            new AppStore(),
+            TestStores.Scratch(),
             keymap,
             StateProvider());
 
@@ -113,7 +114,7 @@ public sealed class WindowPaletteProjectionTests
     {
         var snapshot = WindowPaletteProjection.Create(
             WindowPaletteMode.Themes,
-            new AppStore(),
+            TestStores.Scratch(),
             Keymap.Empty,
             StateProvider(),
             ThemeCatalog.Default,
@@ -136,7 +137,7 @@ public sealed class WindowPaletteProjectionTests
     {
         var first = new CustomCommand("First", "echo first", "", Guid.NewGuid());
         var second = new CustomCommand("Second", "echo second", "ctrl+s", Guid.NewGuid());
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var controller = new PaletteController();
         var firstSnapshot = WindowPaletteProjection.Create(
             WindowPaletteMode.CustomCommands,
@@ -164,7 +165,7 @@ public sealed class WindowPaletteProjectionTests
     [InlineData(WindowPaletteMode.Themes, "Select a theme…")]
     public void Mode_defines_the_expected_placeholder(WindowPaletteMode mode, string placeholder)
     {
-        var snapshot = WindowPaletteProjection.Create(mode, new AppStore(), Keymap.Empty, StateProvider());
+        var snapshot = WindowPaletteProjection.Create(mode, TestStores.Scratch(), Keymap.Empty, StateProvider());
 
         Assert.Equal(placeholder, snapshot.Placeholder);
     }
@@ -401,7 +402,7 @@ public sealed class WindowPaletteActionsTests
     [Fact]
     public void SelectSession_resolves_current_target_notes_activity_and_selects_across_focus()
     {
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var firstWorkspace = store.AddWorkspace("First");
         var secondWorkspace = store.AddWorkspace("Second");
         var first = store.AddSession(firstWorkspace.Id, @"C:\first")!;
@@ -418,7 +419,7 @@ public sealed class WindowPaletteActionsTests
     [Fact]
     public void SelectSession_noops_when_palette_target_was_deleted_while_open()
     {
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var workspace = store.AddWorkspace("Work");
         var current = store.AddSession(workspace.Id, @"C:\current")!;
         var staleId = Guid.NewGuid();
@@ -432,7 +433,7 @@ public sealed class WindowPaletteActionsTests
     [Fact]
     public void SelectSession_reports_no_selection_change_for_the_already_selected_target()
     {
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var workspace = store.AddWorkspace("Work");
         var current = store.AddSession(workspace.Id, @"C:\current")!;
 

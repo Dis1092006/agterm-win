@@ -136,7 +136,8 @@ public sealed class HeadlessHost : IDisposable
         _persistence = new PersistenceStore(options.StateDir);
         Store = new AppStore(
             persistence: _persistence,
-            controlEventSink: draft => Ring.Append(draft with { Window = windowTag }))
+            controlEventSink: draft => Ring.Append(draft with { Window = windowTag }),
+            stateDirectory: options.StateDir)
         {
             // installed before the bootstrap: the default first session is created SELECTED and
             // must realize like any control-driven show
@@ -169,7 +170,7 @@ public sealed class HeadlessHost : IDisposable
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.
         PipeName = options.PipeName
             ?? ControlPipeName.Derive(ControlResolve.SocketPath(options.StateDir,
-                PersistenceStore.DefaultDirectory));
+                PersistenceStore.RealUserDirectory));
         _server = options.DispatchScopeFactory is not { } dispatchScopeFactory
             ? new ControlPipeServer(PipeName, DispatchLocked, options.Log)
             : new ControlPipeServer(PipeName,

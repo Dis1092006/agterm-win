@@ -1489,7 +1489,7 @@ public sealed class HeadlessControlActions : IControlActions
             if (!store.SetBackgroundWatermark(watermark, id))
                 return OkId(id);
             // clearing drops any rendered .text PNG so the state dir doesn't accumulate.
-            if (watermark is null) WatermarkStorage.RemoveRenderedText(id);
+            if (watermark is null) WatermarkStorage.RemoveRenderedText(id, _store.StateDirectory);
             // upstream then applies the spec to the realized surfaces — no renderer headless.
             return OkId(id);
         });

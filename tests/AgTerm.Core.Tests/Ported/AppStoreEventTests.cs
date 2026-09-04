@@ -348,7 +348,8 @@ public class AppStoreEventTests : IDisposable
         var recentClosed = new RecentClosedStore(dir);
         var drafts = new List<ControlEventDraft>();
         var store = new AppStore(persistence: new PersistenceStore(dir),
-            recentClosedStore: recentClosed, controlEventSink: d => drafts.Add(d));
+            recentClosedStore: recentClosed, controlEventSink: d => drafts.Add(d),
+            stateDirectory: dir);
         var workspace = store.AddWorkspace("workspace 1");
         _ = store.AddSession(workspace.Id, "/work")!; // the library-bootstrap default session
         var session = store.AddSession(workspace.Id, "/tmp", name: "recent");
@@ -390,9 +391,11 @@ public class AppStoreEventTests : IDisposable
         MakeActiveStore()
     {
         var drafts = new List<ControlEventDraft>();
+        var dir = Path.Combine(Path.GetTempPath(), "agterm-tests-" + Guid.NewGuid());
         var store = new AppStore(
-            persistence: new PersistenceStore(Path.Combine(Path.GetTempPath(), "agterm-tests-" + Guid.NewGuid())),
-            controlEventSink: d => drafts.Add(d));
+            persistence: new PersistenceStore(dir),
+            controlEventSink: d => drafts.Add(d),
+            stateDirectory: dir);
         var workspace = store.AddWorkspace("workspace 1");
         var session = store.AddSession(workspace.Id, "/work")!;
         return (store, drafts, workspace, session);
@@ -404,9 +407,11 @@ public class AppStoreEventTests : IDisposable
     private (Guid WindowId, AppStore Store) MakeWindowStore(ControlEventRing ring)
     {
         var windowId = Guid.NewGuid();
+        var windowDir = Path.Combine(_directory, windowId.ToString("D"));
         var store = new AppStore(
-            persistence: new PersistenceStore(Path.Combine(_directory, windowId.ToString("D"))),
-            controlEventSink: d => ring.Append(d with { Window = Uuid(windowId) }));
+            persistence: new PersistenceStore(windowDir),
+            controlEventSink: d => ring.Append(d with { Window = Uuid(windowId) }),
+            stateDirectory: windowDir);
         var workspace = store.AddWorkspace("workspace 1");
         store.AddSession(workspace.Id, "/work");
         return (windowId, store);

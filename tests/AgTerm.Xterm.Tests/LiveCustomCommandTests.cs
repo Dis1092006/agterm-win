@@ -189,7 +189,7 @@ public sealed class CustomCommandInvocationTests
     [Fact]
     public void Hotkey_resolves_exact_split_surface_context_and_preserves_quoted_Windows_path()
     {
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var workspace = store.AddWorkspace("Workspace");
         var session = store.AddSession(workspace.Id, @"C:\work tree")!;
         session.CustomName = "Shell";
@@ -238,12 +238,12 @@ public sealed class CustomCommandInvocationTests
         var window = new CustomCommandWindowContext(Guid.NewGuid(), "main", "pipe", 3);
 
         Assert.Null(CustomCommandInvocationResolver.Resolve(
-            new AppStore(),
+            TestStores.Scratch(),
             keymap,
             new(command.Id, CustomCommandSource.Hotkey, HotkeyGeneration: 2),
             window));
         Assert.Null(CustomCommandInvocationResolver.Resolve(
-            new AppStore(),
+            TestStores.Scratch(),
             keymap,
             new(Guid.NewGuid(), CustomCommandSource.Hotkey, HotkeyGeneration: 3),
             window));
@@ -266,17 +266,17 @@ public sealed class CustomCommandInvocationTests
         var window = new CustomCommandWindowContext(Guid.NewGuid(), "main", "literal-pipe", 1);
 
         var allowed = CustomCommandInvocationResolver.Resolve(
-            new AppStore(),
+            TestStores.Scratch(),
             keymap,
             new(launcher.Id, CustomCommandSource.Hotkey, HotkeyGeneration: 1),
             window);
         var blocked = CustomCommandInvocationResolver.Resolve(
-            new AppStore(),
+            TestStores.Scratch(),
             keymap,
             new(dangerous.Id, CustomCommandSource.Hotkey, HotkeyGeneration: 1),
             window);
         var palette = CustomCommandInvocationResolver.Resolve(
-            new AppStore(),
+            TestStores.Scratch(),
             keymap,
             new(launcher.Id, CustomCommandSource.Palette),
             window);
@@ -291,7 +291,7 @@ public sealed class CustomCommandInvocationTests
     [Fact]
     public void Palette_and_hotkey_resolve_identical_active_pane_context()
     {
-        var store = new AppStore();
+        var store = TestStores.Scratch();
         var workspace = store.AddWorkspace("Work");
         var session = store.AddSession(workspace.Id, @"C:\work")!;
         session.Surface = new FakeSurface("main-pane", "selected");

@@ -174,15 +174,26 @@ public sealed partial class AppStore
                     PersistenceStore? persistence = null,
                     RecentClosedStore? recentClosedStore = null,
                     Action? recentClosedDidChange = null,
-                    Action<ControlEventDraft>? controlEventSink = null)
+                    Action<ControlEventDraft>? controlEventSink = null,
+                    string? stateDirectory = null)
     {
         Workspaces = workspaces ?? new List<Workspace>();
         SelectedSessionId = selectedSessionId;
         _persistence = persistence ?? new PersistenceStore();
+        _stateDirectory = stateDirectory;
         RecentClosedStore = recentClosedStore;
         RecentClosedDidChange = recentClosedDidChange;
         ControlEventSink = controlEventSink;
     }
+
+    /// <summary>The state dir this store's side files (rendered .text watermarks) live under. Null
+    /// falls back to the process default — the app passes its own root so a window never touches
+    /// another window's files.</summary>
+    private readonly string? _stateDirectory;
+
+    /// <summary>The state dir this store resolves its side files against, for hosts that write the
+    /// same files (the rendered .text PNG) and must land in the same place.</summary>
+    public string? StateDirectory => _stateDirectory;
 
     /// <summary>The currently selected session, derived from SelectedSessionId.</summary>
     public Session? ActiveSession =>
@@ -487,7 +498,7 @@ public sealed partial class AppStore
         removed.SplitSurface?.Teardown();
         removed.OverlaySurface?.Teardown();
         removed.ScratchSurface?.Teardown();
-        WatermarkStorage.RemoveRenderedText(sessionId); // drop any rendered .text PNG; the session is gone
+        WatermarkStorage.RemoveRenderedText(sessionId, _stateDirectory); // drop any rendered .text PNG; the session is gone
         SessionRecency.Remove(sessionId);
         if (wasActive)
         {
@@ -528,7 +539,7 @@ public sealed partial class AppStore
             session.SplitSurface?.Teardown();
             session.OverlaySurface?.Teardown();
             session.ScratchSurface?.Teardown();
-            WatermarkStorage.RemoveRenderedText(session.Id); // drop any rendered .text PNG; the session is gone
+            WatermarkStorage.RemoveRenderedText(session.Id, _stateDirectory); // drop any rendered .text PNG; the session is gone
             SessionRecency.Remove(session.Id);
         }
         if (FocusedWorkspaceId == workspaceId) FocusedWorkspaceId = null; // the focused root is gone
@@ -889,7 +900,7 @@ public sealed partial class AppStore
         // it id-keyed but unreferenced, so drop it here.
         if (previous?.Kind == WatermarkKind.Text && watermark?.Kind != WatermarkKind.Text)
         {
-            WatermarkStorage.RemoveRenderedText(forSession);
+            WatermarkStorage.RemoveRenderedText(forSession, _stateDirectory);
         }
         Save();
         return true;

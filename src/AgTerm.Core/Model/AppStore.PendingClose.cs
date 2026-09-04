@@ -474,7 +474,7 @@ public sealed partial class AppStore
             session.OverlaySurface?.Teardown();
             session.ScratchSurface?.Teardown();
         }
-        WatermarkStorage.RemoveRenderedText(session.Id);
+        WatermarkStorage.RemoveRenderedText(session.Id, _stateDirectory);
         RemoveFromRecency(session.Id);
     }
 
