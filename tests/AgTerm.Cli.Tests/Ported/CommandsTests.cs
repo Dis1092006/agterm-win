@@ -2394,9 +2394,10 @@ public class CommandsTests
     // MARK: - socket-path precedence
     //
     // ADAPT (see PLATFORM-NOTES): upstream resolves $HOME → "$HOME/Library/Application Support/
-    // agterm/agterm.sock" with a "/tmp/agterm/agterm.sock" no-HOME fallback; the Windows port
-    // resolves %LOCALAPPDATA% → "<LOCALAPPDATA>\agterm\agterm.sock" with a
-    // "<temp>\agterm\agterm.sock" fallback. --socket and AGTERM_STATE_DIR precedence is identical.
+    // agterm/agterm.sock" with a "/tmp/agterm/agterm.sock" no-HOME fallback; this port resolves
+    // the home dir → "<HOME>\.agterm-win\agterm.sock" with a
+    // "<temp>\.agterm-win\agterm.sock" fallback. --socket and AGTERM_STATE_DIR precedence
+    // is identical.
 
     [Fact]
     public void SocketPathExplicitFlagWins()
@@ -2405,7 +2406,7 @@ public class CommandsTests
         var env = new Dictionary<string, string?>
         {
             ["AGTERM_STATE_DIR"] = "/tmp/state",
-            ["LOCALAPPDATA"] = @"C:\Users\x\AppData\Local", // upstream: HOME=/Users/x
+            ["USERPROFILE"] = @"C:\Users\x", // upstream: HOME=/Users/x
         };
         Assert.Equal("/tmp/explicit.sock", command.Options.SocketPath(key => env.GetValueOrDefault(key)));
     }
@@ -2417,7 +2418,7 @@ public class CommandsTests
         var env = new Dictionary<string, string?>
         {
             ["AGTERM_STATE_DIR"] = "/tmp/state",
-            ["LOCALAPPDATA"] = @"C:\Users\x\AppData\Local", // upstream: HOME=/Users/x
+            ["USERPROFILE"] = @"C:\Users\x", // upstream: HOME=/Users/x
         };
         Assert.Equal(Path.Combine("/tmp/state", "agterm.sock"),
             command.Options.SocketPath(key => env.GetValueOrDefault(key)));
@@ -2427,20 +2428,20 @@ public class CommandsTests
     public void SocketPathFallsBackToHome()
     {
         // upstream: HOME → "$HOME/Library/Application Support/agterm/agterm.sock"; here the
-        // per-user app-data root is LOCALAPPDATA.
+        // per-user root is the home directory and the app dir is .agterm-win.
         var command = Agtermctl.ParseAsRoot(new[] { "tree" });
-        var local = @"C:\Users\x\AppData\Local";
-        var env = new Dictionary<string, string?> { ["LOCALAPPDATA"] = local };
-        Assert.Equal(Path.Combine(local, "agterm", "agterm.sock"),
+        var home = @"C:\Users\x";
+        var env = new Dictionary<string, string?> { ["USERPROFILE"] = home };
+        Assert.Equal(Path.Combine(home, ".agterm-win", "agterm.sock"),
             command.Options.SocketPath(key => env.GetValueOrDefault(key)));
     }
 
     [Fact]
     public void SocketPathFallsBackToTmpWithoutHome()
     {
-        // upstream: no HOME → "/tmp/agterm/agterm.sock"; here no LOCALAPPDATA → the temp dir.
+        // upstream: no HOME → "/tmp/agterm/agterm.sock"; here no home dir → the temp dir.
         var command = Agtermctl.ParseAsRoot(new[] { "tree" });
-        Assert.Equal(Path.Combine(Path.GetTempPath(), "agterm", "agterm.sock"),
+        Assert.Equal(Path.Combine(Path.GetTempPath(), ".agterm-win", "agterm.sock"),
             command.Options.SocketPath(_ => null));
     }
 

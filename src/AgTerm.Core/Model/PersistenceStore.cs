@@ -25,8 +25,10 @@ public sealed class PersistenceStore
         _fileName = fileName;
     }
 
-    /// <summary>%AGTERM_STATE_DIR% when set, else %LOCALAPPDATA%\agterm — the Windows analogue of
-    /// ~/Library/Application Support/agterm (spec §3).
+    /// <summary>%AGTERM_STATE_DIR% when set, else ~\.agterm-win — this port's own state dir
+    /// (see PLATFORM-NOTES; upstream uses ~/Library/Application Support/agterm, spec §3). The name
+    /// differs from upstream's so an agterm install on the same machine never shares state files or
+    /// a derived pipe name with this port.
     ///
     /// Under a test run the real user state dir is refused: a test that reaches the implicit default
     /// would overwrite the developer's own workspaces. Tests must name a directory explicitly (a temp
@@ -47,7 +49,18 @@ public sealed class PersistenceStore
     /// or write state.
     /// </summary>
     public static string RealUserDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "agterm");
+        Path.Combine(HomeDirectory, AppDirectoryName);
+
+    /// <summary>The state/config dir name, under the home directory. Distinct from upstream's
+    /// "agterm" so the two applications never collide.</summary>
+    public const string AppDirectoryName = ".agterm-win";
+
+    /// <summary>The user's home directory, falling back to the temp dir when it cannot be
+    /// resolved (the analogue of upstream's no-HOME → /tmp fallback).</summary>
+    private static string HomeDirectory =>
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) is { Length: > 0 } home
+            ? home
+            : Path.GetTempPath();
 
     /// <summary>True when a test host loaded this assembly. Detected from the loaded assemblies
     /// rather than an env var, so every test project is covered without per-project setup.</summary>

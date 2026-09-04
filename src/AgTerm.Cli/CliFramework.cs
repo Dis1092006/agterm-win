@@ -1,5 +1,6 @@
 using System.CommandLine;
 using AgTerm.ControlServer;
+using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 
 namespace AgTerm.Cli;
@@ -113,15 +114,17 @@ internal sealed class BasicOptions : IConnectionOptions
     public bool Json { get; init; }
 
     /// <summary>Resolve the socket path: explicit --socket, else the agtermCore rendezvous resolver.
-    /// Precedence: --socket → &lt;AGTERM_STATE_DIR&gt;\agterm.sock → %LOCALAPPDATA%\agterm\agterm.sock →
-    /// &lt;temp&gt;\agterm\agterm.sock (the Windows analogue of upstream's $HOME → /tmp fallback; see
-    /// PLATFORM-NOTES). env is injectable so the precedence is unit-testable.</summary>
+    /// Precedence: --socket → &lt;AGTERM_STATE_DIR&gt;\agterm.sock → %USERPROFILE%\.agterm-win\agterm.sock
+    /// → &lt;temp&gt;\.agterm-win\agterm.sock (the analogue of upstream's $HOME → /tmp fallback; see
+    /// PLATFORM-NOTES). Must stay in step with PersistenceStore.RealUserDirectory — the app and the
+    /// CLI only meet when both derive the same path. env is injectable so the precedence is
+    /// unit-testable.</summary>
     public string SocketPath(Func<string, string?> env)
     {
         if (Socket is not null) return Socket;
-        var appSupport = env("LOCALAPPDATA") is { Length: > 0 } local
-            ? Path.Combine(local, "agterm")
-            : Path.Combine(Path.GetTempPath(), "agterm");
+        var appSupport = env("USERPROFILE") is { Length: > 0 } home
+            ? Path.Combine(home, PersistenceStore.AppDirectoryName)
+            : Path.Combine(Path.GetTempPath(), PersistenceStore.AppDirectoryName);
         return ControlResolve.SocketPath(stateDir: env("AGTERM_STATE_DIR"), appSupport: appSupport);
     }
 
