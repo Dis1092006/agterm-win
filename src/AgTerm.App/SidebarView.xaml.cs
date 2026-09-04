@@ -233,6 +233,13 @@ public sealed partial class SidebarView : UserControl
             BeginRename(row);
     }
 
+    public void BeginRenameCurrentWorkspace()
+    {
+        var snapshot = _snapshot;
+        if (_items.FirstOrDefault(i => i.IsWorkspace && i.Id == snapshot?.CurrentWorkspaceId) is { } row)
+            BeginRename(row);
+    }
+
     private void BeginRename(SidebarRowViewModel row)
     {
         CancelRename();
@@ -436,7 +443,8 @@ public sealed partial class SidebarView : UserControl
         flyout.Items.Add(Item(focused ? "Unfocus" : "Focus",
             () => _controller?.FocusWorkspaceToggle(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
-        var delete = Item("Delete Workspace", () => _controller?.DeleteWorkspace(row.Id));
+        var delete = Item("Delete Workspace", () =>
+            _controller?.RequestDeleteWorkspace(row.Id, CurrentCloseOptions().GraceUndo));
         delete.IsEnabled = _snapshot?.CanRemoveWorkspace == true;
         flyout.Items.Add(delete);
         return flyout;

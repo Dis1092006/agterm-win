@@ -60,9 +60,10 @@ dotnet test AgTerm.slnx                          # WinUI app builds separately:
 dotnet build src/AgTerm.App -p:Platform=x64
 ```
 
-Phases 1–4 done: Core, control plane (pipe + agtermctl), real terminal (ConPTY + WinUI 3 +
-WebView2/xterm.js, live control server, persistence across restarts), two-level sidebar +
-multi-session window (ONE WebView2 per window, pane-id bridge v2, eager deck, SidebarController
-over the same store seam as the socket, keymap-driven hotkeys with the documented cmd→Ctrl
-mapping). Phase 5 next: palettes, live split/scratch/overlay rendering, dashboard/zoom, quick
-terminal UI, custom-command chords.
+Phases 1–5 are complete: Core, control plane (pipe + agtermctl), real terminal (ConPTY + WinUI 3 +
+WebView2/xterm.js), persistence, orchestration, the Windows shell, split/scratch/overlay/quick
+surfaces, search, palettes, custom-command chords, dashboard/zoom, themes, notifications,
+multi-window control, Explorer drop, confirmation/undo/recent workflows, and failure InfoBars.
+Each window owns one WebView2 page, while one application pipe routes all windows. All 41 builtin
+actions have explicit live handlers. The automated matrix and x64/ARM64 manual release checklist
+pass. Complete R1–R5 before any Phase 6 production change.

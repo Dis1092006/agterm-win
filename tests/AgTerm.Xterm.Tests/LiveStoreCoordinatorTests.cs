@@ -418,9 +418,13 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
     {
         using var coordinator = BuildCoordinator();
         var received = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
-        coordinator.SelectionSnapshotChanged += snap => received.TrySetResult(snap);
-
         Guid newId = default;
+        coordinator.SelectionSnapshotChanged += snap =>
+        {
+            if (snap.SessionId == newId)
+                received.TrySetResult(snap);
+        };
+
         string workspaceName = "";
         _host.RunLocked(() =>
         {

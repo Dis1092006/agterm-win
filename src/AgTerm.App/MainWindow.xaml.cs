@@ -604,6 +604,20 @@ public sealed partial class MainWindow : Window
                 async () => EnsureWindowCommandSucceeded(
                     await _applicationHost.DeleteWindowAsync(_windowId))),
             [BuiltinAction.NewWorkspace] = Sync(() => true, () => sidebar.NewWorkspace()),
+            [BuiltinAction.RenameWorkspace] = Sync(
+                () => _latestSidebarSnapshot is { Mode: SidebarMode.Tree, CurrentWorkspaceId: not null },
+                Sidebar.BeginRenameCurrentWorkspace),
+            [BuiltinAction.DeleteWorkspace] = Async(
+                () => _latestSidebarSnapshot is { CanRemoveWorkspace: true, CurrentWorkspaceId: not null },
+                async () =>
+                {
+                    var currentWorkspaceId = _latestSidebarSnapshot?.CurrentWorkspaceId;
+                    if (currentWorkspaceId is null)
+                        return;
+
+                    await sidebar.DeleteWorkspaceAsync(
+                        currentWorkspaceId.Value, CurrentSidebarCloseOptions().GraceUndo);
+                }),
             [BuiltinAction.NewSession] = Sync(() => true, () => sidebar.NewSessionInActiveWorkspace()),
             [BuiltinAction.OpenDirectory] = Async(() => true, OpenDirectoryIntoActiveAsync),
             [BuiltinAction.RenameSession] = Sync(HasSelectedSession, Sidebar.BeginRenameSelected),
@@ -1163,53 +1177,35 @@ public sealed partial class MainWindow : Window
             await FinishPaletteCloseAsync(restoreFocus: false);
         });
 
-        switch (mode)
-        {
-            case WindowPaletteMode.Sessions:
-            case WindowPaletteMode.Attention:
-                if (WindowPaletteProjection.ParseSessionId(item.Id) is { } sessionId &&
-                    _host is { } sessionHost)
-                {
-                    var selectionChanged = false;
-                    await sessionHost.StoreCoordinator.MutateAsync(store =>
-                        selectionChanged = WindowPaletteActions.SelectSession(store, sessionId));
-                    if (!selectionChanged)
-                        FocusActiveTerminal();
-                }
-                else
-                    FocusActiveTerminal();
-                break;
-            case WindowPaletteMode.Commands:
-                if (WindowPaletteProjection.ParseAction(item.Id) is { } action &&
-                    _commandRouter is { } router)
-                {
-                    var executed = await router.ExecuteAsync(action);
-                    if (!executed || WindowPaletteActions.ShouldRestoreTerminalFocus(action))
-                        FocusActiveTerminal();
-                }
-                else
-                    FocusActiveTerminal();
-                break;
-            case WindowPaletteMode.CustomCommands:
-                if (WindowPaletteProjection.ParseCustomCommandId(item.Id) is { } commandId)
-                {
-                    await ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(
-                        commandId,
-                        CustomCommandSource.Palette));
-                }
-                FocusActiveTerminal();
-                break;
-            case WindowPaletteMode.Themes:
-                if (WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName))
-                {
-                    await _applicationHost.SetThemeAsync(new ControlArgs { Name = themeName });
-                }
-                FocusActiveTerminal();
-                break;
-            default:
-                FocusActiveTerminal();
-                break;
-        }
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            mode ?? (WindowPaletteMode)(-1),
+            item,
+            async (sessionId, cancellationToken) =>
+            {
+                if (_host is not { } sessionHost)
+                    return false;
+
+                var selectionChanged = false;
+                await sessionHost.StoreCoordinator.MutateAsync(
+                    store => selectionChanged = WindowPaletteActions.SelectSession(store, sessionId),
+                    cancellationToken);
+                return selectionChanged;
+            },
+            (action, _) => _commandRouter is { } router
+                ? router.ExecuteAsync(action)
+                : Task.FromResult(false),
+            (commandId, cancellationToken) => ExecuteCustomCommandAsync(
+                new CustomCommandExecutionRequest(commandId, CustomCommandSource.Palette),
+                cancellationToken),
+            async (themeName, cancellationToken) =>
+            {
+                await _applicationHost.SetThemeAsync(
+                    new ControlArgs { Name = themeName },
+                    cancellationToken);
+            });
+
+        if (result.RestoreTerminalFocus)
+            FocusActiveTerminal();
     }
 
     private async Task ExecuteCustomCommandAsync(
@@ -1246,7 +1242,11 @@ public sealed partial class MainWindow : Window
                 window),
             cancellationToken);
         if (invocation is not null)
-            await _customCommandRunner.StartAsync(invocation, cancellationToken);
+        {
+            var customCommandProcess = await _customCommandRunner.StartAsync(invocation, cancellationToken);
+            ObserveTaskFault(customCommandProcess.Exited,
+                $"Custom command '{invocation.Name}' exit wait failed");
+        }
     }
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session

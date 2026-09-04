@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Collections.ObjectModel;
 using AgTerm.Core.Model;
@@ -231,6 +232,54 @@ public sealed class SidebarController : IDisposable
         if (store.CanRemoveWorkspace) store.RemoveWorkspace(workspaceId);
     });
 
+    public async Task DeleteWorkspaceAsync(
+        Guid workspaceId,
+        bool graceUndo,
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = await _coordinator.ReadAsync(store =>
+        {
+            if (!store.CanRemoveWorkspace) return null;
+
+            var target = store.Workspaces.FirstOrDefault(candidate => candidate.Id == workspaceId);
+            return target is null
+                ? null
+                : new WorkspaceDeleteSnapshot(
+                    target.Id,
+                    target.Name,
+                    target.Sessions.Select(session => session.Id).ToFrozenSet());
+        }, cancellationToken);
+        if (workspace is null) return;
+
+        if (workspace.SessionIds.Count > 0)
+        {
+            var request = DeleteWorkspaceConfirmation(workspace, graceUndo);
+            if (!await _confirm(request)) return;
+        }
+
+        await _coordinator.MutateAsync(store =>
+        {
+            var currentWorkspace = store.Workspaces.FirstOrDefault(candidate => candidate.Id == workspace.Id);
+            if (!store.CanRemoveWorkspace ||
+                currentWorkspace is null ||
+                !workspace.SessionIds.SetEquals(
+                    currentWorkspace.Sessions.Select(session => session.Id)))
+            {
+                return;
+            }
+
+            if (graceUndo)
+                store.SoftRemoveWorkspace(workspace.Id);
+            else
+                store.RemoveWorkspace(workspace.Id);
+        }, cancellationToken);
+    }
+
+    public void RequestDeleteWorkspace(Guid workspaceId, bool graceUndo) =>
+        FireAndForget(
+            () => DeleteWorkspaceAsync(workspaceId, graceUndo),
+            "SidebarController delete workspace failed");
+
     public void NewWorkspace() => Mutate(store => store.AddWorkspace(store.DefaultWorkspaceName));
 
     public void NewWorkspace(string name) => Mutate(store => store.AddWorkspace(name));
@@ -352,7 +401,29 @@ public sealed class SidebarController : IDisposable
             "Close");
     }
 
+    private static SidebarConfirmationRequest DeleteWorkspaceConfirmation(
+        WorkspaceDeleteSnapshot workspace, bool graceUndo)
+    {
+        var message = workspace.SessionIds.Count == 1
+            ? graceUndo
+                ? "This closes its session after a short undo window."
+                : "This closes its session immediately. You can reopen it from File > Open Recent."
+            : graceUndo
+                ? $"This closes {workspace.SessionIds.Count} sessions after a short undo window."
+                : $"This closes {workspace.SessionIds.Count} sessions immediately. You can reopen it from File > Open Recent.";
+        return new SidebarConfirmationRequest(
+            SidebarConfirmationKind.DeleteWorkspace,
+            $"Delete “{workspace.Name}”?",
+            message,
+            "Delete");
+    }
+
     private sealed record SessionCloseSnapshot(Guid Id, string DisplayName);
+
+    private sealed record WorkspaceDeleteSnapshot(
+        Guid Id,
+        string Name,
+        FrozenSet<Guid> SessionIds);
 
     private void Mutate(Action<AppStore> action) =>
         FireAndForget(

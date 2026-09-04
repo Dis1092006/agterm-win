@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using AgTerm.App;
 using AgTerm.ControlServer;
 using AgTerm.Core.Keymap;
@@ -370,7 +369,7 @@ public sealed class CustomCommandInvocationTests
             var invocation = new CustomCommandInvocation(
                 Guid.NewGuid(),
                 "Write marker",
-                $"echo %AGT_SOCKET%> \"{marker}\"",
+                $"echo %AGT_SOCKET%> \"{marker}\" & ping 127.0.0.1 -n 3 > nul",
                 directory.FullName,
                 new Dictionary<string, string> { ["AGT_SOCKET"] = "pipe-value" });
             var runner = new CustomCommandProcessRunner(
@@ -379,12 +378,14 @@ public sealed class CustomCommandInvocationTests
                     ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe"
                     : null);
 
-            await runner.StartAsync(invocation);
+            var handle = await runner.StartAsync(invocation);
+            Assert.True(handle.ProcessId > 0);
 
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
             while (!File.Exists(marker) && DateTime.UtcNow < deadline)
                 await Task.Delay(25);
             Assert.True(File.Exists(marker));
+            await handle.Exited.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal("pipe-value", File.ReadAllText(marker).Trim());
         }
         finally
@@ -431,9 +432,11 @@ public sealed class MainWindowCustomCommandWiringTests
         Assert.Contains("ExecuteCustomCommandAsync", source, StringComparison.Ordinal);
         Assert.Contains("CustomCommandSource.Hotkey", source, StringComparison.Ordinal);
         Assert.Contains("CustomCommandSource.Palette", source, StringComparison.Ordinal);
-        Assert.Contains("WindowPaletteProjection.ParseCustomCommandId", source, StringComparison.Ordinal);
+        Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);
         Assert.Contains("CustomCommandInvocationResolver.Resolve", source, StringComparison.Ordinal);
-        Assert.Contains("_customCommandRunner.StartAsync", source, StringComparison.Ordinal);
+        Assert.Contains("var customCommandProcess = await _customCommandRunner.StartAsync", source,
+            StringComparison.Ordinal);
+        Assert.Contains("ObserveTaskFault(customCommandProcess.Exited,", source, StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()

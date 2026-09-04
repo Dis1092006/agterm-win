@@ -5,8 +5,11 @@ A Windows-native companion to [umputun/agterm](https://github.com/umputun/agterm
 CLI on System.CommandLine). Rendering/chrome are re-implemented natively; the drivable surface stays in
 **strict API parity** so existing agterm scripts and the bundled agent-skill work here unchanged.
 
+**Status:** Phases 1-5 are complete. The Core model, control plane, live ConPTY/WebView2 renderer,
+Windows shell, Phase 5 workflows, and x64/ARM64 release gates are implemented and validated.
+
 > This is an independent product inspired by agterm, **not** a fork of its macOS code. agterm is
-> deliberately a native macOS app; this reuses its *design + wire contract*, not its Swift/SwiftUI/libghostty.
+> deliberately a native macOS app; this reuses its _design + wire contract_, not its Swift/SwiftUI/libghostty.
 
 ## Parity policy (strict)
 
@@ -51,7 +54,7 @@ python tools/extract_surface.py --agterm C:\git\github\umputun\agterm --out pari
 1. **Surface diff** — re-extract on a new agterm pin and diff against the committed `parity/surface.json`.
    Any new command/arg/action/field is a parity task (implement) or an explicit skip. **Blocking.**
 2. **Golden wire tests** — request→response fixtures (snapshot them from a live agterm via `agtermctl`),
-   asserted field-for-field. Catches *semantics* the name-level diff can't see.
+   asserted field-for-field. Catches _semantics_ the name-level diff can't see.
 3. **CLI snapshot tests** — `agtermctl <cmd>` human and `--json` output vs recorded baselines.
 
 Bump the parity version in this README when you re-pin: **current parity target — agterm
@@ -120,28 +123,28 @@ Keymap modifiers map as `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→
 mapping to the platform; rationale and the candidate-priority rule are in
 `docs/PLATFORM-NOTES.md`). Default chords, pinned to upstream and translated:
 
-| Action | macOS default | Windows | Action | macOS default | Windows |
-|---|---|---|---|---|---|
-| `new_window` | ⌘⌥N | Ctrl+Alt+N | `toggle_split` | ⌘D | Ctrl+D |
-| `new_workspace` | ⌘⇧N | Ctrl+Shift+N | `toggle_scratch` | ⌘J | Ctrl+J |
-| `new_session` | ⌘N | Ctrl+N | `toggle_terminal_zoom` | ⌘⇧↩ | Ctrl+Shift+Enter |
-| `open_directory` | ⌘O | Ctrl+O | `toggle_search` | ⌘F | Ctrl+F |
-| `close_session` | ⌘W | Ctrl+W | `toggle_sidebar` | ⌃⌘S | Ctrl+S |
-| `reopen_recent` | ⌘⇧T | Ctrl+Shift+T | `toggle_fullscreen` | ⌃⌘F | *(shadowed — remap)* |
-| `undo_close` | ⌘Z | Ctrl+Z | `toggle_flag` | ⌘⇧F | Ctrl+Shift+F |
-| `increase_font_size` | ⌘+ | Ctrl+Plus | `focus_left_pane` | ⌘⌥← | Ctrl+Alt+← |
-| `decrease_font_size` | ⌘- | Ctrl+Minus | `focus_right_pane` | ⌘⌥→ | Ctrl+Alt+→ |
-| `reset_font_size` | ⌘0 | Ctrl+0 | `previous_session` | ⌘⌥↑ | Ctrl+Alt+↑ |
-| `quick_terminal` | ⌃\` | Ctrl+\` | `next_session` | ⌘⌥↓ | Ctrl+Alt+↓ |
-| `session_palette` | ⌃P | Ctrl+P | `previous_attention_session` | ⌃⌥↑ | *(shadowed — remap)* |
-| `command_palette` | ⌃⇧P | Ctrl+Shift+P | `next_attention_session` | ⌃⌥↓ | *(shadowed — remap)* |
-| `custom_command_palette` | ⌃⇧O | Ctrl+Shift+O | `dashboard` | ⌘⇧D | Ctrl+Shift+D |
-| `show_attention` | ⌃⇧I | Ctrl+Shift+I | | | |
+| Action                   | macOS default | Windows      | Action                       | macOS default | Windows              |
+| ------------------------ | ------------- | ------------ | ---------------------------- | ------------- | -------------------- |
+| `new_window`             | ⌘⌥N           | Ctrl+Alt+N   | `toggle_split`               | ⌘D            | Ctrl+D               |
+| `new_workspace`          | ⌘⇧N           | Ctrl+Shift+N | `toggle_scratch`             | ⌘J            | Ctrl+J               |
+| `new_session`            | ⌘N            | Ctrl+N       | `toggle_terminal_zoom`       | ⌘⇧↩           | Ctrl+Shift+Enter     |
+| `open_directory`         | ⌘O            | Ctrl+O       | `toggle_search`              | ⌘F            | Ctrl+F               |
+| `close_session`          | ⌘W            | Ctrl+W       | `toggle_sidebar`             | ⌃⌘S           | Ctrl+S               |
+| `reopen_recent`          | ⌘⇧T           | Ctrl+Shift+T | `toggle_fullscreen`          | ⌃⌘F           | _(shadowed — remap)_ |
+| `undo_close`             | ⌘Z            | Ctrl+Z       | `toggle_flag`                | ⌘⇧F           | Ctrl+Shift+F         |
+| `increase_font_size`     | ⌘+            | Ctrl+Plus    | `focus_left_pane`            | ⌘⌥←           | Ctrl+Alt+←           |
+| `decrease_font_size`     | ⌘-            | Ctrl+Minus   | `focus_right_pane`           | ⌘⌥→           | Ctrl+Alt+→           |
+| `reset_font_size`        | ⌘0            | Ctrl+0       | `previous_session`           | ⌘⌥↑           | Ctrl+Alt+↑           |
+| `quick_terminal`         | ⌃\`           | Ctrl+\`      | `next_session`               | ⌘⌥↓           | Ctrl+Alt+↓           |
+| `session_palette`        | ⌃P            | Ctrl+P       | `previous_attention_session` | ⌃⌥↑           | _(shadowed — remap)_ |
+| `command_palette`        | ⌃⇧P           | Ctrl+Shift+P | `next_attention_session`     | ⌃⌥↓           | _(shadowed — remap)_ |
+| `custom_command_palette` | ⌃⇧O           | Ctrl+Shift+O | `dashboard`                  | ⌘⇧D           | Ctrl+Shift+D         |
+| `show_attention`         | ⌃⇧I           | Ctrl+Shift+I |                              |               |                      |
 
 Keyless actions (`rename_*`, `delete_*`, `duplicate_session`, `clear_status`, `select_theme`,
 `toggle_flagged_view`, `focus_workspace`, `first_session`, `last_session`) bind via `map` in
-`keymap.conf`. *Shadowed*: `cmd` and `ctrl` fold onto the same physical key, and the cmd
+`keymap.conf`. _Shadowed_: `cmd` and `ctrl` fold onto the same physical key, and the cmd
 interpretation wins — `⌃⌘F` loses to `⌘F`, `⌃⌥↑↓` lose to `⌘⌥↑↓`; `map` them to free chords
 (e.g. `map ctrl+shift+down next_attention_session`). F2 additionally renames the selected
 sidebar row (a UI gesture, not a keymap bind). Palettes/split/scratch/zoom/fullscreen/quick/
-dashboard hotkeys dispatch from phase 5.
+dashboard hotkeys are implemented in the live app.

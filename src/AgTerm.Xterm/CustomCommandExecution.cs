@@ -132,6 +132,31 @@ public static class CustomCommandInvocationResolver
     private static string Upper(Guid value) => value.ToString("D").ToUpperInvariant();
 }
 
+public sealed class CustomCommandProcessHandle
+{
+    public CustomCommandProcessHandle(Process process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ProcessId = process.Id;
+        Exited = WaitForExitAndDisposeAsync(process);
+    }
+
+    public int ProcessId { get; }
+    public Task Exited { get; }
+
+    private static async Task WaitForExitAndDisposeAsync(Process process)
+    {
+        try
+        {
+            await process.WaitForExitAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            process.Dispose();
+        }
+    }
+}
+
 public sealed class CustomCommandProcessRunner
 {
     private readonly Func<string, string?>? _which;
@@ -145,15 +170,16 @@ public sealed class CustomCommandProcessRunner
         _env = env;
     }
 
-    public Task StartAsync(
+    public Task<CustomCommandProcessHandle> StartAsync(
         CustomCommandInvocation invocation,
         CancellationToken cancellationToken = default) =>
         Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using var process = Process.Start(CreateStartInfo(invocation, _which, _env));
+            var process = Process.Start(CreateStartInfo(invocation, _which, _env));
             if (process is null)
                 throw new InvalidOperationException($"Failed to start custom command '{invocation.Name}'.");
+            return new CustomCommandProcessHandle(process);
         }, cancellationToken);
 
     public static ProcessStartInfo CreateStartInfo(

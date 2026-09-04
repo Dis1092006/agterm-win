@@ -5,6 +5,7 @@ public enum SidebarConfirmationKind
     CloseSession,
     CloseSessions,
     ClearFlagged,
+    DeleteWorkspace,
 }
 
 public sealed record SidebarConfirmationRequest(

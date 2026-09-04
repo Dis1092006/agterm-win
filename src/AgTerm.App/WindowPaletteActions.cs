@@ -4,6 +4,50 @@ using AgTerm.Xterm;
 
 namespace AgTerm.App;
 
+public sealed record WindowPaletteAcceptanceResult(bool RestoreTerminalFocus);
+
+public static class WindowPaletteAcceptance
+{
+    public static async Task<WindowPaletteAcceptanceResult> AcceptAsync(
+        WindowPaletteMode mode,
+        PaletteItemViewModel item,
+        Func<Guid, CancellationToken, Task<bool>> selectSessionAsync,
+        Func<BuiltinAction, CancellationToken, Task<bool>> executeActionAsync,
+        Func<Guid, CancellationToken, Task> executeCustomCommandAsync,
+        Func<string?, CancellationToken, Task> setThemeAsync,
+        CancellationToken cancellationToken = default)
+    {
+        switch (mode)
+        {
+            case WindowPaletteMode.Sessions:
+            case WindowPaletteMode.Attention:
+                if (WindowPaletteProjection.ParseSessionId(item.Id) is { } sessionId)
+                {
+                    var selectionChanged = await selectSessionAsync(sessionId, cancellationToken);
+                    return new(!selectionChanged);
+                }
+                break;
+            case WindowPaletteMode.Commands:
+                if (WindowPaletteProjection.ParseAction(item.Id) is { } action)
+                {
+                    var executed = await executeActionAsync(action, cancellationToken);
+                    return new(!executed || WindowPaletteActions.ShouldRestoreTerminalFocus(action));
+                }
+                break;
+            case WindowPaletteMode.CustomCommands:
+                if (WindowPaletteProjection.ParseCustomCommandId(item.Id) is { } commandId)
+                    await executeCustomCommandAsync(commandId, cancellationToken);
+                break;
+            case WindowPaletteMode.Themes:
+                if (WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName))
+                    await setThemeAsync(themeName, cancellationToken);
+                break;
+        }
+
+        return new(true);
+    }
+}
+
 public static class WindowPaletteActions
 {
     public static bool SelectSession(AppStore store, Guid sessionId)
@@ -20,6 +64,7 @@ public static class WindowPaletteActions
 
     public static bool ShouldRestoreTerminalFocus(BuiltinAction action) => action is not (
         BuiltinAction.RenameSession or
+        BuiltinAction.RenameWorkspace or
         BuiltinAction.ToggleSearch or
         BuiltinAction.ShowAttention or
         BuiltinAction.FocusLeftPane or

@@ -5,13 +5,15 @@ namespace AgTerm.Xterm.Tests;
 
 public class WindowCommandRouterTests
 {
-    // Actions implemented in the current MainWindow.HandleChord switch (phase 4.5C).
+    // Actions implemented in the final phase 5 MainWindow handler map.
     private static readonly HashSet<BuiltinAction> ImplementedActions =
     [
         BuiltinAction.NewWindow,
         BuiltinAction.RenameWindow,
         BuiltinAction.DeleteWindow,
         BuiltinAction.NewWorkspace,
+        BuiltinAction.RenameWorkspace,
+        BuiltinAction.DeleteWorkspace,
         BuiltinAction.NewSession,
         BuiltinAction.OpenDirectory,
         BuiltinAction.RenameSession,
@@ -49,13 +51,6 @@ public class WindowCommandRouterTests
         BuiltinAction.LastSession,
     ];
 
-    // Actions not yet implemented; arrive in phase 5.
-    private static readonly HashSet<BuiltinAction> UnimplementedActions =
-    [
-        BuiltinAction.RenameWorkspace,
-        BuiltinAction.DeleteWorkspace,
-    ];
-
     [Fact]
     public void ActionImplementations_covers_all_builtin_actions_with_correct_implemented_state()
     {
@@ -65,7 +60,7 @@ public class WindowCommandRouterTests
         Assert.Equal(41, all.Distinct().Count());
 
         // --- test data covers exactly those 41 members ---
-        var expected = ImplementedActions.Union(UnimplementedActions).ToHashSet();
+        var expected = ImplementedActions.ToHashSet();
         Assert.Equal(41, expected.Count);
         Assert.Equal(expected, all.ToHashSet());
 
@@ -113,10 +108,10 @@ public class WindowCommandRouterTests
         ImplementedActions.Select(a => new object[] { a });
 
     [Fact]
-    public void Constructor_throws_ArgumentException_when_unimplemented_action_handler_is_present()
+    public void Constructor_throws_ArgumentException_when_unknown_action_handler_is_present()
     {
         var handlers = AllNoOpHandlers();
-        handlers[BuiltinAction.RenameWorkspace] = new WindowCommandHandler(() => true, () => Task.CompletedTask);
+        handlers[(BuiltinAction)999] = new WindowCommandHandler(() => true, () => Task.CompletedTask);
         Assert.Throws<ArgumentException>(() => new WindowCommandRouter(handlers));
     }
 
@@ -150,10 +145,10 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public void GetState_returns_Implemented_false_for_unimplemented_action()
+    public void GetState_returns_Implemented_false_for_unknown_action()
     {
         var router = new WindowCommandRouter(AllNoOpHandlers());
-        var state = router.GetState(BuiltinAction.RenameWorkspace);
+        var state = router.GetState((BuiltinAction)999);
         Assert.False(state.Implemented);
         Assert.False(state.CanExecute);
     }
@@ -174,14 +169,6 @@ public class WindowCommandRouterTests
             replace: BuiltinAction.NewWorkspace,
             replacement: new WindowCommandHandler(() => false, () => Task.CompletedTask)));
         Assert.False(router.CanExecute(BuiltinAction.NewWorkspace));
-    }
-
-    [Theory]
-    [InlineData(BuiltinAction.RenameWorkspace)]
-    public void CanExecute_returns_false_for_unimplemented_action(BuiltinAction action)
-    {
-        var router = new WindowCommandRouter(AllNoOpHandlers());
-        Assert.False(router.CanExecute(action));
     }
 
     [Fact]
@@ -215,14 +202,6 @@ public class WindowCommandRouterTests
         var result = await router.ExecuteAsync(BuiltinAction.NewWorkspace);
         Assert.False(result);
         Assert.Equal(0, calls);
-    }
-
-    [Theory]
-    [InlineData(BuiltinAction.RenameWorkspace)]
-    public async Task ExecuteAsync_returns_false_for_unimplemented_action(BuiltinAction action)
-    {
-        var router = new WindowCommandRouter(AllNoOpHandlers());
-        Assert.False(await router.ExecuteAsync(action));
     }
 
     [Fact]

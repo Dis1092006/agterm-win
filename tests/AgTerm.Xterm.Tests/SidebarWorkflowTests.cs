@@ -213,6 +213,297 @@ public sealed class SidebarWorkflowTests : IDisposable
         Assert.Null(await _coordinator.ReadAsync(store => store.PendingCloseSummary));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Empty_workspace_skips_confirmation_and_is_removed_only_when_another_exists(
+        bool anotherWorkspaceExists)
+    {
+        Guid workspaceId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            workspaceId = store.CurrentWorkspaceId!.Value;
+            store.CloseSession(store.SelectedSessionId!.Value);
+            if (anotherWorkspaceExists) store.AddWorkspace("survivor", clearFocus: false);
+        });
+        var confirmations = 0;
+        using var controller = CreateController(_ =>
+        {
+            confirmations++;
+            return Task.FromResult(true);
+        });
+
+        await controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+
+        Assert.Equal(0, confirmations);
+        Assert.Equal(
+            !anotherWorkspaceExists,
+            await _coordinator.ReadAsync(store => store.Workspaces.Any(w => w.Id == workspaceId)));
+    }
+
+    [Fact]
+    public async Task Confirmed_workspace_delete_snapshots_the_target_releases_the_gate_and_soft_removes_by_default()
+    {
+        Guid workspaceId = default;
+        Guid survivorId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            workspaceId = store.CurrentWorkspaceId!.Value;
+            store.RenameWorkspace(workspaceId, "build");
+            survivorId = store.AddWorkspace("survivor", clearFocus: false).Id;
+        });
+        var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var controller = CreateController(request =>
+        {
+            promptStarted.SetResult(request);
+            return releasePrompt.Task;
+        });
+
+        var delete = controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+        var request = await promptStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await _coordinator.MutateAsync(store =>
+            store.RenameWorkspace(workspaceId, "renamed while open"))
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(SidebarConfirmationKind.DeleteWorkspace, request.Kind);
+        Assert.Equal("Delete “build”?", request.Title);
+        Assert.Equal("This closes its session after a short undo window.", request.Message);
+        Assert.Equal("Delete", request.PrimaryButtonText);
+        releasePrompt.SetResult(true);
+        await delete.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var state = await _coordinator.ReadAsync(store => new
+        {
+            TargetExists = store.Workspaces.Any(w => w.Id == workspaceId),
+            SurvivorExists = store.Workspaces.Any(w => w.Id == survivorId),
+            store.PendingCloseSummary,
+        });
+        Assert.False(state.TargetExists);
+        Assert.True(state.SurvivorExists);
+        Assert.Equal(PendingCloseKind.Workspace, state.PendingCloseSummary?.Kind);
+        Assert.Equal("renamed while open", state.PendingCloseSummary?.Title);
+    }
+
+    [Fact]
+    public async Task Confirmed_workspace_delete_aborts_when_session_count_changes_while_the_dialog_is_open()
+    {
+        Guid workspaceId = default;
+        Guid originalSessionId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            workspaceId = store.CurrentWorkspaceId!.Value;
+            originalSessionId = store.SelectedSessionId!.Value;
+            store.RenameWorkspace(workspaceId, "build");
+            store.AddWorkspace("survivor", clearFocus: false);
+        });
+        var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var controller = CreateController(request =>
+        {
+            promptStarted.SetResult(request);
+            return releasePrompt.Task;
+        });
+
+        var delete = controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+        var request = await promptStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Guid addedSessionId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            addedSessionId = store.AddSession(workspaceId, _stateDir, select: false)!.Id;
+        }).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(SidebarConfirmationKind.DeleteWorkspace, request.Kind);
+        releasePrompt.SetResult(true);
+        await delete.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var state = await _coordinator.ReadAsync(store =>
+        {
+            var target = store.Workspaces.SingleOrDefault(workspace => workspace.Id == workspaceId);
+            return new
+            {
+                WorkspaceExists = target is not null,
+                SessionIds = target?.Sessions.Select(session => session.Id).ToArray() ?? [],
+                store.PendingCloseSummary,
+            };
+        });
+        Assert.True(state.WorkspaceExists);
+        Assert.Equal(2, state.SessionIds.Length);
+        Assert.Contains(originalSessionId, state.SessionIds);
+        Assert.Contains(addedSessionId, state.SessionIds);
+        Assert.Null(state.PendingCloseSummary);
+    }
+
+    [Fact]
+    public async Task Confirmed_workspace_delete_aborts_when_session_membership_changes_without_count_change()
+    {
+        var workspaceId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var survivorWorkspaceId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var originalSessionId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var replacementSessionId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        await _coordinator.MutateAsync(store =>
+        {
+            store.Workspaces =
+            [
+                new Workspace(workspaceId, "build", [new Session(_stateDir, originalSessionId)]),
+                new Workspace(survivorWorkspaceId, "survivor"),
+            ];
+            store.SelectedSessionId = originalSessionId;
+        });
+        var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var controller = CreateController(request =>
+        {
+            promptStarted.SetResult(request);
+            return releasePrompt.Task;
+        });
+
+        var delete = controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+        var request = await promptStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await _coordinator.MutateAsync(store =>
+        {
+            store.CloseSession(originalSessionId);
+            var target = Assert.Single(store.Workspaces, workspace => workspace.Id == workspaceId);
+            target.Sessions.Add(new Session(_stateDir, replacementSessionId));
+        }).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(SidebarConfirmationKind.DeleteWorkspace, request.Kind);
+        releasePrompt.SetResult(true);
+        await delete.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var state = await _coordinator.ReadAsync(store => new
+        {
+            WorkspaceExists = store.Workspaces.Any(workspace => workspace.Id == workspaceId),
+            OriginalSessionExists = store.SessionWithId(originalSessionId) is not null,
+            ReplacementSessionExists = store.SessionWithId(replacementSessionId) is not null,
+            store.PendingCloseSummary,
+        });
+        Assert.True(state.WorkspaceExists);
+        Assert.False(state.OriginalSessionExists);
+        Assert.True(state.ReplacementSessionExists);
+        Assert.Null(state.PendingCloseSummary);
+    }
+
+    [Fact]
+    public async Task Confirmed_workspace_delete_hard_removes_and_mentions_open_recent_when_grace_is_off()
+    {
+        Guid workspaceId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            workspaceId = store.CurrentWorkspaceId!.Value;
+            store.RenameWorkspace(workspaceId, "build");
+            store.AddSession(workspaceId, _stateDir, select: false);
+            store.AddWorkspace("survivor", clearFocus: false);
+        });
+        SidebarConfirmationRequest? prompt = null;
+        using var controller = CreateController(request =>
+        {
+            prompt = request;
+            return Task.FromResult(true);
+        });
+
+        await controller.DeleteWorkspaceAsync(workspaceId, graceUndo: false);
+
+        Assert.Equal(SidebarConfirmationKind.DeleteWorkspace, prompt?.Kind);
+        Assert.Equal("Delete “build”?", prompt?.Title);
+        Assert.Equal(
+            "This closes 2 sessions immediately. You can reopen it from File > Open Recent.",
+            prompt?.Message);
+        Assert.Equal("Delete", prompt?.PrimaryButtonText);
+        Assert.False(await _coordinator.ReadAsync(store =>
+            store.Workspaces.Any(w => w.Id == workspaceId)));
+        Assert.Null(await _coordinator.ReadAsync(store => store.PendingCloseSummary));
+    }
+
+    [Fact]
+    public async Task Cancelled_workspace_delete_leaves_the_workspace_open()
+    {
+        Guid workspaceId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            workspaceId = store.CurrentWorkspaceId!.Value;
+            store.AddWorkspace("survivor", clearFocus: false);
+        });
+        using var controller = CreateController(_ => Task.FromResult(false));
+
+        await controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+
+        Assert.True(await _coordinator.ReadAsync(store =>
+            store.Workspaces.Any(w => w.Id == workspaceId)));
+        Assert.Null(await _coordinator.ReadAsync(store => store.PendingCloseSummary));
+    }
+
+    [Fact]
+    public async Task Confirmed_workspace_delete_does_not_remove_a_replacement_when_the_target_is_stale()
+    {
+        Guid workspaceId = default;
+        Guid firstSurvivorId = default;
+        Guid secondSurvivorId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            workspaceId = store.CurrentWorkspaceId!.Value;
+            firstSurvivorId = store.AddWorkspace("first survivor", clearFocus: false).Id;
+            secondSurvivorId = store.AddWorkspace("second survivor", clearFocus: false).Id;
+        });
+        var promptStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var controller = CreateController(_ =>
+        {
+            promptStarted.SetResult();
+            return releasePrompt.Task;
+        });
+
+        var delete = controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+        await promptStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await _coordinator.MutateAsync(store => store.RemoveWorkspace(workspaceId));
+        releasePrompt.SetResult(true);
+        await delete.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var remainingIds = await _coordinator.ReadAsync(store =>
+            store.Workspaces.Select(workspace => workspace.Id).ToArray());
+        Assert.Equal(new[] { firstSurvivorId, secondSurvivorId }, remainingIds);
+        Assert.Null(await _coordinator.ReadAsync(store => store.PendingCloseSummary));
+    }
+
+    [Fact]
+    public async Task Confirmed_workspace_delete_leaves_the_target_when_it_becomes_the_last_workspace()
+    {
+        Guid workspaceId = default;
+        Guid otherWorkspaceId = default;
+        await _coordinator.MutateAsync(store =>
+        {
+            workspaceId = store.CurrentWorkspaceId!.Value;
+            otherWorkspaceId = store.AddWorkspace("temporary", clearFocus: false).Id;
+        });
+        var promptStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var controller = CreateController(_ =>
+        {
+            promptStarted.SetResult();
+            return releasePrompt.Task;
+        });
+
+        var delete = controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+        await promptStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await _coordinator.MutateAsync(store => store.RemoveWorkspace(otherWorkspaceId));
+        releasePrompt.SetResult(true);
+        await delete.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(await _coordinator.ReadAsync(store =>
+            store.Workspaces.Any(w => w.Id == workspaceId)));
+        Assert.Null(await _coordinator.ReadAsync(store => store.PendingCloseSummary));
+    }
+
     [Fact]
     public async Task ClearFlagged_confirms_the_snapshotted_count_and_preserves_new_flags()
     {
@@ -431,6 +722,44 @@ public sealed class SidebarWorkflowTests : IDisposable
         Assert.Contains("RequestClearFlags", sidebar, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"ClearFlaggedButton\"", sidebarXaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.Name=\"Clear flagged sessions\"", sidebarXaml,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WinUI_routes_workspace_rename_and_delete_through_current_snapshot_workflows()
+    {
+        var root = FindRepoRoot();
+        var mainWindow = File.ReadAllText(Path.Combine(root,
+            "src", "AgTerm.App", "MainWindow.xaml.cs"));
+        var sidebar = File.ReadAllText(Path.Combine(root,
+            "src", "AgTerm.App", "SidebarView.xaml.cs"));
+        var controller = File.ReadAllText(Path.Combine(root,
+            "src", "AgTerm.Xterm", "SidebarController.cs"));
+
+        Assert.Contains("public void BeginRenameCurrentWorkspace()", sidebar, StringComparison.Ordinal);
+        Assert.Contains("var snapshot = _snapshot;", sidebar, StringComparison.Ordinal);
+        Assert.Contains("i.IsWorkspace && i.Id == snapshot?.CurrentWorkspaceId", sidebar,
+            StringComparison.Ordinal);
+        Assert.Contains("[BuiltinAction.RenameWorkspace] = Sync", mainWindow, StringComparison.Ordinal);
+        Assert.Contains(
+            "() => _latestSidebarSnapshot is { Mode: SidebarMode.Tree, CurrentWorkspaceId: not null },",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains("Sidebar.BeginRenameCurrentWorkspace", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("[BuiltinAction.DeleteWorkspace] = Async", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("CanRemoveWorkspace: true, CurrentWorkspaceId: not null", mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains("var currentWorkspaceId = _latestSidebarSnapshot?.CurrentWorkspaceId;", mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains("await sidebar.DeleteWorkspaceAsync(", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("currentWorkspaceId.Value, CurrentSidebarCloseOptions().GraceUndo", mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains("RequestDeleteWorkspace(", sidebar, StringComparison.Ordinal);
+        Assert.Contains("CurrentCloseOptions().GraceUndo", sidebar, StringComparison.Ordinal);
+        Assert.DoesNotContain("_controller?.DeleteWorkspace(row.Id)", sidebar, StringComparison.Ordinal);
+        Assert.Contains("public void RequestDeleteWorkspace(Guid workspaceId, bool graceUndo)", controller,
+            StringComparison.Ordinal);
+        Assert.Contains("() => DeleteWorkspaceAsync(workspaceId, graceUndo)", controller,
             StringComparison.Ordinal);
     }
 

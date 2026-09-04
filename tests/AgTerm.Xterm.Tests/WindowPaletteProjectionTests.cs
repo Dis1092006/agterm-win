@@ -196,6 +196,206 @@ public sealed class WindowPaletteProjectionTests
     }
 }
 
+public sealed class WindowPaletteAcceptanceTests
+{
+    [Theory]
+    [InlineData(WindowPaletteMode.Sessions, true, false)]
+    [InlineData(WindowPaletteMode.Sessions, false, true)]
+    [InlineData(WindowPaletteMode.Attention, true, false)]
+    [InlineData(WindowPaletteMode.Attention, false, true)]
+    public async Task Session_modes_restore_focus_only_when_selection_did_not_change(
+        WindowPaletteMode mode,
+        bool selectionChanged,
+        bool expectedRestoreTerminalFocus)
+    {
+        var sessionId = Guid.NewGuid();
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            mode,
+            Item(sessionId.ToString("D")),
+            (actualSessionId, cancellationToken) =>
+            {
+                calls++;
+                Assert.Equal(sessionId, actualSessionId);
+                Assert.Equal(cancellationSource.Token, cancellationToken);
+                return Task.FromResult(selectionChanged);
+            },
+            UnexpectedActionAsync,
+            UnexpectedCustomCommandAsync,
+            UnexpectedThemeAsync,
+            cancellationSource.Token);
+
+        Assert.Equal(1, calls);
+        Assert.Equal(expectedRestoreTerminalFocus, result.RestoreTerminalFocus);
+    }
+
+    [Theory]
+    [InlineData(BuiltinAction.ToggleSidebar, true, true)]
+    [InlineData(BuiltinAction.RenameSession, true, false)]
+    [InlineData(BuiltinAction.RenameWorkspace, true, false)]
+    [InlineData(BuiltinAction.RenameSession, false, true)]
+    public async Task Commands_restore_focus_when_execution_failed_or_action_requires_it(
+        BuiltinAction action,
+        bool executed,
+        bool expectedRestoreTerminalFocus)
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.Commands,
+            Item(action.WireName()),
+            UnexpectedSessionAsync,
+            (actualAction, cancellationToken) =>
+            {
+                calls++;
+                Assert.Equal(action, actualAction);
+                Assert.Equal(cancellationSource.Token, cancellationToken);
+                return Task.FromResult(executed);
+            },
+            UnexpectedCustomCommandAsync,
+            UnexpectedThemeAsync,
+            cancellationSource.Token);
+
+        Assert.Equal(1, calls);
+        Assert.Equal(expectedRestoreTerminalFocus, result.RestoreTerminalFocus);
+    }
+
+    [Fact]
+    public async Task Custom_commands_execute_the_parsed_id_and_restore_focus()
+    {
+        var commandId = Guid.NewGuid();
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.CustomCommands,
+            Item($"custom-{commandId:D}"),
+            UnexpectedSessionAsync,
+            UnexpectedActionAsync,
+            (actualCommandId, cancellationToken) =>
+            {
+                calls++;
+                Assert.Equal(commandId, actualCommandId);
+                Assert.Equal(cancellationSource.Token, cancellationToken);
+                return Task.CompletedTask;
+            },
+            UnexpectedThemeAsync,
+            cancellationSource.Token);
+
+        Assert.Equal(1, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Theory]
+    [InlineData("theme:__default__", null)]
+    [InlineData("theme:Dracula", "Dracula")]
+    public async Task Themes_set_the_parsed_name_and_restore_focus(string itemId, string? expectedName)
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.Themes,
+            Item(itemId),
+            UnexpectedSessionAsync,
+            UnexpectedActionAsync,
+            UnexpectedCustomCommandAsync,
+            (actualName, cancellationToken) =>
+            {
+                calls++;
+                Assert.Equal(expectedName, actualName);
+                Assert.Equal(cancellationSource.Token, cancellationToken);
+                return Task.CompletedTask;
+            },
+            cancellationSource.Token);
+
+        Assert.Equal(1, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Theory]
+    [InlineData(WindowPaletteMode.Sessions, "not-a-session")]
+    [InlineData(WindowPaletteMode.Attention, "not-a-session")]
+    [InlineData(WindowPaletteMode.Commands, "not_an_action")]
+    [InlineData(WindowPaletteMode.CustomCommands, "not-a-custom-command")]
+    [InlineData(WindowPaletteMode.Themes, "not-a-theme")]
+    [InlineData((WindowPaletteMode)999, "toggle_sidebar")]
+    public async Task Malformed_ids_and_unknown_modes_do_not_invoke_handlers_and_restore_focus(
+        WindowPaletteMode mode,
+        string itemId)
+    {
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            mode,
+            Item(itemId),
+            (_, _) =>
+            {
+                calls++;
+                return Task.FromResult(true);
+            },
+            (_, _) =>
+            {
+                calls++;
+                return Task.FromResult(true);
+            },
+            (_, _) =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            },
+            (_, _) =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            },
+            CancellationToken.None);
+
+        Assert.Equal(0, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Fact]
+    public async Task Handler_cancellation_is_propagated()
+    {
+        var sessionId = Guid.NewGuid();
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        CancellationToken observedToken = default;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await WindowPaletteAcceptance.AcceptAsync(
+                WindowPaletteMode.Sessions,
+                Item(sessionId.ToString("D")),
+                (_, cancellationToken) =>
+                {
+                    calls++;
+                    observedToken = cancellationToken;
+                    cancellationSource.Cancel();
+                    return Task.FromCanceled<bool>(cancellationToken);
+                },
+                UnexpectedActionAsync,
+                UnexpectedCustomCommandAsync,
+                UnexpectedThemeAsync,
+                cancellationSource.Token));
+
+        Assert.Equal(1, calls);
+        Assert.Equal(cancellationSource.Token, observedToken);
+    }
+
+    private static PaletteItemViewModel Item(string id) => new(id, "Item");
+
+    private static Task<bool> UnexpectedSessionAsync(Guid _, CancellationToken __) =>
+        throw new InvalidOperationException("The session handler should not be called.");
+
+    private static Task<bool> UnexpectedActionAsync(BuiltinAction _, CancellationToken __) =>
+        throw new InvalidOperationException("The action handler should not be called.");
+
+    private static Task UnexpectedCustomCommandAsync(Guid _, CancellationToken __) =>
+        throw new InvalidOperationException("The custom-command handler should not be called.");
+
+    private static Task UnexpectedThemeAsync(string? _, CancellationToken __) =>
+        throw new InvalidOperationException("The theme handler should not be called.");
+}
+
 public sealed class WindowPaletteActionsTests
 {
     [Fact]
@@ -328,9 +528,9 @@ public sealed class MainWindowPaletteWiringTests
         Assert.Contains("PaletteOverlay.ItemAccepted +=", source, StringComparison.Ordinal);
         Assert.Contains("PaletteOverlay.Cancelled +=", source, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteProjection.Create", source, StringComparison.Ordinal);
+        Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);
         Assert.Contains("snapshot.PreserveInputOrderForEmptyQuery", source, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteActions.SelectSession", source, StringComparison.Ordinal);
-        Assert.Contains("WindowPaletteProjection.ParseAction", source, StringComparison.Ordinal);
         Assert.Contains("FocusActiveTerminal", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.SessionPalette]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.CommandPalette]", source, StringComparison.Ordinal);
@@ -353,7 +553,7 @@ public sealed class MainWindowPaletteWiringTests
         Assert.Contains("store.SuppressAutoFollow()", source, StringComparison.Ordinal);
         Assert.Contains("store.ResumeAutoFollow()", source, StringComparison.Ordinal);
         Assert.Contains("FinishPaletteCloseAsync(restoreFocus: false)", source, StringComparison.Ordinal);
-        Assert.Contains("WindowPaletteActions.ShouldRestoreTerminalFocus", source, StringComparison.Ordinal);
+        Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);
         Assert.Contains("_paletteTransitions.RunAsync", source, StringComparison.Ordinal);
         Assert.Contains("() => !host.ZoomActive", source, StringComparison.Ordinal);
         Assert.Contains("host.ZoomActiveChanged +=", source, StringComparison.Ordinal);
