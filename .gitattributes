@@ -1,0 +1,9 @@
+# The shell-integration scripts are executed by the shell they are handed to, so their line
+# endings decide whether they work. Without this, core.autocrlf=true (the Windows default)
+# rewrites them on checkout, and a stray CR in the bash rcfile surfaces as a shell that starts
+# but never reports its cwd. LF is pinned for all three: it is the form verified live here
+# (cmd.exe runs an LF batch file, setting PROMPT and honouring goto :eof), and it keeps the
+# checked-out bytes identical to what the tests assert against.
+src/AgTerm.Xterm/Integration/*.bash text eol=lf
+src/AgTerm.Xterm/Integration/*.ps1  text eol=lf
+src/AgTerm.Xterm/Integration/*.cmd  text eol=lf
