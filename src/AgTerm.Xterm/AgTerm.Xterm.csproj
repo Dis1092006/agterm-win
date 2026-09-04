@@ -18,6 +18,15 @@
   <ItemGroup>
     <!-- the terminal page + pinned xterm.js bundles ship next to the assembly (no CDN) -->
     <None Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- per-shell cwd-reporting scripts, dot-sourced by the spawned shell (ShellIntegration).
+         They must exist as REAL FILES next to the exe at run time, because a shell is handed a
+         path to them: ExcludeFromSingleFile keeps PublishSingleFile from packing them into the
+         bundle, where no shell could open them. A layout missing them still spawns a plain
+         working shell, only without cwd reporting. -->
+    <None Include="Integration\**"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest"
+          ExcludeFromSingleFile="true" />
   </ItemGroup>
 
 </Project>

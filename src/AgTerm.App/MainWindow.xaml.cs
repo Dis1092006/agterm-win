@@ -3,6 +3,7 @@ using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 using AgTerm.ControlServer;
+using AgTerm.Terminal;
 using AgTerm.Xterm;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -445,6 +446,9 @@ public sealed partial class MainWindow : Window
                     FailureReported = QueueFailureNotice,
                     IsUiThread = () => DispatcherQueue.HasThreadAccess,
                     BootstrapCancellationToken = _bootstrapCancellation.Token,
+                    // Null when the scripts are absent from the layout: shells then spawn bare,
+                    // which works but never reports a cwd (PLATFORM-NOTES).
+                    ShellIntegrationDirectory = ShellIntegration.ResolveScriptDirectory(),
                 }));
         }
         catch (Exception ex)

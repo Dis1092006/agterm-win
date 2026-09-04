@@ -33,6 +33,13 @@ public sealed record LiveControlHostOptions
     /// <summary>The configured default shell; null = the ShellResolver policy (pwsh → cmd).</summary>
     public string? DefaultShell { get; init; }
 
+    /// <summary>
+    /// Directory holding the per-shell cwd-reporting integration scripts (ShellIntegration).
+    /// Null or missing = shells spawn bare: the terminal works but never learns the cwd, so a
+    /// restored session reopens at its InitialCwd. See PLATFORM-NOTES.
+    /// </summary>
+    public string? ShellIntegrationDirectory { get; init; }
+
     /// <summary>System clipboard reader handed to every surface (session.paste).</summary>
     public Func<string?>? ReadClipboard { get; init; }
 
@@ -1060,7 +1067,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         string? initialInput = null;
         Guid? sessionId;
         var baseFontSize = session.FontSize ?? _currentBaseFontSize;
-        var shellArgv = new[] { ShellResolver.Resolve(_options.DefaultShell) };
+        // The integration is attached HERE, to the shell argv only, and never to the argv branches
+        // below that carry a user's own program (a captured foreground command, an InitialCommand,
+        // a restore override): Inject is shape-aware and returns those untouched.
+        var shellArgv = ShellIntegration.Inject(
+            [ShellResolver.Resolve(_options.DefaultShell)],
+            _options.ShellIntegrationDirectory);
         var restoreRunningCommand = _options.RestoreRunningCommand;
 
         switch (kind)
@@ -1179,7 +1191,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             LiveSurfaceKind.Quick,
             new XtermSurfaceOptions
             {
-                Argv = [ShellResolver.Resolve(_options.DefaultShell)],
+                // The quick terminal is always a plain shell, so it always takes the integration.
+                Argv = ShellIntegration.Inject(
+                    [ShellResolver.Resolve(_options.DefaultShell)],
+                    _options.ShellIntegrationDirectory).ToArray(),
                 Cwd = ExistingDirectoryOrNull(activeSession?.EffectiveCwd) ??
                     ExistingDirectoryOrNull(_options.HomeDirectory),
                 BaseFontSize = _currentBaseFontSize,

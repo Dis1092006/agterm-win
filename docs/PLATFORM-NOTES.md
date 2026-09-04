@@ -354,3 +354,27 @@ The U2 live scenario runs two windows through one application pipe, with one Web
 The 2026-09-03 automated gate passed 849 Xterm tests and the full solution passed 2,471 tests with 26 documented skips. WinUI builds passed for x64 and ARM64. The live x64 check used two native windows and three real PowerShell ConPTY children. It verified exact second-window geometry `(100, 50, 900, 700)`, native fullscreen on/off with geometry restoration, Dracula theme application, notification routing to a background session, named and keyboard-focusable UI Automation peers, one window remaining responsive after the other closed, final process exit, and cleanup of all seven captured direct child processes. The two live windows ran at 100% and 150% DPI.
 
 The 2026-09-04 manual gate passed every required x64 and ARM64 row with no failed or blocked result. The checks covered physical keyboard, mouse, and touchpad workflows; Narrator; real IME composition; 100%, 150%, and 200% DPI; wide and narrow layouts; high contrast; fullscreen; Explorer folder drop; confirmation dialogs and native InfoBars; two-window behavior; restart persistence; crash-free final close; and orphan-process cleanup. Together with the automated gate and architecture builds, this completes the Phase 5 release gate.
+
+## Shell integration (cwd reporting)
+
+Upstream never implements this. libghostty injects its own shell integration into bash, zsh, fish and elvish, so OSC 7 arrives for free, and agterm only turns parts of it off (`shell-integration-features = no-cursor,no-title` in `ghostty-defaults.conf`). A WebView2/xterm.js surface has no injector, and no Windows shell reports its working directory on its own.
+
+Without a report `Session.CurrentCwd` stays null forever, `EffectiveCwd` falls back to `InitialCwd`, and every restored session reopens at the directory it was first created in. The port therefore ships its own per-shell scripts in `src/AgTerm.Xterm/Integration/`:
+
+| Shell | Script | Attached as | Reports |
+| --- | --- | --- | --- |
+| `pwsh.exe`, `powershell.exe` | `integration.ps1` | `-NoExit -Command ". '<script>'"` | OSC 9;9 |
+| `cmd.exe` | `integration.cmd` | `/k call "<script>"` | OSC 9;9 |
+| `bash.exe` (Git Bash) | `integration.bash` | `--rcfile <script> -i` | OSC 7 |
+
+`wsl.exe` is excluded deliberately: it runs another OS, where a Windows script path does not exist and a reported path would be a `/mnt/c` location this side cannot spawn in. Any other shell is `ShellKind.Unsupported` — spawned exactly as before, with no cwd tracking rather than an error.
+
+Constraints the implementation is pinned to, each of which was a real failure first:
+
+- **Only a bare shell argv is rewritten.** `LiveControlHost.CaptureRequest` puts a user's own program in the same `argv` for a captured foreground command, `session.new --command`, and a `session.restore` override. Injecting there would replace that program with a shell and break restore, so `ShellIntegration.Inject` rewrites a single-element argv naming a known shell and returns everything else untouched.
+- **The existing prompt is wrapped, not replaced.** `$function:prompt` is captured as a value (resolving it by name inside the wrapper would recurse), and the user's prompt still renders. Verified against a live Oh My Posh profile. `integration.bash` appends to `PROMPT_COMMAND` for the same reason, and re-sources `~/.bashrc` because `--rcfile` replaces it.
+- **No script emits OSC 0/1/2.** `Session.DisplayName` prefers `oscTitle` over the cwd basename, so an auto-title would overwrite every sidebar row with a path — the same reason upstream sets `no-title`.
+- **The OSC 7 URI needs three slashes and a literal colon.** `file:///C:/git/x` parses; `file://C%3A%5Cx` puts the drive letter in the host position and is rejected, and `file:///C%3A/x` yields a leading-slash path. Measured against `CwdReport.Parse`.
+- **The scripts must stay real files, and are found via the exe path.** They are marked `ExcludeFromSingleFile`, because a `PublishSingleFile` bundle would hide them from the shell that is handed their path. `ShellIntegration.ResolveScriptDirectory` therefore tries `Environment.ProcessPath`'s directory BEFORE `AppContext.BaseDirectory`: in this app's single-file publish the two differ — `BaseDirectory` is the bundle extraction directory under `%TEMP%\.net\AgTerm.App\<hash>\`, while the excluded scripts stay beside the exe. A plain console single-file app reports the two as equal, so this only reproduces in the real app. Existence is checked, so a layout missing the scripts degrades to a plain shell.
+
+A `cd` still does not trigger a disk write (spec line 81: reports arrive on every prompt, so only structural mutations save). The directory survives an ordinary quit because window close and `LiveApplicationHost.Dispose` both save; a hard kill still loses cwd changes made since the last structural mutation.
