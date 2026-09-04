@@ -95,7 +95,8 @@ dotnet build src/AgTerm.App -p:Platform=x64           # direct project build —
 
 **Run (manual).** The exe lands at
 `src\AgTerm.App\bin\x64\Debug\net8.0-windows10.0.19041.0\AgTerm.App.exe`.
-A bare launch uses the real state (`%LOCALAPPDATA%\agterm`). For experiments, run an **isolated
+A bare launch uses the real state (`~\.agterm-win` — the home directory, not `%LOCALAPPDATA%`;
+`docs/PLATFORM-NOTES.md` records why). For experiments, run an **isolated
 instance** — a separate state dir also derives a separate control pipe, so it never touches your
 real workspaces:
 

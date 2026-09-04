@@ -153,8 +153,8 @@ JSON. Верхний объект — `Snapshot`, **на каждое окно**
 ### Пути (macOS → Windows)
 | Что | macOS | Windows-предложение |
 |---|---|---|
-| state dir (снапшоты, сокет) | `~/Library/Application Support/agterm/` или `$AGTERM_STATE_DIR` | `%LOCALAPPDATA%\agterm\` или `%AGTERM_STATE_DIR%` |
-| config dir (`keymap.conf`, `ghostty.conf`) | `~/.config/agterm/` или `$AGTERM_STATE_DIR/config` | `%APPDATA%\agterm\` или `%AGTERM_STATE_DIR%\config` |
+| state dir (снапшоты, сокет) | `~/Library/Application Support/agterm/` или `$AGTERM_STATE_DIR` | `~\.agterm-win\` или `%AGTERM_STATE_DIR%` (см. PLATFORM-NOTES) |
+| config dir (`keymap.conf`, `ghostty.conf`) | `~/.config/agterm/` или `$AGTERM_STATE_DIR/config` | `AppSettings.configDirectory`, иначе state dir (т.е. `~\.agterm-win\`) — см. PLATFORM-NOTES |
 | control-канал | unix-сокет `<stateDir>/agterm.sock`, `chmod 0600` | **named pipe** `\\.\pipe\agterm` (per-user ACL) или TCP `127.0.0.1:<port>` |
 
 Резолвер сокета (перенести 1:1 по смыслу): `socketPath = (AGTERM_STATE_DIR ?? appSupport) + "/agterm.sock"`;

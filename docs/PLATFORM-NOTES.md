@@ -14,8 +14,29 @@
 - **`PersistenceStore`.** Формат файла тот же JSON-снапшот (имена полей байт-в-байт),
   но upstream пишет prettyPrinted+sortedKeys, мы — компактный JSON без сортировки
   ключей. Контракт — имена/типы полей и правила декода, а не байтовый вид локального
-  файла. Каталог по умолчанию: `%AGTERM_STATE_DIR%`, иначе `%LOCALAPPDATA%\agterm`
-  (аналог `~/Library/Application Support/agterm`, спец. §3).
+  файла.
+
+- **Каталог состояния: `~\.agterm-win`** (вместо спец. §3 `%LOCALAPPDATA%\agterm`).
+  Порядок: `%AGTERM_STATE_DIR%` → `%USERPROFILE%\.agterm-win` → `<temp>\.agterm-win`
+  (последний — аналог upstream-фолбэка `нет $HOME → /tmp`). Имя каталога отличается
+  от upstream-ового `agterm`: из пути выводится имя пайпа, и при совпадающих именах два
+  разных приложения на одной машине делили бы состояние и канал управления. Корень —
+  домашний каталог, как у CLI-инструментов, которыми приложение драйвится (`agtermctl`).
+  На wire не влияет: `--socket` и `AGTERM_STATE_DIR` работают как раньше.
+  `PersistenceStore.RealUserDirectory` и `AgtermctlOptions.SocketPath` обязаны выводить один
+  и тот же путь — иначе CLI не найдёт приложение.
+
+- **Config dir лежит рядом с состоянием** (вместо спец. §3 `%APPDATA%\agterm`).
+  `keymap.conf` ищется там, куда указывает `AppSettings.configDirectory`, иначе в state dir,
+  то есть по умолчанию `~\.agterm-win\keymap.conf`. `%APPDATA%` не используется нигде:
+  всё состояние и конфиг приложения живут в одном каталоге, как у CLI-инструментов.
+
+- **Гард на дефолтный каталог под тестами.** `PersistenceStore.DefaultDirectory` бросает
+  `InvalidOperationException`, если к нему обращаются из тестового хоста без
+  `AGTERM_STATE_DIR`: тест, дошёдший до неявного дефолта, перезаписал бы реальное
+  состояние разработчика. `RealUserDirectory` гард обходит — он нужен для вывода
+  имени пайпа (чистая строка, без обращения к диску), и читать/писать состояние
+  через него нельзя.
 
 ## Фаза 2 (control plane)
 
@@ -84,7 +105,7 @@ available in the headless host"` (после резолюции цели — `no
   agtermctlKit; парсер — System.CommandLine вместо swift-argument-parser
   (шов `ParseAsRoot`/`MakeRequest`/`Validate` сохранён для портированных тестов).
   Разрешение socket-пути: `--socket` → `%AGTERM_STATE_DIR%\agterm.sock` →
-  `%LOCALAPPDATA%\agterm\agterm.sock` → `<temp>\agterm\agterm.sock` (аналог
+  `%USERPROFILE%\.agterm-win\agterm.sock` → `<temp>\.agterm-win\agterm.sock` (аналог
   upstream `$HOME/Library/Application Support` → `/tmp`); из пути выводится имя
   пайпа (см. запись о транспорте). `session type --stdin`: .NET-декодер stdin
   заменяет невалидный UTF-8 замещающими символами (Swift даёт nil/пусто) — на
