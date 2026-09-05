@@ -124,6 +124,7 @@ public sealed partial class MainWindow : Window
         var nativeWindowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
         _appWindow = AppWindow.GetFromWindowId(nativeWindowId);
+        ApplyExeIcon();
         _fullscreen = new FullscreenController(ApplyFullscreen);
         _appWindow.Changed += OnAppWindowChanged;
         Activated += OnWindowActivated;
@@ -373,6 +374,22 @@ public sealed partial class MainWindow : Window
             return;
         }
         args.Cancel = _closeCoordinator.ShouldCancelClose();
+    }
+
+    private void ApplyExeIcon()
+    {
+        // WinUI 3 windows don't pick up the exe's embedded ApplicationIcon on their own; the
+        // taskbar/title-bar icon needs an explicit SetIcon. Extracting it from the running exe's
+        // own resources (rather than a loose .ico beside it) works unchanged under
+        // PublishSingleFile, which does not guarantee loose content files survive next to the exe.
+        var largeIcons = new IntPtr[1];
+        var exePath = Environment.ProcessPath;
+        if (exePath is null
+            || ShellIconNative.ExtractIconEx(exePath, 0, largeIcons, null, 1) == 0
+            || largeIcons[0] == IntPtr.Zero)
+            return;
+
+        _appWindow.SetIcon(Microsoft.UI.Win32Interop.GetIconIdFromIcon(largeIcons[0]));
     }
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
