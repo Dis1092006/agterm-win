@@ -1046,8 +1046,16 @@ public sealed partial class MainWindow : Window
 
     private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
+        // A focused plain-text control (e.g. the sidebar's inline rename box) must receive every
+        // keystroke as text; letting single-letter chords (e.g. "n", "r") pre-empt it here would
+        // silently eat characters before they ever reach the TextBox.
+        if (IsTextInputFocused()) return;
         if (PhysicalFromKey(e.Key) is { } physical && HandleChord(physical)) e.Handled = true;
     }
+
+    private bool IsTextInputFocused() =>
+        Content?.XamlRoot is { } root &&
+        Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) is TextBox or PasswordBox or RichEditBox;
 
     /// <summary>A WinUI key event as a keymap-space physical chord (null = not hotkey material).</summary>
     private static PhysicalChord? PhysicalFromKey(VirtualKey key)

@@ -254,13 +254,42 @@ public sealed partial class SidebarView : UserControl
         row.IsEditing = true;
     }
 
+    /// <summary>Fires once per realized container (ListView recycles containers without re-raising
+    /// Loaded), so the initial focus attempt here alone would miss every rename after the first on a
+    /// given row. The Visibility callback registered here instead re-fires on every edit-mode entry,
+    /// since EditorVisibility flips Visible each time regardless of container recycling.</summary>
     private void OnRenameEditorLoaded(object sender, RoutedEventArgs e)
     {
-        if (sender is TextBox box && (box.DataContext as SidebarRowViewModel) == _editing)
+        if (sender is not TextBox box) return;
+        box.RegisterPropertyChangedCallback(VisibilityProperty, OnRenameEditorVisibilityChanged);
+        if (box.Visibility == Visibility.Visible && (box.DataContext as SidebarRowViewModel) == _editing)
+            FocusRenameEditor(box);
+    }
+
+    private void OnRenameEditorVisibilityChanged(DependencyObject sender, DependencyProperty dp)
+    {
+        if (sender is TextBox { Visibility: Visibility.Visible } box &&
+            (box.DataContext as SidebarRowViewModel) == _editing)
+        {
+            FocusRenameEditor(box);
+        }
+    }
+
+    /// <summary>Focus can silently no-op immediately after a Collapsed→Visible flip (layout hasn't
+    /// caught up yet), so retry once after the current layout pass if the first attempt is rejected.</summary>
+    private static void FocusRenameEditor(TextBox box)
+    {
+        if (box.Focus(FocusState.Programmatic))
+        {
+            box.SelectAll();
+            return;
+        }
+
+        box.DispatcherQueue.TryEnqueue(() =>
         {
             box.Focus(FocusState.Programmatic);
             box.SelectAll();
-        }
+        });
     }
 
     private void OnRenameKeyDown(object sender, KeyRoutedEventArgs e)

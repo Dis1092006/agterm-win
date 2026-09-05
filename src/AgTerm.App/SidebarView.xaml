@@ -75,7 +75,7 @@
                                        Opacity="{x:Bind LabelOpacity, Mode=OneWay}"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{x:Bind LabelVisibility, Mode=OneWay}" />
-                            <TextBox Text="{x:Bind EditText, Mode=TwoWay}"
+                            <TextBox Text="{x:Bind EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      Visibility="{x:Bind EditorVisibility, Mode=OneWay}"
                                      MinHeight="22" Padding="4,1,4,1"
                                      FontSize="{x:Bind FontSize, Mode=OneWay}"
