@@ -154,7 +154,7 @@ internal static class EventCommands
         /// <summary>Each --kind value split on commas (empty components kept, as in the Swift, so
         /// they fail validation loudly) and whitespace-trimmed.</summary>
         private string[] RawKinds => KindFields
-            .SelectMany(field => field.Split(',').Select(component => component.Trim()))
+            .SelectMany(kindField => kindField.Split(',').Select(component => component.Trim()))
             .ToArray();
 
         private ControlEventKind[] NormalizedKinds => RawKinds
