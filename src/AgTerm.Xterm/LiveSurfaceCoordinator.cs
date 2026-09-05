@@ -69,7 +69,7 @@ internal sealed class LiveDispatchScopeFactory : IControlDispatchScopeFactory
     internal sealed class LiveDispatchScope : IControlDispatchScope
     {
         private readonly LiveDispatchScopeFactory _owner;
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private readonly List<Func<CancellationToken, Task>> _operations = new();
         private Task? _completion;
         private bool _accepting = true;
@@ -217,7 +217,7 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
     private readonly Action<LiveFailureNotice>? _failureReported;
     private readonly Func<Func<Task>, Task> _schedule;
     private readonly CancellationTokenSource _shutdown = new();
-    private readonly object _activeGate = new();
+    private readonly Lock _activeGate = new();
     private readonly HashSet<PendingTerminalSurface> _active = new();
     private TaskCompletionSource<object?>? _idleCompletion;
     private int _activeRealizationCount;

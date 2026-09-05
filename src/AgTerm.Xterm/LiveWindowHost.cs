@@ -8,8 +8,8 @@ internal sealed record LiveWindowSessionEvent(Guid WorkspaceId, Guid SessionId, 
 
 public sealed class LiveWindowHost
 {
-    private readonly object _gate = new();
-    private readonly object _dispatchLifecycleGate = new();
+    private readonly Lock _gate = new();
+    private readonly Lock _dispatchLifecycleGate = new();
     private readonly SemaphoreSlim _dispatchGate = new(1, 1);
     private readonly PersistenceStore _persistence;
     private ControlDispatcher _dispatcher;

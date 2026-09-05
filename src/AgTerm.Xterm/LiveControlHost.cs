@@ -94,8 +94,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private readonly LiveStoreCoordinator _storeCoordinator;
     private readonly LiveSurfaceCoordinator? _coordinator;
     private double _currentBaseFontSize;
-    private readonly object _shutdownLock = new();
-    private readonly object _focusRequestLock = new();
+    private readonly Lock _shutdownLock = new();
+    private readonly Lock _focusRequestLock = new();
     private readonly HashSet<Task> _focusRequestTasks = new();
     private ILiveControlRuntime? _host;
     private Task? _shutdownTask;

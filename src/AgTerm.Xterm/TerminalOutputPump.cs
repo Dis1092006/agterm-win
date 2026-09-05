@@ -16,7 +16,7 @@ public sealed class TerminalOutputPump : IDisposable, IAsyncDisposable
     private readonly TerminalOutputPumpOptions _options;
     private readonly Func<ReadOnlyMemory<byte>, Task> _sink;
     private readonly Channel<byte[]> _channel;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly TaskCompletionSource _flushWake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _disposeCts = new();
 

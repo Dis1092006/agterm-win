@@ -38,7 +38,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
 
     private readonly Func<string?>? _readClipboard;
     private double _baseFontSize;
-    private readonly object _shutdownGate = new();
+    private readonly Lock _shutdownGate = new();
     private readonly TaskCompletionSource _shutdownStarted = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private int _stopOutputStarted;

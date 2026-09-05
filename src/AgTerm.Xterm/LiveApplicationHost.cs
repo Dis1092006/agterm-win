@@ -27,7 +27,7 @@ public sealed record LiveWindowEntry(
 
 public sealed class LiveApplicationHost : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly string _stateDirectory;
     private readonly string _homeDirectory;
     private readonly ILiveWindowController? _windowController;

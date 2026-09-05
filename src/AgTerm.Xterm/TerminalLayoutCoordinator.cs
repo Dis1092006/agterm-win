@@ -5,7 +5,7 @@ namespace AgTerm.Xterm;
 public sealed class TerminalLayoutCoordinator : IDisposable
 {
     private readonly Func<TerminalLayout, Task<bool>> _applyLayout;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private TaskCompletionSource _idleTcs = CompletedIdle();
     private TerminalLayout? _pending;
     private long _highestSubmittedGeneration = long.MinValue;

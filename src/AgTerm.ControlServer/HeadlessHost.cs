@@ -116,7 +116,7 @@ public sealed record HeadlessHostOptions
 /// </summary>
 public sealed class HeadlessHost : IDisposable
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly PersistenceStore _persistence;
     private readonly HeadlessHostOptions _options;
     private readonly ControlDispatcher _dispatcher;

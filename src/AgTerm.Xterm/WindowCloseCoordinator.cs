@@ -6,7 +6,7 @@ public sealed class WindowCloseCoordinator
     private readonly Action<Action> _runOnUi;
     private readonly Action _requestFinalClose;
     private readonly Action<Exception>? _log;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly TaskCompletionSource<object?> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 

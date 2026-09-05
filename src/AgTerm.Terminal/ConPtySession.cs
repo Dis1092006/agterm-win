@@ -36,7 +36,7 @@ public sealed record ConPtyStartInfo
 /// </summary>
 public sealed class ConPtySession : IDisposable
 {
-    private readonly object _writeGate = new();
+    private readonly Lock _writeGate = new();
     private readonly TaskCompletionSource<int> _exited =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _outputCompleted =

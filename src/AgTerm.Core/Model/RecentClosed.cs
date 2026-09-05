@@ -90,7 +90,7 @@ public sealed record RecentClosedState
 /// </summary>
 public sealed class RecentClosedStore
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly string _directory;
     private readonly string _fileName;
     private readonly int _limit;

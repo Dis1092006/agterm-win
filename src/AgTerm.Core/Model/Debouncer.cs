@@ -12,7 +12,7 @@ namespace AgTerm.Core.Model;
 /// </summary>
 public sealed class Debouncer
 {
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private Timer? _timer;
     private Action? _action;
 

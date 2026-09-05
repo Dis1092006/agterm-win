@@ -36,7 +36,7 @@ public sealed class ControlEventRing
     private readonly int _capacity;
     private readonly Guid _runId;
     private readonly Func<DateTimeOffset> _now;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private readonly List<ControlEvent> _entries = new();
     private ulong _currentSequence;
 
