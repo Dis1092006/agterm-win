@@ -64,7 +64,7 @@
                     </Grid.ColumnDefinitions>
 
                     <local:SidebarView x:Name="Sidebar" Grid.Column="0" />
-                    <Border x:Name="SidebarDivider"
+                    <local:SidebarResizeHandle x:Name="SidebarDivider"
                             Grid.Column="0"
                             Width="4"
                             HorizontalAlignment="Right"
@@ -76,7 +76,7 @@
                         <Border Width="1"
                                 HorizontalAlignment="Center"
                                 Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
-                    </Border>
+                    </local:SidebarResizeHandle>
                 </Grid>
             </SplitView.Pane>
             <SplitView.Content>
