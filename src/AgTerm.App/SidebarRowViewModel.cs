@@ -19,8 +19,6 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     private SidebarRow _row;
     private AppSettings _settings;
     private SidebarSurfaceStatus _surfaceStatus;
-    private bool _isEditing;
-    private string _editText = "";
 
     public SidebarRowViewModel(
         SidebarRow row,
@@ -139,29 +137,29 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     // inline rename
     public bool IsEditing
     {
-        get => _isEditing;
+        get => field;
         set
         {
-            if (_isEditing == value) return;
-            _isEditing = value;
+            if (field == value) return;
+            field = value;
             Raise(nameof(IsEditing), nameof(EditorVisibility), nameof(LabelVisibility));
         }
     }
 
     public string EditText
     {
-        get => _editText;
+        get => field;
         set
         {
-            if (_editText == value) return;
-            _editText = value;
+            if (field == value) return;
+            field = value;
             Raise(nameof(EditText));
         }
-    }
+    } = "";
 
-    public Visibility EditorVisibility => _isEditing ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility EditorVisibility => IsEditing ? Visibility.Visible : Visibility.Collapsed;
 
-    public Visibility LabelVisibility => _isEditing ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility LabelVisibility => IsEditing ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>Re-apply a fresh row/settings pair; notifies only when the content differs (rows
     /// are records, so equality is the whole diff). Never disturbs an in-progress rename.</summary>
