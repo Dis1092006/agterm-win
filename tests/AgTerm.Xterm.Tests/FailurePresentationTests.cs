@@ -25,6 +25,22 @@ public sealed class FailurePresentationTests
     }
 
     [Fact]
+    public void MainWindow_reports_a_dead_WebView2_process_through_the_same_banner()
+    {
+        var root = FindRepoRoot();
+        var source = File.ReadAllText(Path.Combine(root,
+            "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        // Subscribed on the CoreWebView2 the page is built on, so a process death after a
+        // successful init is reported instead of surfacing as N per-session spawn failures.
+        Assert.Contains("ProcessFailed += OnCoreWebView2ProcessFailed", source, StringComparison.Ordinal);
+        // The kind → notice decision stays in AgTerm.Xterm, where it is tested without a browser.
+        Assert.Contains("WebViewProcessFailure.Notice(", source, StringComparison.Ordinal);
+        // The fatal notice must survive the per-session failures that follow it.
+        Assert.Contains("_failureNotices.ShouldShow(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bootstrap_surface_failure_reports_UI_notice_without_faulting_host_or_pipe()
     {
         var stateDirectory = Directory.CreateTempSubdirectory("agterm-page-failure-").FullName;

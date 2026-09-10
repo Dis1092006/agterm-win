@@ -9,6 +9,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.Web.WebView2.Core;
 using Windows.Graphics;
 using Windows.UI;
 using Windows.ApplicationModel.DataTransfer;
@@ -41,6 +42,7 @@ public sealed partial class MainWindow : Window
     private readonly TaskCompletionSource<object?> _closedCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task<XtermPage> _pageTask;
+    private readonly FailureNoticeGate _failureNotices = new(); // UI-thread confined, like the banner
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
     private readonly WindowCloseCoordinator _closeCoordinator;
     private readonly PaletteTransitionCoordinator _paletteTransitions = new();
@@ -412,6 +414,10 @@ public sealed partial class MainWindow : Window
     private async Task<XtermPage> BootPageAsync()
     {
         await TerminalView.EnsureCoreWebView2Async();
+        // A process death AFTER this point leaves the CoreWebView2 object alive but dead, so every
+        // later pane open throws. Init failure itself is reported by
+        // ReportPageInitializationFailureAsync instead.
+        TerminalView.CoreWebView2.ProcessFailed += OnCoreWebView2ProcessFailed;
         var page = new XtermPage(new WinRtScriptHost(TerminalView.CoreWebView2));
         await page.InitializeAsync();
         page.PasteRequested += OnPagePasteRequested;
@@ -425,6 +431,22 @@ public sealed partial class MainWindow : Window
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
+    }
+
+    /// <summary>
+    /// A WebView2 process died. Only some kinds take the page down with them; the decision lives
+    /// in AgTerm.Xterm.WebViewProcessFailure so it is testable without a browser.
+    /// </summary>
+    private void OnCoreWebView2ProcessFailed(
+        CoreWebView2 sender,
+        CoreWebView2ProcessFailedEventArgs args)
+    {
+        if (WebViewProcessFailure.Notice(args.ProcessFailedKind.ToString()) is not { } notice)
+            return;
+
+        System.Diagnostics.Trace.TraceError(
+            $"WebView2 process failed ({args.ProcessFailedKind}); the terminal page is unusable.");
+        QueueFatalFailureNotice(notice);
     }
 
     private async Task ReportPageInitializationFailureAsync(Task<XtermPage> pageTask)
@@ -1705,20 +1727,33 @@ public sealed partial class MainWindow : Window
         QueueFailureNotice(new LiveFailureNotice("Config reload failed", message));
     }
 
-    private void QueueFailureNotice(LiveFailureNotice notice)
+    private void QueueFailureNotice(LiveFailureNotice notice) =>
+        QueueFailureNotice(notice, fatal: false);
+
+    /// <summary>A notice that leaves the window unusable: it claims the banner and nothing that
+    /// follows displaces it (the per-session spawn failures it causes would otherwise bury it).</summary>
+    private void QueueFatalFailureNotice(LiveFailureNotice notice) =>
+        QueueFailureNotice(notice, fatal: true);
+
+    private void QueueFailureNotice(LiveFailureNotice notice, bool fatal)
     {
         if (DispatcherQueue.HasThreadAccess)
         {
-            ShowFailure(notice);
+            ShowFailure(notice, fatal);
             return;
         }
 
-        if (!DispatcherQueue.TryEnqueue(() => ShowFailure(notice)))
+        if (!DispatcherQueue.TryEnqueue(() => ShowFailure(notice, fatal)))
             System.Diagnostics.Trace.TraceError($"Failure notice could not be shown: {notice.Title}: {notice.Message}");
     }
 
-    private void ShowFailure(LiveFailureNotice notice)
+    private void ShowFailure(LiveFailureNotice notice) => ShowFailure(notice, fatal: false);
+
+    private void ShowFailure(LiveFailureNotice notice, bool fatal)
     {
+        if (!_failureNotices.ShouldShow(notice, fatal))
+            return;
+
         FailureBanner.Title = notice.Title;
         FailureBanner.Message = notice.Message;
         FailureBanner.IsOpen = true;

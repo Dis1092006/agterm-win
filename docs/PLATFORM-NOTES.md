@@ -378,3 +378,18 @@ Constraints the implementation is pinned to, each of which was a real failure fi
 - **The scripts must stay real files, and are found via the exe path.** They are marked `ExcludeFromSingleFile`, because a `PublishSingleFile` bundle would hide them from the shell that is handed their path. `ShellIntegration.ResolveScriptDirectory` therefore tries `Environment.ProcessPath`'s directory BEFORE `AppContext.BaseDirectory`: in this app's single-file publish the two differ — `BaseDirectory` is the bundle extraction directory under `%TEMP%\.net\AgTerm.App\<hash>\`, while the excluded scripts stay beside the exe. A plain console single-file app reports the two as equal, so this only reproduces in the real app. Existence is checked, so a layout missing the scripts degrades to a plain shell.
 
 A `cd` still does not trigger a disk write (spec line 81: reports arrive on every prompt, so only structural mutations save). The directory survives an ordinary quit because window close and `LiveApplicationHost.Dispose` both save; a hard kill still loses cwd changes made since the last structural mutation.
+
+## WebView2 process death
+
+Upstream has no analogue. libghostty renders in the app's own process, so there is no renderer that can die while the app keeps running. This port draws every pane in a WebView2, which runs its terminals in separate browser processes, and those processes can exit on their own.
+
+What made this worth handling: the `CoreWebView2` object stays alive after its process dies. `WinRtScriptHost` captures it once at boot (`MainWindow.BootPageAsync`) and `_pageTask` is a `Task` that completes once, so nothing re-reads either. Every later `ExecuteScriptAsync` throws. The observed result was an app that ran for two days, lost its renderer, and then reported "Terminal failed to start" on all five restored sessions, with no statement of the real cause and no recovery short of a restart.
+
+`CoreWebView2.ProcessFailed` is now subscribed right after `EnsureCoreWebView2Async`, so it covers failures after a successful init. Init failure itself is already reported by `ReportPageInitializationFailureAsync`.
+
+- **Only some kinds take the page down.** `WebViewProcessFailure.IsFatal` treats `BrowserProcessExited`, `RenderProcessExited` and `RenderProcessUnresponsive` as fatal. `GpuProcessExited`, `UtilityProcessExited`, `SandboxHelperProcessExited`, the two PPAPI kinds and `UnknownProcessExited` leave the page running, and WebView2 recovers those processes itself. `FrameRenderProcessExited` covers an out-of-process iframe, which this page does not host.
+- **An unrecognized kind reads as survivable.** A newer runtime can name a kind this build does not know. Claiming the terminals are gone while they still work is the worse error.
+- **The kind arrives as its enum name.** `AgTerm.Xterm` has no WinUI or WebView2 reference, and the mapping is the part worth testing without a browser, so `MainWindow` passes `ProcessFailedKind.ToString()`.
+- **The fatal notice holds the banner.** `FailureBanner` is one `InfoBar` and the newest notice replaces the last, so the per-session spawn failures that follow a dead renderer would bury the one notice that explains them. `FailureNoticeGate` drops every notice after a fatal one, including a repeat of the fatal notice itself, because WebView2 can raise `ProcessFailed` more than once.
+
+The panes stay dead until the app is restarted, which is what the notice says. Recovery would need a reload, a fresh `XtermPage`, and a way to reattach the running ConPTY sessions to new panes; none of that exists yet. The spawned shells do keep running until the app exits, so a restart reopens them at their saved directories.
