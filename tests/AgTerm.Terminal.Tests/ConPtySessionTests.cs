@@ -39,7 +39,14 @@ public class ConPtySessionTests : IDisposable
         lock (_output) return _output.ToString();
     }
 
-    private string WaitForOutput(string contains, int timeoutMs = 15000)
+    /// <summary>How long a spawned child is given. These are correctness tests, not performance
+    /// ones, and the whole solution runs its test assemblies in parallel: spawning a real process
+    /// and draining a pseudoconsole can take far longer than it does with the suite to itself, so
+    /// the budget is generous on purpose. A deadlocked test still fails, it just takes a minute.
+    /// </summary>
+    private static readonly TimeSpan ChildBudget = TimeSpan.FromSeconds(60);
+
+    private string WaitForOutput(string contains, int timeoutMs = 60000)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
         while (Environment.TickCount64 < deadline)
@@ -59,14 +66,14 @@ public class ConPtySessionTests : IDisposable
     {
         var pty = Start(Cmd, "/c", "echo hello-conpty");
         WaitForOutput("hello-conpty");
-        Assert.Equal(0, await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15)));
+        Assert.Equal(0, await pty.Exited.WaitAsync(ChildBudget));
     }
 
     [Fact]
     public async Task Exit_code_propagates()
     {
         var pty = Start(Cmd, "/c", "exit 3");
-        Assert.Equal(3, await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15)));
+        Assert.Equal(3, await pty.Exited.WaitAsync(ChildBudget));
     }
 
     [Fact]
@@ -74,7 +81,7 @@ public class ConPtySessionTests : IDisposable
     {
         var cwd = Path.GetTempPath().TrimEnd('\\');
         var pty = StartIn(cwd, Cmd, "/c", "cd");
-        await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+        await pty.Exited.WaitAsync(ChildBudget);
         // cmd's `cd` prints the working directory; ignore case (8.3/short names aside, temp is stable)
         Assert.Contains(cwd, Snapshot(), StringComparison.OrdinalIgnoreCase);
     }
@@ -87,7 +94,7 @@ public class ConPtySessionTests : IDisposable
         pty.WriteText("echo typed-marker-%RANDOM:~0,0%ok\r");
         WaitForOutput("typed-marker-ok"); // the echoed command AND its output both carry it
         pty.WriteText("exit\r");
-        Assert.Equal(0, await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15)));
+        Assert.Equal(0, await pty.Exited.WaitAsync(ChildBudget));
     }
 
     [Fact]
@@ -121,7 +128,7 @@ public class ConPtySessionTests : IDisposable
             Argv = new[] { Cmd, "/c", "echo token=%AGTERM_PANE_ID% comspec=%COMSPEC%" },
             ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_PANE_ID"] = "pane-abc123" },
         });
-        await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+        await pty.Exited.WaitAsync(ChildBudget);
         WaitForOutput("token=pane-abc123");
         WaitForOutput("comspec=C:\\"); // an inherited variable survived
     }
@@ -139,7 +146,7 @@ public class ConPtySessionTests : IDisposable
                 Argv = new[] { Cmd, "/c", "echo probe=[%AGTERM_TEST_INHERITED%]" },
                 RemoveEnvironment = new[] { "AGTERM_TEST_INHERITED" },
             });
-            await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+            await pty.Exited.WaitAsync(ChildBudget);
             // cmd leaves an unset variable's reference verbatim
             WaitForOutput("probe=[%AGTERM_TEST_INHERITED%]");
         }
@@ -161,7 +168,7 @@ public class ConPtySessionTests : IDisposable
                 ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_TEST_INHERITED"] = "new" },
                 RemoveEnvironment = new[] { "AGTERM_TEST_INHERITED" },
             });
-            await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+            await pty.Exited.WaitAsync(ChildBudget);
             WaitForOutput("probe=new");
         }
         finally
@@ -177,7 +184,7 @@ public class ConPtySessionTests : IDisposable
         WaitForOutput(">");
         pty.Dispose();
         // the child must be gone; a killed conpty child reports a nonzero exit
-        await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+        await pty.Exited.WaitAsync(ChildBudget);
     }
 
     [Fact]
@@ -202,8 +209,8 @@ public class ConPtySessionTests : IDisposable
         using var pty = ConPtySession.Start(info);
         try
         {
-            await callbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(15));
-            await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+            await callbackStarted.Task.WaitAsync(ChildBudget);
+            await pty.Exited.WaitAsync(ChildBudget);
 
             Assert.False(pty.OutputCompleted.IsCompleted);
         }
@@ -212,6 +219,6 @@ public class ConPtySessionTests : IDisposable
             callbackGate.Set();
         }
 
-        await pty.OutputCompleted.WaitAsync(TimeSpan.FromSeconds(15));
+        await pty.OutputCompleted.WaitAsync(ChildBudget);
     }
 }
