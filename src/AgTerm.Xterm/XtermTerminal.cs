@@ -48,7 +48,9 @@ public sealed class XtermTerminal
 
     public int Rows { get; private set; }
 
-    /// <summary>User keystrokes from xterm (onData), verbatim — Enter is already CR.</summary>
+    /// <summary>User keystrokes from xterm (onData), verbatim — already encoded by the engine:
+    /// Enter is CR, and under a pushed kitty keyboard protocol keys carry their CSI u form
+    /// (Shift+Enter becomes ESC [13;2u), which is what makes it distinguishable from Enter.</summary>
     public event Action<string>? DataReceived;
 
     /// <summary>The fit addon recomputed cols/rows — forward to ConPTY resize.</summary>

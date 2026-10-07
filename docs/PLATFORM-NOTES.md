@@ -393,3 +393,16 @@ What made this worth handling: the `CoreWebView2` object stays alive after its p
 - **The fatal notice holds the banner.** `FailureBanner` is one `InfoBar` and the newest notice replaces the last, so the per-session spawn failures that follow a dead renderer would bury the one notice that explains them. `FailureNoticeGate` drops every notice after a fatal one, including a repeat of the fatal notice itself, because WebView2 can raise `ProcessFailed` more than once.
 
 The panes stay dead until the app is restarted, which is what the notice says. Recovery would need a reload, a fresh `XtermPage`, and a way to reattach the running ConPTY sessions to new panes; none of that exists yet. The spawned shells do keep running until the app exits, so a restart reopens them at their saved directories.
+
+## Keyboard protocol (kitty CSI u, win32-input-mode)
+
+Upstream does not carry this. agterm draws on Ghostty, which implements the kitty keyboard protocol itself, so an app running inside upstream agterm can ask for CSI u encoding and get it. Here the engine is xterm.js, and 6.0.0 has no support for the protocol at all: every key arrives at the pty in its legacy form. Enter and Shift+Enter are both CR, and nothing downstream can tell them apart.
+
+That is a feature gap in the engine, not a parity divergence: the control API, the keymap grammar and the builtin actions are untouched. It is recorded here because the fix pins a prerelease.
+
+- **The core runs on a 6.1.0 beta.** `vtExtensions` (`kittyKeyboard`, `win32InputMode`) is the option that carries it, and 6.1.0-beta is the first release to have it. `src/AgTerm.Xterm/Assets/vendor/MANIFEST.md` holds the pins and explains why the addons sit at a lower beta number than the core.
+- **Both extensions are off by default in the engine, and both are enabled here.** `buildTerminalOptions` sets them for every pane. `win32InputMode` (`DECSET 9001`) is the ConPTY-native way to report full key events and helps TUI input generally; it is independent of the kitty protocol, and the engine prefers it when an app enables both.
+- **An app that never asks keeps the old encoding.** The protocol is opt-in over the wire: the engine answers `CSI ? u`, tracks the stack pushed by `CSI > flags u` and popped by `CSI < n u`, and reports CSI u only while a request is in effect. Enabling the option changes nothing for a program that does not use it. `XtermPageLiveTests.Shift_enter_reports_kitty_csi_u_while_the_keyboard_protocol_is_pushed` pins all three states: CR before the push, `ESC [13;2u` for Shift+Enter while pushed, CR again after the pop.
+- **Host chord interception runs first and is unaffected.** `attachCustomKeyEventHandler` sees the DOM event before any encoding, so which chords reach the pty is still decided by the keymap, not by the protocol.
+
+Claude Code is the case that motivated this: its newline-without-submit binding needs Shift+Enter to be distinguishable from Enter, and `claude /terminal-setup` cannot help, since it writes per-terminal config for a fixed list of known terminals and has no entry for this app. Supporting the protocol is not sufficient on its own, because the request has to come from the program: see the next section.

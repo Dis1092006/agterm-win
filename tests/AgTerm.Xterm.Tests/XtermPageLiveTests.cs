@@ -842,6 +842,101 @@ public class XtermPageLiveTests
         Assert.Contains(data, d => d.Contains("\u6f22\u5b57") || d.Contains("\u6f22"));
     }
 
+    /// <summary>
+    /// Shift+Enter must reach the pty as the kitty CSI u sequence once the app asks for the
+    /// protocol, and as plain CR before and after. Claude Code's newline-without-submit binding
+    /// depends on it: with the protocol off, Enter and Shift+Enter are both CR and it cannot tell
+    /// them apart. Upstream agterm gets this from Ghostty; on Windows it comes from xterm.js.
+    /// </summary>
+    [Fact]
+    public async Task Shift_enter_reports_kitty_csi_u_while_the_keyboard_protocol_is_pushed()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("kitty-kbd"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+
+        async Task DispatchAsync(bool shift) => await _webView.RunAsync(
+            async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                $"agterm.dispatchKey(\"kitty-kbd\", {{key:'Enter', shiftKey:{(shift ? "true" : "false")}}})"));
+
+        async Task FeedAsync(string vt) => await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes(vt));
+            return Task.FromResult(0);
+        });
+
+        async Task<List<string>> CollectAsync(int count)
+        {
+            var deadline = Environment.TickCount64 + 10000;
+            while (data.Count < count && Environment.TickCount64 < deadline)
+                await Task.Delay(25);
+            return [.. data];
+        }
+
+        // protocol off: both are CR — this is the state Claude Code cannot work with
+        await DispatchAsync(shift: false);
+        await DispatchAsync(shift: true);
+        Assert.Equal(["\r", "\r"], await CollectAsync(2));
+
+        // CSI > 1 u — progressive enhancement, what an app pushes on entry
+        await FeedAsync("\u001b[>1u");
+        await DispatchAsync(shift: false);
+        await DispatchAsync(shift: true);
+        Assert.Equal(["\r", "\r", "\r", "\u001b[13;2u"], await CollectAsync(4));
+
+        // CSI < u — popped on exit, back to CR for everything else
+        await FeedAsync("\u001b[<u");
+        await DispatchAsync(shift: true);
+        Assert.Equal(["\r", "\r", "\r", "\u001b[13;2u", "\r"], await CollectAsync(5));
+    }
+
+    /// <summary>
+    /// A real Shift+Enter carries event.code "Enter"; the engine's win32-input-mode encoder keys
+    /// off code and is checked BEFORE the kitty path, so with both extensions on it decides the
+    /// encoding whenever mode 9001 is active. Pins what the pty actually receives for a keydown
+    /// that looks like the hardware one.
+    /// </summary>
+    [Fact]
+    public async Task Shift_enter_with_a_real_event_code_reports_kitty_csi_u()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("kitty-code"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+
+        // an app asks for the protocol, the way Claude Code does on entry
+        await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("[>1u"));
+            return Task.FromResult(0);
+        });
+        await Task.Delay(200);
+
+        // same shape as a hardware Shift+Enter: key, code and keyCode all present
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              const ev = new KeyboardEvent("keydown", {
+                key: "Enter", code: "Enter", shiftKey: true, cancelable: true });
+              Object.defineProperty(ev, "keyCode", { value: 13, configurable: true });
+              Object.defineProperty(ev, "which", { value: 13, configurable: true });
+              agterm.textareaFor("kitty-code").dispatchEvent(ev);
+              return true;
+            })()
+            """));
+
+        var mode9001 = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.win32InputModeActive(\"kitty-code\")"));
+
+        var deadline = Environment.TickCount64 + 5000;
+        while (data.Count < 1 && Environment.TickCount64 < deadline)
+            await Task.Delay(25);
+
+        Assert.Equal(["\u001b[13;2u"], data);
+        Assert.Equal("false", mode9001);
+    }
+
     private static RendererSettingsSnapshot MakeSnapshot(
         double fontSize = 14,
         bool screenReaderMode = false) =>

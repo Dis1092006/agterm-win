@@ -1263,6 +1263,54 @@ function buildTheme(settings) {
   return theme;
 }
 
+// the event.code a physical key reports, for the keys tests drive (letters/digits are positional
+// names, not the produced character; the rest are named after the key itself)
+function syntheticCodeFromKey(key) {
+  if (typeof key !== "string" || key.length === 0) return "";
+  if (key.length === 1) {
+    const c = key.toUpperCase();
+    if (c >= "A" && c <= "Z") return `Key${c}`;
+    if (c >= "0" && c <= "9") return `Digit${c}`;
+    switch (key) {
+      case " ":
+        return "Space";
+      case "`":
+      case "~":
+        return "Backquote";
+      default:
+        return "";
+    }
+  }
+  switch (key) {
+    case "Enter":
+    case "return":
+      return "Enter";
+    case "Tab":
+    case "tab":
+      return "Tab";
+    case "Backspace":
+    case "delete":
+      return "Backspace";
+    case "ArrowLeft":
+    case "left":
+      return "ArrowLeft";
+    case "ArrowUp":
+    case "up":
+      return "ArrowUp";
+    case "ArrowRight":
+    case "right":
+      return "ArrowRight";
+    case "ArrowDown":
+    case "down":
+      return "ArrowDown";
+    case "Space":
+    case "space":
+      return "Space";
+    default:
+      return "";
+  }
+}
+
 function buildTerminalOptions(settings, fontSizeOverride) {
   const fontSize =
     typeof fontSizeOverride === "number" && Number.isFinite(fontSizeOverride)
@@ -1279,6 +1327,10 @@ function buildTerminalOptions(settings, fontSizeOverride) {
     scrollback: settings.scrollback,
     screenReaderMode: settings.screenReaderMode,
     theme: buildTheme(settings),
+    // Ghostty reports these on macOS; on Windows they are the engine's, and an app that never
+    // asks for them still gets the legacy encoding. Without the kitty protocol Enter and
+    // Shift+Enter are both CR, so Claude Code cannot bind newline-without-submit.
+    vtExtensions: { kittyKeyboard: true, win32InputMode: true },
   };
 }
 
@@ -1713,7 +1765,8 @@ function openPane(paneId, opts) {
     return false;
   });
 
-  // user input → pty (xterm already encodes Enter as CR, arrows as VT sequences, etc.)
+  // user input → pty (xterm encodes Enter as CR, arrows as VT sequences, and — once an app
+  // pushes the kitty keyboard protocol — keys in their CSI u form; see vtExtensions above)
   term.onData((data) => post({ type: "data", paneId, data }));
   term.onBinary((data) => post({ type: "binary", paneId, data }));
 
@@ -2050,11 +2103,19 @@ window.agterm = {
         return 0;
     }
   },
-  // test-only: run a synthetic keydown through the real xterm key path (chord interception)
+  // test-only: the pane's real textarea, so a test can dispatch an event it built itself
+  textareaFor: (paneId) => withPane(paneId, (p) => p.term.textarea),
+  // test-only: is DECSET 9001 (win32-input-mode) active? it outranks the kitty protocol
+  win32InputModeActive: (paneId) =>
+    withPane(paneId, (p) => !!p.term.modes.win32InputMode),
+  // test-only: run a synthetic keydown through the real xterm key path (chord interception).
+  // event.code matters as much as event.key: win32-input-mode encodes from code and is consulted
+  // before the kitty protocol, so an event without one takes a path no hardware key takes.
   dispatchKey: (paneId, opts) =>
     withPane(paneId, (p) => {
       const ev = new KeyboardEvent("keydown", {
         key: opts.key,
+        code: opts.code || syntheticCodeFromKey(opts.key),
         ctrlKey: !!opts.ctrlKey,
         altKey: !!opts.altKey,
         shiftKey: !!opts.shiftKey,
