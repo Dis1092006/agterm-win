@@ -27,6 +27,11 @@ public sealed record ConPtyStartInfo
     /// <summary>Variables added on top of the host's inherited environment (e.g. the surface's
     /// AGTERM_PANE_ID spawn token). Null = plain inheritance.</summary>
     public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
+
+    /// <summary>Inherited variables to drop from the child (e.g. a launcher's TERM_PROGRAM, which
+    /// would misidentify the terminal). Removal applies before ExtraEnvironment, so naming a
+    /// variable in both keeps the explicit value. Null = remove nothing.</summary>
+    public IReadOnlyList<string>? RemoveEnvironment { get; init; }
 }
 
 /// <summary>
@@ -89,7 +94,7 @@ public sealed class ConPtySession : IDisposable
                     console, new IntPtr(IntPtr.Size), IntPtr.Zero, IntPtr.Zero))
                 throw new Win32Exception();
 
-            var environmentBlock = BuildEnvironmentBlock(info.ExtraEnvironment);
+            var environmentBlock = BuildEnvironmentBlock(info.ExtraEnvironment, info.RemoveEnvironment);
             var startup = new ConPtyNative.StartupInfoEx
             {
                 // STARTF_USESTDHANDLES with null handles: without it CreateProcessW duplicates the
@@ -143,17 +148,24 @@ public sealed class ConPtySession : IDisposable
     }
 
     /// <summary>A CREATE_UNICODE_ENVIRONMENT block: the inherited process environment with the
-    /// extras overlaid (case-insensitive keys, like the environment itself), sorted per the
-    /// CreateProcessW contract, double-NUL-terminated. Zero when there is nothing to add
-    /// (null = plain inheritance, cheaper and identical).</summary>
-    private static IntPtr BuildEnvironmentBlock(IReadOnlyDictionary<string, string>? extra)
+    /// removals applied and the extras overlaid (case-insensitive keys, like the environment
+    /// itself), sorted per the CreateProcessW contract, double-NUL-terminated. Zero when there is
+    /// nothing to change (null = plain inheritance, cheaper and identical).</summary>
+    private static IntPtr BuildEnvironmentBlock(
+        IReadOnlyDictionary<string, string>? extra, IReadOnlyList<string>? remove)
     {
-        if (extra is null || extra.Count == 0) return IntPtr.Zero;
+        if ((extra is null || extra.Count == 0) && (remove is null || remove.Count == 0))
+            return IntPtr.Zero;
         var merged = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
             merged[(string)entry.Key] = (string?)entry.Value ?? "";
-        foreach (var (key, value) in extra)
-            merged[key] = value;
+        // removal first: an explicit extra of the same name is a declaration, and wins
+        if (remove is not null)
+            foreach (var key in remove)
+                merged.Remove(key);
+        if (extra is not null)
+            foreach (var (key, value) in extra)
+                merged[key] = value;
         var block = new StringBuilder();
         foreach (var (key, value) in merged)
             block.Append(key).Append('=').Append(value).Append('\0');

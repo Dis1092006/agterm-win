@@ -146,6 +146,32 @@ public class XtermPaneSurfaceTests
     }
 
     [Fact]
+    public async Task Shell_is_told_it_runs_in_a_windows_terminal_and_not_in_the_launcher()
+    {
+        // the identification a TUI negotiates against: WT_SESSION present (Claude Code requires a
+        // recognized terminal before it will request the kitty keyboard protocol) and the
+        // launcher's TERM_PROGRAM gone, since it is read first and would win
+        Environment.SetEnvironmentVariable("TERM_PROGRAM", "zed");
+        try
+        {
+            using var surface = await OpenAsync();
+            WaitForScreen(surface, ">");
+            // the command line is echoed by the prompt too, so read the RESULT line: it is the
+            // one carrying the marker, and cmd leaves an unset variable's reference verbatim
+            surface.Inject("echo mark wt=[%WT_SESSION%] prog=[%TERM_PROGRAM%] term=[%TERM%]\n");
+            var screen = WaitForScreen(surface, "term=[xterm-256color]");
+            var line = screen.Split('\n').Last(l => l.Contains("mark wt=[") && !l.Contains("echo mark"));
+            Assert.DoesNotContain("prog=[zed]", line);
+            Assert.Contains("prog=[%TERM_PROGRAM%]", line); // removed, so never expanded
+            Assert.Matches(@"wt=\[[0-9a-fA-F-]{36}\]", line);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TERM_PROGRAM", null);
+        }
+    }
+
+    [Fact]
     public async Task Paste_types_the_clipboard_through_xterm()
     {
         using var surface = await OpenAsync(new XtermSurfaceOptions

@@ -127,6 +127,50 @@ public class ConPtySessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Removed_environment_variables_are_absent_from_the_child()
+    {
+        // an inherited variable that names the WRONG terminal has to go, not be overwritten with
+        // a placeholder: Claude Code branches on TERM_PROGRAM being set at all
+        Environment.SetEnvironmentVariable("AGTERM_TEST_INHERITED", "leaks");
+        try
+        {
+            var pty = StartWith(new ConPtyStartInfo
+            {
+                Argv = new[] { Cmd, "/c", "echo probe=[%AGTERM_TEST_INHERITED%]" },
+                RemoveEnvironment = new[] { "AGTERM_TEST_INHERITED" },
+            });
+            await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+            // cmd leaves an unset variable's reference verbatim
+            WaitForOutput("probe=[%AGTERM_TEST_INHERITED%]");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGTERM_TEST_INHERITED", null);
+        }
+    }
+
+    [Fact]
+    public async Task Removal_loses_to_an_explicit_extra_of_the_same_name()
+    {
+        Environment.SetEnvironmentVariable("AGTERM_TEST_INHERITED", "old");
+        try
+        {
+            var pty = StartWith(new ConPtyStartInfo
+            {
+                Argv = new[] { Cmd, "/c", "echo probe=%AGTERM_TEST_INHERITED%" },
+                ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_TEST_INHERITED"] = "new" },
+                RemoveEnvironment = new[] { "AGTERM_TEST_INHERITED" },
+            });
+            await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+            WaitForOutput("probe=new");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AGTERM_TEST_INHERITED", null);
+        }
+    }
+
+    [Fact]
     public async Task Dispose_kills_a_live_shell()
     {
         var pty = Start(Cmd);

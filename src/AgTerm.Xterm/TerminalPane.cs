@@ -12,6 +12,9 @@ public sealed record TerminalPaneOptions
 
     /// <summary>Extra child environment (e.g. the surface's AGTERM_PANE_ID token).</summary>
     public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
+
+    /// <summary>Inherited variables to drop from the child (see TerminalIdentity).</summary>
+    public IReadOnlyList<string>? RemoveEnvironment { get; init; }
 }
 
 /// <summary>
@@ -99,6 +102,7 @@ public sealed class TerminalPane : IDisposable
                 Argv = options.Argv,
                 Cwd = options.Cwd,
                 ExtraEnvironment = options.ExtraEnvironment,
+                RemoveEnvironment = options.RemoveEnvironment,
                 Cols = terminal.Cols > 0 ? terminal.Cols : 80,
                 Rows = terminal.Rows > 0 ? terminal.Rows : 24,
                 OnOutput = chunk =>

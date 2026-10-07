@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.ExceptionServices;
 using AgTerm.ControlServer;
 using AgTerm.Core.Model;
+using AgTerm.Terminal;
 
 namespace AgTerm.Xterm;
 
@@ -91,7 +92,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
             {
                 Argv = options.Argv,
                 Cwd = options.Cwd,
-                ExtraEnvironment = new Dictionary<string, string> { ["AGTERM_PANE_ID"] = token },
+                ExtraEnvironment = TerminalIdentity.PaneEnvironment(token),
+                RemoveEnvironment = TerminalIdentity.RemovedVariables,
             }, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
