@@ -16,8 +16,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- the terminal page + pinned xterm.js bundles ship next to the assembly (no CDN) -->
-    <None Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- the terminal page + pinned xterm.js bundles ship next to the assembly (no CDN).
+         WebView2 serves them through MapVirtualHostToFolder(XtermAssets.Directory), which needs a
+         directory on disk. Under PublishSingleFile they must stay INSIDE the bundle: it extracts
+         to a temp directory and AppContext.BaseDirectory points there, not next to the exe, so
+         ExcludeFromSingleFile would leave the app looking in the extraction folder for files that
+         were never packed into it (the page then fails with ERR_FILE_NOT_FOUND). This is the
+         opposite of Integration\** below, whose paths are handed to a shell.
+         CopyToPublishDirectory covers the non-single-file layouts, where the published project is
+         AgTerm.App and a referenced project's None items would otherwise stop at a build output. -->
+    <None Include="Assets\**"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
     <!-- per-shell cwd-reporting scripts, dot-sourced by the spawned shell (ShellIntegration).
          They must exist as REAL FILES next to the exe at run time, because a shell is handed a
          path to them: ExcludeFromSingleFile keeps PublishSingleFile from packing them into the

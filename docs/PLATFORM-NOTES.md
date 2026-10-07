@@ -419,3 +419,15 @@ This matters beyond cosmetics because programs gate features on it. Claude Code 
 - **The cost is one performance optimization.** Claude Code skips its `DECSTBM` scrolling-region path when `WT_SESSION` is set and repaints more instead, presumably from conhost history. Correct either way, and it does not disable the progress reporting (`OSC 9;4`) that xterm.js has no support for — that is suppressed for Windows terminal sessions, which suits this port.
 
 This is identification chosen to satisfy other programs' allowlists, so it is a claim about behaviour rather than provenance: any program reading `WT_SESSION` will conclude it is inside Windows Terminal. No divergence was found for the features involved, but the mechanism deserves the same scrutiny if a future program gates something else on the same variable.
+
+## Assets must survive packaging, not only a build
+
+The terminal page is not embedded in the assembly: WebView2 serves it with `MapVirtualHostToFolder(XtermAssets.Directory)`, which resolves to `AppContext.BaseDirectory\Assets` and needs real files on disk. Two separate things have to hold for that, and the published app satisfied neither for a while.
+
+`PublishSingleFile` extracts the bundle to a directory under `%TEMP%\.net\<app>` and points `AppContext.BaseDirectory` there, not at the folder holding the exe. So the assets must stay INSIDE the bundle: marking them `ExcludeFromSingleFile` leaves them beside the exe where nothing looks for them, and the app finds an `Assets` folder containing only the application icon. The page then fails to load and every pane reports `session not realized`, while the sidebar, the control plane and persistence all keep working — the failure looks like a terminal bug rather than a packaging one. `ERR_FILE_NOT_FOUND` in the WebView is the tell.
+
+This is the opposite of `Integration\**`, which must be excluded: those paths are handed to a spawned shell, which cannot read out of a bundle. Same directory, same `None` items, contradictory requirements.
+
+`CopyToPublishDirectory` covers the layouts that are not single-file, where the published project is `AgTerm.App` and a referenced project's `None` items reach a build output through copy-local but stop there.
+
+`XtermAssetsTests.Assets_are_declared_to_follow_a_publish_not_only_a_build` asserts the declaration. It is a weak test — it reads the csproj rather than a published layout — because the existing asset test reads the build output, where the files are always present, so a packaging-only gap is invisible to the suite. Worth remembering for any future run-time file: the question is not whether the build works, but whether the file is reachable from `AppContext.BaseDirectory` in the packaging the user actually runs.
