@@ -114,7 +114,12 @@ public static class KeymapParser
         var ownersByChord = new Dictionary<Chord, List<BuiltinAction>>();
         foreach (var action in BuiltinActions.All)
         {
-            var chord = candidates.TryGetValue(action, out var overridden) ? overridden : action.DefaultChord();
+            // the same resolution Keymap.EquivalentFor performs, against the candidate overrides
+            // being validated: a collision is about the chords that will actually be active, and on
+            // Windows an unmoved default is the WindowsDefaultChords one.
+            var chord = candidates.TryGetValue(action, out var overridden)
+                ? overridden
+                : WindowsDefaultChords.ShippedFor(action);
             if (chord is not { } c) continue;
             if (!ownersByChord.TryGetValue(c, out var owners))
                 ownersByChord[c] = owners = new List<BuiltinAction>();

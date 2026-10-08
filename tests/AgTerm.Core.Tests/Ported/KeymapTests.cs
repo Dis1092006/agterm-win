@@ -2,7 +2,14 @@ using AgTerm.Core.Keymap;
 
 namespace AgTerm.Core.Tests.Ported;
 
-/// <summary>Ported 1:1 from agtermCore/Tests/agtermCoreTests/KeymapTests.swift.</summary>
+/// <summary>
+/// Ported from agtermCore/Tests/agtermCoreTests/KeymapTests.swift.
+///
+/// The mechanics are 1:1. The expected CHORDS are not: Windows ships its own defaults for every
+/// action the cmd-to-Ctrl fold would park on bare Ctrl (see <see cref="WindowsDefaultChords"/>), so
+/// toggle_split answers opt+d here and cmd+d upstream. Each such place is marked "Windows default"
+/// with the upstream chord beside it, so this file can still be diffed against the Swift one.
+/// </summary>
 public class KeymapTests
 {
     private static (AgTerm.Core.Keymap.Keymap Keymap, List<KeymapDiagnostic> Diagnostics) ParseKeymap(string text) =>
@@ -26,8 +33,10 @@ public class KeymapTests
     public void AbsentOverrideFallsBackToDefault()
     {
         var keymap = KeymapWith();
-        Assert.Equal(BuiltinAction.ToggleSplit.DefaultChord(), keymap.EquivalentFor(BuiltinAction.ToggleSplit));
-        Assert.Equal(new Chord(Modifiers.Command, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
+        // Windows default: opt+d / opt+n (upstream cmd+d / cmd+n).
+        Assert.Equal(WindowsDefaultChords.ShippedFor(BuiltinAction.ToggleSplit),
+            keymap.EquivalentFor(BuiltinAction.ToggleSplit));
+        Assert.Equal(new Chord(Modifiers.Option, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
     }
 
     [Fact]
@@ -67,9 +76,10 @@ public class KeymapTests
     public void GlyphHintRendersDefaultChordAsGlyphs()
     {
         var keymap = KeymapWith();
-        Assert.Equal("⌘N", keymap.GlyphHint(BuiltinAction.NewSession));
-        Assert.Equal("⌃⌘S", keymap.GlyphHint(BuiltinAction.ToggleSidebar));
-        Assert.Equal("⌘D", keymap.GlyphHint(BuiltinAction.ToggleSplit));
+        // Windows defaults: upstream renders ⌘N / ⌃⌘S / ⌘D.
+        Assert.Equal("⌥N", keymap.GlyphHint(BuiltinAction.NewSession));
+        Assert.Equal("⌥S", keymap.GlyphHint(BuiltinAction.ToggleSidebar));
+        Assert.Equal("⌥D", keymap.GlyphHint(BuiltinAction.ToggleSplit));
     }
 
     [Fact]
@@ -334,7 +344,8 @@ public class KeymapTests
         // diagnosed, not silently double-bound.
         var (keymap, diagnostics) = ParseKeymap("map cmd+opt+up new_session");
         Assert.Empty(keymap.BuiltinOverrides);
-        Assert.Equal(new Chord(Modifiers.Command, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
+        // Windows default: opt+n (upstream cmd+n).
+        Assert.Equal(new Chord(Modifiers.Option, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
         Assert.Equal(new Chord(Modifiers.Command | Modifiers.Option, "up"),
             keymap.EquivalentFor(BuiltinAction.PreviousSession));
         Assert.Contains("conflicts with built-in 'previous_session'", Assert.Single(diagnostics).Message);
@@ -378,12 +389,13 @@ public class KeymapTests
     [Fact]
     public void MapToOtherBuiltinUnmovedDefaultIsRejected()
     {
-        // cmd+d is toggle_split's UNMOVED default; mapping new_session to it must be diagnosed and
-        // the override dropped. The CRITICAL case: override-vs-other-default, not just override-vs-override.
-        var (keymap, diagnostics) = ParseKeymap("map cmd+d new_session");
+        // opt+d is toggle_split's UNMOVED default here (upstream cmd+d); mapping new_session to it
+        // must be diagnosed and the override dropped. The CRITICAL case: override-vs-other-default,
+        // not just override-vs-override.
+        var (keymap, diagnostics) = ParseKeymap("map opt+d new_session");
         Assert.Empty(keymap.BuiltinOverrides);
         // new_session keeps its own default (the map was skipped, not applied).
-        Assert.Equal(new Chord(Modifiers.Command, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
+        Assert.Equal(new Chord(Modifiers.Option, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
         var diagnostic = Assert.Single(diagnostics);
         Assert.Equal(1, diagnostic.Line);
         Assert.Contains("conflicts with built-in 'toggle_split'", diagnostic.Message);
@@ -428,16 +440,20 @@ public class KeymapTests
     [Fact]
     public void MapCascadingCollisionDropsBothRevertsToDefaults()
     {
-        // cascade: toggle_split's override (cmd+o) loses to open_directory's UNMOVED default cmd+o →
-        // dropped → reverts to its OWN default cmd+d → which then collides with new_session's
-        // accepted override cmd+d. Resolution must iterate to a fixpoint and drop BOTH overrides.
-        var text = "map cmd+o toggle_split\nmap cmd+d new_session";
+        // cascade: toggle_split's override (opt+o) loses to open_directory's UNMOVED default opt+o →
+        // dropped → reverts to its OWN default opt+d → which then collides with new_session's
+        // accepted override opt+d. Resolution must iterate to a fixpoint and drop BOTH overrides.
+        // Upstream runs the same cascade on cmd+o / cmd+d.
+        var text = "map opt+o toggle_split\nmap opt+d new_session";
         var (keymap, diagnostics) = ParseKeymap(text);
         // both overrides dropped → every action sits on its shipped default.
         Assert.Empty(keymap.BuiltinOverrides);
-        Assert.Equal(BuiltinAction.ToggleSplit.DefaultChord(), keymap.EquivalentFor(BuiltinAction.ToggleSplit));
-        Assert.Equal(BuiltinAction.NewSession.DefaultChord(), keymap.EquivalentFor(BuiltinAction.NewSession));
-        Assert.Equal(BuiltinAction.OpenDirectory.DefaultChord(), keymap.EquivalentFor(BuiltinAction.OpenDirectory));
+        Assert.Equal(WindowsDefaultChords.ShippedFor(BuiltinAction.ToggleSplit),
+            keymap.EquivalentFor(BuiltinAction.ToggleSplit));
+        Assert.Equal(WindowsDefaultChords.ShippedFor(BuiltinAction.NewSession),
+            keymap.EquivalentFor(BuiltinAction.NewSession));
+        Assert.Equal(WindowsDefaultChords.ShippedFor(BuiltinAction.OpenDirectory),
+            keymap.EquivalentFor(BuiltinAction.OpenDirectory));
         // the final state is collision-free: no two distinct actions resolve to the same chord.
         var chords = BuiltinActions.All
             .Select(keymap.EquivalentFor).Where(c => c is not null).Select(c => c!.Value).ToList();
@@ -456,7 +472,8 @@ public class KeymapTests
         // skipped, so the action keeps its default.
         var (keymap, diagnostics) = ParseKeymap("map ctrl+1 new_session");
         Assert.Empty(keymap.BuiltinOverrides);
-        Assert.Equal(new Chord(Modifiers.Command, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
+        // Windows default: opt+n (upstream cmd+n).
+        Assert.Equal(new Chord(Modifiers.Option, "n"), keymap.EquivalentFor(BuiltinAction.NewSession));
         var diagnostic = Assert.Single(diagnostics);
         Assert.Equal(1, diagnostic.Line);
         Assert.Contains("reserved", diagnostic.Message);
@@ -534,9 +551,9 @@ public class KeymapTests
     [Fact]
     public void CustomChordEqualsBuiltinDefaultIsDropped()
     {
-        // cmd+d is toggle_split's shipped default; the custom command keeps its palette entry but
-        // loses the keybind.
-        var (keymap, diagnostics) = ParseKeymap("command \"Boom\" cmd+d echo boom");
+        // opt+d is toggle_split's shipped default here (upstream cmd+d); the custom command keeps
+        // its palette entry but loses the keybind.
+        var (keymap, diagnostics) = ParseKeymap("command \"Boom\" opt+d echo boom");
         var command = Assert.Single(keymap.Commands);
         Assert.Equal("Boom", command.Name);
         Assert.Equal("echo boom", command.Command);
@@ -575,8 +592,9 @@ public class KeymapTests
     [Fact]
     public void CustomLeaderWhoseFirstChordEqualsBuiltinIsDropped()
     {
-        // toggle_split's default is cmd+d; a custom leader STARTING with cmd+d is shadowed by the menu.
-        var (keymap, diagnostics) = ParseKeymap("command \"Boom\" cmd+d>g echo boom");
+        // toggle_split's default is opt+d here (upstream cmd+d); a custom leader STARTING with it is
+        // shadowed by the menu.
+        var (keymap, diagnostics) = ParseKeymap("command \"Boom\" opt+d>g echo boom");
         Assert.Equal("", Assert.Single(keymap.Commands).Shortcut);
         Assert.Contains("built-in", Assert.Single(diagnostics).Message);
     }

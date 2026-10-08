@@ -21,9 +21,12 @@ public sealed class Keymap
         new(new Dictionary<BuiltinAction, Chord>(), Array.Empty<CustomCommand>());
 
     /// <summary>The active chord for a built-in action: the user override when one is present, else
-    /// the action's shipped default (null only for the keyless actions).</summary>
+    /// the Windows default, else the action's shipped default (null only for the keyless actions).
+    /// See <see cref="WindowsDefaultChords"/> for why this platform has defaults of its own.</summary>
     public Chord? EquivalentFor(BuiltinAction action) =>
-        BuiltinOverrides.TryGetValue(action, out var chord) ? chord : action.DefaultChord();
+        BuiltinOverrides.TryGetValue(action, out var chord)
+            ? chord
+            : WindowsDefaultChords.ShippedFor(action);
 
     /// <summary>The action's current shortcut as a menu glyph string, or null when the action has no
     /// shortcut at all.</summary>

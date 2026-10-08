@@ -193,18 +193,42 @@ available in the headless host"` (после резолюции цели — `no
   Принято: `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift. Так как два
   keymap-модификатора делят одну физическую клавишу, нажатие декодируется в КАНДИДАТОВ
   по приоритету: cmd-интерпретация → ctrl → свёртка ctrl+cmd; побеждает первый, знакомый
-  матчеру (`WindowsChordDecoder` + `HotkeyRouter`). Следствие — коллизии дефолтов
-  (затенённое действие достижимо через `map` в keymap.conf):
+  матчеру (`WindowsChordDecoder` + `HotkeyRouter`).
+
+  **Дефолты чордов на Windows свои (`WindowsDefaultChords`).** Свёртка `cmd`→Ctrl сажала 13
+  действий на голый Ctrl, а в терминале Windows голый Ctrl принадлежит оболочке: Ctrl+D
+  завершает ввод, Ctrl+Z приостанавливает, Ctrl+W удаляет слово, Ctrl+P листает историю.
+  Приложение, которое их перехватывает, ломает не удобство, а программу в панели. Поэтому
+  каждое действие, попадающее на голый Ctrl, шипается на Alt с той же клавишей:
+  `new_session` → Alt+N, `toggle_split` → Alt+D, `session_palette` → Alt+P и так далее.
+
+  Критерий — куда чорд попадает физически, а не какой модификатор стоял в таблице macOS:
+  пользователь исходного модификатора не видит, а на клавиатуре без клавиши Command он
+  ничего не описывает. Всё, что несёт Shift или Alt (`Ctrl+Shift+…`, `Ctrl+Alt+…`), остаётся
+  на месте: оболочка такие сочетания не читает, а каждое совпадение с macOS — это на одно
+  сочетание меньше переучивать.
+
+  `BuiltinAction.DefaultChord` при этом не тронут и по-прежнему сверяется с
+  `parity/surface.json`; `WindowsDefaultChords` — слой над ним, там же, где уже живёт свёртка
+  `cmd`→Ctrl. Строка `map` в keymap.conf перекрывает и то, и другое. Это расхождение с
+  оригиналом: в `Ported/KeymapTests.cs` изменённые ожидания помечены построчно, чтобы файл
+  по-прежнему можно было сверять со Swift.
+
+  Побочный эффект: `toggle_fullscreen` стал достижим. Раньше ⌘F (`toggle_search`) и ⌃⌘F
+  (`toggle_fullscreen`) оба сворачивались в Ctrl+F, побеждал первый, и полноэкранный режим
+  не вызывался с клавиатуры вообще. Теперь это Alt+F и Alt+Enter.
+
+  Остались две коллизии дефолтов (затенённое действие достижимо через `map`):
   | Физически | Побеждает | Затенён |
   |---|---|---|
-  | Ctrl+F | `toggle_search` (⌘F) | `toggle_fullscreen` (⌃⌘F) |
   | Ctrl+Alt+↑ | `previous_session` (⌘⌥↑) | `previous_attention_session` (⌃⌥↑) |
   | Ctrl+Alt+↓ | `next_session` (⌘⌥↓) | `next_attention_session` (⌃⌥↓) |
+  Обе несут Alt, оболочке не мешают, поэтому оставлены как есть.
+
   Перехват в терминале: страница получает таблицу активных физ-чордов
   (`agterm.setChords`); совпавший keydown НЕ уходит в шелл, а возвращается хосту
-  `{type:'chord',…}` (xterm `attachCustomKeyEventHandler`). Плата за cmd→Ctrl: забиндённые
-  Ctrl-чорды (Ctrl+N/W/F/…) не доходят до шелла — как и было бы в Windows Terminal с
-  такими биндами; лечится `map`-ом. Полная таблица действий — README.
+  `{type:'chord',…}` (xterm `attachCustomKeyEventHandler`). Ни один голый Ctrl-чорд в эту
+  таблицу не попадает. Полная таблица действий — ниже и в README.
 
 - **Custom-command shell and chord adaptation.** Upstream executes each custom command as an
   opaque `/bin/sh -c` line. Windows resolves `pwsh.exe` from `PATH` first and runs
@@ -283,7 +307,7 @@ available in the headless host"` (после резолюции цели — `no
 
 - **S2 sidebar gestures, keyboard parity, and live-only status projection.** Workspace row tap, Enter, and Space now toggle collapse immediately with no 350 ms delay. Workspace double-click has no rename action. Rename is exposed through F2 and the workspace or session context menu. Session single-click and Enter activate the selected session. Ctrl and Shift modifiers keep standard Extended multi-selection behavior, and Space keeps ListView selection semantics. Keyboard ContextRequested opens the same workspace and session menus as pointer context actions. SidebarSnapshot now carries immutable live-only surface status values (pending, ready, failed) so the UI reports terminal lifecycle without changing Core `SidebarRow` shape, tree JSON, or wire protocol fields. Session rows show pending and failed visual indicators from that status projection. UI Automation names now cover workspace and session selection state, lifecycle status text, agent status text, unseen count text, focused-workspace state, flagged-toggle state, and the new-workspace action. Manual Narrator verification is not claimed yet.
 
-- **S3 capability-aware command routing.** The WinUI window classifies all 41 upstream builtin actions in one router, and every action has an explicit handler. Actions without a default chord remain available through the title bar, sidebar, context menus, or palettes as applicable. These entry points and hotkeys use the same router or the same selection-aware `SidebarController` store operation. xterm.js receives only physical chords whose effective Windows winner has an explicit handler. The cmd-to-Ctrl adaptation keeps upstream keymap defaults and grammar, and reports effective physical conflicts as release-visible keymap warnings. The default conflicts remain Ctrl+F (`toggle_search` over `toggle_fullscreen`), Ctrl+Alt+Up (`previous_session` over `previous_attention_session`), and Ctrl+Alt+Down (`next_session` over `next_attention_session`). This changes only Windows input routing and diagnostics; builtin names, configuration parsing, control commands, and wire responses are unchanged.
+- **S3 capability-aware command routing.** The WinUI window classifies all 41 upstream builtin actions in one router, and every action has an explicit handler. Actions without a default chord remain available through the title bar, sidebar, context menus, or palettes as applicable. These entry points and hotkeys use the same router or the same selection-aware `SidebarController` store operation. xterm.js receives only physical chords whose effective Windows winner has an explicit handler. The cmd-to-Ctrl adaptation keeps upstream keymap grammar and reports effective physical conflicts as release-visible keymap warnings. Windows ships its own default chord for every action the fold would park on bare Ctrl (`WindowsDefaultChords`), so two default conflicts remain: Ctrl+Alt+Up (`previous_session` over `previous_attention_session`) and Ctrl+Alt+Down (`next_session` over `next_attention_session`). This changes only Windows input routing and diagnostics; builtin names, configuration parsing, control commands, and wire responses are unchanged.
 
 - **S4 renderer settings and Windows composition.** One immutable snapshot maps the existing app settings into page-global xterm options and applies them to every current and future pane without recreating ConPTY sessions. It covers font family and size, the current Windows base palette, cursor defaults, scroll sensitivity, scrollback, right-click paste, and screen-reader mode. Named theme resolution remains in the D3 live theme catalog; S4 removes bridge-local color literals without implementing `theme.set` early. `backgroundOpacity` stays a window-composition setting: opaque windows use Mica, translucent windows use a transparent WebView2 background plus Desktop Acrylic when blur is nonzero, and no system backdrop when blur is zero. Windows App SDK controls the acrylic blur strength, so the persisted 0..100 value gates blur but does not map to an exact radius. `config.reload` reads settings off the host gate, drops stale loads, serializes UI application, updates existing/future panes and sidebar typography/status styling, and clears per-session font zoom as upstream explicit reload does. The optional WebGL addon is capability-detected but is not vendored in this pin; xterm's built-in renderer remains the tested fallback. Live tests verify Unicode, IME composition, selection, and screen-reader DOM behavior. No settings, control-command, tree, or wire field names changed.
 
@@ -301,49 +325,49 @@ On Windows, `cmd` maps to Ctrl when an upstream default chord is decoded. `keyle
 
 <!-- phase5-action-matrix:start -->
 
-| Builtin action             | Wire name                    | Disposition   | Upstream default        | Effective Windows       |
-| -------------------------- | ---------------------------- | ------------- | ----------------------- | ----------------------- |
-| `NewWindow`                | `new_window`                 | `Implemented` | `cmd+opt+n`             | `ctrl+alt+n`            |
-| `RenameWindow`             | `rename_window`              | `Implemented` | `keyless`               | `keyless`               |
-| `DeleteWindow`             | `delete_window`              | `Implemented` | `keyless`               | `keyless`               |
-| `NewWorkspace`             | `new_workspace`              | `Implemented` | `cmd+shift+n`           | `ctrl+shift+n`          |
-| `RenameWorkspace`          | `rename_workspace`           | `Implemented` | `keyless`               | `keyless`               |
-| `DeleteWorkspace`          | `delete_workspace`           | `Implemented` | `keyless`               | `keyless`               |
-| `NewSession`               | `new_session`                | `Implemented` | `cmd+n`                 | `ctrl+n`                |
-| `OpenDirectory`            | `open_directory`             | `Implemented` | `cmd+o`                 | `ctrl+o`                |
-| `RenameSession`            | `rename_session`             | `Implemented` | `keyless`               | `keyless`               |
-| `DuplicateSession`         | `duplicate_session`          | `Implemented` | `keyless`               | `keyless`               |
-| `CloseSession`             | `close_session`              | `Implemented` | `cmd+w`                 | `ctrl+w`                |
-| `ReopenRecent`             | `reopen_recent`              | `Implemented` | `cmd+shift+t`           | `ctrl+shift+t`          |
-| `UndoClose`                | `undo_close`                 | `Implemented` | `cmd+z`                 | `ctrl+z`                |
-| `ClearStatus`              | `clear_status`               | `Implemented` | `keyless`               | `keyless`               |
-| `IncreaseFontSize`         | `increase_font_size`         | `Implemented` | `cmd++`                 | `ctrl++`                |
-| `DecreaseFontSize`         | `decrease_font_size`         | `Implemented` | `cmd+-`                 | `ctrl+-`                |
-| `ResetFontSize`            | `reset_font_size`            | `Implemented` | `cmd+0`                 | `ctrl+0`                |
-| `ToggleSplit`              | `toggle_split`               | `Implemented` | `cmd+d`                 | `ctrl+d`                |
-| `ToggleScratch`            | `toggle_scratch`             | `Implemented` | `cmd+j`                 | `ctrl+j`                |
-| `ToggleTerminalZoom`       | `toggle_terminal_zoom`       | `Implemented` | `cmd+shift+return`      | `ctrl+shift+return`     |
-| `ToggleSearch`             | `toggle_search`              | `Implemented` | `cmd+f`                 | `ctrl+f`                |
-| `ToggleSidebar`            | `toggle_sidebar`             | `Implemented` | `ctrl+cmd+s`            | `ctrl+s`                |
-| `SelectTheme`              | `select_theme`               | `Implemented` | `keyless`               | `keyless`               |
-| `ToggleFullscreen`         | `toggle_fullscreen`          | `Implemented` | `ctrl+cmd+f`            | `ctrl+f`                |
-| `ToggleFlaggedView`        | `toggle_flagged_view`        | `Implemented` | `keyless`               | `keyless`               |
-| `ToggleFlag`               | `toggle_flag`                | `Implemented` | `cmd+shift+f`           | `ctrl+shift+f`          |
-| `FocusWorkspace`           | `focus_workspace`            | `Implemented` | `keyless`               | `keyless`               |
-| `FocusLeftPane`            | `focus_left_pane`            | `Implemented` | `cmd+opt+left`          | `ctrl+alt+left`         |
-| `FocusRightPane`           | `focus_right_pane`           | `Implemented` | `cmd+opt+right`         | `ctrl+alt+right`        |
-| `PreviousSession`          | `previous_session`           | `Implemented` | `cmd+opt+up`            | `ctrl+alt+up`           |
-| `NextSession`              | `next_session`               | `Implemented` | `cmd+opt+down`          | `ctrl+alt+down`         |
-| `PreviousAttentionSession` | `previous_attention_session` | `Implemented` | `ctrl+opt+up`           | `ctrl+alt+up`           |
-| `NextAttentionSession`     | `next_attention_session`     | `Implemented` | `ctrl+opt+down`         | `ctrl+alt+down`         |
-| `FirstSession`             | `first_session`              | `Implemented` | `keyless`               | `keyless`               |
-| `LastSession`              | `last_session`               | `Implemented` | `keyless`               | `keyless`               |
-| `QuickTerminal`            | `quick_terminal`             | `Implemented` | <code>ctrl+&#96;</code> | <code>ctrl+&#96;</code> |
-| `SessionPalette`           | `session_palette`            | `Implemented` | `ctrl+p`                | `ctrl+p`                |
-| `CommandPalette`           | `command_palette`            | `Implemented` | `ctrl+shift+p`          | `ctrl+shift+p`          |
-| `CustomCommandPalette`     | `custom_command_palette`     | `Implemented` | `ctrl+shift+o`          | `ctrl+shift+o`          |
-| `ShowAttention`            | `show_attention`             | `Implemented` | `ctrl+shift+i`          | `ctrl+shift+i`          |
-| `Dashboard`                | `dashboard`                  | `Implemented` | `cmd+shift+d`           | `ctrl+shift+d`          |
+| Builtin action             | Wire name                    | Disposition   | Upstream default        | Windows default        | Effective Windows      |
+| -------------------------- | ---------------------------- | ------------- | ----------------------- | ---------------------- | ---------------------- |
+| `NewWindow`                | `new_window`                 | `Implemented` | `cmd+opt+n`             | `cmd+opt+n`            | `ctrl+alt+n`           |
+| `RenameWindow`             | `rename_window`              | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `DeleteWindow`             | `delete_window`              | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `NewWorkspace`             | `new_workspace`              | `Implemented` | `cmd+shift+n`           | `cmd+shift+n`          | `ctrl+shift+n`         |
+| `RenameWorkspace`          | `rename_workspace`           | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `DeleteWorkspace`          | `delete_workspace`           | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `NewSession`               | `new_session`                | `Implemented` | `cmd+n`                 | `opt+n`                | `alt+n`                |
+| `OpenDirectory`            | `open_directory`             | `Implemented` | `cmd+o`                 | `opt+o`                | `alt+o`                |
+| `RenameSession`            | `rename_session`             | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `DuplicateSession`         | `duplicate_session`          | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `CloseSession`             | `close_session`              | `Implemented` | `cmd+w`                 | `opt+w`                | `alt+w`                |
+| `ReopenRecent`             | `reopen_recent`              | `Implemented` | `cmd+shift+t`           | `cmd+shift+t`          | `ctrl+shift+t`         |
+| `UndoClose`                | `undo_close`                 | `Implemented` | `cmd+z`                 | `opt+z`                | `alt+z`                |
+| `ClearStatus`              | `clear_status`               | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `IncreaseFontSize`         | `increase_font_size`         | `Implemented` | `cmd++`                 | `opt++`                | `alt++`                |
+| `DecreaseFontSize`         | `decrease_font_size`         | `Implemented` | `cmd+-`                 | `opt+-`                | `alt+-`                |
+| `ResetFontSize`            | `reset_font_size`            | `Implemented` | `cmd+0`                 | `opt+0`                | `alt+0`                |
+| `ToggleSplit`              | `toggle_split`               | `Implemented` | `cmd+d`                 | `opt+d`                | `alt+d`                |
+| `ToggleScratch`            | `toggle_scratch`             | `Implemented` | `cmd+j`                 | `opt+j`                | `alt+j`                |
+| `ToggleTerminalZoom`       | `toggle_terminal_zoom`       | `Implemented` | `cmd+shift+return`      | `cmd+shift+return`     | `ctrl+shift+return`    |
+| `ToggleSearch`             | `toggle_search`              | `Implemented` | `cmd+f`                 | `opt+f`                | `alt+f`                |
+| `ToggleSidebar`            | `toggle_sidebar`             | `Implemented` | `ctrl+cmd+s`            | `opt+s`                | `alt+s`                |
+| `SelectTheme`              | `select_theme`               | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `ToggleFullscreen`         | `toggle_fullscreen`          | `Implemented` | `ctrl+cmd+f`            | `opt+return`           | `alt+return`           |
+| `ToggleFlaggedView`        | `toggle_flagged_view`        | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `ToggleFlag`               | `toggle_flag`                | `Implemented` | `cmd+shift+f`           | `cmd+shift+f`          | `ctrl+shift+f`         |
+| `FocusWorkspace`           | `focus_workspace`            | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `FocusLeftPane`            | `focus_left_pane`            | `Implemented` | `cmd+opt+left`          | `cmd+opt+left`         | `ctrl+alt+left`        |
+| `FocusRightPane`           | `focus_right_pane`           | `Implemented` | `cmd+opt+right`         | `cmd+opt+right`        | `ctrl+alt+right`       |
+| `PreviousSession`          | `previous_session`           | `Implemented` | `cmd+opt+up`            | `cmd+opt+up`           | `ctrl+alt+up`          |
+| `NextSession`              | `next_session`               | `Implemented` | `cmd+opt+down`          | `cmd+opt+down`         | `ctrl+alt+down`        |
+| `PreviousAttentionSession` | `previous_attention_session` | `Implemented` | `ctrl+opt+up`           | `ctrl+opt+up`          | `ctrl+alt+up`          |
+| `NextAttentionSession`     | `next_attention_session`     | `Implemented` | `ctrl+opt+down`         | `ctrl+opt+down`        | `ctrl+alt+down`        |
+| `FirstSession`             | `first_session`              | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `LastSession`              | `last_session`               | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `QuickTerminal`            | `quick_terminal`             | `Implemented` | <code>ctrl+&#96;</code> | <code>opt+&#96;</code> | <code>alt+&#96;</code> |
+| `SessionPalette`           | `session_palette`            | `Implemented` | `ctrl+p`                | `opt+p`                | `alt+p`                |
+| `CommandPalette`           | `command_palette`            | `Implemented` | `ctrl+shift+p`          | `ctrl+shift+p`         | `ctrl+shift+p`         |
+| `CustomCommandPalette`     | `custom_command_palette`     | `Implemented` | `ctrl+shift+o`          | `ctrl+shift+o`         | `ctrl+shift+o`         |
+| `ShowAttention`            | `show_attention`             | `Implemented` | `ctrl+shift+i`          | `ctrl+shift+i`         | `ctrl+shift+i`         |
+| `Dashboard`                | `dashboard`                  | `Implemented` | `cmd+shift+d`           | `cmd+shift+d`          | `ctrl+shift+d`         |
 
 <!-- phase5-action-matrix:end -->
 

@@ -84,7 +84,8 @@ public class BuiltinActionTests
             new List<CustomCommand>());
 
         Assert.Equal(overrideChord, keymap.EquivalentFor(BuiltinAction.NewSession));
-        Assert.Equal(new Chord(Modifiers.Command, "w"), keymap.EquivalentFor(BuiltinAction.CloseSession));
+        // close_session ships on opt+w here, cmd+w upstream (WindowsDefaultChords).
+        Assert.Equal(new Chord(Modifiers.Option, "w"), keymap.EquivalentFor(BuiltinAction.CloseSession));
         Assert.Null(keymap.EquivalentFor(BuiltinAction.RenameSession)); // keyless by default
     }
 }

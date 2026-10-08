@@ -146,8 +146,9 @@ public class KeymapParserTests
     [Fact]
     public void OverrideCollidingWithAnUnmovedDefaultLoses()
     {
-        // cmd+n is new_session's default and new_session is not remapped → the map is dropped.
-        var (keymap, diagnostics) = Parse("map cmd+n toggle_split\n");
+        // opt+n is new_session's shipped default here and new_session is not remapped → the map is
+        // dropped. Upstream runs the same case on cmd+n.
+        var (keymap, diagnostics) = Parse("map opt+n toggle_split\n");
         Assert.Empty(keymap.BuiltinOverrides);
         Assert.Equal(new KeymapDiagnostic(1, "chord conflicts with built-in 'new_session'; map skipped"),
             Assert.Single(diagnostics));
@@ -233,21 +234,21 @@ public class KeymapParserTests
     [Fact]
     public void CustomShortcutCollidingWithAnActiveBuiltinIsDroppedButStaysInThePalette()
     {
-        var (keymap, diagnostics) = Parse("command \"Dup\" cmd+d echo hi\n");
+        var (keymap, diagnostics) = Parse("command \"Dup\" opt+d echo hi\n");
         var command = Assert.Single(keymap.Commands);
-        Assert.Equal("", command.Shortcut); // dropped: cmd+d is toggle_split's active default
+        Assert.Equal("", command.Shortcut); // dropped: opt+d is toggle_split's active default
         Assert.Equal("echo hi", command.Command); // …but the command stays, palette-only
         Assert.Equal(new KeymapDiagnostic(0,
-                "custom command 'Dup' shortcut 'cmd+d' conflicts with a built-in; keybind dropped"),
+                "custom command 'Dup' shortcut 'opt+d' conflicts with a built-in; keybind dropped"),
             Assert.Single(diagnostics));
     }
 
     [Fact]
     public void CustomLeaderStartingWithABuiltinChordIsEquallyShadowed()
     {
-        var (_, diagnostics) = Parse("command \"Seq\" cmd+d>x echo hi\n");
+        var (_, diagnostics) = Parse("command \"Seq\" opt+d>x echo hi\n");
         Assert.Equal(new KeymapDiagnostic(0,
-                "custom command 'Seq' shortcut 'cmd+d>x' conflicts with a built-in; keybind dropped"),
+                "custom command 'Seq' shortcut 'opt+d>x' conflicts with a built-in; keybind dropped"),
             Assert.Single(diagnostics));
     }
 

@@ -16,36 +16,66 @@ public class HotkeyRouterTests
     [Fact]
     public void Default_cmd_chords_fire_from_physical_ctrl()
     {
+        // only the cmd chords that keep a Ctrl default arrive this way: the ones that would sit on
+        // BARE Ctrl ship on Alt instead (WindowsDefaultChords).
         var router = new HotkeyRouter(KeymapTable.Empty);
-        Assert.Equal(BuiltinAction.NewSession, router.Handle(Press("n", ctrl: true)));
-        Assert.Equal(BuiltinAction.CloseSession, router.Handle(Press("w", ctrl: true)));
         Assert.Equal(BuiltinAction.ToggleFlag, router.Handle(Press("f", ctrl: true, shift: true)));
         Assert.Equal(BuiltinAction.PreviousSession, router.Handle(Press("up", ctrl: true, alt: true)));
+        Assert.Equal(BuiltinAction.NewWindow, router.Handle(Press("n", ctrl: true, alt: true)));
+    }
+
+    [Fact]
+    public void Shortcuts_moved_off_bare_ctrl_fire_from_alt()
+    {
+        var router = new HotkeyRouter(KeymapTable.Empty);
+        Assert.Equal(BuiltinAction.NewSession, router.Handle(Press("n", alt: true)));
+        Assert.Equal(BuiltinAction.CloseSession, router.Handle(Press("w", alt: true)));
+        Assert.Equal(BuiltinAction.ToggleSplit, router.Handle(Press("d", alt: true)));
+        Assert.Equal(BuiltinAction.SessionPalette, router.Handle(Press("p", alt: true)));
+    }
+
+    [Fact]
+    public void Bare_ctrl_belongs_to_the_shell()
+    {
+        // the point of the Windows defaults: Ctrl+D ends input, Ctrl+W deletes a word, Ctrl+P walks
+        // history. The router must claim none of them.
+        var router = new HotkeyRouter(KeymapTable.Empty);
+        foreach (var key in new[] { "n", "o", "w", "z", "d", "j", "f", "s", "p", "0", "-" })
+            Assert.Null(router.Handle(Press(key, ctrl: true)));
     }
 
     [Fact]
     public void Ctrl_only_defaults_fire_through_the_ctrl_fallback()
     {
+        // the second candidate interpretation. session_palette and quick_terminal used to prove it
+        // and now ship on Alt, so the keymap-ctrl actions that keep their chord stand in.
         var router = new HotkeyRouter(KeymapTable.Empty);
-        Assert.Equal(BuiltinAction.SessionPalette, router.Handle(Press("p", ctrl: true)));
-        Assert.Equal(BuiltinAction.QuickTerminal, router.Handle(Press("`", ctrl: true)));
+        Assert.Equal(BuiltinAction.CommandPalette, router.Handle(Press("p", ctrl: true, shift: true)));
+        Assert.Equal(BuiltinAction.ShowAttention, router.Handle(Press("i", ctrl: true, shift: true)));
     }
 
     [Fact]
     public void Ctrl_cmd_defaults_fire_through_the_fold()
     {
-        var router = new HotkeyRouter(KeymapTable.Empty);
-        Assert.Equal(BuiltinAction.ToggleSidebar, router.Handle(Press("s", ctrl: true)));
+        // the third candidate interpretation, ctrl+cmd. toggle_sidebar proved it on Ctrl+S and now
+        // ships on Alt+S, so no shipped default exercises the fold any more; an override does.
+        var (keymap, diagnostics) = KeymapParser.Parse("map ctrl+cmd+k toggle_sidebar");
+        Assert.Empty(diagnostics);
+        Assert.Equal(BuiltinAction.ToggleSidebar,
+            new HotkeyRouter(keymap).Handle(Press("k", ctrl: true)));
     }
 
     [Fact]
     public void The_documented_collision_resolves_to_the_cmd_interpretation()
     {
         var router = new HotkeyRouter(KeymapTable.Empty);
-        // ⌘F (toggle_search) and ⌃⌘F (toggle_fullscreen) both land on Ctrl+F — cmd wins
-        Assert.Equal(BuiltinAction.ToggleSearch, router.Handle(Press("f", ctrl: true)));
-        // ⌘⌥↑↓ (prev/next session) shadow ⌃⌥↑↓ (attention navigation) the same way — remap in
-        // keymap.conf to reach the attention pair (the PLATFORM-NOTES collision table)
+        // ⌘F (toggle_search) and ⌃⌘F (toggle_fullscreen) both landed on Ctrl+F and cmd won, which
+        // left fullscreen unreachable; the Windows defaults separate them.
+        Assert.Equal(BuiltinAction.ToggleSearch, router.Handle(Press("f", alt: true)));
+        Assert.Equal(BuiltinAction.ToggleFullscreen, router.Handle(Press("return", alt: true)));
+        // ⌘⌥↑↓ (prev/next session) still shadow ⌃⌥↑↓ (attention navigation): both carry Alt, so a
+        // shell never sees them and the Windows defaults leave the pair alone — remap in
+        // keymap.conf to reach it (the PLATFORM-NOTES collision table)
         Assert.Equal(BuiltinAction.NextSession, router.Handle(Press("down", ctrl: true, alt: true)));
 
         // ...and a remap makes the shadowed action reachable again
@@ -70,7 +100,7 @@ public class HotkeyRouterTests
         Assert.Empty(diagnostics);
         var router = new HotkeyRouter(keymap);
         Assert.Equal(BuiltinAction.NewSession, router.Handle(Press("z", ctrl: true, shift: true)));
-        Assert.Null(router.Handle(Press("n", ctrl: true))); // the default chord no longer fires it
+        Assert.Null(router.Handle(Press("n", alt: true))); // the default chord no longer fires it
     }
 
     [Fact]
@@ -78,11 +108,13 @@ public class HotkeyRouterTests
     {
         var router = new HotkeyRouter(KeymapTable.Empty);
         var chords = router.InterceptChords;
-        Assert.Contains(new PhysicalChord(true, false, false, "n"), chords);   // ⌘N
-        Assert.Contains(new PhysicalChord(true, false, false, "p"), chords);   // ⌃P
-        Assert.Contains(new PhysicalChord(true, true, false, "up"), chords);   // ⌘⌥↑
-        Assert.Equal(chords.Count, chords.Distinct().Count());                 // ⌘F/⌃⌘F fold once
+        Assert.Contains(new PhysicalChord(false, true, false, "n"), chords);   // Alt+N (upstream ⌘N)
+        Assert.Contains(new PhysicalChord(false, true, false, "p"), chords);   // Alt+P (upstream ⌃P)
+        Assert.Contains(new PhysicalChord(true, true, false, "up"), chords);   // ⌘⌥↑, unmoved
+        Assert.Equal(chords.Count, chords.Distinct().Count());
         Assert.DoesNotContain(chords, c => c is { Ctrl: false, Alt: false });  // nothing unmodified
+        // the shell keeps every bare Ctrl chord: none of them is intercepted on the way
+        Assert.DoesNotContain(chords, c => c is { Ctrl: true, Alt: false, Shift: false });
     }
 
     [Fact]
@@ -102,7 +134,7 @@ public class HotkeyRouterTests
 
         Assert.Equal(9, manifest.Generation);
         Assert.Equal(275, manifest.LeaderTimeoutMs);
-        Assert.Equal([Press("n", ctrl: true)], manifest.BuiltinSingles);
+        Assert.Equal([Press("n", alt: true)], manifest.BuiltinSingles);
         Assert.Equal(2, manifest.CustomBindings.Count);
         Assert.Equal([Press("k", ctrl: true)],
             manifest.CustomBindings.Single(binding => binding.CommandId == single.Id).Chords);
@@ -114,7 +146,8 @@ public class HotkeyRouterTests
     [Fact]
     public void CreateManifest_prunes_custom_first_chord_shadowed_by_active_builtin_after_Windows_fold()
     {
-        var command = new CustomCommand("shadowed", "echo shadowed", "ctrl+n", Guid.NewGuid());
+        // new_session ships on opt+n, so opt+n is the chord a custom command gets shadowed on.
+        var command = new CustomCommand("shadowed", "echo shadowed", "opt+n", Guid.NewGuid());
         var keymap = new KeymapTable(new Dictionary<BuiltinAction, Chord>(), [command]);
 
         var manifest = new HotkeyRouter(keymap).CreateManifest(
@@ -122,7 +155,7 @@ public class HotkeyRouterTests
             action => action == BuiltinAction.NewSession);
 
         Assert.Empty(manifest.CustomBindings);
-        Assert.Equal([Press("n", ctrl: true)], manifest.BuiltinSingles);
+        Assert.Equal([Press("n", alt: true)], manifest.BuiltinSingles);
     }
 
     [Fact]

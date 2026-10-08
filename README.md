@@ -142,30 +142,36 @@ WebView2 DevTools, not the C# debugger.
 
 Keymap modifiers map as `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift (spec §9 leaves the
 mapping to the platform; rationale and the candidate-priority rule are in
-`docs/PLATFORM-NOTES.md`). Default chords, pinned to upstream and translated:
+`docs/PLATFORM-NOTES.md`).
 
-| Action                   | macOS default | Windows      | Action                       | macOS default | Windows              |
-| ------------------------ | ------------- | ------------ | ---------------------------- | ------------- | -------------------- |
-| `new_window`             | ⌘⌥N           | Ctrl+Alt+N   | `toggle_split`               | ⌘D            | Ctrl+D               |
-| `new_workspace`          | ⌘⇧N           | Ctrl+Shift+N | `toggle_scratch`             | ⌘J            | Ctrl+J               |
-| `new_session`            | ⌘N            | Ctrl+N       | `toggle_terminal_zoom`       | ⌘⇧↩           | Ctrl+Shift+Enter     |
-| `open_directory`         | ⌘O            | Ctrl+O       | `toggle_search`              | ⌘F            | Ctrl+F               |
-| `close_session`          | ⌘W            | Ctrl+W       | `toggle_sidebar`             | ⌃⌘S           | Ctrl+S               |
-| `reopen_recent`          | ⌘⇧T           | Ctrl+Shift+T | `toggle_fullscreen`          | ⌃⌘F           | _(shadowed — remap)_ |
-| `undo_close`             | ⌘Z            | Ctrl+Z       | `toggle_flag`                | ⌘⇧F           | Ctrl+Shift+F         |
-| `increase_font_size`     | ⌘+            | Ctrl+Plus    | `focus_left_pane`            | ⌘⌥←           | Ctrl+Alt+←           |
-| `decrease_font_size`     | ⌘-            | Ctrl+Minus   | `focus_right_pane`           | ⌘⌥→           | Ctrl+Alt+→           |
-| `reset_font_size`        | ⌘0            | Ctrl+0       | `previous_session`           | ⌘⌥↑           | Ctrl+Alt+↑           |
-| `quick_terminal`         | ⌃\`           | Ctrl+\`      | `next_session`               | ⌘⌥↓           | Ctrl+Alt+↓           |
-| `session_palette`        | ⌃P            | Ctrl+P       | `previous_attention_session` | ⌃⌥↑           | _(shadowed — remap)_ |
-| `command_palette`        | ⌃⇧P           | Ctrl+Shift+P | `next_attention_session`     | ⌃⌥↓           | _(shadowed — remap)_ |
-| `custom_command_palette` | ⌃⇧O           | Ctrl+Shift+O | `dashboard`                  | ⌘⇧D           | Ctrl+Shift+D         |
-| `show_attention`         | ⌃⇧I           | Ctrl+Shift+I |                              |               |                      |
+That fold would put 13 shortcuts on bare Ctrl, which in a Windows terminal belongs to the shell:
+Ctrl+D ends input, Ctrl+Z suspends, Ctrl+W deletes a word, Ctrl+P walks history. Every shortcut that
+would land there ships on Alt with the same key instead. Shortcuts that already carry Shift or Alt
+keep the upstream chord, because a shell never reads those. A `map` line in `keymap.conf` overrides
+either default.
+
+| Action                 | macOS default | Windows          | Action                       | macOS default | Windows              |
+| ---------------------- | ------------- | ---------------- | ---------------------------- | ------------- | -------------------- |
+| `new_window`           | ⌘⌥N           | Ctrl+Alt+N       | `toggle_fullscreen`          | ⌃⌘F           | Alt+Enter            |
+| `new_workspace`        | ⌘⇧N           | Ctrl+Shift+N     | `toggle_flag`                | ⌘⇧F           | Ctrl+Shift+F         |
+| `new_session`          | ⌘N            | Alt+N            | `focus_left_pane`            | ⌘⌥←           | Ctrl+Alt+←           |
+| `open_directory`       | ⌘O            | Alt+O            | `focus_right_pane`           | ⌘⌥→           | Ctrl+Alt+→           |
+| `close_session`        | ⌘W            | Alt+W            | `previous_session`           | ⌘⌥↑           | Ctrl+Alt+↑           |
+| `reopen_recent`        | ⌘⇧T           | Ctrl+Shift+T     | `next_session`               | ⌘⌥↓           | Ctrl+Alt+↓           |
+| `undo_close`           | ⌘Z            | Alt+Z            | `previous_attention_session` | ⌃⌥↑           | _(shadowed — remap)_ |
+| `increase_font_size`   | ⌘+            | Alt+Plus         | `next_attention_session`     | ⌃⌥↓           | _(shadowed — remap)_ |
+| `decrease_font_size`   | ⌘-            | Alt+Minus        | `quick_terminal`             | ⌃`            | Alt+\`               |
+| `reset_font_size`      | ⌘0            | Alt+0            | `session_palette`            | ⌃P            | Alt+P                |
+| `toggle_split`         | ⌘D            | Alt+D            | `command_palette`            | ⌃⇧P           | Ctrl+Shift+P         |
+| `toggle_scratch`       | ⌘J            | Alt+J            | `custom_command_palette`     | ⌃⇧O           | Ctrl+Shift+O         |
+| `toggle_terminal_zoom` | ⌘⇧↩           | Ctrl+Shift+Enter | `show_attention`             | ⌃⇧I           | Ctrl+Shift+I         |
+| `toggle_search`        | ⌘F            | Alt+F            | `dashboard`                  | ⌘⇧D           | Ctrl+Shift+D         |
+| `toggle_sidebar`       | ⌃⌘S           | Alt+S            |                              |               |                      |
 
 Keyless actions (`rename_*`, `delete_*`, `duplicate_session`, `clear_status`, `select_theme`,
 `toggle_flagged_view`, `focus_workspace`, `first_session`, `last_session`) bind via `map` in
 `keymap.conf`. _Shadowed_: `cmd` and `ctrl` fold onto the same physical key, and the cmd
-interpretation wins — `⌃⌘F` loses to `⌘F`, `⌃⌥↑↓` lose to `⌘⌥↑↓`; `map` them to free chords
-(e.g. `map ctrl+shift+down next_attention_session`). F2 additionally renames the selected
-sidebar row (a UI gesture, not a keymap bind). Palettes/split/scratch/zoom/fullscreen/quick/
+interpretation wins — `⌃⌥↑↓` lose to `⌘⌥↑↓`; `map` them to free chords
+(e.g. `map ctrl+shift+down next_attention_session`). Both carry Alt, so the shell is unaffected.
+F2 additionally renames the selected sidebar row (a UI gesture, not a keymap bind). Palettes/split/scratch/zoom/fullscreen/quick/
 dashboard hotkeys are implemented in the live app.

@@ -22,56 +22,61 @@ public class Phase5ActionCoverageTests
         Keyless,
     }
 
+    /// <param name="UpstreamDefaultChord">what BuiltinAction.DefaultChord ships, i.e. macOS.</param>
+    /// <param name="WindowsDefaultChord">what this platform ships (WindowsDefaultChords); equal to
+    /// the upstream one unless the cmd-to-Ctrl fold would have parked the action on bare Ctrl.</param>
+    /// <param name="EffectiveWindowsChord">the physical press that fires it.</param>
     private sealed record ActionCoverageRow(
         BuiltinAction Action,
         ActionDisposition Disposition,
         ChordDisposition ChordDisposition,
         string? UpstreamDefaultChord,
+        string? WindowsDefaultChord,
         string? EffectiveWindowsChord);
 
     private static readonly ActionCoverageRow[] Coverage =
     [
-        new(BuiltinAction.NewWindow, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+n", "ctrl+alt+n"),
-        new(BuiltinAction.RenameWindow, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.DeleteWindow, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.NewWorkspace, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+n", "ctrl+shift+n"),
-        new(BuiltinAction.RenameWorkspace, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.DeleteWorkspace, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.NewSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+n", "ctrl+n"),
-        new(BuiltinAction.OpenDirectory, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+o", "ctrl+o"),
-        new(BuiltinAction.RenameSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.DuplicateSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.CloseSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+w", "ctrl+w"),
-        new(BuiltinAction.ReopenRecent, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+t", "ctrl+shift+t"),
-        new(BuiltinAction.UndoClose, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+z", "ctrl+z"),
-        new(BuiltinAction.ClearStatus, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.IncreaseFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd++", "ctrl++"),
-        new(BuiltinAction.DecreaseFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+-", "ctrl+-"),
-        new(BuiltinAction.ResetFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+0", "ctrl+0"),
-        new(BuiltinAction.ToggleSplit, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+d", "ctrl+d"),
-        new(BuiltinAction.ToggleScratch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+j", "ctrl+j"),
-        new(BuiltinAction.ToggleTerminalZoom, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+return", "ctrl+shift+return"),
-        new(BuiltinAction.ToggleSearch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+f", "ctrl+f"),
-        new(BuiltinAction.ToggleSidebar, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+cmd+s", "ctrl+s"),
-        new(BuiltinAction.SelectTheme, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.ToggleFullscreen, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+cmd+f", "ctrl+f"),
-        new(BuiltinAction.ToggleFlaggedView, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.ToggleFlag, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+f", "ctrl+shift+f"),
-        new(BuiltinAction.FocusWorkspace, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.FocusLeftPane, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+left", "ctrl+alt+left"),
-        new(BuiltinAction.FocusRightPane, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+right", "ctrl+alt+right"),
-        new(BuiltinAction.PreviousSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+up", "ctrl+alt+up"),
-        new(BuiltinAction.NextSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+down", "ctrl+alt+down"),
-        new(BuiltinAction.PreviousAttentionSession, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+opt+up", "ctrl+alt+up"),
-        new(BuiltinAction.NextAttentionSession, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+opt+down", "ctrl+alt+down"),
-        new(BuiltinAction.FirstSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.LastSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null),
-        new(BuiltinAction.QuickTerminal, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+`", "ctrl+`"),
-        new(BuiltinAction.SessionPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+p", "ctrl+p"),
-        new(BuiltinAction.CommandPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+p", "ctrl+shift+p"),
-        new(BuiltinAction.CustomCommandPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+o", "ctrl+shift+o"),
-        new(BuiltinAction.ShowAttention, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+i", "ctrl+shift+i"),
-        new(BuiltinAction.Dashboard, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+d", "ctrl+shift+d"),
+        new(BuiltinAction.NewWindow, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+n", "cmd+opt+n", "ctrl+alt+n"),
+        new(BuiltinAction.RenameWindow, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.DeleteWindow, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.NewWorkspace, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+n", "cmd+shift+n", "ctrl+shift+n"),
+        new(BuiltinAction.RenameWorkspace, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.DeleteWorkspace, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.NewSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+n", "opt+n", "alt+n"),
+        new(BuiltinAction.OpenDirectory, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+o", "opt+o", "alt+o"),
+        new(BuiltinAction.RenameSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.DuplicateSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.CloseSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+w", "opt+w", "alt+w"),
+        new(BuiltinAction.ReopenRecent, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+t", "cmd+shift+t", "ctrl+shift+t"),
+        new(BuiltinAction.UndoClose, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+z", "opt+z", "alt+z"),
+        new(BuiltinAction.ClearStatus, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.IncreaseFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd++", "opt++", "alt++"),
+        new(BuiltinAction.DecreaseFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+-", "opt+-", "alt+-"),
+        new(BuiltinAction.ResetFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+0", "opt+0", "alt+0"),
+        new(BuiltinAction.ToggleSplit, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+d", "opt+d", "alt+d"),
+        new(BuiltinAction.ToggleScratch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+j", "opt+j", "alt+j"),
+        new(BuiltinAction.ToggleTerminalZoom, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+return", "cmd+shift+return", "ctrl+shift+return"),
+        new(BuiltinAction.ToggleSearch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+f", "opt+f", "alt+f"),
+        new(BuiltinAction.ToggleSidebar, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+cmd+s", "opt+s", "alt+s"),
+        new(BuiltinAction.SelectTheme, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.ToggleFullscreen, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+cmd+f", "opt+return", "alt+return"),
+        new(BuiltinAction.ToggleFlaggedView, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.ToggleFlag, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+f", "cmd+shift+f", "ctrl+shift+f"),
+        new(BuiltinAction.FocusWorkspace, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.FocusLeftPane, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+left", "cmd+opt+left", "ctrl+alt+left"),
+        new(BuiltinAction.FocusRightPane, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+right", "cmd+opt+right", "ctrl+alt+right"),
+        new(BuiltinAction.PreviousSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+up", "cmd+opt+up", "ctrl+alt+up"),
+        new(BuiltinAction.NextSession, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+opt+down", "cmd+opt+down", "ctrl+alt+down"),
+        new(BuiltinAction.PreviousAttentionSession, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+opt+up", "ctrl+opt+up", "ctrl+alt+up"),
+        new(BuiltinAction.NextAttentionSession, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+opt+down", "ctrl+opt+down", "ctrl+alt+down"),
+        new(BuiltinAction.FirstSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.LastSession, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.QuickTerminal, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+`", "opt+`", "alt+`"),
+        new(BuiltinAction.SessionPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+p", "opt+p", "alt+p"),
+        new(BuiltinAction.CommandPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+p", "ctrl+shift+p", "ctrl+shift+p"),
+        new(BuiltinAction.CustomCommandPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+o", "ctrl+shift+o", "ctrl+shift+o"),
+        new(BuiltinAction.ShowAttention, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+i", "ctrl+shift+i", "ctrl+shift+i"),
+        new(BuiltinAction.Dashboard, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+d", "cmd+shift+d", "ctrl+shift+d"),
     ];
 
     public static IEnumerable<object?[]> ActionRows => Coverage.Select(row => new object?[]
@@ -80,6 +85,7 @@ public class Phase5ActionCoverageTests
         row.Disposition,
         row.ChordDisposition,
         row.UpstreamDefaultChord,
+        row.WindowsDefaultChord,
         row.EffectiveWindowsChord,
     });
 
@@ -114,14 +120,14 @@ public class Phase5ActionCoverageTests
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         Assert.Equal(Coverage.Length + 2, actualLines.Length);
         Assert.Equal(
-            ["Builtin action", "Wire name", "Disposition", "Upstream default", "Effective Windows"],
+            ["Builtin action", "Wire name", "Disposition", "Upstream default", "Windows default", "Effective Windows"],
             TableCells(actualLines[0]));
         Assert.All(TableCells(actualLines[1]), cell => Assert.Matches("^-{3,}$", cell));
         for (var index = 0; index < Coverage.Length; index++)
         {
             var row = Coverage[index];
             Assert.Equal(
-                [$"`{row.Action}`", $"`{row.Action.WireName()}`", $"`{row.Disposition}`", ChordCell(row.UpstreamDefaultChord), ChordCell(row.EffectiveWindowsChord)],
+                [$"`{row.Action}`", $"`{row.Action.WireName()}`", $"`{row.Disposition}`", ChordCell(row.UpstreamDefaultChord), ChordCell(row.WindowsDefaultChord), ChordCell(row.EffectiveWindowsChord)],
                 TableCells(actualLines[index + 2]));
         }
     }
@@ -133,18 +139,22 @@ public class Phase5ActionCoverageTests
         ActionDisposition disposition,
         ChordDisposition chordDisposition,
         string? expectedUpstreamDefaultChord,
+        string? expectedWindowsDefaultChord,
         string? expectedEffectiveWindowsChord)
     {
-        var shippedDefault = action.DefaultChord();
+        var upstreamDefault = action.DefaultChord();
         var defaultKeymapChord = Keymap.Empty.EquivalentFor(action);
-        Assert.Equal(shippedDefault, defaultKeymapChord);
+        Assert.Equal(WindowsDefaultChords.ShippedFor(action), defaultKeymapChord);
 
         if (chordDisposition == ChordDisposition.Bound)
         {
             Assert.NotNull(expectedUpstreamDefaultChord);
+            Assert.NotNull(expectedWindowsDefaultChord);
             Assert.NotNull(expectedEffectiveWindowsChord);
+            Assert.NotNull(upstreamDefault);
             Assert.NotNull(defaultKeymapChord);
-            Assert.Equal(expectedUpstreamDefaultChord, defaultKeymapChord.Value.DisplayString);
+            Assert.Equal(expectedUpstreamDefaultChord, upstreamDefault.Value.DisplayString);
+            Assert.Equal(expectedWindowsDefaultChord, defaultKeymapChord.Value.DisplayString);
             Assert.Equal(
                 expectedEffectiveWindowsChord,
                 Display(WindowsChordDecoder.Effective(defaultKeymapChord.Value)));
@@ -153,7 +163,9 @@ public class Phase5ActionCoverageTests
         {
             Assert.Equal(ChordDisposition.Keyless, chordDisposition);
             Assert.Null(expectedUpstreamDefaultChord);
+            Assert.Null(expectedWindowsDefaultChord);
             Assert.Null(expectedEffectiveWindowsChord);
+            Assert.Null(upstreamDefault);
             Assert.Null(defaultKeymapChord);
         }
 

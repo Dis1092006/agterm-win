@@ -281,24 +281,24 @@ public class XtermPageLiveTests
             await page.SetInterceptChordsAsync(interceptChords);
             return null;
         });
-        // Ctrl+N = NewSession (implemented) → intercepted, must come back as chord, not reach the shell
+        // Alt+N = NewSession (implemented) → intercepted, must come back as chord, not reach the shell
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-s33\", {key:'n', ctrlKey:true})"));
-        // Ctrl+D = ToggleSplit (implemented in P3) → intercepted as a second host chord
+            "agterm.dispatchKey(\"live-s33\", {key:'n', altKey:true})"));
+        // Alt+D = ToggleSplit (implemented in P3) → intercepted as a second host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-s33\", {key:'d', ctrlKey:true})"));
-        // Ctrl+J = ToggleScratch (implemented in Q2) → intercepted as a third host chord
+            "agterm.dispatchKey(\"live-s33\", {key:'d', altKey:true})"));
+        // Alt+J = ToggleScratch (implemented in Q2) → intercepted as a third host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-s33\", {key:'j', ctrlKey:true})"));
-        // Ctrl+F = ToggleSearch (implemented in Q4) → intercepted as a fourth host chord
+            "agterm.dispatchKey(\"live-s33\", {key:'j', altKey:true})"));
+        // Alt+F = ToggleSearch (implemented in Q4) → intercepted as a fourth host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-s33\", {key:'f', ctrlKey:true})"));
-        // Ctrl+` = QuickTerminal (implemented in Q5) → intercepted as a fifth host chord
+            "agterm.dispatchKey(\"live-s33\", {key:'f', altKey:true})"));
+        // Alt+` = QuickTerminal (implemented in Q5) → intercepted as a fifth host chord
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-s33\", {key:'`', ctrlKey:true})"));
-        // C2 palettes: Ctrl+P, Ctrl+Shift+P/O/I are host chords, not terminal input.
+            "agterm.dispatchKey(\"live-s33\", {key:'`', altKey:true})"));
+        // C2 palettes: Alt+P and Ctrl+Shift+P/O/I are host chords, not terminal input.
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
-            "agterm.dispatchKey(\"live-s33\", {key:'p', ctrlKey:true})"));
+            "agterm.dispatchKey(\"live-s33\", {key:'p', altKey:true})"));
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
             "agterm.dispatchKey(\"live-s33\", {key:'p', ctrlKey:true, shiftKey:true})"));
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
@@ -315,32 +315,32 @@ public class XtermPageLiveTests
             hit =>
             {
                 Assert.Equal("live-s33", hit.PaneId);
-                Assert.Equal(new PhysicalChord(true, false, false, "n"), hit.Chord);
+                Assert.Equal(new PhysicalChord(false, true, false, "n"), hit.Chord);
             },
             hit =>
             {
                 Assert.Equal("live-s33", hit.PaneId);
-                Assert.Equal(new PhysicalChord(true, false, false, "d"), hit.Chord);
+                Assert.Equal(new PhysicalChord(false, true, false, "d"), hit.Chord);
             },
             hit =>
             {
                 Assert.Equal("live-s33", hit.PaneId);
-                Assert.Equal(new PhysicalChord(true, false, false, "j"), hit.Chord);
+                Assert.Equal(new PhysicalChord(false, true, false, "j"), hit.Chord);
             },
             hit =>
             {
                 Assert.Equal("live-s33", hit.PaneId);
-                Assert.Equal(new PhysicalChord(true, false, false, "f"), hit.Chord);
+                Assert.Equal(new PhysicalChord(false, true, false, "f"), hit.Chord);
             },
             hit =>
             {
                 Assert.Equal("live-s33", hit.PaneId);
-                Assert.Equal(new PhysicalChord(true, false, false, "`"), hit.Chord);
+                Assert.Equal(new PhysicalChord(false, true, false, "`"), hit.Chord);
             },
             hit =>
             {
                 Assert.Equal("live-s33", hit.PaneId);
-                Assert.Equal(new PhysicalChord(true, false, false, "p"), hit.Chord);
+                Assert.Equal(new PhysicalChord(false, true, false, "p"), hit.Chord);
             },
             hit =>
             {
@@ -357,12 +357,30 @@ public class XtermPageLiveTests
                 Assert.Equal("live-s33", hit.PaneId);
                 Assert.Equal(new PhysicalChord(true, false, true, "i"), hit.Chord);
             });
-        Assert.DoesNotContain(data, d => d.Contains('\x04')); // Ctrl+D did not reach the terminal
-        Assert.DoesNotContain(data, d => d.Contains('\x0E')); // Ctrl+N did not
-        Assert.DoesNotContain(data, d => d.Contains('\x0A')); // Ctrl+J did not
-        Assert.DoesNotContain(data, d => d.Contains('\x06')); // Ctrl+F did not
-        Assert.DoesNotContain(data, d => d.Contains('\x00')); // Ctrl+` did not
-        Assert.DoesNotContain(data, d => d.Contains('\x10')); // Ctrl+P did not
+        // none of the Alt chords leaked into the pty
+        Assert.DoesNotContain(data, d => d.Contains('\x04')); // Alt+D did not reach the terminal
+        Assert.DoesNotContain(data, d => d.Contains('\x0E')); // Alt+N did not
+        Assert.DoesNotContain(data, d => d.Contains('\x0A')); // Alt+J did not
+        Assert.DoesNotContain(data, d => d.Contains('\x06')); // Alt+F did not
+        Assert.DoesNotContain(data, d => d.Contains('\x10')); // Alt+P did not
+
+        // ...and the reverse, which is the whole point of the Windows defaults: a bare Ctrl press
+        // is NOT intercepted and reaches the shell as its control character. Ctrl+D ends input,
+        // Ctrl+P walks history; a terminal that eats them breaks the program in the pane.
+        data.Clear();
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"live-s33\", {key:'d', ctrlKey:true, code:'KeyD'})"));
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"live-s33\", {key:'p', ctrlKey:true, code:'KeyP'})"));
+
+        var shellDeadline = Environment.TickCount64 + 30000;
+        while (!(data.Any(d => d.Contains('\x04')) && data.Any(d => d.Contains('\x10')))
+               && Environment.TickCount64 < shellDeadline)
+            await Task.Delay(50);
+
+        Assert.Contains(data, d => d.Contains('\x04')); // Ctrl+D reached the terminal
+        Assert.Contains(data, d => d.Contains('\x10')); // Ctrl+P reached the terminal
+        Assert.Equal(9, chords.Count);                   // and neither came back as a host chord
     }
 
     [Fact]

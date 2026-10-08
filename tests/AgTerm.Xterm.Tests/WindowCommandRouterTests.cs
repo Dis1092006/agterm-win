@@ -227,15 +227,15 @@ public class WindowCommandRouterTests
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public async Task ExecuteChordAsync_default_ctrl_n_resolves_new_session_invokes_once_returns_true()
+    public async Task ExecuteChordAsync_default_alt_n_resolves_new_session_invokes_once_returns_true()
     {
-        // cmd+n is the default chord for NewSession; Ctrl+N decodes cmd+n first (cmd priority).
+        // opt+n is the Windows default for NewSession (upstream cmd+n); Alt+N decodes opt+n.
         var calls = 0;
         var router = new WindowCommandRouter(AllNoOpHandlers(
             replace: BuiltinAction.NewSession,
             replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })));
         var hotkeys = new HotkeyRouter(Keymap.Empty);
-        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "n");
+        var physical = new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "n");
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
@@ -261,7 +261,7 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public async Task ExecuteChordAsync_ctrl_d_resolves_toggle_split_returns_true_and_invokes_once()
+    public async Task ExecuteChordAsync_alt_d_resolves_toggle_split_returns_true_and_invokes_once()
     {
         // cmd+d is the default chord for ToggleSplit; Ctrl+D decodes cmd+d first → ToggleSplit (implemented in P3).
         var calls = 0;
@@ -269,7 +269,7 @@ public class WindowCommandRouterTests
             replace: BuiltinAction.ToggleSplit,
             replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })));
         var hotkeys = new HotkeyRouter(Keymap.Empty);
-        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "d");
+        var physical = new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "d");
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
@@ -278,14 +278,14 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public async Task ExecuteChordAsync_ctrl_j_resolves_toggle_scratch_returns_true_and_invokes_once()
+    public async Task ExecuteChordAsync_alt_j_resolves_toggle_scratch_returns_true_and_invokes_once()
     {
         var calls = 0;
         var router = new WindowCommandRouter(AllNoOpHandlers(
             replace: BuiltinAction.ToggleScratch,
             replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })));
         var hotkeys = new HotkeyRouter(Keymap.Empty);
-        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j");
+        var physical = new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "j");
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
@@ -294,7 +294,7 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public async Task ExecuteChordAsync_ctrl_backtick_resolves_quick_terminal_invokes_once_returns_true()
+    public async Task ExecuteChordAsync_alt_backtick_resolves_quick_terminal_invokes_once_returns_true()
     {
         // ctrl+` is the default chord for QuickTerminal; physical Ctrl+` decodes ctrl+` as second
         // candidate (cmd+` has no default bind), so QuickTerminal wins.
@@ -303,7 +303,7 @@ public class WindowCommandRouterTests
             replace: BuiltinAction.QuickTerminal,
             replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })));
         var hotkeys = new HotkeyRouter(Keymap.Empty);
-        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "`");
+        var physical = new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "`");
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
@@ -332,7 +332,9 @@ public class WindowCommandRouterTests
 
         var result = await router.ExecuteChordAsync(
             new HotkeyRouter(Keymap.Empty),
-            new PhysicalChord(Ctrl: true, Alt: false, Shift: shift, Key: key));
+            action == BuiltinAction.SessionPalette
+                ? new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: key)
+                : new PhysicalChord(Ctrl: true, Alt: false, Shift: shift, Key: key));
 
         Assert.True(result);
         Assert.Equal(1, calls);
@@ -341,13 +343,13 @@ public class WindowCommandRouterTests
     [Fact]
     public async Task ExecuteChordAsync_implemented_but_disabled_new_session_returns_false_invokes_none()
     {
-        // Ctrl+N resolves NewSession (implemented), but CanExecute returns false → handler must not fire.
+        // Alt+N resolves NewSession (implemented), but CanExecute returns false → handler must not fire.
         var calls = 0;
         var router = new WindowCommandRouter(AllNoOpHandlers(
             replace: BuiltinAction.NewSession,
             replacement: new WindowCommandHandler(() => false, () => { calls++; return Task.CompletedTask; })));
         var hotkeys = new HotkeyRouter(Keymap.Empty);
-        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "n");
+        var physical = new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "n");
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
@@ -356,9 +358,10 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public async Task ExecuteChordAsync_collision_ctrl_f_resolves_toggle_search_via_cmd_priority_not_new_session()
+    public async Task ExecuteChordAsync_alt_f_resolves_toggle_search_now_that_the_ctrl_f_collision_is_gone()
     {
-        // map ctrl+f new_session: HotkeyRouter binds ctrl+f→NewSession and cmd+f→ToggleSearch (default).
+        // map ctrl+f new_session binds ctrl+f→NewSession. toggle_search ships on opt+f here, so the
+        // upstream Ctrl+F collision is gone and Alt+F reaches toggle_search on its own.
         // Physical Ctrl+F candidates: cmd+f first (cmd priority) → ToggleSearch (implemented).
         // The NewSession handler must not fire.
         var newSessionCalls = 0;
@@ -367,7 +370,7 @@ public class WindowCommandRouterTests
             replacement: new WindowCommandHandler(() => true, () => { newSessionCalls++; return Task.CompletedTask; })));
         var (keymap, _) = KeymapParser.Parse("map ctrl+f new_session");
         var hotkeys = new HotkeyRouter(keymap);
-        var physical = new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "f");
+        var physical = new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "f");
 
         var result = await router.ExecuteChordAsync(hotkeys, physical);
 
@@ -380,32 +383,34 @@ public class WindowCommandRouterTests
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public void ImplementedInterceptChords_default_keymap_includes_ctrl_n_excludes_unimplemented_chords()
+    public void ImplementedInterceptChords_default_keymap_includes_alt_n_excludes_unimplemented_chords()
     {
         var hotkeys = new HotkeyRouter(Keymap.Empty);
         var chords = WindowCommandRouter.ImplementedInterceptChords(hotkeys);
 
-        // Ctrl+N → cmd+n → NewSession (implemented): must be present
-        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "n"), chords);
+        // Alt+N → opt+n → NewSession (implemented): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "n"), chords);
 
         // Ctrl+D → cmd+d → ToggleSplit (implemented in P3): must be present
-        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "d"), chords);
+        Assert.Contains(new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "d"), chords);
         // Ctrl+Alt+Left → cmd+opt+left → FocusLeftPane (implemented in P3): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: true, Shift: false, Key: "left"), chords);
         // Ctrl+Alt+Right → cmd+opt+right → FocusRightPane (implemented in P3): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: true, Shift: false, Key: "right"), chords);
         // Ctrl+J → cmd+j → ToggleScratch (implemented in Q2): must be present
-        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "j"), chords);
-        // Ctrl+F → cmd+f → ToggleSearch (implemented in Q4): must be present
-        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "f"), chords);
-        // Ctrl+` → ctrl+` → QuickTerminal (implemented in Q5): must be present
-        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "`"), chords);
+        Assert.Contains(new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "j"), chords);
+        // Alt+F → opt+f → ToggleSearch (implemented in Q4): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "f"), chords);
+        // Alt+` → opt+` → QuickTerminal (implemented in Q5): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "`"), chords);
         // Ctrl+Shift+Enter → cmd+shift+return → ToggleTerminalZoom (implemented in D1): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "return"), chords);
         // Ctrl+Shift+T → cmd+shift+t → ReopenRecent (implemented in U1): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "t"), chords);
-        // Ctrl+P → ctrl+p → SessionPalette (implemented in C2): must be present
-        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: false, Key: "p"), chords);
+        // Alt+P → opt+p → SessionPalette (implemented in C2): must be present
+        Assert.Contains(new PhysicalChord(Ctrl: false, Alt: true, Shift: false, Key: "p"), chords);
+        // and nothing sits on a bare Ctrl chord any more: those belong to the shell
+        Assert.DoesNotContain(chords, c => c is { Ctrl: true, Alt: false, Shift: false });
         // Ctrl+Shift+P → ctrl+shift+p → CommandPalette (implemented in C2): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "p"), chords);
         // Ctrl+Shift+O → ctrl+shift+o → CustomCommandPalette (implemented in C2): must be present
@@ -451,17 +456,18 @@ public class WindowCommandRouterTests
             hotkeys,
             action => !paletteActions.Contains(action));
 
-        Assert.DoesNotContain(new PhysicalChord(true, false, false, "p"), chords);
+        Assert.DoesNotContain(new PhysicalChord(false, true, false, "p"), chords);
         Assert.DoesNotContain(new PhysicalChord(true, false, true, "p"), chords);
         Assert.DoesNotContain(new PhysicalChord(true, false, true, "o"), chords);
         Assert.DoesNotContain(new PhysicalChord(true, false, true, "i"), chords);
-        Assert.Contains(new PhysicalChord(true, false, false, "`"), chords);
+        Assert.Contains(new PhysicalChord(false, true, false, "`"), chords);
     }
 
     [Fact]
     public void ImplementedInterceptChords_collision_ctrl_f_included_when_toggle_search_wins_over_new_session()
     {
-        // map ctrl+f new_session: ctrl+f→NewSession; cmd+f→ToggleSearch (default, implemented) wins first.
+        // map ctrl+f new_session: ctrl+f→NewSession. toggle_search ships on opt+f, so Ctrl+F belongs
+        // to new_session alone and is intercepted for it.
         var (keymap, _) = KeymapParser.Parse("map ctrl+f new_session");
         var hotkeys = new HotkeyRouter(keymap);
 
@@ -473,7 +479,8 @@ public class WindowCommandRouterTests
     [Fact]
     public void ImplementedInterceptChords_ctrl_n_included_when_new_session_wins_over_remapped_toggle_split()
     {
-        // map ctrl+n toggle_split: ctrl+n→ToggleSplit; cmd+n→NewSession (default, implemented) wins first.
+        // map ctrl+n toggle_split: ctrl+n→ToggleSplit. new_session ships on opt+n, so Ctrl+N belongs
+        // to toggle_split alone and is intercepted for it.
         var (keymap, _) = KeymapParser.Parse("map ctrl+n toggle_split");
         var hotkeys = new HotkeyRouter(keymap);
 
@@ -501,22 +508,22 @@ public class WindowCommandRouterTests
     }
 
     [Fact]
-    public void EffectiveWindowsChordDiagnostics_empty_keymap_returns_exactly_three_line0_diagnostics_in_order()
+    public void EffectiveWindowsChordDiagnostics_empty_keymap_returns_exactly_two_line0_diagnostics_in_order()
     {
+        // The Windows defaults separate toggle_search (opt+f) from toggle_fullscreen (opt+return),
+        // so the upstream ctrl+f shadow is gone. The two arrow pairs stay: both carry Alt, a shell
+        // never reads them, and moving them would cost a keystroke that still matches macOS.
         var diagnostics = WindowCommandRouter.EffectiveWindowsChordDiagnostics(Keymap.Empty);
 
-        Assert.Equal(3, diagnostics.Count);
+        Assert.Equal(2, diagnostics.Count);
         Assert.All(diagnostics, d => Assert.Equal(0, d.Line));
 
         Assert.Equal(
-            "effective Windows chord 'ctrl+f' resolves to built-in 'toggle_search'; built-in 'toggle_fullscreen' is shadowed",
+            "effective Windows chord 'ctrl+alt+up' resolves to built-in 'previous_session'; built-in 'previous_attention_session' is shadowed",
             diagnostics[0].Message);
         Assert.Equal(
-            "effective Windows chord 'ctrl+alt+up' resolves to built-in 'previous_session'; built-in 'previous_attention_session' is shadowed",
-            diagnostics[1].Message);
-        Assert.Equal(
             "effective Windows chord 'ctrl+alt+down' resolves to built-in 'next_session'; built-in 'next_attention_session' is shadowed",
-            diagnostics[2].Message);
+            diagnostics[1].Message);
     }
 
     [Fact]
@@ -530,47 +537,36 @@ public class WindowCommandRouterTests
 
         var diagnostics = WindowCommandRouter.EffectiveWindowsChordDiagnostics(keymap);
 
-        Assert.Equal(2, diagnostics.Count);
-        Assert.All(diagnostics, d => Assert.Equal(0, d.Line));
-
-        Assert.Equal(
-            "effective Windows chord 'ctrl+f' resolves to built-in 'toggle_search'; built-in 'toggle_fullscreen' is shadowed",
-            diagnostics[0].Message);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(0, diagnostic.Line);
         Assert.Equal(
             "effective Windows chord 'ctrl+alt+up' resolves to built-in 'previous_session'; built-in 'previous_attention_session' is shadowed",
-            diagnostics[1].Message);
+            diagnostic.Message);
 
         Assert.DoesNotContain(diagnostics, d => d.Message.Contains("ctrl+alt+down"));
     }
 
     [Fact]
-    public void EffectiveWindowsChordDiagnostics_remap_ctrl_f_new_session_adds_new_session_as_additional_shadow_ordered_by_BuiltinActions_All()
+    public void EffectiveWindowsChordDiagnostics_remap_ctrl_f_new_session_shadows_nothing_now_that_ctrl_f_is_free()
     {
-        // map ctrl+f new_session: logical ctrl+f ≠ cmd+f, so no parser collision.
-        // Physical Ctrl+F now has three binds: ctrl+f→new_session, cmd+f→toggle_search, cmd+ctrl+f→toggle_fullscreen.
-        // Candidate priority: cmd+f wins → toggle_search; new_session and toggle_fullscreen are both shadowed.
-        // Diagnostics order: shadowed actions sorted by their position in BuiltinActions.All.
-        // NewSession (6) < ToggleFullscreen (23) < PreviousAttentionSession (31) < NextAttentionSession (32).
+        // map ctrl+f new_session: with toggle_search on opt+f and toggle_fullscreen on opt+return,
+        // physical Ctrl+F has one bind left and shadows nothing. Upstream the same line produced two
+        // extra diagnostics, because all three actions folded onto Ctrl+F.
         var (keymap, parserDiagnostics) = KeymapParser.Parse("map ctrl+f new_session");
 
         Assert.Empty(parserDiagnostics);
 
         var diagnostics = WindowCommandRouter.EffectiveWindowsChordDiagnostics(keymap);
 
-        Assert.Equal(4, diagnostics.Count);
+        Assert.Equal(2, diagnostics.Count);
         Assert.All(diagnostics, d => Assert.Equal(0, d.Line));
+        Assert.DoesNotContain(diagnostics, d => d.Message.Contains("ctrl+f"));
 
         Assert.Equal(
-            "effective Windows chord 'ctrl+f' resolves to built-in 'toggle_search'; built-in 'new_session' is shadowed",
+            "effective Windows chord 'ctrl+alt+up' resolves to built-in 'previous_session'; built-in 'previous_attention_session' is shadowed",
             diagnostics[0].Message);
         Assert.Equal(
-            "effective Windows chord 'ctrl+f' resolves to built-in 'toggle_search'; built-in 'toggle_fullscreen' is shadowed",
-            diagnostics[1].Message);
-        Assert.Equal(
-            "effective Windows chord 'ctrl+alt+up' resolves to built-in 'previous_session'; built-in 'previous_attention_session' is shadowed",
-            diagnostics[2].Message);
-        Assert.Equal(
             "effective Windows chord 'ctrl+alt+down' resolves to built-in 'next_session'; built-in 'next_attention_session' is shadowed",
-            diagnostics[3].Message);
+            diagnostics[1].Message);
     }
 }
