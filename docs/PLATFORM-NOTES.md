@@ -455,3 +455,21 @@ This is the opposite of `Integration\**`, which must be excluded: those paths ar
 `CopyToPublishDirectory` covers the layouts that are not single-file, where the published project is `AgTerm.App` and a referenced project's `None` items reach a build output through copy-local but stop there.
 
 `XtermAssetsTests.Assets_are_declared_to_follow_a_publish_not_only_a_build` asserts the declaration. It is a weak test — it reads the csproj rather than a published layout — because the existing asset test reads the build output, where the files are always present, so a packaging-only gap is invisible to the suite. Worth remembering for any future run-time file: the question is not whether the build works, but whether the file is reachable from `AppContext.BaseDirectory` in the packaging the user actually runs.
+
+## The WebView2 profile lives with the user's state, not beside the exe
+
+Upstream has no analogue: libghostty renders in the app's own process and writes no browser profile.
+
+WebView2 keeps a profile per application: cache, cookies, local storage and crash metrics. Given no environment it picks the directory itself, and the name it picks is `<exe>.WebView2` next to the executable. For a published build that is the publish directory, which produced two problems.
+
+`publish.proj` starts with `RemoveDir` on the output directory, so a clean publish has to delete a profile written by the last run. WebView2 keeps some of those files memory-mapped past process exit, `EBWebView\CrashpadMetrics-active.pma` among them, so the delete failed and the publish stopped before building anything. The error named a `.pma` file and read as a file-locking problem rather than a layout one.
+
+The second problem is quieter: a successful clean publish wipes the profile, so the app starts cold every time the user rebuilds it.
+
+`MainWindow.BootPageAsync` now creates the environment explicitly with `CreateWithOptionsAsync` and a `userDataFolder` under the app's state dir, `AgTerm.Core.Model.WebViewProfile`. The state dir is the same root as `workspaces.json` and the `windows\` directory, and it honors `%AGTERM_STATE_DIR%`, so two instances pointed at different state dirs do not share one profile. The publish directory then holds the two exes and `Integration\`, and the profile survives a republish.
+
+The resolution lives in `AgTerm.Core` rather than in the window because `AgTerm.App` has no test project. `WebViewProfileDirectoryTests` covers it; the window keeps only the `CreateWithOptionsAsync` call.
+
+A failure to create the directory surfaces through the existing path: the call sits inside `BootPageAsync`, whose task `ReportPageInitializationFailureAsync` already awaits, so it reports an InfoBar rather than crashing.
+
+The WinUI app reaches WebView2 through the Windows App SDK projection, which exposes a narrower surface than the standalone `Microsoft.Web.WebView2` package the test fixture uses. `CoreWebView2Environment.CreateAsync` there takes no arguments, and the only way to name a user data folder is `CreateWithOptionsAsync(browserExecutableFolder, userDataFolder, options)`. Code copied from the fixture, or from Microsoft's WebView2 documentation, will not compile against the app's projection.

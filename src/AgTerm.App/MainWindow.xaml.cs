@@ -413,7 +413,13 @@ public sealed partial class MainWindow : Window
     /// <summary>Boot the window's single terminal page: one WebView2, one terminal.html, N panes.</summary>
     private async Task<XtermPage> BootPageAsync()
     {
-        await TerminalView.EnsureCoreWebView2Async();
+        // Without an environment WebView2 writes its profile to <exe>.WebView2, which in a published
+        // build is the publish directory: see AgTerm.Core.Model.WebViewProfile.
+        var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+            browserExecutableFolder: string.Empty,
+            userDataFolder: WebViewProfile.Directory(),
+            options: new CoreWebView2EnvironmentOptions());
+        await TerminalView.EnsureCoreWebView2Async(environment);
         // A process death AFTER this point leaves the CoreWebView2 object alive but dead, so every
         // later pane open throws. Init failure itself is reported by
         // ReportPageInitializationFailureAsync instead.
