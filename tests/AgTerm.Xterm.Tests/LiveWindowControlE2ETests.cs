@@ -924,6 +924,99 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         return response.Result!.Events!;
     }
 
+    private static ControlRequest OpenPickRequest(string? window = null, bool follow = false) => new()
+    {
+        Cmd = Command.PickOpen,
+        Args = new ControlArgs
+        {
+            Items = new[] { new ControlPickItem { Id = "a", Label = "A" } },
+            Window = window,
+            Follow = follow ? true : null,
+        },
+    };
+
+    [Fact]
+    public void Pick_result_finds_the_pick_by_id_after_the_frontmost_window_changes()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var id = client.Send(OpenPickRequest()).Result!.Id!;
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowSelect, Target = secondId.ToString("D") }).Ok);
+
+        var result = client.Send(new ControlRequest { Cmd = Command.PickResult, Target = id });
+        Assert.Equal(ControlPickResult.Pending(), result.Result!.Pick);
+    }
+
+    [Fact]
+    public async Task Closing_the_window_cancels_its_pick_and_keeps_the_result_readable()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var id = client.Send(OpenPickRequest(window: firstId.ToString("D"))).Result!.Id!;
+
+        await application.CloseWindowAsync(firstId);
+
+        Assert.Equal(ControlPickResult.Cancelled(), client.Send(new ControlRequest { Cmd = Command.PickResult, Target = id }).Result!.Pick);
+        Assert.Equal(ControlPickResult.Cancelled(), client.Send(new ControlRequest
+        {
+            Cmd = Command.PickResult, Target = id, Args = new ControlArgs { Window = firstId.ToString("D") },
+        }).Result!.Pick);
+    }
+
+    [Fact]
+    public void Disposing_the_application_cancels_every_pending_pick()
+    {
+        var firstId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
+        var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        client.Send(OpenPickRequest());
+        var pick = application.GetOpenWindow(firstId).Pick;
+
+        application.Dispose();
+
+        Assert.Null(pick.Pending);
+    }
+
+    [Fact]
+    public void Pick_open_with_follow_takes_frontmost()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        Assert.True(client.Send(OpenPickRequest(window: secondId.ToString("D"), follow: true)).Ok);
+
+        Assert.Equal(secondId, application.ActiveWindowId);
+    }
+
+    [Fact]
+    public async Task Pick_open_with_no_open_window_answers_no_open_window()
+    {
+        var onlyId = Guid.NewGuid();
+        WriteWindowSnapshot(onlyId, "alpha");
+        WriteIndex(onlyId, new IndexEntry(onlyId, "only", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        await application.CloseWindowAsync(onlyId);
+
+        Assert.Equal("no open window", new ControlPipeClient(application.PipeName).Send(OpenPickRequest()).Error);
+    }
+
     private LiveApplicationHost CreateApplication(ILiveWindowController? windows = null) =>
         new(new LiveApplicationHostOptions
         {

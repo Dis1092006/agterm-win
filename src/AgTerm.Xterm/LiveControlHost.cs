@@ -203,7 +203,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 themeChanged: QueueThemeChanged,
                 notificationRequested: QueueNotificationRequested,
                 statusNotificationRequested: QueueStatusNotificationRequested,
-                zoomTargetAvailable: IsZoomTargetRealized);
+                zoomTargetAvailable: IsZoomTargetRealized,
+                pick: windowHost.Pick,
+                picks: windowHost.Picks);
             windowHost.AttachLive(actions, ReserveSurface, _scopeFactory);
         }
         if (options.InitialTheme is { } initialTheme)

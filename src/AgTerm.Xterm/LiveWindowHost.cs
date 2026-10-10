@@ -30,9 +30,13 @@ public sealed class LiveWindowHost
         ControlEventRing ring,
         RecentClosedStore recentClosedStore,
         bool seedIfEmpty,
-        bool launchRestore)
+        bool launchRestore,
+        PickRegistry? picks = null)
     {
         WindowId = windowId;
+        Picks = picks ?? new PickRegistry();
+        Pick = new PickController();
+        Picks.Register(WindowId, Pick);
         _windowName = windowName;
         Ring = ring;
         _stateDirectory = stateDirectory;
@@ -76,6 +80,10 @@ public sealed class LiveWindowHost
     }
 
     public Guid WindowId { get; }
+
+    public PickController Pick { get; }
+
+    public PickRegistry Picks { get; }
 
     public string WindowName
     {
@@ -312,5 +320,7 @@ public sealed class LiveWindowHost
             WindowId,
             _windowName,
             configDirectory: _stateDirectory,
-            homeDirectory: _homeDirectory);
+            homeDirectory: _homeDirectory,
+            pick: Pick,
+            picks: Picks);
 }

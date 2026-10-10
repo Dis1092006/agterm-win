@@ -39,6 +39,7 @@ public sealed class LiveApplicationHost : IDisposable
     private readonly ControlPipeServer _server;
     private readonly Dictionary<Guid, LiveControlHost> _attachments = new();
     private readonly HashSet<Guid> _attachingWindows = new();
+    private readonly PickRegistry _picks = new();
     private Guid? _frontmostWindowId;
     private bool _disposed;
 
@@ -296,6 +297,7 @@ public sealed class LiveApplicationHost : IDisposable
             if (_disposed || !_openWindows.Remove(windowId, out window!))
                 return;
 
+            _picks.Unregister(windowId);
             window.StopDispatching();
             _closingWindows.Add(windowId, window);
             _attachments.Remove(windowId, out attachment);
@@ -338,6 +340,7 @@ public sealed class LiveApplicationHost : IDisposable
             _attachingWindows.Clear();
         }
 
+        _picks.CancelAll();
         _server.Stop();
         foreach (var attachment in attachments) attachment.Dispose();
         foreach (var window in windows) window.Save();
@@ -374,6 +377,11 @@ public sealed class LiveApplicationHost : IDisposable
         if (IsAppGlobalMutation(request.Cmd))
             return await DispatchAppGlobalAsync(request, cancellationToken).ConfigureAwait(false);
 
+        // pick.result/pick.cancel follow the pick id across every window and past a window's close, so a
+        // frontmost change while a CLI polls cannot orphan its pick
+        if (request.Cmd is Command.PickResult or Command.PickCancel && request.Target is { } pickId)
+            return RoutePickLookup(request.Cmd, pickId, request.Args?.Window);
+
         var target = request.Args?.Window?.Trim();
         LiveWindowEntry[] entries;
         Dictionary<Guid, LiveWindowHost> openWindows;
@@ -391,7 +399,7 @@ public sealed class LiveApplicationHost : IDisposable
                 return new ControlResponse
                 {
                     Ok = false,
-                    Error = "no such window: active",
+                    Error = request.Cmd == Command.PickOpen ? "no open window" : "no such window: active",
                 };
             windowId = active;
         }
@@ -512,7 +520,35 @@ public sealed class LiveApplicationHost : IDisposable
                 Ok = false,
                 Error = "window not open — window.select it first",
             };
-        return await window.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
+        var response = await window.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.PickOpen && request.Args?.Follow == true && response?.Ok == true
+            && _windowController is not null)
+        {
+            await _windowController.ActivateWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+            ReportActivated(windowId);
+        }
+        return response;
+    }
+
+    private ControlResponse RoutePickLookup(Command command, string pickId, string? window)
+    {
+        Guid? windowId = null;
+        var selector = window?.Trim();
+        if (!string.IsNullOrEmpty(selector))
+        {
+            LiveWindowEntry[] entries;
+            Guid? active;
+            lock (_gate)
+            {
+                entries = _windows.ToArray();
+                active = ActiveWindowIdLocked();
+            }
+            var resolution = ControlResolve.Resolve(selector, entries.Select(entry => entry.Id).ToArray(), active);
+            if (resolution.Kind != TargetResolution.Outcome.Resolved)
+                return new ControlResponse { Ok = false, Error = ControlResolve.ErrorMessage("window", selector, resolution) };
+            windowId = resolution.Id;
+        }
+        return command == Command.PickResult ? _picks.Result(pickId, windowId) : _picks.Cancel(pickId, windowId);
     }
 
     private async Task<ControlResponse> NewWindowAsync(
@@ -692,6 +728,7 @@ public sealed class LiveApplicationHost : IDisposable
         Guid? previousFrontmost)
     {
         LiveControlHost? attachment;
+        _picks.Unregister(windowId);
         window.StopDispatching();
         lock (_gate)
         {
@@ -1174,7 +1211,8 @@ public sealed class LiveApplicationHost : IDisposable
             Ring,
             _recentClosedStore,
             seedIfEmpty,
-            launchRestore);
+            launchRestore,
+            _picks);
 
     private void SetOpen(Guid windowId, bool isOpen)
     {
