@@ -1701,6 +1701,34 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task SessionOverlayOpenRejectsOutOfRangeSizePercent()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var tooBig = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayOpen, Target = "session",
+            Args = new ControlArgs { Command = "cat", SizePercent = 101 },
+        });
+        var tooSmall = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayOpen, Target = "session",
+            Args = new ControlArgs { Command = "cat", SizePercent = 0 },
+        });
+        var badColorFirst = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayOpen, Target = "session",
+            Args = new ControlArgs { Command = "cat", SizePercent = 500, Color = "nope" },
+        });
+
+        ExpectResponse(Err("session.overlay.open: --size-percent must be 1...100"), tooBig);
+        ExpectResponse(Err("session.overlay.open: --size-percent must be 1...100"), tooSmall);
+        ExpectResponse(Err("invalid color: nope (#rrggbb)"), badColorFirst);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
     public async Task SessionOverlayOpenRoutesOptionsAndEchoesActionResponse()
     {
         var actions = new MockControlActions();

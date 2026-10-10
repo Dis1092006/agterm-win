@@ -527,3 +527,4 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 
 - `session.type` and `quick.type` refuse text with a NUL byte: `text must not contain a NUL byte` (upstream `6bc8a0b7`). ConPTY would pass the byte through, but the reply is part of the wire contract.
 - `session.type`, `session.text`, `font.inc|dec|reset` report `invalid pane: X` from the dispatcher, before target resolution (upstream `b3ef1baf`). The aliases upstream added with horizontal splits (`eb29d556`) are not adopted.
+- `session.overlay.open` refuses `--size-percent` outside 1..100 in the dispatcher and in the CLI, where it was clamped (upstream `94c509bf`, `c9c9b81e`).

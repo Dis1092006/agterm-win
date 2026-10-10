@@ -1516,6 +1516,8 @@ internal static class SessionCommands
                     throw new CliValidationException("--block cannot be combined with --wait");
                 if (BackgroundColor is { } backgroundColor && !WatermarkConfig.IsValidColorHex(backgroundColor))
                     throw new CliValidationException("background-color must be a #rrggbb hex value");
+                if (SizePercent is { } sizePercent && sizePercent is < 1 or > 100)
+                    throw new CliValidationException("--size-percent must be between 1 and 100");
             }
 
             public ControlRequest MakeRequest() => new()

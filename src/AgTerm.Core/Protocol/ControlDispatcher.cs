@@ -419,6 +419,8 @@ public sealed class ControlDispatcher
                     return Err("session.overlay.open requires a command");
                 if (request.Args?.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
                     return Err($"invalid color: {color} (#rrggbb)");
+                if (request.Args?.SizePercent is < 1 or > 100)
+                    return Err("session.overlay.open: --size-percent must be 1...100");
                 return _actions.OpenSessionOverlay(request.Target, request.Args?.Window,
                     new ControlSessionOverlayOpenOptions(command,
                         Cwd: request.Args?.Cwd,

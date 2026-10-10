@@ -1514,6 +1514,16 @@ public class CommandsTests
     }
 
     [Fact]
+    public void SessionOverlayOpenRejectsBadSizePercent()
+    {
+        Assert.Equal("--size-percent must be between 1 and 100",
+            ValidationMessage("session", "overlay", "open", "cmd", "--size-percent", "0"));
+        Assert.Equal("--size-percent must be between 1 and 100",
+            ValidationMessage("session", "overlay", "open", "cmd", "--size-percent", "150"));
+        Assert.Null(ValidationMessage("session", "overlay", "open", "cmd", "--size-percent", "100"));
+    }
+
+    [Fact]
     public void SessionOverlayBlockRejectsWait()
     {
         // validate() enforces the mutually-exclusive flags at parse time (before any connection).
