@@ -20,7 +20,7 @@
 | Узел окна в `tree` | 9 | 10 | +1 |
 | BuiltinAction | 41 | 49 | +8 |
 | `{AGT_X}` токены | 10 | 12 | +2 |
-| AppSettings | 41 | 64 | +23 |
+| AppSettings | 37 | 50 | +13 |
 | SessionSnapshot | 15 | 23 | +8 |
 
 Ничего не удалено, кроме `Snapshot.focusedWorkspaceID` (см. раздел 11).
@@ -141,9 +141,9 @@
 - `Snapshot`: `focusedWorkspaceID` заменён на `focusedWorkspaceIDs` и `focusEnabled`. Старые `workspaces.json` надо мигрировать при чтении.
 - `SessionSnapshot`, новые поля: `paneIdentity`, `splitPaneIdentity`, `hasSplit`, `splitAxis`, `context`, `splitInitialCommand`, `splitCommandWait`, `paneBackgrounds`.
 - Нераспознанное значение опционального поля в `workspaces.json` превращается в nil, а не роняет весь снимок #363.
-- `AppSettings`, новые поля: `cursorBlink`, `cursorStyle`, `flaggedViewLayout`, `htmlOverlayZoom`, `interfaceFontSize`, `linkOpenMode`, `newSessionPlacement`, `quickTerminalSizePercent`, `restoreMode`, `shownInterfaceElements`, `statusReset`, `welcomeShown`, `workspaceRowClickExpands`. Остальные 10 из 23 – вычисляемые `effective*`.
+- `AppSettings`, новые поля: `cursorBlink`, `cursorStyle`, `flaggedViewLayout`, `htmlOverlayZoom`, `interfaceFontSize`, `linkOpenMode`, `newSessionPlacement`, `quickTerminalSizePercent`, `restoreMode`, `shownInterfaceElements`, `statusReset`, `welcomeShown`, `workspaceRowClickExpands`.
 
-## 12. Изменения поведения уже реализованных команд
+## 12. Изменения поведения уже реализованных команд (реализовано 2026-10-10)
 
 Реализовано 2026-10-10; см. раздел PLATFORM-NOTES `Upstream behavior adopted beyond the pin`.
 
@@ -172,7 +172,6 @@
 ## Открытые вопросы
 
 - `session.overlay.job.run` есть в списке команд. Похоже на внутреннюю команду для оверлеев, которые запускает presenter (раздел 2). Перед включением в паритет её надо прочитать в `ControlProtocol.swift`.
-- `tools/extract_surface.py` на `ed831ab` падает: `ControlSessionNode` и другие типы узлов переехали в `ControlProjection.swift`. Снимок `surface-v0.36.0.json` получен на временной копии, где `ControlProjection.swift` дописан в конец `ControlProtocol.swift`. Скрипт надо научить читать оба файла.
 
 ## Как пересчитать
 
@@ -181,4 +180,10 @@ git -C C:\git\github\umputun\agterm fetch origin
 git -C C:\git\github\umputun\agterm log --oneline 7df70fe..origin/master
 ```
 
-Для снимка поверхности: выгрузить `agtermCore/Sources/agtermCore` из нужной ревизии через `git archive` во временный каталог, дописать `ControlProjection.swift` в `ControlProtocol.swift` (пока скрипт не исправлен), запустить `python tools/extract_surface.py --agterm <каталог> --out <файл>` и сравнить с `parity/surface.json`.
+Снимок поверхности любой ревизии, без checkout:
+
+```
+python tools/extract_surface.py --agterm "C:\git\github\umputun\agterm" --ref "origin/master" --out "surface-new.json"
+```
+
+Скрипт ищет типы во всех файлах `agtermCore`, поэтому перенос типа между файлами его не ломает. Вычисляемые свойства (`effectiveX: T { ... }`) в снимок не попадают. Результат сравнивается с `parity/surface.json`.
