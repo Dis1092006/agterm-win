@@ -102,6 +102,7 @@ public static class Agtermctl
                      DashboardCommand.Build(bindings),
                      WindowCommands.Build(bindings),
                      QuickCommands.Build(bindings),
+                     PickCommands.Build(bindings),
                      SidebarCommands.Build(bindings),
                      NotifyCommand.Build(bindings),
                      FontCommands.Build(bindings),

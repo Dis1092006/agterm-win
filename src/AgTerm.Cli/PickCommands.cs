@@ -1,0 +1,192 @@
+using System.CommandLine;
+using System.Text;
+using System.Text.Json;
+using AgTerm.Core.Protocol;
+using WireCommand = AgTerm.Core.Protocol.Command;
+
+namespace AgTerm.Cli;
+
+/// <summary>Port of upstream's pick stdin: a JSON item array when the first non-whitespace byte is
+/// '[', else one item per non-blank UTF-8 line.</summary>
+internal static class PickStdin
+{
+    public const string InvalidInput = "stdin must be UTF-8 text or a JSON item array";
+
+    private static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    // Swift splits on Character.isNewline, which also covers NEL and the Unicode line and paragraph separators.
+    private static readonly char[] LineBreaks = { '\r', '\n', (char)0x0085, (char)0x2028, (char)0x2029 };
+
+    private static readonly byte[] Utf8Bom = { 0xEF, 0xBB, 0xBF };
+
+    public static ControlPickItem[] Parse(byte[] input)
+    {
+        var bytes = StripBom(input);
+        var first = bytes.IndexOfAnyExcept(" \t\n\r"u8);
+        return first >= 0 && bytes[first] == (byte)'['
+            ? ParseJson(bytes)
+            : ParseLines(bytes);
+    }
+
+    // Windows PowerShell 5.1 and Notepad write a BOM; left in, a JSON file is read as lines
+    // and the first id starts with U+FEFF.
+    private static ReadOnlySpan<byte> StripBom(byte[] input)
+    {
+        ReadOnlySpan<byte> bytes = input;
+        return bytes.StartsWith(Utf8Bom) ? bytes[Utf8Bom.Length..] : bytes;
+    }
+
+    private static ControlPickItem[] ParseLines(ReadOnlySpan<byte> bytes)
+    {
+        string text;
+        try
+        {
+            text = Strict.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            throw new CliValidationException(InvalidInput);
+        }
+        return text.Split(LineBreaks)
+            .Where(line => line.Trim(' ', '\t').Length > 0)
+            .Select(line => new ControlPickItem { Id = line, Label = line })
+            .ToArray();
+    }
+
+    private static ControlPickItem[] ParseJson(ReadOnlySpan<byte> bytes)
+    {
+        ControlPickItem[]? items;
+        try
+        {
+            items = JsonSerializer.Deserialize<ControlPickItem[]>(bytes, ControlJson.Options);
+        }
+        catch (JsonException)
+        {
+            throw new CliValidationException(InvalidInput);
+        }
+        // Required members only reject a missing key; an explicit null still deserializes.
+        if (items is null || items.Any(item => item is null || item.Id is null || item.Label is null))
+            throw new CliValidationException(InvalidInput);
+        return items;
+    }
+}
+
+internal static class PickCommands
+{
+    /// <summary>`agtermctl pick [open]`: show a picker in agterm, wait for the answer, print it.
+    /// Items come on stdin.</summary>
+    internal sealed class Open : IRequestCommand
+    {
+        public string? Prompt { get; init; }
+        public string? Query { get; init; }
+        public string? Select { get; init; }
+        public bool AllowCustom { get; init; }
+        public bool Follow { get; init; }
+        public bool NoBlock { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        /// <summary>Where the items come from; injectable for tests. Upstream reads stdin inside
+        /// makeRequest, so the read happens only at request-build time.</summary>
+        public Func<Stream> StdinStream { get; init; } = Console.OpenStandardInput;
+
+        public ControlRequest MakeRequest() => MakeRequest(TypedStdin.ReadAll(StdinStream()));
+
+        internal ControlRequest MakeRequest(byte[] stdin) => new()
+        {
+            Cmd = WireCommand.PickOpen,
+            Args = Client.WithWindow(new ControlArgs
+            {
+                Items = PickStdin.Parse(stdin),
+                Prompt = Prompt,
+                Query = Query,
+                AllowCustom = AllowCustom ? true : null,
+                Selection = Select,
+                Follow = Follow ? true : null,
+            }),
+        };
+    }
+
+    /// <summary>`agtermctl pick result ID`: print a picker's current or final result.</summary>
+    internal sealed class Result : IRequestCommand
+    {
+        public required string Id { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.PickResult,
+            Target = Id,
+            Args = Client.WithWindow(),
+        };
+    }
+
+    /// <summary>`agtermctl pick cancel ID`: close a pending picker as cancelled.</summary>
+    internal sealed class Cancel : IRequestCommand
+    {
+        public required string Id { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.PickCancel,
+            Target = Id,
+            Args = Client.WithWindow(),
+        };
+    }
+
+    public static System.CommandLine.Command Build(CommandBindings bindings)
+    {
+        var pick = new System.CommandLine.Command("pick",
+            "Show a picker in agterm and print the choice (items on stdin).");
+        var open = new System.CommandLine.Command("open", "Show a picker and wait for the answer.");
+        BindOpen(bindings, open);
+        pick.Subcommands.Add(open);
+        pick.Subcommands.Add(BuildIdCommand(bindings, "result", "Print a picker's result.",
+            (id, client) => new Result { Id = id, Client = client }));
+        pick.Subcommands.Add(BuildIdCommand(bindings, "cancel", "Cancel a pending picker.",
+            (id, client) => new Cancel { Id = id, Client = client }));
+        // defaultSubcommand: Open, so a bare `agtermctl pick` opens a picker
+        BindOpen(bindings, pick);
+        return pick;
+    }
+
+    private static void BindOpen(CommandBindings bindings, System.CommandLine.Command command)
+    {
+        var prompt = new Option<string?>("--prompt") { Description = "Placeholder text of the query field." };
+        var query = new Option<string?>("--query") { Description = "Text the query field opens with." };
+        var allowCustom = new Option<bool>("--allow-custom") { Description = "Accept a query that matches no item." };
+        var select = new Option<string?>("--select") { Description = "Item id highlighted when the picker opens." };
+        var follow = new Option<bool>("--follow") { Description = "Raise the target window first." };
+        var noBlock = new Option<bool>("--no-block") { Description = "Print the picker id and return at once." };
+        var client = new ClientOptions.Binder();
+        client.AddTo(command);
+        foreach (var option in new Option[] { prompt, query, allowCustom, select, follow, noBlock })
+            command.Options.Add(option);
+        bindings.Register(command, result => new Open
+        {
+            Prompt = result.GetValue(prompt),
+            Query = result.GetValue(query),
+            AllowCustom = result.GetValue(allowCustom),
+            Select = result.GetValue(select),
+            Follow = result.GetValue(follow),
+            NoBlock = result.GetValue(noBlock),
+            Client = client.Read(result),
+        });
+    }
+
+    private static System.CommandLine.Command BuildIdCommand(
+        CommandBindings bindings, string name, string description,
+        Func<string, ClientOptions, IRequestCommand> create)
+    {
+        var command = new System.CommandLine.Command(name, description);
+        var id = new Argument<string>("id") { Description = "The picker id pick.open returned." };
+        command.Arguments.Add(id);
+        var client = new ClientOptions.Binder();
+        client.AddTo(command);
+        bindings.Register(command, result => create(result.GetValue(id)!, client.Read(result)));
+        return command;
+    }
+}
