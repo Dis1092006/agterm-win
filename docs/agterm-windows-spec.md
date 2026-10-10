@@ -89,6 +89,7 @@ Window (окно)                     ← верх; несколько окон,
 **`focusedCwd`** = cwd правого пейна, если `splitFocused` и есть `splitCwd`, иначе `currentCwd ?? initialCwd`.
 **`effectiveCwd`** = ВСЕГДА primary (`currentCwd ?? initialCwd`) — сеет новый сплит/оверлей/quick,
 и токен `AGT_SESSION_PWD`; не зависит от фокуса.
+Начиная с upstream 67d65657 команда, запущенная в сплит-пейне, получает каталог сплит-пейна: см. `docs/PLATFORM-NOTES.md`, раздел `Upstream behavior adopted beyond the pin`.
 
 **`searchDisplayText`**: пусто, пока `searchTotal == nil`; `"no matches"` при 0; `"N matches"` без выбора;
 `"S of N"` при выбранном (S зажат до N).

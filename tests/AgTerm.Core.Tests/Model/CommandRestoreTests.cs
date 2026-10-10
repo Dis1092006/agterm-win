@@ -22,6 +22,13 @@ public class CommandRestoreTests
     }
 
     [Fact]
+    public void IsReplayableRefusesAnEmptyProgramName()
+    {
+        Assert.False(CommandRestore.IsReplayable([""]));
+        Assert.False(CommandRestore.IsReplayable(["", "x"]));
+    }
+
+    [Fact]
     public void HasControlCharacterCoversC0AndDelButNotReplacementCharacter()
     {
         Assert.True(CommandRestore.HasControlCharacter("tail -f\u001Bx"));

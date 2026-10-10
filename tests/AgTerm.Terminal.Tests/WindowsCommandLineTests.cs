@@ -3,9 +3,9 @@ using AgTerm.Terminal;
 namespace AgTerm.Terminal.Tests;
 
 /// <summary>
-/// Argv → CreateProcessW command line. The §6 session.new --command contract is argv semantics
+/// Argv -> CreateProcessW command line. The section 6 session.new --command contract is argv semantics
 /// (engine execs argv[0] directly, no shell interpretation); on Windows CreateProcess takes one
-/// string, so the quoting must be the exact inverse of CommandLineToArgvW / MSVCRT parsing rules —
+/// string, so the quoting must be the exact inverse of CommandLineToArgvW / MSVCRT parsing rules -
 /// otherwise arguments with spaces/quotes/backslashes would not survive the trip into the child.
 /// </summary>
 public class WindowsCommandLineTests
@@ -38,7 +38,7 @@ public class WindowsCommandLineTests
     [Theory]
     [InlineData(new[] { "captured-tool", "--resume" }, true)]
     [InlineData(new[] { "ls", "C:\\dir with space\\x" }, true)]
-    [InlineData(new[] { "echo", "naïve_1.0+2~x:y/z" }, true)]
+    [InlineData(new[] { "echo", "na\u00EFve_1.0+2~x:y/z" }, true)]
     [InlineData(new[] { "echo", "a&calc" }, false)]
     [InlineData(new[] { "echo", "a;calc" }, false)]
     [InlineData(new[] { "echo", "$(calc)" }, false)]
@@ -51,19 +51,19 @@ public class WindowsCommandLineTests
     [InlineData(new[] { "echo", "a!b" }, false)]
     [InlineData(new[] { "echo", "*.txt" }, false)]
     [InlineData(new[] { "calc&" }, false)]
-    [InlineData(new[] { "echo", "naïve" }, true)]
-    [InlineData(new[] { "echo", "x y”;calc;“z" }, false)]
-    [InlineData(new[] { "echo", "a‘b" }, false)]
-    [InlineData(new[] { "echo", "a’b" }, false)]
-    [InlineData(new[] { "echo", "a‚b" }, false)]
-    [InlineData(new[] { "echo", "a‛b" }, false)]
-    [InlineData(new[] { "echo", "a“b" }, false)]
-    [InlineData(new[] { "echo", "a”b" }, false)]
-    [InlineData(new[] { "echo", "a„b" }, false)]
-    [InlineData(new[] { "echo", "a–b" }, false)]
-    [InlineData(new[] { "echo", "a—b" }, false)]
+    [InlineData(new[] { "echo", "na\u00EFve" }, true)]
+    [InlineData(new[] { "echo", "x y\u201D;calc;\u201Cz" }, false)]
+    [InlineData(new[] { "echo", "a\u2018b" }, false)]
+    [InlineData(new[] { "echo", "a\u2019b" }, false)]
+    [InlineData(new[] { "echo", "a\u201Ab" }, false)]
+    [InlineData(new[] { "echo", "a\u201Bb" }, false)]
+    [InlineData(new[] { "echo", "a\u201Cb" }, false)]
+    [InlineData(new[] { "echo", "a\u201Db" }, false)]
+    [InlineData(new[] { "echo", "a\u201Eb" }, false)]
+    [InlineData(new[] { "echo", "a\u2013b" }, false)]
+    [InlineData(new[] { "echo", "a\u2014b" }, false)]
     [InlineData(new[] { "echo", "a\u0085b" }, false)]
-    [InlineData(new[] { "echo", "a b" }, false)]
+    [InlineData(new[] { "echo", "a\u00A0b" }, false)]
     [InlineData(new[] { "tool", "--opt=value" }, false)]
     [InlineData(new[] { "tool", "a,b" }, false)]
     public void IsInertForShells_accepts_only_text_neither_pwsh_nor_cmd_acts_on(string[] argv, bool expected)
