@@ -107,9 +107,7 @@ available in the headless host"` (после резолюции цели — `no
   Разрешение socket-пути: `--socket` → `%AGTERM_STATE_DIR%\agterm.sock` →
   `%USERPROFILE%\.agterm-win\agterm.sock` → `<temp>\.agterm-win\agterm.sock` (аналог
   upstream `$HOME/Library/Application Support` → `/tmp`); из пути выводится имя
-  пайпа (см. запись о транспорте). `session type --stdin`: .NET-декодер stdin
-  заменяет невалидный UTF-8 замещающими символами (Swift даёт nil/пусто) — на
-  wire уходит то, что прочиталось. Help-текст `window fullscreen` не упоминает
+  пайпа (см. запись о транспорте). Help-текст `window fullscreen` не упоминает
   macOS (help — не часть wire-контракта).
 
 ## Фаза 3 (терминальный движок)
@@ -528,3 +526,4 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - `session.type` and `quick.type` refuse text with a NUL byte: `text must not contain a NUL byte` (upstream `6bc8a0b7`). ConPTY would pass the byte through, but the reply is part of the wire contract.
 - `session.type`, `session.text`, `font.inc|dec|reset` report `invalid pane: X` from the dispatcher, before target resolution (upstream `b3ef1baf`). The aliases upstream added with horizontal splits (`eb29d556`) are not adopted.
 - `session.overlay.open` refuses `--size-percent` outside 1..100 in the dispatcher and in the CLI, where it was clamped (upstream `94c509bf`, `c9c9b81e`).
+- `session type --stdin` and `quick type --stdin` read raw bytes and refuse invalid UTF-8 with `stdin must be valid UTF-8` (upstream `7b8f63cf`). A leading BOM is kept as U+FEFF; what Swift does with it is not verified.

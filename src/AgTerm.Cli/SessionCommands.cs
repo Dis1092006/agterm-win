@@ -466,30 +466,24 @@ internal static class SessionCommands
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
 
-        /// <summary>Stdin source — upstream reads FileHandle.standardInput inside makeRequest, so the
-        /// read happens here too; injectable for tests (defaults to the process stdin).</summary>
-        public Func<TextReader> StdinReader { get; init; } = () => Console.In;
+        /// <summary>Stdin source. Upstream reads FileHandle.standardInput inside makeRequest, so the
+        /// read happens here too; injectable for tests.</summary>
+        public Func<Stream> StdinStream { get; init; } = Console.OpenStandardInput;
 
         public void Validate() => ValidatePaneArgument(Pane);
 
-        public ControlRequest MakeRequest()
+        public ControlRequest MakeRequest() =>
+            MakeRequest(Stdin ? TypedStdin.ReadAll(StdinStream()) : null);
+
+        internal ControlRequest MakeRequest(byte[]? stdin)
         {
             string payload;
             if (Stdin)
-            {
-                // non-UTF8 stdin decodes to nil and injects nothing — terminal input is UTF-8 text.
-                // (The .NET decoder substitutes replacement characters instead of failing; see
-                // PLATFORM-NOTES if this ever matters in practice.)
-                payload = StdinReader().ReadToEnd();
-            }
+                payload = TypedStdin.Decode(stdin ?? Array.Empty<byte>());
             else if (Text is { } text)
-            {
                 payload = text;
-            }
             else
-            {
                 throw new CliValidationException("provide TEXT or --stdin");
-            }
             return new ControlRequest
             {
                 Cmd = WireCommand.SessionType,

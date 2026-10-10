@@ -232,24 +232,20 @@ internal static class QuickCommands
 
         /// <summary>Where --stdin reads from; injectable for tests. Mirrors the Swift, which reads
         /// stdin inside makeRequest (not validate), so the read happens only at request-build time.</summary>
-        public Func<TextReader> Input { get; init; } = () => Console.In;
+        public Func<Stream> StdinStream { get; init; } = Console.OpenStandardInput;
 
-        public ControlRequest MakeRequest()
+        public ControlRequest MakeRequest() =>
+            MakeRequest(Stdin ? TypedStdin.ReadAll(StdinStream()) : null);
+
+        internal ControlRequest MakeRequest(byte[]? stdin)
         {
             string payload;
             if (Stdin)
-            {
-                // non-UTF8 stdin decodes to nil and injects nothing — terminal input is UTF-8 text.
-                payload = Input().ReadToEnd();
-            }
+                payload = TypedStdin.Decode(stdin ?? Array.Empty<byte>());
             else if (Text is not null)
-            {
                 payload = Text;
-            }
             else
-            {
                 throw new CliValidationException("provide TEXT or --stdin");
-            }
             return new ControlRequest
             {
                 Cmd = WireCommand.QuickType,

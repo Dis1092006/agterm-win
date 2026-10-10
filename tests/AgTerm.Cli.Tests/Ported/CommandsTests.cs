@@ -529,6 +529,24 @@ public class CommandsTests
     }
 
     [Fact]
+    public void SessionTypeStdinRejectsInvalidUtf8()
+    {
+        var command = Assert.IsType<SessionCommands.TypeText>(
+            Agtermctl.ParseAsRoot(new[] { "session", "type", "--stdin", "--target", "s1" }));
+        var error = Assert.ThrowsAny<Exception>(() => command.MakeRequest(new byte[] { 0xFF }));
+        Assert.Equal("stdin must be valid UTF-8", Agtermctl.Message(error));
+    }
+
+    [Fact]
+    public void SessionTypeStdinKeepsValidNonAsciiText()
+    {
+        var command = Assert.IsType<SessionCommands.TypeText>(
+            Agtermctl.ParseAsRoot(new[] { "session", "type", "--stdin", "--target", "s1" }));
+        var request = command.MakeRequest(System.Text.Encoding.UTF8.GetBytes("привет\n"));
+        Assert.Equal("привет\n", request.Args!.Text);
+    }
+
+    [Fact]
     public void SessionTypeWithPane()
     {
         var expected = new ControlRequest
@@ -1563,6 +1581,15 @@ public class CommandsTests
             Agtermctl.ParseAsRoot(new[] { "quick", "type", "--stdin" }));
         Assert.True(command.Stdin);
         Assert.Null(command.Text);
+    }
+
+    [Fact]
+    public void QuickTypeStdinRejectsInvalidUtf8()
+    {
+        var command = Assert.IsType<QuickCommands.TypeText>(
+            Agtermctl.ParseAsRoot(new[] { "quick", "type", "--stdin" }));
+        var error = Assert.ThrowsAny<Exception>(() => command.MakeRequest(new byte[] { 0xFF }));
+        Assert.Equal("stdin must be valid UTF-8", Agtermctl.Message(error));
     }
 
     [Fact]

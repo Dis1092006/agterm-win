@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text;
 using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
@@ -19,6 +20,32 @@ internal sealed class CliParseException : Exception
 {
     public CliParseException(string message) : base(message)
     {
+    }
+}
+
+/// <summary>The --stdin payload of session type / quick type. Upstream refuses bytes that are
+/// not UTF-8 instead of typing a lossy decode (agtermctlKit decodeTypedStdin).</summary>
+internal static class TypedStdin
+{
+    private static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    public static string Decode(byte[] input)
+    {
+        try
+        {
+            return Strict.GetString(input);
+        }
+        catch (DecoderFallbackException)
+        {
+            throw new CliValidationException("stdin must be valid UTF-8");
+        }
+    }
+
+    public static byte[] ReadAll(Stream stream)
+    {
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
     }
 }
 
