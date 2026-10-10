@@ -108,8 +108,8 @@ public sealed class LivePortedE2ETests : IDisposable
 
     // The phase-4 eager deck: in the LIVE app every session is realized at creation (upstream:
     // each deck member's view exists from the start), so session.type reaches a background
-    // (--no-select) session WITHOUT a select. Headless keeps the pinned "session not realized;
-    // use select" error — this test is the live half of that split.
+    // (--no-select) session WITHOUT a select. Headless keeps the pinned "session not realized"
+    // error — this test is the live half of that split.
     [Fact]
     public void Session_type_reaches_a_background_session_without_select()
     {

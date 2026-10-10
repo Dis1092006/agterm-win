@@ -1192,13 +1192,12 @@ public sealed class HeadlessControlActions : IControlActions
             default:
                 return Err($"invalid pane: {pane}");
         }
-        // main pane: inject if realized; otherwise the select path. Upstream polls ~360ms for the
-        // surface after the select — the headless host re-checks ONCE (nothing realizes lazily).
+        // main pane: inject if realized; otherwise select when asked and check once more. Upstream polls
+        // ~360 ms here; the headless dispatch holds the host gate, so a sleep would see no progress.
         if (session?.Surface is IHeadlessSurface main && main.Inject(text))
             return OkId(id);
-        if (!select)
-            return Err("session not realized; use select");
-        store.SelectSession(id);
+        if (select)
+            store.SelectSession(id);
         if (store.SessionWithId(id)?.Surface is IHeadlessSurface selected && selected.Inject(text))
             return OkId(id);
         return Err("session not realized");

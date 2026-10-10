@@ -60,7 +60,7 @@ public sealed record HeadlessHostOptions
     /// <summary>The live app's eager deck (phase 4): realize EVERY session at creation and every
     /// restored session at bootstrap, so session.type reaches background sessions without a
     /// select. Default false = headless parity — background sessions stay unrealized and the
-    /// pinned "session not realized; use select" error survives (PLATFORM-NOTES).</summary>
+    /// pinned "session not realized" error survives (PLATFORM-NOTES).</summary>
     public bool EagerSurfaceRealization { get; init; }
 
     /// <summary>Optional per-request completion scope. Null preserves the legacy dispatch timing.</summary>

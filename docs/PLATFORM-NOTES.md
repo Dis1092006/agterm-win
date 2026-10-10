@@ -89,7 +89,7 @@ available in the headless host"` (после резолюции цели — `no
     `window.list`: `geometry`/`fullscreen`/`zoomed` опущены.
   - Терминальные армы идут через шов `IHeadlessSurface` (фейковые поверхности E2E);
     realize-поллинги (~360 мс) заменены одиночной проверкой; строки ошибок
-    (`session not realized; use select`, `quick terminal not open`, `no selection`
+    (`session not realized`, `quick terminal not open`, `no selection`
     и т.д.) — из upstream.
   - `session.status --sound` принимается, но не проигрывается и не валидируется;
     `notify` всегда идёт banners-off путём (`result.text` = BannersOffNote);
@@ -137,7 +137,7 @@ available in the headless host"` (после резолюции цели — `no
   `AppStore.SurfaceRealizer` (тот же прецедент, что auto-follow re-arm): оба пути «показа»
   (SelectSession и AddSession select:true) зовут его для главного пейна без поверхности;
   фоновое создание (--no-select) остаётся нереализованным — паритетная ошибка
-  `session not realized; use select` сохраняется. Restore() выставляет выбор мимо
+  `session not realized` сохраняется. Restore() выставляет выбор мимо
   SelectSession, поэтому хост после бутстрап-restore зовёт `RealizeActiveSession()`
   (аналог первой отрисовки окна). Событие `AppStore.SelectionChanged` — замена
   Observation над selectedSessionID для хрома окна.
@@ -175,7 +175,7 @@ available in the headless host"` (после резолюции цели — `no
   Порт: `AppStore.EagerSurfaceRealization` (включает live-хост) — `AddSession` реализует
   и `--no-select`-создания, бутстрап после рестора зовёт `RealizeAllSessions()`.
   Headless-хост флаг НЕ включает: там поверхности навешиваются тестами извне, и
-  паритетная ошибка `"session not realized; use select"` сохраняется как есть.
+  паритетная ошибка `"session not realized"` сохраняется как есть.
 
 - **`AppStore.SidebarChanged` (Observation-замена для сайдбара).** Коарсовое C#-событие
   «что-то в строках сайдбара изменилось» по прецеденту `SelectionChanged` (фаза 3):
@@ -528,3 +528,4 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - `session.overlay.open` refuses `--size-percent` outside 1..100 in the dispatcher and in the CLI, where it was clamped (upstream `94c509bf`, `c9c9b81e`).
 - `session type --stdin` and `quick type --stdin` read raw bytes and refuse invalid UTF-8 with `stdin must be valid UTF-8` (upstream `7b8f63cf`). A leading BOM is kept as U+FEFF; what Swift does with it is not verified.
 - `session.paste`, `session.selectall` and `session.copy` answer `session not realized` when the pane has no terminal behind it: a pending realize or stopped output (upstream `9f145925`).
+- `session.type` on an unrealized main pane answers `session not realized` with or without `--select`, and `--select` selects only when the surface is not ready (upstream `22d7e1c1`). The port checks once more after the select instead of polling ~360 ms. A session realizing outside any dispatch scope (created from the UI) and typed into during its realize window gets the error at once.

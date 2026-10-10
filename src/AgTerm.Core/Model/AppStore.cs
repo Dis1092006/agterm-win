@@ -122,7 +122,7 @@ public sealed partial class AppStore
     /// <summary>The live app's "eager deck": every session gets its surface AT CREATION (upstream:
     /// each session's view exists from the moment it appears in the deck), so session.type reaches
     /// background sessions without a select. Default false = headless behavior, which preserves
-    /// the pinned "session not realized; use select" parity error (PLATFORM-NOTES, phase 4).</summary>
+    /// the pinned "session not realized" parity error (PLATFORM-NOTES, phase 4).</summary>
     public bool EagerSurfaceRealization { get; set; }
 
     /// <summary>Selection moved (select, deselect, or a session created selected) — the C# event

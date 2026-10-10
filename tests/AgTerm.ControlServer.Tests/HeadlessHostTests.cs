@@ -213,19 +213,50 @@ public sealed class HeadlessHostTests : IDisposable
     }
 
     [Fact]
-    public void SessionTypeWithoutASurfaceAndWithoutSelectIsThePinnedError()
+    public void SessionTypeWithoutASurfaceAndWithoutSelectReportsNotRealizedAndKeepsTheSelection()
     {
-        var id = NewSession();
+        var target = NewSession();
+        var other = NewSession(); // created selected: holds the selection
 
         var response = Send(new ControlRequest
         {
-            Cmd = Command.SessionType,
-            Target = id,
-            Args = new ControlArgs { Text = "x" },
+            Cmd = Command.SessionType, Target = target, Args = new ControlArgs { Text = "x" },
         });
 
         Assert.False(response.Ok);
-        Assert.Equal("session not realized; use select", response.Error);
+        Assert.Equal("session not realized", response.Error);
+        Assert.Equal(Guid.Parse(other), _host.Store.SelectedSessionId);
+    }
+
+    [Fact]
+    public void SessionTypeWithSelectSelectsTheUnrealizedTarget()
+    {
+        var target = NewSession();
+        NewSession();
+
+        var response = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = target, Args = new ControlArgs { Text = "x", Select = true },
+        });
+
+        Assert.Equal("session not realized", response.Error);
+        Assert.Equal(Guid.Parse(target), _host.Store.SelectedSessionId);
+    }
+
+    [Fact]
+    public void SessionTypeWithSelectOnARealizedSessionKeepsTheSelection()
+    {
+        var target = NewSession();
+        var other = NewSession();
+        _host.Store.SessionWithId(Guid.Parse(target))!.Surface = new FakeSurface();
+
+        var response = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = target, Args = new ControlArgs { Text = "x", Select = true },
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal(Guid.Parse(other), _host.Store.SelectedSessionId);
     }
 
     [Fact]

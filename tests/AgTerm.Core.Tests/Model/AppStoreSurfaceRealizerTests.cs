@@ -6,7 +6,7 @@ namespace AgTerm.Core.Tests.Model;
 /// The SurfaceRealizer seam — the port's stand-in for "SwiftUI shows the selected pane's view and
 /// the surface realizes": showing a session (selecting it, or creating it selected) realizes its
 /// main-pane surface through the host-injected callback. Background creations stay unrealized
-/// (upstream parity: session.new --no-select errors with "session not realized; use select").
+/// (upstream parity: session.new --no-select errors with "session not realized").
 /// </summary>
 public class AppStoreSurfaceRealizerTests : IDisposable
 {

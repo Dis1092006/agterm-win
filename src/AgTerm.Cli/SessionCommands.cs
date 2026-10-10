@@ -507,7 +507,7 @@ internal static class SessionCommands
         };
         var select = new Option<bool>("--select")
         {
-            Description = "Select (and realize) a never-shown session before injecting (main pane only; a split pane must already exist).",
+            Description = "Select the session first if its surface is not ready (main pane only; a split pane must already exist).",
         };
         var pane = new Option<string?>("--pane")
         {

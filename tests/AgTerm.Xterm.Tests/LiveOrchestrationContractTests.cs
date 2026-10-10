@@ -160,7 +160,7 @@ public sealed class LiveOrchestrationContractTests : IDisposable
     // O0.4 — Both bootstrap and session.new surface attempts fault immediately.
     // session.new is still Ok (session IS created), subsequent session.text returns
     // the pinned "session not realized" error, session.type without select returns
-    // "session not realized; use select", and tree remains Ok.
+    // "session not realized", and tree remains Ok.
     // ---------------------------------------------------------------------------
     [Fact]
     public void SessionNew_ok_and_pinned_errors_when_surface_always_faults()
@@ -206,7 +206,7 @@ public sealed class LiveOrchestrationContractTests : IDisposable
                 Args = new ControlArgs { Text = "x" },
             });
             Assert.False(type.Ok);
-            Assert.Equal("session not realized; use select", type.Error);
+            Assert.Equal("session not realized", type.Error);
 
             var tree = client.Send(new ControlRequest { Cmd = Command.Tree });
             Assert.True(tree.Ok, $"tree must be Ok after surface fault, got: {tree.Error}");

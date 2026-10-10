@@ -1582,7 +1582,7 @@ public class ControlDispatcherTests
     {
         var actions = new MockControlActions();
         var dispatcher = new ControlDispatcher(actions);
-        actions.NextSessionTypeResponse = Err("session not realized; use select");
+        actions.NextSessionTypeResponse = Err("session not realized");
 
         var response = await dispatcher.Dispatch(new ControlRequest
         {
@@ -1590,7 +1590,7 @@ public class ControlDispatcherTests
             Args = new ControlArgs { Text = "ls\n", Select = true, Window = "win", Pane = "scratch" },
         });
 
-        ExpectResponse(Err("session not realized; use select"), response);
+        ExpectResponse(Err("session not realized"), response);
         Assert.Equal(new MockControlActions.Call[]
         {
             new MockControlActions.Call.SessionType("session", "win",
