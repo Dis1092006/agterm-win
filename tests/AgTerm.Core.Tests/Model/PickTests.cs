@@ -215,4 +215,66 @@ public class PickTests
 
         Assert.Equal(ControlPickResult.Cancelled(), a.Result("p1"));
     }
+
+    [Fact]
+    public void ResultDuringUnregisterAnswersCancelledNotUnknown()
+    {
+        var registry = new PickRegistry();
+        var window = Guid.NewGuid();
+        var controller = new PickController();
+        registry.Register(window, controller);
+        controller.Open(Pick("p1"));
+        var seen = new List<ControlResponse>();
+        controller.Changed += () =>
+        {
+            seen.Add(registry.Result("p1", null));
+            seen.Add(registry.Result("p1", window));
+        };
+
+        registry.Unregister(window);
+
+        Assert.Equal(2, seen.Count);
+        foreach (var response in seen)
+        {
+            Assert.True(response.Ok, response.Error);
+            Assert.Equal(ControlPickResult.Cancelled(), response.Result!.Pick);
+        }
+    }
+
+    [Fact]
+    public void CancelForAWindowThatIsNotRegisteredAndNoRetainedResultAnswersWindowNotOpen()
+    {
+        var registry = new PickRegistry();
+        Assert.Equal("window not open — window.select it first", registry.Cancel("p1", Guid.NewGuid()).Error);
+    }
+
+    [Fact]
+    public void OpenAfterUnregisterIsRejectedAndTheControllerReportsClosed()
+    {
+        var registry = new PickRegistry();
+        var window = Guid.NewGuid();
+        var controller = new PickController();
+        registry.Register(window, controller);
+        Assert.False(controller.IsClosed);
+
+        registry.Unregister(window);
+
+        Assert.True(controller.IsClosed);
+        Assert.False(controller.Open(Pick("late")));
+        Assert.Null(controller.Pending);
+    }
+
+    [Fact]
+    public void ChangedDoesNotFireOnRejectedOpenOrStaleResolve()
+    {
+        var controller = new PickController();
+        controller.Open(Pick("p1"));
+        var count = 0;
+        controller.Changed += () => count++;
+
+        Assert.False(controller.Open(Pick("p2")));
+        Assert.False(controller.Resolve("stale", ControlPickResult.Cancelled()));
+
+        Assert.Equal(0, count);
+    }
 }

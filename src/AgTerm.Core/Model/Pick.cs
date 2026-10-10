@@ -31,12 +31,20 @@ public sealed class PickController
     private readonly object _gate = new();
     private readonly List<ResolvedPick> _recent = new();
     private PendingPick? _pending;
+    private bool _closed;
 
     public event Action? Changed;
 
     public PendingPick? Pending
     {
         get { lock (_gate) return _pending; }
+    }
+
+    /// <summary>True once the window that owned this controller has closed. Open then fails for good,
+    /// so a request queued on the closing window cannot get an id no registry path finds.</summary>
+    public bool IsClosed
+    {
+        get { lock (_gate) return _closed; }
     }
 
     public string? PendingId => Pending?.Id;
@@ -51,7 +59,7 @@ public sealed class PickController
         ArgumentNullException.ThrowIfNull(pick);
         lock (_gate)
         {
-            if (_pending is not null) return false;
+            if (_closed || _pending is not null) return false;
             _pending = pick;
         }
         Changed?.Invoke();
@@ -66,11 +74,7 @@ public sealed class PickController
         lock (_gate)
         {
             if (_pending?.Id != pickId) return false;
-            _recent.RemoveAll(r => r.Id == pickId);
-            _recent.Add(new ResolvedPick(pickId, outcome, Interlocked.Increment(ref s_sequence)));
-            if (_recent.Count > RetainedResultLimit)
-                _recent.RemoveRange(0, _recent.Count - RetainedResultLimit);
-            _pending = null;
+            FinishLocked(pickId, outcome);
         }
         Changed?.Invoke();
         return true;
@@ -90,6 +94,31 @@ public sealed class PickController
     internal void CancelPending()
     {
         if (PendingId is { } id) Cancel(id);
+    }
+
+    /// <summary>Closes the controller and cancels its pending pick in one step. Changed is not raised
+    /// here: the registry calls it only after releasing its own lock, because a handler may read the
+    /// registry.</summary>
+    internal bool CloseAndCancelPending()
+    {
+        lock (_gate)
+        {
+            _closed = true;
+            if (_pending is not { } pending) return false;
+            FinishLocked(pending.Id, ControlPickResult.Cancelled());
+            return true;
+        }
+    }
+
+    internal void RaiseChanged() => Changed?.Invoke();
+
+    private void FinishLocked(string pickId, ControlPickResult outcome)
+    {
+        _recent.RemoveAll(r => r.Id == pickId);
+        _recent.Add(new ResolvedPick(pickId, outcome, Interlocked.Increment(ref s_sequence)));
+        if (_recent.Count > RetainedResultLimit)
+            _recent.RemoveRange(0, _recent.Count - RetainedResultLimit);
+        _pending = null;
     }
 
     internal IReadOnlyList<ResolvedPick> RecentResults
@@ -122,23 +151,27 @@ public sealed class PickRegistry
     /// is gone.</summary>
     public void Unregister(Guid windowId)
     {
-        PickController? controller;
+        PickController controller;
+        bool cancelled;
         lock (_gate)
         {
-            if (!_controllers.Remove(windowId, out controller)) return;
-        }
-        controller.CancelPending();
-        lock (_gate)
-        {
+            // one lock for remove, cancel and copy: a poll in between would find the pick nowhere
+            if (!_controllers.Remove(windowId, out var removed)) return;
+            controller = removed;
+            cancelled = controller.CloseAndCancelPending();
             _retained.AddRange(controller.RecentResults.Select(pick => (windowId, pick)));
-            if (_retained.Count > RetainedResultLimit)
-            {
-                // a window closing later arrives with a whole batch; appending alone would evict a
-                // newer answer an earlier-closing window held
-                _retained.Sort((x, y) => x.Pick.Sequence.CompareTo(y.Pick.Sequence));
-                _retained.RemoveRange(0, _retained.Count - RetainedResultLimit);
-            }
+            TrimRetainedLocked();
         }
+        if (cancelled) controller.RaiseChanged();
+    }
+
+    /// <summary>Keeps the newest answers app-wide. A window closing later arrives with a whole batch,
+    /// so appending alone would evict a newer answer an earlier-closing window held.</summary>
+    private void TrimRetainedLocked()
+    {
+        if (_retained.Count <= RetainedResultLimit) return;
+        _retained.Sort((x, y) => x.Pick.Sequence.CompareTo(y.Pick.Sequence));
+        _retained.RemoveRange(0, _retained.Count - RetainedResultLimit);
     }
 
     public void CancelAll()
