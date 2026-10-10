@@ -524,3 +524,5 @@ The WinUI app reaches WebView2 through the Windows App SDK projection, which exp
 ## Upstream behavior adopted beyond the pin
 
 The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.
+
+- `session.type` and `quick.type` refuse text with a NUL byte: `text must not contain a NUL byte` (upstream `6bc8a0b7`). ConPTY would pass the byte through, but the reply is part of the wire contract.

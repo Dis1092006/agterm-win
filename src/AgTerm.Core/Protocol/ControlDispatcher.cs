@@ -64,6 +64,9 @@ public sealed class ControlDispatcher
 
     private static ControlResponse Err(string error) => new() { Ok = false, Error = error };
 
+    private static ControlResponse? NulRejection(string text) =>
+        text.Contains('\0') ? Err("text must not contain a NUL byte") : null;
+
     private ControlResponse DispatchEventsRead(ControlRequest request)
     {
         var args = request.Args;
@@ -387,6 +390,8 @@ public sealed class ControlDispatcher
             {
                 if (request.Args?.Text is not { } text)
                     return Err("session.type requires text");
+                if (NulRejection(text) is { } nul)
+                    return nul;
                 return await _actions.TypeSession(request.Target, request.Args?.Window,
                     new ControlSessionTypeOptions(text,
                         Select: request.Args?.Select ?? false,
@@ -506,6 +511,8 @@ public sealed class ControlDispatcher
             {
                 if (request.Args?.Text is not { } text)
                     return Err("quick.type requires text");
+                if (NulRejection(text) is { } nul)
+                    return nul;
                 return await _actions.TypeQuick(text);
             }
             case Command.QuickText:

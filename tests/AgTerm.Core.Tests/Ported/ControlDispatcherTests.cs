@@ -1508,6 +1508,22 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task SessionTypeRejectsNulBeforeCallingActions()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = "session",
+            Args = new ControlArgs { Text = "safe\0danger\n" },
+        });
+
+        ExpectResponse(Err("text must not contain a NUL byte"), response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
     public async Task SessionTypeRoutesParsedOptionsAndEchoesActionResponse()
     {
         var actions = new MockControlActions();
@@ -2032,6 +2048,22 @@ public class ControlDispatcherTests
         var response = await dispatcher.Dispatch(new ControlRequest { Cmd = Command.QuickType });
 
         ExpectResponse(Err("quick.type requires text"), response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
+    public async Task QuickTypeRejectsNulBeforeCallingActions()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.QuickType,
+            Args = new ControlArgs { Text = "safe\0danger\n" },
+        });
+
+        ExpectResponse(Err("text must not contain a NUL byte"), response);
         Assert.Empty(actions.Calls);
     }
 
