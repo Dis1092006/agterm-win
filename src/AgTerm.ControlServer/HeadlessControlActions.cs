@@ -1774,7 +1774,7 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolveWindowId(target, id =>
         {
-            WindowName = name;
+            if (Session.TrimmedOrNull(TerminalText.Sanitized(name)) is { } cleaned) WindowName = cleaned;
             return OkId(id);
         });
     }

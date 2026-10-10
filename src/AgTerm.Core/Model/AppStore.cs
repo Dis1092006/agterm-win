@@ -344,7 +344,7 @@ public sealed partial class AppStore
     /// create it already collapsed in the sidebar (backs workspace.new --collapsed).</summary>
     public Workspace AddWorkspace(string name, bool collapsed = false, bool clearFocus = true)
     {
-        var workspace = new Workspace(name, isExpanded: !collapsed);
+        var workspace = new Workspace(TerminalText.Sanitized(name), isExpanded: !collapsed);
         Workspaces.Add(workspace);
         if (clearFocus) FocusedWorkspaceId = null;
         ScheduleTreeChanged();
@@ -356,7 +356,7 @@ public sealed partial class AppStore
     /// null when none matches or the name is blank. Backs session.new --workspace-name.</summary>
     public Workspace? WorkspaceNamed(string name)
     {
-        if (Session.TrimmedOrNull(name) is not { } needle) return null;
+        if (Session.TrimmedOrNull(TerminalText.Sanitized(name)) is not { } needle) return null;
         return Workspaces.FirstOrDefault(w => w.Name == needle);
     }
 
@@ -365,7 +365,7 @@ public sealed partial class AppStore
     /// --workspace-name --create-workspace.</summary>
     public Workspace? EnsureWorkspace(string name, bool clearFocus = true)
     {
-        if (Session.TrimmedOrNull(name) is not { } needle) return null;
+        if (Session.TrimmedOrNull(TerminalText.Sanitized(name)) is not { } needle) return null;
         return WorkspaceNamed(needle) ?? AddWorkspace(needle, clearFocus: clearFocus);
     }
 
@@ -379,7 +379,8 @@ public sealed partial class AppStore
     {
         var wsIndex = Workspaces.FindIndex(w => w.Id == toWorkspace);
         if (wsIndex < 0) return null;
-        var session = new Session(cwd, customName: Session.TrimmedOrNull(name))
+        var session = new Session(TerminalText.Sanitized(cwd),
+            customName: name is null ? null : Session.TrimmedOrNull(TerminalText.Sanitized(name)))
         {
             InitialCommand = command,
             CommandWait = wait,

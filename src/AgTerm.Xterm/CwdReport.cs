@@ -1,3 +1,5 @@
+using AgTerm.Core.Model;
+
 namespace AgTerm.Xterm;
 
 /// <summary>
@@ -22,12 +24,13 @@ public static class CwdReport
                 !Uri.TryCreate("file://" + uri.PathAndQuery, UriKind.Absolute, out uri!))
                 return null;
             // LocalPath renders a drive URI as C:\x and a unix-shaped one as /home/u (both decoded)
-            return uri.LocalPath;
+            return TerminalText.Sanitized(uri.LocalPath);
         }
 
         // OSC 9;9 raw path; Windows Terminal's documented prompt wraps it in quotes
         if (text.Length >= 2 && text[0] == '"' && text[^1] == '"')
             text = text[1..^1].Trim();
+        text = TerminalText.Sanitized(text);
         return text.Length == 0 ? null : text;
     }
 }

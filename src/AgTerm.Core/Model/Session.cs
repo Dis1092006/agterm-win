@@ -377,7 +377,7 @@ public sealed class Session
 
     /// <summary>The string trimmed of whitespace, or null if the result is empty — the single
     /// normalizer for the rename/DisplayName "blank after trim" rule.</summary>
-    internal static string? TrimmedOrNull(string? value)
+    public static string? TrimmedOrNull(string? value)
     {
         var trimmed = value?.Trim();
         return string.IsNullOrEmpty(trimmed) ? null : trimmed;

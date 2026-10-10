@@ -15,6 +15,7 @@ public class CwdReportTests
     [InlineData("file:///C:/Users/me", "C:\\Users\\me")]
     [InlineData("file:///C:/a%20b/proj", "C:\\a b\\proj")]
     [InlineData("file://localhost/C:/x", "C:\\x")]
+    [InlineData("file:///C:/a%0Atouch%20x", "C:\\atouch x")]
     // a unix-shaped URI path (WSL shell over ssh etc.) stays forward-slashed
     [InlineData("file:///home/u/proj", "/home/u/proj")]
     // OSC 9;9 raw paths: used verbatim, surrounding quotes stripped (WT's documented form quotes it)

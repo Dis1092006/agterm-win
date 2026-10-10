@@ -527,9 +527,10 @@ public sealed class LiveApplicationHost : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this);
             previousFrontmost = _frontmostWindowId;
             windowId = Guid.NewGuid();
-            var name = string.IsNullOrWhiteSpace(requestedName)
-                ? $"window {_windows.Count + 1}"
-                : requestedName.Trim();
+            var cleaned = requestedName is null
+                ? null
+                : Session.TrimmedOrNull(TerminalText.Sanitized(requestedName));
+            var name = cleaned ?? $"window {_windows.Count + 1}";
             var entry = new LiveWindowEntry(windowId, name, IsOpen: true);
             _windows.Add(entry);
             window = CreateWindowHost(
@@ -656,6 +657,7 @@ public sealed class LiveApplicationHost : IDisposable
             };
         }
 
+        var cleaned = Session.TrimmedOrNull(TerminalText.Sanitized(name));
         Guid windowId;
         LiveWindowHost? openWindow;
         lock (_gate)
@@ -665,6 +667,9 @@ public sealed class LiveApplicationHost : IDisposable
                 return resolution.Error;
 
             windowId = resolution.Entry!.Id;
+            if (cleaned is null)
+                return OkWindowId(windowId);
+            name = cleaned;
             var index = _windows.FindIndex(window => window.Id == windowId);
             if (_windows[index].Name == name)
                 return OkWindowId(windowId);

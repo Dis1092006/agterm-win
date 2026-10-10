@@ -171,6 +171,25 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     }
 
     [Fact]
+    public void Window_rename_strips_control_characters_from_the_window_name()
+    {
+        var id = Guid.NewGuid();
+        WriteWindowSnapshot(id, "alpha");
+        WriteIndex(id, new IndexEntry(id, "first", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var renamed = client.Send(new ControlRequest { Cmd = Command.WindowRename, Target = id.ToString("D"), Args = new ControlArgs { Name = "prod\nwhoami" } });
+        Assert.True(renamed.Ok, renamed.Error);
+        Assert.Equal("prodwhoami", Assert.Single(application.Windows).Name);
+
+        var controlOnly = client.Send(new ControlRequest { Cmd = Command.WindowRename, Target = id.ToString("D"), Args = new ControlArgs { Name = "\u0007" } });
+        Assert.True(controlOnly.Ok, controlOnly.Error);
+        Assert.Equal("prodwhoami", Assert.Single(application.Windows).Name);
+    }
+
+    [Fact]
     public void Window_rename_updates_open_and_closed_records_and_persists_names()
     {
         var firstId = Guid.NewGuid();
