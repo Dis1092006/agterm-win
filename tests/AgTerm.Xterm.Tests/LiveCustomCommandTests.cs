@@ -389,6 +389,27 @@ public sealed class CustomCommandInvocationTests
         Assert.Equal($"/d /c \"{invocation.ShellLine}\"", startInfo.Arguments);
     }
 
+    [Fact]
+    public async Task ProcessRunner_names_the_missing_session_directory_before_launch()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), "agterm-missing-" + Guid.NewGuid().ToString("N"));
+        var invocation = new CustomCommandInvocation(Guid.NewGuid(), "Mark", "echo ok", missing,
+            new Dictionary<string, string>());
+        var runner = new CustomCommandProcessRunner(which: _ => null,
+            env: key => key == "COMSPEC" ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : null);
+
+        var error = await Assert.ThrowsAsync<CustomCommandNotStartedException>(() => runner.StartAsync(invocation));
+        Assert.Equal($"session directory {missing} no longer exists", error.Message);
+    }
+
+    [Fact]
+    public void Not_started_notice_names_the_command_and_the_reason()
+    {
+        var notice = CustomCommandFailureNotice.NotStarted("Mark", @"session directory C:\gone no longer exists");
+        Assert.Equal("Command failed", notice.Title);
+        Assert.Equal(@"Mark (session directory C:\gone no longer exists)", notice.Message);
+    }
+
     /// <summary>How long a spawned child is given. The shell line below ends in `ping -n 3`, which
     /// sleeps about 2.2 seconds on an idle machine, so a 5 second budget left under 3 seconds for
     /// spawning cmd.exe and draining its output. The solution runs its test assemblies in parallel
@@ -473,7 +494,7 @@ public sealed class MainWindowCustomCommandWiringTests
         Assert.Contains("CustomCommandSource.Palette", source, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);
         Assert.Contains("CustomCommandInvocationResolver.Resolve", source, StringComparison.Ordinal);
-        Assert.Contains("var customCommandProcess = await _customCommandRunner.StartAsync", source,
+        Assert.Contains("customCommandProcess = await _customCommandRunner.StartAsync", source,
             StringComparison.Ordinal);
         Assert.Contains("ObserveTaskFault(customCommandProcess.Exited,", source, StringComparison.Ordinal);
     }

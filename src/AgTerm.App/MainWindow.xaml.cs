@@ -1301,7 +1301,16 @@ public sealed partial class MainWindow : Window
             cancellationToken);
         if (invocation is not null)
         {
-            var customCommandProcess = await _customCommandRunner.StartAsync(invocation, cancellationToken);
+            CustomCommandProcessHandle customCommandProcess;
+            try
+            {
+                customCommandProcess = await _customCommandRunner.StartAsync(invocation, cancellationToken);
+            }
+            catch (CustomCommandNotStartedException notStarted)
+            {
+                QueueFailureNotice(CustomCommandFailureNotice.NotStarted(invocation.Name, notStarted.Message), fatal: false);
+                return;
+            }
             ObserveTaskFault(customCommandProcess.Exited,
                 $"Custom command '{invocation.Name}' exit wait failed");
         }

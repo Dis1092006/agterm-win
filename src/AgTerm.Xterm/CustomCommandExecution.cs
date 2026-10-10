@@ -157,6 +157,15 @@ public sealed class CustomCommandProcessHandle
     }
 }
 
+/// <summary>A custom command that never started; the message is the reason shown to the user.</summary>
+public sealed class CustomCommandNotStartedException(string reason) : Exception(reason);
+
+public static class CustomCommandFailureNotice
+{
+    public static LiveFailureNotice NotStarted(string name, string reason) =>
+        new("Command failed", $"{name} ({reason})");
+}
+
 public sealed class CustomCommandProcessRunner
 {
     private readonly Func<string, string?>? _which;
@@ -176,6 +185,10 @@ public sealed class CustomCommandProcessRunner
         Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // Process.Start would refuse it too, with "The directory name is invalid" and no path.
+            if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory) && !Path.Exists(invocation.WorkingDirectory))
+                throw new CustomCommandNotStartedException(
+                    $"session directory {TerminalText.Sanitized(invocation.WorkingDirectory)} no longer exists");
             var process = Process.Start(CreateStartInfo(invocation, _which, _env));
             if (process is null)
                 throw new InvalidOperationException($"Failed to start custom command '{invocation.Name}'.");
