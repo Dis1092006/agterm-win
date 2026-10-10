@@ -82,7 +82,7 @@ public static class CustomCommandInvocationResolver
             {
                 SessionId = Upper(session.Id),
                 SessionName = session.DisplayName,
-                SessionPwd = session.EffectiveCwd,
+                SessionPwd = session.CwdFor(pane),
                 WorkspaceId = workspace is null ? string.Empty : Upper(workspace.Id),
                 WorkspaceName = workspace?.Name ?? string.Empty,
                 WindowId = Upper(window.WindowId),

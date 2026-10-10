@@ -1,3 +1,4 @@
+using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 
 namespace AgTerm.Core.Tests.Model;
@@ -247,5 +248,21 @@ public class SessionTests
         workspace.Sessions.Add(b);
 
         Assert.Equal(5, workspace.UnseenCount);
+    }
+
+    [Fact]
+    public void CwdForPaneResolvesPaneSpecificDirectory()
+    {
+        var s = NewSession("/repo");
+        s.CurrentCwd = "/repo/primary";
+        s.SplitCwd = "/var/log";
+        Assert.Equal("/repo/primary", s.CwdFor(CommandContext.Pane.Left));
+        Assert.Equal("/repo/primary", s.CwdFor(CommandContext.Pane.Scratch));
+        Assert.Equal("/var/log", s.CwdFor(CommandContext.Pane.Right));
+        s.SplitCwd = null;
+        s.InitialSplitCwd = "/var/restored";
+        Assert.Equal("/var/restored", s.CwdFor(CommandContext.Pane.Right));
+        s.InitialSplitCwd = null;
+        Assert.Equal("/repo/primary", s.CwdFor(CommandContext.Pane.Right));
     }
 }

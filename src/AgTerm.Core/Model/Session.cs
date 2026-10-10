@@ -1,3 +1,5 @@
+using AgTerm.Core.Keymap;
+
 namespace AgTerm.Core.Model;
 
 /// <summary>
@@ -245,10 +247,18 @@ public sealed class Session
 
     /// <summary>
     /// The session's effective working directory: the live CurrentCwd once a PWD report has arrived,
-    /// otherwise InitialCwd. Always the PRIMARY pane's (NOT focus-aware) — it seeds a new
-    /// split/overlay/quick terminal and backs the AGT_SESSION_PWD token.
+    /// otherwise InitialCwd. Always the PRIMARY pane's (NOT focus-aware). It seeds a new
+    /// split/overlay/quick terminal; custom commands use CwdFor.
     /// </summary>
     public string EffectiveCwd => CurrentCwd ?? InitialCwd;
+
+    /// <summary>The working directory of one pane, for a custom command fired there: the split
+    /// pane's live cwd, then its restored one, then the primary's.</summary>
+    public string CwdFor(CommandContext.Pane pane) => pane switch
+    {
+        CommandContext.Pane.Right => SplitCwd ?? InitialSplitCwd ?? EffectiveCwd,
+        _ => EffectiveCwd,
+    };
 
     /// <summary>The surface of the pane currently in focus: the split pane while it has focus and
     /// exists, otherwise the primary.</summary>

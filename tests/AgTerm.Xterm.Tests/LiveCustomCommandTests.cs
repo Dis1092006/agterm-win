@@ -231,6 +231,36 @@ public sealed class CustomCommandInvocationTests
     }
 
     [Fact]
+    public void Hotkey_from_the_split_pane_exports_the_split_working_directory()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Workspace");
+        var session = store.AddSession(workspace.Id, @"C:\left")!;
+        session.Surface = new FakeSurface("left-pane", "");
+        session.SplitSurface = new FakeSurface("right-pane", "");
+        session.SplitCwd = @"D:\logs";
+        var command = new CustomCommand("Run", "echo {AGT_SESSION_PWD}", "ctrl+k", Guid.NewGuid());
+        var keymap = new Keymap(new Dictionary<BuiltinAction, Chord>(), [command]);
+        var window = new CustomCommandWindowContext(Guid.NewGuid(), "main", "pipe", 1);
+
+        var right = CustomCommandInvocationResolver.Resolve(
+            store,
+            keymap,
+            new(command.Id, CustomCommandSource.Hotkey, PaneId: "right-pane", HotkeyGeneration: 1),
+            window)!;
+        var left = CustomCommandInvocationResolver.Resolve(
+            store,
+            keymap,
+            new(command.Id, CustomCommandSource.Hotkey, PaneId: "left-pane", HotkeyGeneration: 1),
+            window)!;
+
+        Assert.Equal(@"echo D:\logs", right.ShellLine);
+        Assert.Equal(@"D:\logs", right.WorkingDirectory);
+        Assert.Equal(@"D:\logs", right.Environment["AGT_SESSION_PWD"]);
+        Assert.Equal(@"C:\left", left.WorkingDirectory);
+    }
+
+    [Fact]
     public void Stale_hotkey_generation_and_missing_command_are_ignored()
     {
         var command = new CustomCommand("Run", "echo ok", "ctrl+k", Guid.NewGuid());
