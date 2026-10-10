@@ -51,6 +51,21 @@ public class WindowsCommandLineTests
     [InlineData(new[] { "echo", "a!b" }, false)]
     [InlineData(new[] { "echo", "*.txt" }, false)]
     [InlineData(new[] { "calc&" }, false)]
+    [InlineData(new[] { "echo", "naïve" }, true)]
+    [InlineData(new[] { "echo", "x y”;calc;“z" }, false)]
+    [InlineData(new[] { "echo", "a‘b" }, false)]
+    [InlineData(new[] { "echo", "a’b" }, false)]
+    [InlineData(new[] { "echo", "a‚b" }, false)]
+    [InlineData(new[] { "echo", "a‛b" }, false)]
+    [InlineData(new[] { "echo", "a“b" }, false)]
+    [InlineData(new[] { "echo", "a”b" }, false)]
+    [InlineData(new[] { "echo", "a„b" }, false)]
+    [InlineData(new[] { "echo", "a–b" }, false)]
+    [InlineData(new[] { "echo", "a—b" }, false)]
+    [InlineData(new[] { "echo", "a\u0085b" }, false)]
+    [InlineData(new[] { "echo", "a b" }, false)]
+    [InlineData(new[] { "tool", "--opt=value" }, false)]
+    [InlineData(new[] { "tool", "a,b" }, false)]
     public void IsInertForShells_accepts_only_text_neither_pwsh_nor_cmd_acts_on(string[] argv, bool expected)
     {
         Assert.Equal(expected, WindowsCommandLine.IsInertForShells(argv));

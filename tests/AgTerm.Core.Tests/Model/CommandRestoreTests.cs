@@ -15,7 +15,7 @@ public class CommandRestoreTests
         Assert.False(CommandRestore.IsReplayable(["grep", "a\nrm -rf x"]));
         Assert.False(CommandRestore.IsReplayable(["less", "note\u007F.txt"]));
         Assert.False(CommandRestore.IsReplayable(["od\u001Bd"]));
-        Assert.False(CommandRestore.IsReplayable(["grep", "caf�"]));
+        Assert.False(CommandRestore.IsReplayable(["grep", "caf\uFFFD"]));
         Assert.False(CommandRestore.IsReplayable([]));
         Assert.True(CommandRestore.IsReplayable(["echo", "a b"]));
         Assert.True(CommandRestore.IsReplayable(["echo", "naïve — ✓"]));
@@ -28,6 +28,6 @@ public class CommandRestoreTests
         Assert.True(CommandRestore.HasControlCharacter("a\nrm -rf x"));
         Assert.True(CommandRestore.HasControlCharacter("x\u007F"));
         Assert.False(CommandRestore.HasControlCharacter("cd x && claude"));
-        Assert.False(CommandRestore.HasControlCharacter("caf�"));
+        Assert.False(CommandRestore.HasControlCharacter("caf\uFFFD"));
     }
 }

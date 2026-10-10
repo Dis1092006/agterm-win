@@ -10,5 +10,5 @@ public static class CommandRestore
     /// <summary>U+FFFD is refused too: it marks text decoded with loss, so the replay would not be
     /// the command that ran.</summary>
     public static bool IsReplayable(IReadOnlyList<string> argv) =>
-        argv.Count > 0 && !argv.Any(arg => HasControlCharacter(arg) || arg.Contains('�'));
+        argv.Count > 0 && !argv.Any(arg => HasControlCharacter(arg) || arg.Contains('\uFFFD'));
 }

@@ -22,12 +22,13 @@ public static class WindowsCommandLine
         return line.ToString();
     }
 
-    private const string ShellMetacharacters = "&|<>^%!;$`(){}[]@'\"#,=*?";
+    private const string InertPunctuation = " _-./\\:+~";
 
     /// <summary>FromArgv quotes for CreateProcess only. A line typed into pwsh or cmd is parsed by that
-    /// shell as well, so an element carrying one of its metacharacters would run a second command.</summary>
+    /// shell as well, and pwsh treats more than the ASCII punctuation as syntax (curly quotes close a
+    /// string), so an allowlist is the only safe form: letters, digits and a few path characters.</summary>
     public static bool IsInertForShells(IReadOnlyList<string> argv) =>
-        argv.All(arg => arg.IndexOfAny(ShellMetacharacters.ToCharArray()) < 0);
+        argv.All(arg => arg.All(c => char.IsLetterOrDigit(c) || InertPunctuation.Contains(c)));
 
     private static void AppendQuoted(StringBuilder line, string arg)
     {

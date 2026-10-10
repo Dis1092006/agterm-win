@@ -287,10 +287,10 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
     }
 
     [Theory]
-    [InlineData(LiveSurfaceKind.Main, true, "tail -fx")]
-    [InlineData(LiveSurfaceKind.Split, true, "tail -fx")]
-    [InlineData(LiveSurfaceKind.Main, false, "grep ab")]
-    [InlineData(LiveSurfaceKind.Split, false, "grep ab")]
+    [InlineData(LiveSurfaceKind.Main, true, "tail -f\u001Bx")]
+    [InlineData(LiveSurfaceKind.Split, true, "tail -f\u001Bx")]
+    [InlineData(LiveSurfaceKind.Main, false, "grep a\u0015b")]
+    [InlineData(LiveSurfaceKind.Split, false, "grep a\u0015b")]
     public async Task Restore_seed_carrying_a_control_character_starts_a_plain_shell(
         LiveSurfaceKind kind, bool asOverride, string seed)
     {
