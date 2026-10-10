@@ -37,6 +37,20 @@ public class PickCommandsTests
     }
 
     [Fact]
+    public void OpenSplitsOnVerticalTabAndFormFeed()
+    {
+        var items = ParseOpen("pick").MakeRequest(Utf8("a\u000Bb\u000Cc")).Args!.Items!;
+        Assert.Equal(new[] { "a", "b", "c" }, items.Select(i => i.Id));
+    }
+
+    [Fact]
+    public void OpenDropsLinesOfOnlyUnicodeSpaceSeparatorsOrTabs()
+    {
+        var items = ParseOpen("pick").MakeRequest(Utf8("a\n\u00A0\n\u3000\t \n\u00A0b\u3000\n")).Args!.Items!;
+        Assert.Equal(new[] { "a", "\u00A0b\u3000" }, items.Select(i => i.Id));
+    }
+
+    [Fact]
     public void OpenSendsEmptyItemsForEmptyStdin()
     {
         var request = ParseOpen("pick").MakeRequest(Array.Empty<byte>());

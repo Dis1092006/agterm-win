@@ -14,8 +14,8 @@ internal static class PickStdin
 
     private static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    // Swift splits on Character.isNewline, which also covers NEL and the Unicode line and paragraph separators.
-    private static readonly char[] LineBreaks = { '\r', '\n', (char)0x0085, (char)0x2028, (char)0x2029 };
+    // Upstream splits with components(separatedBy: .newlines): CR, LF, VT, FF, NEL, LS and PS.
+    private static readonly char[] LineBreaks = { '\r', '\n', '\u000B', '\u000C', '\u0085', '\u2028', '\u2029' };
 
     private static readonly byte[] Utf8Bom = { 0xEF, 0xBB, 0xBF };
 
@@ -48,10 +48,14 @@ internal static class PickStdin
             throw new CliValidationException(InvalidInput);
         }
         return text.Split(LineBreaks)
-            .Where(line => line.Trim(' ', '\t').Length > 0)
+            .Where(line => !IsBlank(line))
             .Select(line => new ControlPickItem { Id = line, Label = line })
             .ToArray();
     }
+
+    // Upstream trims CharacterSet.whitespaces: Unicode space separators and tab. The item keeps the line verbatim.
+    private static bool IsBlank(string line) =>
+        line.All(c => c == '\t' || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.SpaceSeparator);
 
     private static ControlPickItem[] ParseJson(ReadOnlySpan<byte> bytes)
     {
