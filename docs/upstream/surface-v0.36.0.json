@@ -1455,10 +1455,6 @@
   },
   "settings": [
     {
-      "name": "timeout",
-      "type": "TimeInterval? {"
-    },
-    {
       "name": "fontFamily",
       "type": "String?"
     },
@@ -1657,58 +1653,6 @@
     {
       "name": "welcomeShown",
       "type": "Bool?"
-    },
-    {
-      "name": "effectiveRestoreMode",
-      "type": "RestoreMode {"
-    },
-    {
-      "name": "resolvedHiddenInterfaceElements",
-      "type": "Set<InterfaceElement> {"
-    },
-    {
-      "name": "effectiveToolbarMode",
-      "type": "ToolbarMode {"
-    },
-    {
-      "name": "effectiveFlaggedViewLayout",
-      "type": "FlaggedViewLayout {"
-    },
-    {
-      "name": "effectiveLinkOpenMode",
-      "type": "LinkOpenMode {"
-    },
-    {
-      "name": "effectiveHtmlOverlayZoom",
-      "type": "Double { HtmlZoom.resolve(htmlOverlayZoom) }"
-    },
-    {
-      "name": "effectiveStatusReset",
-      "type": "StatusReset {"
-    },
-    {
-      "name": "effectiveDockBounce",
-      "type": "DockBounce {"
-    },
-    {
-      "name": "effectiveNewSessionPlacement",
-      "type": "NewSessionPlacement {"
-    },
-    {
-      "name": "effectiveCursorStyle",
-      "type": "CursorStyle? {"
-    },
-    {
-      "name": "effectiveQuickTerminalSizePercent",
-      "type": "Int? {"
-    },
-    {
-      "name": "effectiveSidebarFontSize",
-      "type": "Double {"
-    },
-    {
-      "name": "effectiveInterfaceFontSize",
-      "type": "Double {"
     }
   ],
   "persistence": {

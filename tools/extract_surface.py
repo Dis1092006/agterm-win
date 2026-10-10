@@ -19,9 +19,11 @@ diff this snapshot against your committed `parity.json`; any new command/arg/act
 is a parity task (implement) or an explicit skip.
 
 Usage:
-    python extract_surface.py --agterm <path-to-agterm-checkout> [--out surface.json]
+    python extract_surface.py --agterm <path-to-agterm-checkout> [--ref <git-ref>] [--out surface.json]
 
 Defaults `--agterm` to C:\\git\\github\\umputun\\agterm (the known dev checkout).
+Without `--ref` the working tree is read. With `--ref` (a sha, tag or `origin/master`) the
+sources are read from git objects, so a revision can be snapshotted without checking it out.
 Exits non-zero if a source file is missing or a type block can't be found — a silent
 partial snapshot is worse than a loud failure for a parity gate.
 """
@@ -41,11 +43,67 @@ class ExtractError(RuntimeError):
     pass
 
 
-def read(root: Path, rel: str) -> str:
-    p = root / rel
-    if not p.is_file():
-        raise ExtractError(f"missing source file: {p}")
-    return p.read_text(encoding="utf-8")
+def git(root: Path, *args: str) -> str:
+    out = subprocess.run(["git", "-C", str(root), *args], capture_output=True, check=False)
+    if out.returncode != 0:
+        raise ExtractError(f"git {' '.join(args)} failed: {out.stderr.decode('utf-8', 'replace').strip()}")
+    return out.stdout.decode("utf-8")
+
+
+class WorkingTree:
+    def __init__(self, root: Path):
+        self.root = root
+
+    def read(self, rel: str) -> str:
+        p = self.root / rel
+        if not p.is_file():
+            raise ExtractError(f"missing source file: {p}")
+        return p.read_text(encoding="utf-8")
+
+    def swift_files(self) -> list[str]:
+        return sorted(str(p.relative_to(self.root)).replace("\\", "/") for p in (self.root / CORE).glob("*.swift"))
+
+    def revision(self) -> str | None:
+        try:
+            return git(self.root, "rev-parse", "HEAD").strip()
+        except ExtractError:
+            return None
+
+
+class GitRevision:
+    def __init__(self, root: Path, ref: str):
+        self.root = root
+        self.sha = git(root, "rev-parse", "--verify", f"{ref}^{{commit}}").strip()
+        self._files: dict[str, str] = {}
+
+    def read(self, rel: str) -> str:
+        # find_type scans every file once per type; one git process per file is the slow part
+        if rel not in self._files:
+            try:
+                self._files[rel] = git(self.root, "show", f"{self.sha}:{rel}")
+            except ExtractError:
+                raise ExtractError(f"missing source file: {rel} at {self.sha}") from None
+        return self._files[rel]
+
+    def swift_files(self) -> list[str]:
+        names = git(self.root, "ls-tree", "--name-only", self.sha, f"{CORE.as_posix()}/").splitlines()
+        return sorted(n for n in names if n.endswith(".swift"))
+
+    def revision(self) -> str:
+        return self.sha
+
+
+def find_type(source, decl_regex: str) -> str:
+    """The body of a type declared anywhere in agtermCore. Upstream moves types between files
+    (the tree nodes left ControlProtocol.swift for ControlProjection.swift), so the file is not
+    fixed; a declaration found in two files is an error rather than a guess."""
+    hits = [(rel, text) for rel in source.swift_files()
+            if re.search(decl_regex, text := source.read(rel))]
+    if not hits:
+        raise ExtractError(f"type not found: /{decl_regex}/")
+    if len(hits) > 1:
+        raise ExtractError(f"type declared in several files: /{decl_regex}/ in {[rel for rel, _ in hits]}")
+    return type_body(hits[0][1], decl_regex)
 
 
 def type_body(text: str, decl_regex: str) -> str:
@@ -97,7 +155,10 @@ def public_vars(body: str) -> list[dict]:
     nodes (ControlSessionNode/WorkspaceNode/WindowNode) use `public let`."""
     out: list[dict] = []
     for m in re.finditer(r"public (?:let|var)\s+([A-Za-z_]\w*)\s*:\s*([^\n=]+?)\s*(?:=|$)", body, re.MULTILINE):
-        out.append({"name": m.group(1), "type": m.group(2).strip()})
+        type_text = m.group(2).strip()
+        if "{" in type_text:  # a computed property (`effectiveX: T {`) is not persisted or sent
+            continue
+        out.append({"name": m.group(1), "type": type_text})
     return out
 
 
@@ -142,51 +203,40 @@ def tokens(text: str) -> list[str]:
     return re.findall(r'\("(AGT_[A-Z_]+)"', text)
 
 
-def git_rev(root: Path) -> str | None:
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            capture_output=True, text=True, check=True,
-        )
-        return out.stdout.strip()
-    except Exception:
-        return None
+def extract(source) -> dict:
+    builtin = source.read(f"{CORE.as_posix()}/BuiltinAction.swift")
+    custom = source.read(f"{CORE.as_posix()}/CustomCommand.swift")
 
+    def fields(decl_regex: str) -> list[dict]:
+        return public_vars(find_type(source, decl_regex))
 
-def extract(root: Path) -> dict:
-    proto = read(root, str(CORE / "ControlProtocol.swift"))
-    builtin = read(root, str(CORE / "BuiltinAction.swift"))
-    custom = read(root, str(CORE / "CustomCommand.swift"))
-    settings = read(root, str(CORE / "AppSettings.swift"))
-    snapshot = read(root, str(CORE / "Snapshot.swift"))
-
-    commands = enum_cases(type_body(proto, r"enum Command\s*:"))
+    commands = enum_cases(find_type(source, r"enum Command\s*:"))
     actions = enum_cases(type_body(builtin, r"enum BuiltinAction\s*:"))
     chords = default_chords(builtin)
 
     surface = {
-        "agtermRevision": git_rev(root),
+        "agtermRevision": source.revision(),
         "counts": {
             "commands": len(commands),
             "builtinActions": len(actions),
         },
         "control": {
             "commands": commands,
-            "args": public_vars(type_body(proto, r"struct ControlArgs\s*:")),
-            "result": public_vars(type_body(proto, r"struct ControlResult\s*:")),
-            "sessionNode": public_vars(type_body(proto, r"struct ControlSessionNode\s*:")),
-            "workspaceNode": public_vars(type_body(proto, r"struct ControlWorkspaceNode\s*:")),
-            "windowNode": public_vars(type_body(proto, r"struct ControlWindowNode\s*:")),
+            "args": fields(r"struct ControlArgs\s*:"),
+            "result": fields(r"struct ControlResult\s*:"),
+            "sessionNode": fields(r"struct ControlSessionNode\s*:"),
+            "workspaceNode": fields(r"struct ControlWorkspaceNode\s*:"),
+            "windowNode": fields(r"struct ControlWindowNode\s*:"),
         },
         "keymap": {
             "actions": [{**a, "defaultChord": chords.get(a["wire"])} for a in actions],
             "tokens": tokens(custom),
         },
-        "settings": public_vars(type_body(settings, r"struct AppSettings\s*:")),
+        "settings": fields(r"struct AppSettings\s*:"),
         "persistence": {
-            "snapshot": public_vars(type_body(snapshot, r"struct Snapshot\s*:")),
-            "workspaceSnapshot": public_vars(type_body(snapshot, r"struct WorkspaceSnapshot\s*:")),
-            "sessionSnapshot": public_vars(type_body(snapshot, r"struct SessionSnapshot\s*:")),
+            "snapshot": fields(r"struct Snapshot\s*:"),
+            "workspaceSnapshot": fields(r"struct WorkspaceSnapshot\s*:"),
+            "sessionSnapshot": fields(r"struct SessionSnapshot\s*:"),
         },
     }
     return surface
@@ -196,15 +246,20 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Snapshot agterm's drivable surface into surface.json")
     ap.add_argument("--agterm", default=r"C:\git\github\umputun\agterm",
                     help="path to the agterm checkout (default: C:\\git\\github\\umputun\\agterm)")
+    ap.add_argument("--ref", help="read the sources at this git ref instead of the working tree")
     ap.add_argument("--out", default="-", help="output file, or '-' for stdout (default)")
     args = ap.parse_args()
 
     root = Path(args.agterm)
-    if not (root / CORE).is_dir():
-        print(f"error: {root / CORE} not found — is --agterm pointing at an agterm checkout?", file=sys.stderr)
-        return 2
     try:
-        surface = extract(root)
+        if args.ref:
+            source = GitRevision(root, args.ref)
+        elif (root / CORE).is_dir():
+            source = WorkingTree(root)
+        else:
+            print(f"error: {root / CORE} not found — is --agterm pointing at an agterm checkout?", file=sys.stderr)
+            return 2
+        surface = extract(source)
     except ExtractError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

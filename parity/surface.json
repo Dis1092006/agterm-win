@@ -945,10 +945,6 @@
   },
   "settings": [
     {
-      "name": "timeout",
-      "type": "TimeInterval? {"
-    },
-    {
       "name": "fontFamily",
       "type": "String?"
     },
@@ -1095,18 +1091,6 @@
     {
       "name": "autoHideSidebarInactiveWindows",
       "type": "Bool?"
-    },
-    {
-      "name": "resolvedHiddenInterfaceElements",
-      "type": "Set<InterfaceElement> {"
-    },
-    {
-      "name": "effectiveToolbarMode",
-      "type": "ToolbarMode {"
-    },
-    {
-      "name": "effectiveDockBounce",
-      "type": "DockBounce {"
     }
   ],
   "persistence": {
