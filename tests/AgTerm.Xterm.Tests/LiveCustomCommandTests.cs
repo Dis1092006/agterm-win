@@ -359,6 +359,15 @@ public sealed class CustomCommandInvocationTests
         Assert.Equal($"/d /c \"{invocation.ShellLine}\"", startInfo.Arguments);
     }
 
+    /// <summary>How long a spawned child is given. The shell line below ends in `ping -n 3`, which
+    /// sleeps about 2.2 seconds on an idle machine, so a 5 second budget left under 3 seconds for
+    /// spawning cmd.exe and draining its output. The solution runs its test assemblies in parallel
+    /// and the live WebView2 suite loads the machine, so that ran out: this test timed out in 4 of
+    /// 4 full-suite runs while passing on its own. Same budget and same reason as
+    /// ConPtySessionTests.ChildBudget. A hung child still fails the test, it just takes a minute.
+    /// </summary>
+    private static readonly TimeSpan ChildBudget = TimeSpan.FromSeconds(60);
+
     [Fact]
     public async Task ProcessRunner_executes_with_environment_and_quoted_Windows_path()
     {
@@ -381,11 +390,11 @@ public sealed class CustomCommandInvocationTests
             var handle = await runner.StartAsync(invocation);
             Assert.True(handle.ProcessId > 0);
 
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            var deadline = DateTime.UtcNow + ChildBudget;
             while (!File.Exists(marker) && DateTime.UtcNow < deadline)
                 await Task.Delay(25);
             Assert.True(File.Exists(marker));
-            await handle.Exited.WaitAsync(TimeSpan.FromSeconds(5));
+            await handle.Exited.WaitAsync(ChildBudget);
             Assert.Equal("pipe-value", File.ReadAllText(marker).Trim());
         }
         finally
