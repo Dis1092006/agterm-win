@@ -622,6 +622,9 @@ public sealed class LiveApplicationHost : IDisposable
                 reopenedWindow!.CaptureLifecycleSessions(),
                 ControlEventKind.SessionCreated);
         }
+        // The OS may refuse to activate a window for a background caller, and then no Activated event
+        // arrives. The control reply promises the window is frontmost, so take it here.
+        ReportActivated(windowId);
         return OkWindowId(windowId);
     }
 

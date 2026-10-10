@@ -133,6 +133,36 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     }
 
     [Fact]
+    public void Window_select_takes_frontmost_without_an_activation_report()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var closedId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteWindowSnapshot(closedId, "gamma");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true),
+            new IndexEntry(closedId, "closed", IsOpen: false));
+        var windows = new FakeWindowController(); // Activated stays null: the OS never reports activation
+
+        using var application = CreateApplication(windows);
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowSelect, Target = secondId.ToString("D") }).Ok);
+        Assert.Equal(secondId, application.ActiveWindowId);
+
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowSelect, Target = closedId.ToString("D") }).Ok);
+        Assert.Equal(closedId, application.ActiveWindowId);
+        var list = client.Send(new ControlRequest { Cmd = Command.WindowList });
+        Assert.Equal(new[] { false, false, true }, list.Result!.Windows!.Select(w => w.Active));
+        var index = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(_stateDir, "windows.json")))!;
+        Assert.Equal(closedId, Guid.Parse(index["frontmost"]!.GetValue<string>()));
+    }
+
+    [Fact]
     public void Window_close_waits_for_the_registry_transition_and_is_idempotent_when_closed()
     {
         var firstId = Guid.NewGuid();
