@@ -1068,8 +1068,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         Guid? sessionId;
         var baseFontSize = session.FontSize ?? _currentBaseFontSize;
         // The integration is attached HERE, to the shell argv only, and never to the argv branches
-        // below that carry a user's own program (a captured foreground command, an InitialCommand,
-        // a restore override): Inject is shape-aware and returns those untouched.
+        // below that carry a user's own program (an InitialCommand): Inject is shape-aware and
+        // returns those untouched. A captured foreground command or restore override never sits in
+        // argv: it is typed into the shell, and only when CommandRestore accepts it.
         var shellArgv = ShellIntegration.Inject(
             [ShellResolver.Resolve(_options.DefaultShell)],
             _options.ShellIntegrationDirectory);
@@ -1086,14 +1087,15 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 if (pendingOverride is not null)
                 {
                     argv = shellArgv;
-                    initialInput = restoreRunningCommand && pendingOverride.Length > 0
+                    initialInput = restoreRunningCommand && pendingOverride.Length > 0 &&
+                                   !CommandRestore.HasControlCharacter(pendingOverride)
                         ? pendingOverride + "\n"
                         : null;
                 }
                 else if (capturedForeground is { Length: > 0 })
                 {
-                    argv = capturedForeground;
-                    initialInput = restoreRunningCommand
+                    argv = shellArgv;
+                    initialInput = restoreRunningCommand && CommandRestore.IsReplayable(capturedForeground)
                         ? WindowsCommandLine.FromArgv(capturedForeground) + "\n"
                         : null;
                 }
@@ -1121,13 +1123,14 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 argv = shellArgv;
                 if (pendingOverride is not null)
                 {
-                    initialInput = restoreRunningCommand && pendingOverride.Length > 0
+                    initialInput = restoreRunningCommand && pendingOverride.Length > 0 &&
+                                   !CommandRestore.HasControlCharacter(pendingOverride)
                         ? pendingOverride + "\n"
                         : null;
                 }
                 else if (capturedForeground is { Length: > 0 })
                 {
-                    initialInput = restoreRunningCommand
+                    initialInput = restoreRunningCommand && CommandRestore.IsReplayable(capturedForeground)
                         ? WindowsCommandLine.FromArgv(capturedForeground) + "\n"
                         : null;
                 }

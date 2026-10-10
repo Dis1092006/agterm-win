@@ -287,6 +287,65 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
     }
 
     [Theory]
+    [InlineData(LiveSurfaceKind.Main)]
+    [InlineData(LiveSurfaceKind.Split)]
+    public async Task Restore_seed_carrying_a_control_character_starts_a_plain_shell(LiveSurfaceKind kind)
+    {
+        var requests = new List<SurfaceOpenRequest>();
+        using var host = BuildLiveHost(requests, restoreRunningCommand: true);
+        var sessionId = await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        lock (requests) requests.Clear();
+
+        await host.StoreCoordinator.MutateAsync(store =>
+        {
+            var session = store.SessionWithId(sessionId)!;
+            if (kind == LiveSurfaceKind.Main)
+            {
+                session.Surface?.Teardown();
+                session.Surface = null;
+                session.ForegroundCommand = new[] { "grep", "a\u0015b" };
+            }
+            else
+            {
+                session.HasSplit = true;
+                session.SplitSurface = null;
+                session.PendingSplitRestoreCommand = "tail -f\u001Bx";
+            }
+        });
+
+        await SpinUntilAsync(() => { lock (requests) return requests.Any(r => r.Kind == kind); }, TimeSpan.FromSeconds(5));
+        SurfaceOpenRequest request;
+        lock (requests) request = Assert.Single(requests, r => r.Kind == kind);
+        Assert.Equal(new[] { "test-shell.exe" }, request.Options.Argv);
+        Assert.Null(request.Options.InitialInput);
+    }
+
+    [Theory]
+    [InlineData(true, "captured-tool --resume\n")]
+    [InlineData(false, null)]
+    public async Task Captured_foreground_command_is_typed_into_a_shell_not_executed(bool restoreRunningCommand, string? expectedInput)
+    {
+        var requests = new List<SurfaceOpenRequest>();
+        using var host = BuildLiveHost(requests, restoreRunningCommand: restoreRunningCommand);
+        var sessionId = await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        lock (requests) requests.Clear();
+
+        await host.StoreCoordinator.MutateAsync(store =>
+        {
+            var session = store.SessionWithId(sessionId)!;
+            session.Surface?.Teardown();
+            session.Surface = null;
+            session.ForegroundCommand = new[] { "captured-tool", "--resume" };
+        });
+
+        await SpinUntilAsync(() => { lock (requests) return requests.Any(r => r.Kind == LiveSurfaceKind.Main); }, TimeSpan.FromSeconds(5));
+        SurfaceOpenRequest request;
+        lock (requests) request = Assert.Single(requests, r => r.Kind == LiveSurfaceKind.Main);
+        Assert.Equal(new[] { "test-shell.exe" }, request.Options.Argv);
+        Assert.Equal(expectedInput, request.Options.InitialInput);
+    }
+
+    [Theory]
     [InlineData(true, "", null)]
     [InlineData(false, "restore-tool --disabled", null)]
     public async Task Empty_or_disabled_restore_override_starts_a_plain_shell(

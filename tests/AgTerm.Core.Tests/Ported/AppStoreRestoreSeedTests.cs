@@ -123,6 +123,25 @@ public class AppStoreRestoreSeedTests
     }
 
     [Fact]
+    public void NonBootstrapRebuildDropsCapturedForegroundCommands()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var snap = new SessionSnapshot
+        {
+            Id = Guid.NewGuid(), Cwd = "/a", IsSplit = true,
+            ForegroundCommand = new[] { "tee", "/tmp/m" }, SplitForegroundCommand = new[] { "tail", "-f" },
+        };
+
+        var rebuilt = store.SessionFrom(snap);
+        Assert.Null(rebuilt.ForegroundCommand);
+        Assert.Null(rebuilt.SplitForegroundCommand);
+
+        var boot = store.SessionFrom(snap, launchRestore: true);
+        Assert.Equal(new[] { "tee", "/tmp/m" }, boot.ForegroundCommand);
+        Assert.Equal(new[] { "tail", "-f" }, boot.SplitForegroundCommand);
+    }
+
+    [Fact]
     public void BootstrapRestoreOfASessionWithoutOverridesArmsNothing()
     {
         var store = AppStoreFixtures.MakeStore();

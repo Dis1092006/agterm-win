@@ -1177,7 +1177,9 @@ public sealed partial class AppStore
     ///
     /// A split hidden at the last quit is NOT rebuilt (HasSplit follows IsSplit), so its pinned
     /// override describes a pane that no longer exists: it is DROPPED here, the same rule
-    /// CloseSplit applies when the pane goes away.</summary>
+    /// CloseSplit applies when the pane goes away.
+    ///
+    /// Captured foreground commands are armed only by the launch restore, like the override.</summary>
     internal Session SessionFrom(SessionSnapshot snapshot, bool launchRestore = false)
     {
         var session = new Session(snapshot.Cwd, snapshot.Id, snapshot.CustomName)
@@ -1187,8 +1189,6 @@ public sealed partial class AppStore
             InitialSplitCwd = snapshot.SplitCwd,
             SplitRatio = snapshot.SplitRatio is { } ratio ? ClampSplitRatio(ratio) : null,
             Flagged = snapshot.Flagged ?? false,
-            ForegroundCommand = snapshot.ForegroundCommand,
-            SplitForegroundCommand = snapshot.SplitForegroundCommand,
             InitialCommand = snapshot.InitialCommand,
             CommandWait = snapshot.CommandWait ?? false,
             WasRestored = true,
@@ -1201,6 +1201,8 @@ public sealed partial class AppStore
         {
             session.PendingRestoreCommand = snapshot.RestoreCommand;
             if (session.IsSplit) session.PendingSplitRestoreCommand = session.SplitRestoreCommand;
+            session.ForegroundCommand = snapshot.ForegroundCommand;
+            if (session.IsSplit) session.SplitForegroundCommand = snapshot.SplitForegroundCommand;
         }
         return session;
     }

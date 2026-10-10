@@ -494,7 +494,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.True(response.Ok, response.Error);
         var session = application.GetOpenWindow(closedId).Store.SessionWithId(closedSessionId)!;
         Assert.Null(session.PendingRestoreCommand);
-        Assert.Equal(new[] { "pwsh.exe", "-NoLogo" }, session.ForegroundCommand);
+        Assert.Null(session.ForegroundCommand);
     }
 
     [Fact]

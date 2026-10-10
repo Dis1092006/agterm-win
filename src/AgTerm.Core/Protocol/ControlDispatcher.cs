@@ -276,7 +276,7 @@ public sealed class ControlDispatcher
                     return Err("session.restore set requires a command");
                 // a control character would smuggle an extra line (or an escape sequence) into the
                 // shell the override is typed into, so the whole class is rejected — tab included.
-                if (command.Any(c => c < 0x20 || c == 0x7f))
+                if (CommandRestore.HasControlCharacter(command))
                     return Err("command must not contain control characters");
                 if (System.Text.Encoding.UTF8.GetByteCount(command) > ControlRestoreOverride.MaxCommandBytes)
                     return Err($"command too long (max {ControlRestoreOverride.MaxCommandBytes} bytes)");
