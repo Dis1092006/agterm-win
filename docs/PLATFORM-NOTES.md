@@ -519,3 +519,8 @@ The resolution lives in `AgTerm.Core` rather than in the window because `AgTerm.
 A failure to create the directory surfaces through the existing path: the call sits inside `BootPageAsync`, whose task `ReportPageInitializationFailureAsync` already awaits, so it reports an InfoBar rather than crashing.
 
 The WinUI app reaches WebView2 through the Windows App SDK projection, which exposes a narrower surface than the standalone `Microsoft.Web.WebView2` package the test fixture uses. `CoreWebView2Environment.CreateAsync` there takes no arguments, and the only way to name a user data folder is `CreateWithOptionsAsync(browserExecutableFolder, userDataFolder, options)`. Code copied from the fixture, or from Microsoft's WebView2 documentation, will not compile against the app's projection.
+
+
+## Upstream behavior adopted beyond the pin
+
+The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.

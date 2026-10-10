@@ -145,14 +145,16 @@
 
 ## 12. Изменения поведения уже реализованных команд
 
+Применимость и порядок реализации описаны в `docs/superpowers/plans/2026-10-10-upstream-behavior-changes.md`.
+
 Эти пункты меняют то, что в agterm-win уже сделано по пину. Они не зависят от новых возможностей и могут понадобиться при любом обновлении.
 
 - `session text --pane-id` с неизвестным id отвечает `unknown pane id: <id>`, раньше читал видимую панель и отвечал ok #698.
 - `session.paste`, `session.selectall`, `session.copy` без реальной поверхности отвечают `session not realized` #425.
-- `session type`, `quick type`: NUL отклоняется #458; невалидный UTF-8 в `--stdin` отклоняется #521; финальный Return идёт через 10 мс после текста #681.
-- `session.overlay.open --size-percent` вне 1..100 отклоняется #498; `--pane` вместе с `--size-percent` отклоняется #343.
-- Алиасы панелей `primary`, `split`, `top`, `bottom` разбираются один раз в диспетчере для `session.type`, `session.text` и `font` #530.
-- `session new --no-select`: основная панель ждёт realize так же, как с select #351.
+- `session type`, `quick type`: NUL отклоняется `6bc8a0b7` (issue #455); невалидный UTF-8 в `--stdin` отклоняется #521; финальный Return идёт через 10 мс после текста #681.
+- `session.overlay.open --size-percent` вне 1..100 отклоняется #498.
+- `invalid pane: X` сообщает диспетчер для `session.type`, `session.text` и `font` (#530). Алиасы `primary`, `split`, `top`, `bottom` появились вместе с горизонтальными сплитами (#427) и в это изменение не входят.
+- `session.type` на основной панели без `--select` отвечает `session not realized` вместо `session not realized; use select`, а `--select` выбирает сессию только когда поверхность не готова (#351).
 - Новый workspace становится целью до смены выбранной сессии; `workspace select` перенацеливает всегда #329.
 - `window new` отвечает после того, как окно присоединилось; `window list` не отдаёт устаревший кеш; минимизированное окно перестаёт быть frontmost; `window select` работает при неактивном приложении #294.
 - Ошибка custom-команды в удалённом каталоге: `session directory <path> no longer exists`.
