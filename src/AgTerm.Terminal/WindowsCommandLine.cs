@@ -22,6 +22,13 @@ public static class WindowsCommandLine
         return line.ToString();
     }
 
+    private const string ShellMetacharacters = "&|<>^%!;$`(){}[]@'\"#,=*?";
+
+    /// <summary>FromArgv quotes for CreateProcess only. A line typed into pwsh or cmd is parsed by that
+    /// shell as well, so an element carrying one of its metacharacters would run a second command.</summary>
+    public static bool IsInertForShells(IReadOnlyList<string> argv) =>
+        argv.All(arg => arg.IndexOfAny(ShellMetacharacters.ToCharArray()) < 0);
+
     private static void AppendQuoted(StringBuilder line, string arg)
     {
         if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\t', '\n', '\v', '"' }) < 0)

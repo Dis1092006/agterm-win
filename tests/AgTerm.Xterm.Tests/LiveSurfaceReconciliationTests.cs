@@ -287,14 +287,31 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
     }
 
     [Theory]
+    [InlineData(LiveSurfaceKind.Main, true, "tail -fx")]
+    [InlineData(LiveSurfaceKind.Split, true, "tail -fx")]
+    [InlineData(LiveSurfaceKind.Main, false, "grep ab")]
+    [InlineData(LiveSurfaceKind.Split, false, "grep ab")]
+    public async Task Restore_seed_carrying_a_control_character_starts_a_plain_shell(
+        LiveSurfaceKind kind, bool asOverride, string seed)
+    {
+        await AssertSeedStartsPlainShell(kind, asOverride, seed.Split(' '));
+    }
+
+    [Theory]
     [InlineData(LiveSurfaceKind.Main)]
     [InlineData(LiveSurfaceKind.Split)]
-    public async Task Restore_seed_carrying_a_control_character_starts_a_plain_shell(LiveSurfaceKind kind)
+    public async Task Captured_command_with_a_shell_metacharacter_starts_a_plain_shell(LiveSurfaceKind kind)
+    {
+        await AssertSeedStartsPlainShell(kind, asOverride: false, new[] { "echo", "a&calc" });
+    }
+
+    private async Task AssertSeedStartsPlainShell(LiveSurfaceKind kind, bool asOverride, string[] seed)
     {
         var requests = new List<SurfaceOpenRequest>();
         using var host = BuildLiveHost(requests, restoreRunningCommand: true);
         var sessionId = await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId!.Value);
         lock (requests) requests.Clear();
+        var line = string.Join(' ', seed);
 
         await host.StoreCoordinator.MutateAsync(store =>
         {
@@ -303,13 +320,15 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
             {
                 session.Surface?.Teardown();
                 session.Surface = null;
-                session.ForegroundCommand = new[] { "grep", "a\u0015b" };
+                if (asOverride) session.PendingRestoreCommand = line;
+                else session.ForegroundCommand = seed;
             }
             else
             {
                 session.HasSplit = true;
                 session.SplitSurface = null;
-                session.PendingSplitRestoreCommand = "tail -f\u001Bx";
+                if (asOverride) session.PendingSplitRestoreCommand = line;
+                else session.SplitForegroundCommand = seed;
             }
         });
 
@@ -318,6 +337,16 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
         lock (requests) request = Assert.Single(requests, r => r.Kind == kind);
         Assert.Equal(new[] { "test-shell.exe" }, request.Options.Argv);
         Assert.Null(request.Options.InitialInput);
+
+        var consumed = await host.StoreCoordinator.ReadAsync(store =>
+        {
+            var session = store.SessionWithId(sessionId)!;
+            return kind == LiveSurfaceKind.Main
+                ? (session.PendingRestoreCommand, session.ForegroundCommand)
+                : (session.PendingSplitRestoreCommand, session.SplitForegroundCommand);
+        });
+        Assert.Null(consumed.Item1);
+        Assert.Null(consumed.Item2);
     }
 
     [Theory]

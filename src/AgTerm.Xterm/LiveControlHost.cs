@@ -1060,6 +1060,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }
     }
 
+    private static bool IsTypeable(string[] capturedForeground) =>
+        CommandRestore.IsReplayable(capturedForeground) && WindowsCommandLine.IsInertForShells(capturedForeground);
+
     private SurfaceOpenRequest? CaptureRequest(Session session, LiveSurfaceKind kind)
     {
         IReadOnlyList<string> argv;
@@ -1068,7 +1071,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         Guid? sessionId;
         var baseFontSize = session.FontSize ?? _currentBaseFontSize;
         // The integration is attached HERE, to the shell argv only, and never to the argv branches
-        // below that carry a user's own program (an InitialCommand): Inject is shape-aware and
+        // below that carries a user's own program (the InitialCommand branch): Inject is shape-aware and
         // returns those untouched. A captured foreground command or restore override never sits in
         // argv: it is typed into the shell, and only when CommandRestore accepts it.
         var shellArgv = ShellIntegration.Inject(
@@ -1095,7 +1098,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 else if (capturedForeground is { Length: > 0 })
                 {
                     argv = shellArgv;
-                    initialInput = restoreRunningCommand && CommandRestore.IsReplayable(capturedForeground)
+                    initialInput = restoreRunningCommand && IsTypeable(capturedForeground)
                         ? WindowsCommandLine.FromArgv(capturedForeground) + "\n"
                         : null;
                 }
@@ -1130,7 +1133,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 }
                 else if (capturedForeground is { Length: > 0 })
                 {
-                    initialInput = restoreRunningCommand && CommandRestore.IsReplayable(capturedForeground)
+                    initialInput = restoreRunningCommand && IsTypeable(capturedForeground)
                         ? WindowsCommandLine.FromArgv(capturedForeground) + "\n"
                         : null;
                 }

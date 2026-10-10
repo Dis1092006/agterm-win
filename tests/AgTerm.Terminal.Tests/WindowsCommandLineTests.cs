@@ -34,4 +34,25 @@ public class WindowsCommandLineTests
     {
         Assert.Throws<ArgumentException>(() => WindowsCommandLine.FromArgv(Array.Empty<string>()));
     }
+
+    [Theory]
+    [InlineData(new[] { "captured-tool", "--resume" }, true)]
+    [InlineData(new[] { "ls", "C:\\dir with space\\x" }, true)]
+    [InlineData(new[] { "echo", "naïve_1.0+2~x:y/z" }, true)]
+    [InlineData(new[] { "echo", "a&calc" }, false)]
+    [InlineData(new[] { "echo", "a;calc" }, false)]
+    [InlineData(new[] { "echo", "$(calc)" }, false)]
+    [InlineData(new[] { "echo", "a|b" }, false)]
+    [InlineData(new[] { "echo", "%PATH%" }, false)]
+    [InlineData(new[] { "echo", "a`calc" }, false)]
+    [InlineData(new[] { "echo", "say \"hi\"" }, false)]
+    [InlineData(new[] { "echo", "a>b" }, false)]
+    [InlineData(new[] { "echo", "a^b" }, false)]
+    [InlineData(new[] { "echo", "a!b" }, false)]
+    [InlineData(new[] { "echo", "*.txt" }, false)]
+    [InlineData(new[] { "calc&" }, false)]
+    public void IsInertForShells_accepts_only_text_neither_pwsh_nor_cmd_acts_on(string[] argv, bool expected)
+    {
+        Assert.Equal(expected, WindowsCommandLine.IsInertForShells(argv));
+    }
 }
