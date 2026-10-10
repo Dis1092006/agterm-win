@@ -161,6 +161,7 @@ public sealed partial class AppStore
         if (index < 0) return false;
         var visibleWorkspace = Workspaces[index];
         Workspaces.RemoveAt(index);
+        ForgetFreshWorkspace(workspaceId);
         foreach (var session in visibleWorkspace.Sessions) EmitSessionClosed(session, visibleWorkspace.Id);
         if (visibleWorkspace.Sessions.Count == 0) ScheduleTreeChanged();
         var workspace = FoldingPendingCloses(visibleWorkspace);

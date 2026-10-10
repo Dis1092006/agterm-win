@@ -508,7 +508,7 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolvePlacementStore(window, store =>
         {
-            var workspace = store.AddWorkspace(Trimmed(name) ?? store.DefaultWorkspaceName, collapsed);
+            var workspace = store.AddWorkspace(Trimmed(name) ?? store.DefaultWorkspaceName, collapsed, holdsTarget: !collapsed);
             return OkId(workspace.Id);
         });
     }
@@ -517,10 +517,7 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolveWorkspace(target, window, (store, id) =>
         {
-            // selecting a workspace selects its first session (workspace rows are not selectable);
-            // an empty workspace selects nothing and still reports the workspace id.
-            if (store.Workspaces.FirstOrDefault(w => w.Id == id)?.Sessions.FirstOrDefault() is { } first)
-                store.SelectSession(first.Id);
+            store.SelectWorkspace(id);
             return OkId(id);
         });
     }

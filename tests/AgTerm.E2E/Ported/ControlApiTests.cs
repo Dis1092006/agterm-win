@@ -1595,6 +1595,31 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
         return node!;
     }
 
+    [Fact]
+    public void SessionNewAfterWorkspaceNewTargetsTheNewWorkspace()
+    {
+        var fresh = SendOk("""{"cmd":"workspace.new","args":{"name":"fresh"}}""")["id"]!.GetValue<string>();
+        var created = SendOk("""{"cmd":"session.new","args":{"workspace":"active"}}""")["id"]!.GetValue<string>();
+
+        var owner = WorkspacesIn(SendCommand("""{"cmd":"tree"}"""))
+            .Single(w => ((JsonArray)w!["sessions"]!).Any(s => string.Equals(s!["id"]!.GetValue<string>(), created, StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(fresh, owner!["id"]!.GetValue<string>(), ignoreCase: true);
+    }
+
+    [Fact]
+    public void WorkspaceSelectOfTheSelectionOwnerTakesTheTargetBackFromAFreshWorkspace()
+    {
+        var ownerId = WorkspacesIn(SendCommand("""{"cmd":"tree"}"""))
+            .Single(w => ((JsonArray)w!["sessions"]!).Count > 0)!["id"]!.GetValue<string>();
+        SendOk("""{"cmd":"workspace.new","args":{"name":"fresh"}}""");
+        SendOk($$"""{"cmd":"workspace.select","target":"{{ownerId}}"}""");
+        var created = SendOk("""{"cmd":"session.new","args":{"workspace":"active"}}""")["id"]!.GetValue<string>();
+
+        var owner = WorkspacesIn(SendCommand("""{"cmd":"tree"}"""))
+            .Single(w => ((JsonArray)w!["sessions"]!).Any(s => string.Equals(s!["id"]!.GetValue<string>(), created, StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(ownerId, owner!["id"]!.GetValue<string>(), ignoreCase: true);
+    }
+
     private static JsonArray WorkspacesIn(JsonObject response) =>
         (JsonArray)response["result"]!["tree"]!["workspaces"]!;
 

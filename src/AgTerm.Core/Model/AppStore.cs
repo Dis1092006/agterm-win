@@ -13,7 +13,29 @@ public sealed partial class AppStore
 {
     public List<Workspace> Workspaces { get; set; }
 
-    public Guid? SelectedSessionId { get; set; }
+    private Guid? _selectedSessionId;
+
+    /// <summary>A CHANGE drops the fresh workspace: close, removal, undo and reopen all reselect by
+    /// assigning here. Writing the same id again keeps it, because single-session navigation and
+    /// overlay --follow do that without moving the user.</summary>
+    public Guid? SelectedSessionId
+    {
+        get => _selectedSessionId;
+        set
+        {
+            if (_selectedSessionId != value) _freshWorkspaceId = null;
+            _selectedSessionId = value;
+        }
+    }
+
+    /// <summary>The workspace that holds the target without owning the selection: a foreground
+    /// create, or SelectWorkspace on an empty one. Live state, never saved.</summary>
+    private Guid? _freshWorkspaceId;
+
+    internal void ForgetFreshWorkspace(Guid workspaceId)
+    {
+        if (_freshWorkspaceId == workspaceId) _freshWorkspaceId = null;
+    }
 
     /// <summary>Transient sidebar multi-selection. Not persisted: it is UI command state, while
     /// SelectedSessionId remains the durable active terminal target.</summary>
@@ -199,12 +221,14 @@ public sealed partial class AppStore
     public Session? ActiveSession =>
         SelectedSessionId is { } id ? SessionWithId(id) : null;
 
-    /// <summary>The workspace a new session should land in: the selected session's workspace, else
-    /// the last workspace (null when there are no workspaces).</summary>
+    /// <summary>The workspace a new session should land in: a freshly created workspace, else the
+    /// selected session's workspace, else the last workspace (null when there are no workspaces).</summary>
     public Guid? CurrentWorkspaceId
     {
         get
         {
+            if (_freshWorkspaceId is { } fresh && Workspaces.Any(w => w.Id == fresh))
+                return fresh;
             if (SelectedSessionId is { } id && WorkspaceForSession(id) is { } workspace)
                 return workspace.Id;
             return Workspaces.Count > 0 ? Workspaces[^1].Id : null;
@@ -341,15 +365,37 @@ public sealed partial class AppStore
 
     /// <summary>Creates a workspace and appends it. When clearFocus (the default) it clears any
     /// active focus so the new (empty) workspace is immediately visible. Pass collapsed: true to
-    /// create it already collapsed in the sidebar (backs workspace.new --collapsed).</summary>
-    public Workspace AddWorkspace(string name, bool collapsed = false, bool clearFocus = true)
+    /// create it already collapsed in the sidebar (backs workspace.new --collapsed). The new
+    /// workspace becomes the current one until the selection moves when holdsTarget is true; null
+    /// follows clearFocus.</summary>
+    public Workspace AddWorkspace(string name, bool collapsed = false, bool clearFocus = true, bool? holdsTarget = null)
     {
         var workspace = new Workspace(TerminalText.Sanitized(name), isExpanded: !collapsed);
         Workspaces.Add(workspace);
         if (clearFocus) FocusedWorkspaceId = null;
+        if (holdsTarget ?? clearFocus) _freshWorkspaceId = workspace.Id;
         ScheduleTreeChanged();
         Save();
         return workspace;
+    }
+
+    /// <summary>Backs workspace.select. A workspace with sessions selects its first one and takes
+    /// the target back from a fresh workspace (the first session may already be the selection, which
+    /// alone would not move it). An empty workspace has nothing to select: the focus filter is
+    /// cleared if it hides it, and it becomes the target.</summary>
+    public bool SelectWorkspace(Guid workspaceId)
+    {
+        if (Workspaces.FirstOrDefault(w => w.Id == workspaceId) is not { } workspace) return false;
+        if (workspace.Sessions.FirstOrDefault() is { } first)
+        {
+            SelectSession(first.Id);
+            _freshWorkspaceId = null;
+            return true;
+        }
+        if (FocusedWorkspaceId is { } focused && focused != workspaceId)
+            SetFocusedWorkspace(null);
+        _freshWorkspaceId = workspaceId;
+        return true;
     }
 
     /// <summary>The first workspace whose name exactly equals name (case-sensitive, trimmed), or
@@ -366,7 +412,7 @@ public sealed partial class AppStore
     public Workspace? EnsureWorkspace(string name, bool clearFocus = true)
     {
         if (Session.TrimmedOrNull(TerminalText.Sanitized(name)) is not { } needle) return null;
-        return WorkspaceNamed(needle) ?? AddWorkspace(needle, clearFocus: clearFocus);
+        return WorkspaceNamed(needle) ?? AddWorkspace(needle, clearFocus: clearFocus, holdsTarget: clearFocus);
     }
 
     /// <summary>Creates a session in the given workspace and, when select is true (the default),
@@ -545,6 +591,7 @@ public sealed partial class AppStore
         }
         if (FocusedWorkspaceId == workspaceId) FocusedWorkspaceId = null; // the focused root is gone
         Workspaces.RemoveAt(index);
+        ForgetFreshWorkspace(workspaceId);
         if (removingActive)
         {
             var fallbackIndex = Math.Min(index, Workspaces.Count - 1);
@@ -813,6 +860,7 @@ public sealed partial class AppStore
     {
         if (FocusedWorkspaceId == id) return;
         FocusedWorkspaceId = id;
+        if (id is { } shown && _freshWorkspaceId is { } fresh && fresh != shown) _freshWorkspaceId = null;
         PruneSidebarSelection();
         Save();
     }
@@ -977,6 +1025,7 @@ public sealed partial class AppStore
     /// </summary>
     public void Restore(Snapshot snapshot, bool launchRestore = false)
     {
+        _freshWorkspaceId = null;
         // fold workspaces sharing an id into the first occurrence, and keep only the first snapshot
         // of any repeated session id, wherever it sits: a file written by a build that could
         // duplicate either stays unreachable past the first match otherwise, and re-saves the corruption.
