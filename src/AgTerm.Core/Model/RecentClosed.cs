@@ -162,7 +162,7 @@ public sealed class RecentClosedStore
             Directory.CreateDirectory(_directory);
             var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             File.WriteAllText(temp, ControlJson.Serialize(new RecentClosedState { Items = items.ToArray() }));
-            File.Move(temp, FilePath, overwrite: true);
+            AtomicFile.Replace(temp, FilePath);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

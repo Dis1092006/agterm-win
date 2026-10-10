@@ -104,7 +104,7 @@ public sealed class PersistenceStore
         Directory.CreateDirectory(_directory);
         var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         File.WriteAllText(temp, ControlJson.Serialize(snapshot));
-        File.Move(temp, FilePath, overwrite: true);
+        AtomicFile.Replace(temp, FilePath);
     }
 
     private static Snapshot Empty() => new() { Workspaces = Array.Empty<WorkspaceSnapshot>() };

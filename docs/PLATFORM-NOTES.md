@@ -432,6 +432,14 @@ That is a feature gap in the engine, not a parity divergence: the control API, t
 
 Claude Code is the case that motivated this: its newline-without-submit binding needs Shift+Enter to be distinguishable from Enter, and `claude /terminal-setup` cannot help, since it writes per-terminal config for a fixed list of known terminals and has no entry for this app. Supporting the protocol is not sufficient on its own, because the request has to come from the program: see the next section.
 
+## Saving a file while another process holds it
+
+Every stored file is written to a temp file in the same directory and renamed over the destination, so a crashed write leaves the old file rather than half of the new one. On Windows that rename fails with `UnauthorizedAccessException` ("Access to the path is denied") while any other process holds the destination open, even for reading: a reader with `FileShare.Read` is enough, measured directly.
+
+Nothing in this app opens those files twice. The holder is outside it, a virus scanner or the search indexer opening a file for a moment right after it is written, so the lock lasts a moment and the next attempt succeeds. `LiveApplicationHost.SaveIndexLocked` threw out of a test run that way, and the same pattern sat in `PersistenceStore`, `RecentClosed` and `SettingsStore`.
+
+`AtomicFile.Replace` retries the rename for 2 seconds, backing off from 10ms to 100ms, and rethrows if the lock outlasts that. A caller that could not store its state has to hear about it: `RecentClosed` already swallows these exceptions by design (upstream does too), while the other three propagate.
+
 ## Clipboard chords
 
 Upstream has no clipboard entry among the 41 builtin actions, and `parity/surface.json` confirms it: copy and paste exist only as the control commands `session.copy` and `session.paste`. On macOS the chords belong to Ghostty, which agterm runs inside. Here there is no such host, so a pane received no clipboard chord at all: Ctrl+V, Ctrl+Shift+C/V, Ctrl+Insert and Shift+Insert were dropped, and only Ctrl+C did anything, by sending 0x03.

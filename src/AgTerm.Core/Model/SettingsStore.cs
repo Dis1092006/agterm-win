@@ -41,7 +41,7 @@ public sealed class SettingsStore
         Directory.CreateDirectory(_directory);
         var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         File.WriteAllText(temp, ControlJson.Serialize(settings));
-        File.Move(temp, FilePath, overwrite: true);
+        AtomicFile.Replace(temp, FilePath);
     }
 
     private static AppSettings SeededDefault() => new() { Theme = AppSettings.DefaultTheme };

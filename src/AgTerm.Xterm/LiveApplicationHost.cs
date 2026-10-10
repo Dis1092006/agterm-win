@@ -1278,7 +1278,7 @@ public sealed class LiveApplicationHost : IDisposable
             Frontmost = _frontmostWindowId,
             Windows = _windows.ToArray(),
         }));
-        File.Move(temp, path, overwrite: true);
+        AgTerm.Core.Model.AtomicFile.Replace(temp, path);
     }
 
     private sealed record WindowsIndex
