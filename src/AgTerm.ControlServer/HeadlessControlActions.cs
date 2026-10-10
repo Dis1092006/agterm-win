@@ -168,8 +168,13 @@ public sealed class HeadlessControlActions : IControlActions
                                   Action<HeadlessThemeSnapshot>? themeChanged = null,
                                   Func<LiveNotificationRequest, bool>? notificationRequested = null,
                                   Action<LiveStatusNotificationRequest>? statusNotificationRequested = null,
-                                  Func<TerminalZoomTarget, bool>? zoomTargetAvailable = null)
+                                  Func<TerminalZoomTarget, bool>? zoomTargetAvailable = null,
+                                  PickController? pick = null,
+                                  PickRegistry? picks = null)
     {
+        Picks = picks ?? new PickRegistry();
+        Pick = pick ?? new PickController();
+        if (pick is null) Picks.Register(windowId, Pick);
         _store = store;
         _ring = ring;
         WindowId = windowId;
@@ -206,6 +211,10 @@ public sealed class HeadlessControlActions : IControlActions
     public TerminalZoomController Zoom { get; } = new();
 
     public HeadlessDashboard Dashboard { get; } = new();
+
+    public PickController Pick { get; }
+
+    public PickRegistry Picks { get; }
 
     public HeadlessThemeSlots Theme { get; } = new();
 
@@ -327,7 +336,8 @@ public sealed class HeadlessControlActions : IControlActions
                     ? Dashboard.Members.Select(m => m.ControlRef).ToArray() : null,
                 dashboardHighlighted: () => Dashboard.IsOpen ? Dashboard.Highlighted?.ControlRef : null,
                 dashboardFontSize: () => Dashboard.IsOpen ? Dashboard.AppliedFontSize : null,
-                dashboardFontMode: () => Dashboard.IsOpen ? FontModeWire(Dashboard.FontMode) : null);
+                dashboardFontMode: () => Dashboard.IsOpen ? FontModeWire(Dashboard.FontMode) : null,
+                pickPending: () => Pick.PendingId);
             return new ControlResponse { Ok = true, Result = new ControlResult { Tree = tree } };
         });
     }
@@ -1727,6 +1737,24 @@ public sealed class HeadlessControlActions : IControlActions
         _store.Save();
         return Ok();
     }
+
+    // MARK: - pick
+
+    public ControlResponse OpenPick(PendingPick pick, string? window, bool follow) =>
+        // follow (raise + take frontmost) needs the window controller, so the live application host
+        // applies it after this succeeds; the headless host has nothing to raise
+        ResolvePlacementStore(window, _ =>
+        {
+            if (Pick.Open(pick))
+                return new ControlResponse { Ok = true, Result = new ControlResult { Id = pick.Id } };
+            return Err(Pick.IsClosed ? PickRegistry.WindowNotOpenError : PickController.AlreadyPendingError);
+        });
+
+    public ControlResponse PickResult(string target, string? window) =>
+        window is null ? Picks.Result(target, null) : ResolveWindowId(window, id => Picks.Result(target, id));
+
+    public ControlResponse CancelPick(string target, string? window) =>
+        window is null ? Picks.Cancel(target, null) : ResolveWindowId(window, id => Picks.Cancel(target, id));
 
     // MARK: - window commands
     //

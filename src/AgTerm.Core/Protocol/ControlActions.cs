@@ -80,6 +80,9 @@ public interface IControlActions
     ControlResponse WindowZoom(string? target);
     ControlResponse WindowFullscreen(string? target);
     ControlResponse ClearRestoreCommands();
+    ControlResponse OpenPick(PendingPick pick, string? window, bool follow);
+    ControlResponse PickResult(string target, string? window);
+    ControlResponse CancelPick(string target, string? window);
 }
 
 public sealed record ControlSessionTypeOptions(string Text, bool Select, string? Pane);

@@ -96,6 +96,9 @@ public sealed class MockControlActions : IControlActions
         public sealed record WindowZoom(string? Target) : Call;
         public sealed record WindowFullscreen(string? Target) : Call;
         public sealed record RestoreClear : Call;
+        public sealed record PickOpen(PendingPick Pick, string? Window, bool Follow) : Call;
+        public sealed record PickResult(string Target, string? Window) : Call;
+        public sealed record PickCancel(string Target, string? Window) : Call;
     }
 
     public List<Call> Calls { get; } = new();
@@ -141,6 +144,9 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextWindowZoomResponse = new() { Ok = true };
     public ControlResponse NextWindowFullscreenResponse = new() { Ok = true };
     public ControlResponse NextRestoreClearResponse = new() { Ok = true };
+    public ControlResponse NextPickOpenResponse = new() { Ok = true };
+    public ControlResponse NextPickResultResponse = new() { Ok = true };
+    public ControlResponse NextPickCancelResponse = new() { Ok = true };
     public ControlResponse NextSessionRestoreResponse = new() { Ok = true };
 
     public ControlResponse ControlTree(string? window)
@@ -526,5 +532,23 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.RestoreClear());
         return NextRestoreClearResponse;
+    }
+
+    public ControlResponse OpenPick(PendingPick pick, string? window, bool follow)
+    {
+        Calls.Add(new Call.PickOpen(pick, window, follow));
+        return NextPickOpenResponse;
+    }
+
+    public ControlResponse PickResult(string target, string? window)
+    {
+        Calls.Add(new Call.PickResult(target, window));
+        return NextPickResultResponse;
+    }
+
+    public ControlResponse CancelPick(string target, string? window)
+    {
+        Calls.Add(new Call.PickCancel(target, window));
+        return NextPickCancelResponse;
     }
 }

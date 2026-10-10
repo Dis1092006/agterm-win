@@ -48,6 +48,73 @@ public sealed class HeadlessHostTests : IDisposable
 
     private ControlResponse Send(ControlRequest request) => _client.Send(request);
 
+    private static ControlRequest OpenPick(params string[] labels) => new()
+    {
+        Cmd = Command.PickOpen,
+        Args = new ControlArgs { Items = labels.Select(l => new ControlPickItem { Id = l, Label = l }).ToArray() },
+    };
+
+    [Fact]
+    public void PickOpenIsPendingAndShowsInTheTree()
+    {
+        var opened = Send(OpenPick("a", "b"));
+        Assert.True(opened.Ok, opened.Error);
+        var id = opened.Result!.Id!;
+
+        Assert.Equal(ControlPickResult.Pending(), Send(new ControlRequest { Cmd = Command.PickResult, Target = id }).Result!.Pick);
+        Assert.Equal(id, Send(new ControlRequest { Cmd = Command.Tree }).Result!.Tree!.PickPending);
+    }
+
+    [Fact]
+    public void SecondPickOpenIsRefusedAndKeepsTheFirst()
+    {
+        var first = Send(OpenPick("a")).Result!.Id!;
+        var second = Send(OpenPick("b"));
+
+        Assert.False(second.Ok);
+        Assert.Equal("pick already pending", second.Error);
+        Assert.Equal(first, Send(new ControlRequest { Cmd = Command.Tree }).Result!.Tree!.PickPending);
+    }
+
+    [Fact]
+    public void PickCancelResolvesCancelledAndClearsTheTree()
+    {
+        var id = Send(OpenPick("a")).Result!.Id!;
+
+        Assert.True(Send(new ControlRequest { Cmd = Command.PickCancel, Target = id }).Ok);
+
+        Assert.Equal(ControlPickResult.Cancelled(), Send(new ControlRequest { Cmd = Command.PickResult, Target = id }).Result!.Pick);
+        Assert.Null(Send(new ControlRequest { Cmd = Command.Tree }).Result!.Tree!.PickPending);
+    }
+
+    [Fact]
+    public void UnknownPickIdIsAnError()
+    {
+        Assert.Equal("unknown pick: nope", Send(new ControlRequest { Cmd = Command.PickResult, Target = "nope" }).Error);
+        Assert.Equal("unknown pick: nope", Send(new ControlRequest { Cmd = Command.PickCancel, Target = "nope" }).Error);
+    }
+
+    [Fact]
+    public void TheHostCanAnswerForTheUser()
+    {
+        var id = Send(OpenPick("a", "b")).Result!.Id!;
+
+        Assert.True(_host.Actions.Pick.Resolve(id, ControlPickResult.Picked("b", "b", 1)));
+
+        Assert.Equal(ControlPickResult.Picked("b", "b", 1), Send(new ControlRequest { Cmd = Command.PickResult, Target = id }).Result!.Pick);
+    }
+
+    [Fact]
+    public void PickOpenOnAnUnregisteredWindowSaysTheWindowIsNotOpen()
+    {
+        _host.Actions.Picks.Unregister(_host.WindowId);
+
+        var response = Send(OpenPick("a"));
+
+        Assert.False(response.Ok);
+        Assert.Equal(PickRegistry.WindowNotOpenError, response.Error);
+    }
+
     /// <summary>Creates a session over the pipe (creating its workspace by name when needed) and
     /// returns the new session id exactly as it came off the wire.</summary>
     private string NewSession(string workspaceName = "work")

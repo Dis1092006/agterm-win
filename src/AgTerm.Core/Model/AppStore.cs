@@ -253,7 +253,8 @@ public sealed partial class AppStore
                                    Func<string[]?>? dashboardMembers = null,
                                    Func<string?>? dashboardHighlighted = null,
                                    Func<double?>? dashboardFontSize = null,
-                                   Func<string?>? dashboardFontMode = null)
+                                   Func<string?>? dashboardFontMode = null,
+                                   Func<string?>? pickPending = null)
     {
         var activeId = SelectedSessionId;
         var activeWorkspaceId = activeId is { } id ? WorkspaceForSession(id)?.Id : null;
@@ -332,6 +333,7 @@ public sealed partial class AppStore
             DashboardHighlighted = dashboardHighlighted?.Invoke(),
             DashboardFontSize = dashboardFontSize?.Invoke(),
             DashboardFontMode = dashboardFontMode?.Invoke(),
+            PickPending = pickPending?.Invoke(),
         };
     }
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using AgTerm.Core.Model;
 
 namespace AgTerm.Core.Protocol;
@@ -54,6 +55,8 @@ public sealed class ControlDispatcher
                 return await DispatchWindowCommand(request);
             case Command.Dashboard:
                 return DispatchDashboard(request);
+            case Command.PickOpen or Command.PickResult or Command.PickCancel:
+                return DispatchPickCommand(request);
             case Command.DebugAppearance:
                 // UI-test-only seam handled host-side (out of the parity surface on Windows).
                 return null;
@@ -71,6 +74,66 @@ public sealed class ControlDispatcher
     /// session.text, font.*). It runs before the action, so a bad pane wins over target errors.</summary>
     private static ControlResponse? SurfacePaneRejection(string? raw) =>
         raw is not null && StatusPanes.FromWire(raw) is null ? Err($"invalid pane: {raw}") : null;
+
+    private const string InvalidPickItem = "invalid request: pick item requires id and label";
+
+    /// <summary>Port of upstream ControlDispatcher+Pick: host-free validation in upstream's order,
+    /// then the window-scoped state goes to the host.</summary>
+    private ControlResponse DispatchPickCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.PickOpen:
+            {
+                if (request.Args?.Items is not { } items)
+                    return Err("pick.open requires items");
+                var allowCustom = request.Args?.AllowCustom == true;
+                // an empty list is a text prompt, which only makes sense when a custom answer is accepted
+                if (items.Length == 0 && !allowCustom)
+                    return Err("pick.open requires at least one item");
+                if (items.Length > ControlPickItem.MaxItems)
+                    return Err($"too many items (max {ControlPickItem.MaxItems})");
+                // System.Text.Json binds an explicit null to a required string; Swift fails the decode
+                if (items.Any(item => item is null || item.Id is null || item.Label is null))
+                    return Err(InvalidPickItem);
+                if (items.Any(item => item.Label.Length == 0))
+                    return Err("pick item label must not be empty");
+                // Swift String equality treats canonically equivalent strings as equal
+                var ids = items.Select(item => item.Id.Normalize(NormalizationForm.FormC)).ToArray();
+                if (ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
+                    return Err("pick item ids must be unique");
+                if (items.Any(item => CommandRestore.HasControlCharacter(item.Label)
+                        || (item.Subtitle is { } subtitle && CommandRestore.HasControlCharacter(subtitle))))
+                    return Err("item text must not contain control characters");
+                string? selection = null;
+                if (request.Args?.Selection is { } wanted)
+                {
+                    var index = Array.IndexOf(ids, wanted.Normalize(NormalizationForm.FormC));
+                    if (index < 0)
+                        return Err("pick select must name an item id");
+                    selection = items[index].Id;
+                }
+                var pick = new PendingPick(
+                    Guid.NewGuid().ToString("D").ToUpperInvariant(),
+                    items,
+                    request.Args?.Prompt,
+                    request.Args?.Query,
+                    allowCustom,
+                    selection);
+                return _actions.OpenPick(pick, request.Args?.Window, request.Args?.Follow == true);
+            }
+            case Command.PickResult:
+                return request.Target is { } resultTarget
+                    ? _actions.PickResult(resultTarget, request.Args?.Window)
+                    : Err("pick.result requires a pick id");
+            case Command.PickCancel:
+                return request.Target is { } cancelTarget
+                    ? _actions.CancelPick(cancelTarget, request.Args?.Window)
+                    : Err("pick.cancel requires a pick id");
+            default:
+                throw new InvalidOperationException($"unexpected pick command: {request.Cmd}");
+        }
+    }
 
     private ControlResponse DispatchEventsRead(ControlRequest request)
     {
