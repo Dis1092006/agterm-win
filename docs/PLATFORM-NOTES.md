@@ -432,6 +432,16 @@ That is a feature gap in the engine, not a parity divergence: the control API, t
 
 Claude Code is the case that motivated this: its newline-without-submit binding needs Shift+Enter to be distinguishable from Enter, and `claude /terminal-setup` cannot help, since it writes per-terminal config for a fixed list of known terminals and has no entry for this app. Supporting the protocol is not sufficient on its own, because the request has to come from the program: see the next section.
 
+## Clipboard chords
+
+Upstream has no clipboard entry among the 41 builtin actions, and `parity/surface.json` confirms it: copy and paste exist only as the control commands `session.copy` and `session.paste`. On macOS the chords belong to Ghostty, which agterm runs inside. Here there is no such host, so a pane received no clipboard chord at all: Ctrl+V, Ctrl+Shift+C/V, Ctrl+Insert and Shift+Insert were dropped, and only Ctrl+C did anything, by sending 0x03.
+
+The chords are added in the pane, not in the keymap. Adding builtin actions would change the parity surface; the keymap grammar also has no `insert` key, so two of these chords cannot be written in it. They are handled in `openPane` instead, after the keymap, so a user binding on the same chord still wins.
+
+- **Ctrl+C copies only when there is a selection.** With nothing selected it falls through to 0x03, so interrupting a running program keeps working. `XtermPageLiveTests.Ctrl_c_without_a_selection_still_interrupts` pins that half.
+- **Ctrl+V, Ctrl+Shift+C, Ctrl+Shift+V, Ctrl+Insert and Shift+Insert always act on the clipboard.** This is what Windows Terminal and VS Code do.
+- **The host writes the clipboard, the page does not.** `navigator.clipboard.writeText` fails with `NotAllowedError` without a user gesture, and a key event dispatched by the engine does not count as one. Measured in the live WebView2: the page is a secure context and the API is present, and the write is still refused. A copy posts `copyRequested` with the selected text and `MainWindow` writes it, which mirrors the clipboard read that right-click paste already used.
+
 ## Terminal identification for spawned shells
 
 Upstream needs none of this. agterm runs on Ghostty, so a child process reads Ghostty's own `TERM=xterm-ghostty` and `TERM_PROGRAM=ghostty` and knows what it is talking to. Here the children are spawned by a WinUI app, and the app declared nothing: `AGTERM_PANE_ID` was the only variable added, so everything else was inherited from whatever started agterm-win. Launched from an IDE terminal, the shell reported that IDE. `TerminalIdentity` declares the identification, and `ConPtySession.RemoveEnvironment` can drop an inherited variable instead of only overwriting it.
@@ -469,6 +479,10 @@ What the name gives up is one performance optimization that was tied to `WT_SESS
 If a future program needs something else from the name, the question to ask first is whether it queries the terminal to confirm what the name claims. Any capability confirmed by a query hits the same wall, until ConPTY forwards queries or this port answers them itself.
 
 ## Assets must survive packaging, not only a build
+
+The app publishes as a directory, not a single file. `PublishSingleFile` produced a 220 MB exe that unpacked itself into `%TEMP%\.net\AgTerm.App\<bundle id>` before any code ran, and the id is per build, so each new build paid the unpack again and left the previous copy behind (1.4 GB across 8 directories on the development machine). Measured time from launch to window, on the same machine: 34.9 s for the first run of a build and 4.4 s afterwards, against 5.0 s and 1.0 s for a directory. The bundle costs on every launch, not only the first. `agtermctl` stays single-file: one small managed exe with nothing to unpack.
+
+The `ExcludeFromSingleFile` and `CopyToPublishDirectory` markings below still apply and are still required. A directory publish makes `AppContext.BaseDirectory` and `Environment.ProcessPath`'s directory the same folder, so both resolutions land in the right place; the markings are what keeps a single-file publish working if it is ever turned back on.
 
 The terminal page is not embedded in the assembly: WebView2 serves it with `MapVirtualHostToFolder(XtermAssets.Directory)`, which resolves to `AppContext.BaseDirectory\Assets` and needs real files on disk. Two separate things have to hold for that, and the published app satisfied neither for a while.
 

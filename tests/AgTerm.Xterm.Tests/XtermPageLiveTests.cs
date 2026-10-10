@@ -998,6 +998,79 @@ public class XtermPageLiveTests
     }
 
     /// <summary>
+    /// The clipboard chords Windows users expect. Ctrl+C keeps its terminal meaning: it only
+    /// copies when there is a selection to copy, and sends 0x03 otherwise, so interrupting a
+    /// running program still works. The browser clipboard API is unusable here - writeText fails
+    /// with NotAllowedError without a user gesture, and a key event dispatched by the engine is
+    /// not one - so a copy goes to the host the way the existing right-click paste does.
+    /// </summary>
+    [Theory]
+    [InlineData("c", true, false, "copy")]
+    [InlineData("v", true, false, "paste")]
+    [InlineData("c", true, true, "copy")]
+    [InlineData("v", true, true, "paste")]
+    [InlineData("Insert", true, false, "copy")]
+    [InlineData("Insert", false, true, "paste")]
+    public async Task Clipboard_chords_ask_the_host(string key, bool ctrl, bool shift, string want)
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-route"));
+
+        var copied = new List<string>();
+        var pasted = new List<string>();
+        page.CopyRequested += (_, text) => copied.Add(text);
+        page.PasteRequested += pasted.Add;
+
+        // a selection exists, so Ctrl+C copies instead of interrupting
+        await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("hello"));
+            return Task.FromResult(0);
+        });
+        await Task.Delay(150);
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.selectAll(\"clip-route\")"));
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            $"agterm.dispatchKey(\"clip-route\", {{key:'{key}', ctrlKey:{(ctrl ? "true" : "false")}, shiftKey:{(shift ? "true" : "false")}}})"));
+        await Task.Delay(250);
+
+        if (want == "copy")
+        {
+            Assert.Single(copied);
+            Assert.Contains("hello", copied[0]);
+            Assert.Empty(pasted);
+        }
+        else
+        {
+            Assert.Single(pasted);
+            Assert.Empty(copied);
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+C with nothing selected keeps interrupting the running program. This is the half of
+    /// the binding that must not regress: a terminal where Ctrl+C cannot send 0x03 is broken.
+    /// </summary>
+    [Fact]
+    public async Task Ctrl_c_without_a_selection_still_interrupts()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-sigint"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+        var copied = new List<string>();
+        page.CopyRequested += (_, text) => copied.Add(text);
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.dispatchKey(\"clip-sigint\", {key:'c', ctrlKey:true})"));
+        await Task.Delay(250);
+
+        Assert.Equal(["\u0003"], data);
+        Assert.Empty(copied);
+    }
+
+    /// <summary>
     /// Suspending win32-input-mode for the kitty protocol must last exactly as long as the request:
     /// an app that pops the stack (CSI &lt; u) goes back to the win32 key records mode 9001 asked
     /// for. Pins the restore, so the suspension cannot leak into the next program in the pane.

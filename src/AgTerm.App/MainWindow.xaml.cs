@@ -427,6 +427,7 @@ public sealed partial class MainWindow : Window
         var page = new XtermPage(new WinRtScriptHost(TerminalView.CoreWebView2));
         await page.InitializeAsync();
         page.PasteRequested += OnPagePasteRequested;
+        page.CopyRequested += OnPageCopyRequested;
         page.SplitResized += OnPageSplitResized;
         page.PaneFocusChanged += OnPagePaneFocusChanged;
         page.SearchUpdated += OnPageSearchUpdated;
@@ -1462,6 +1463,27 @@ public sealed partial class MainWindow : Window
         catch (Exception)
         {
             return null;
+        }
+    }
+
+    /// <summary>A pane asked for a copy. The page cannot write the clipboard itself: the browser
+    /// API refuses without a user gesture, and a key event the engine dispatched is not one.</summary>
+    private void OnPageCopyRequested(string paneToken, string text)
+    {
+        if (!_surfaces.ContainsKey(paneToken) || string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        try
+        {
+            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+            package.SetText(text);
+            Clipboard.SetContent(package);
+        }
+        catch (Exception)
+        {
+            // a clipboard another process holds open copies nothing, as the read side does
         }
     }
 

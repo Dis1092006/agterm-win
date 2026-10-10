@@ -120,6 +120,11 @@ public sealed class XtermPage
     /// <summary>Raised when the page requests host-side paste for a known pane id.</summary>
     public event Action<string>? PasteRequested;
 
+    /// <summary>A clipboard copy asked for from a pane: the pane id and the text to write. The
+    /// page cannot write the clipboard itself - the browser API refuses without a user gesture -
+    /// so the host does it.</summary>
+    public event Action<string, string>? CopyRequested;
+
     public event Action<string>? PaneFocusChanged;
 
     public event Action<string, string, double>? SplitResized;
@@ -343,6 +348,15 @@ public sealed class XtermPage
             return;
         }
 
+        if (msg?.Type == "copyRequested")
+        {
+            if (msg.PaneId is { } copyPaneId
+                && _terminals.ContainsKey(copyPaneId)
+                && msg.Text is { Length: > 0 } copyText)
+                CopyRequested?.Invoke(copyPaneId, copyText);
+            return;
+        }
+
         if (msg?.Type == "paneFocus")
         {
             if (msg.PaneId is { } focusedPaneId && _terminals.ContainsKey(focusedPaneId))
@@ -428,6 +442,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("leftPaneId")] public string? LeftPaneId { get; init; }
     [JsonPropertyName("rightPaneId")] public string? RightPaneId { get; init; }
     [JsonPropertyName("ratio")] public double? Ratio { get; init; }
+    [JsonPropertyName("text")] public string? Text { get; init; }
     [JsonPropertyName("needle")] public string? Needle { get; init; }
     [JsonPropertyName("count")] public int? Count { get; init; }
     [JsonPropertyName("selected")] public int? Selected { get; init; }

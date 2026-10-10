@@ -1715,6 +1715,27 @@ function openPane(paneId, opts) {
     true,
   );
 
+  // Clipboard chords, after the keymap so a user binding still wins. The browser clipboard API
+  // cannot serve a copy here: writeText throws NotAllowedError without a user gesture, and the
+  // engine's key event is not one, so the host does the write the way it already does the read
+  // for right-click paste. Ctrl+C keeps its terminal meaning when there is nothing to copy: it
+  // falls through to 0x03, so interrupting a running program still works.
+  const routeClipboardChord = (ev) => {
+    const insert = ev.key === "Insert";
+    const letter = ev.key.length === 1 ? ev.key.toLowerCase() : "";
+    const isCopy = (ev.ctrlKey && letter === "c") || (ev.ctrlKey && insert);
+    const isPaste = (ev.ctrlKey && letter === "v") || (ev.shiftKey && insert);
+    if (!isCopy && !isPaste) return false;
+    if (isPaste) {
+      post({ type: "pasteRequested", paneId });
+      return true;
+    }
+    const selection = pane.term.getSelection();
+    if (!selection) return false;
+    post({ type: "copyRequested", paneId, text: selection });
+    return true;
+  };
+
   // app hotkeys never reach the shell: a keydown matching the host-pushed chord table goes
   // back as a chord message instead (the host's KeybindMatcher dispatches it)
   term.attachCustomKeyEventHandler((ev) => {
@@ -1725,7 +1746,13 @@ function openPane(paneId, opts) {
       return false;
     }
     const key = normalizeKey(ev.key);
-    if (key === null) return true;
+    // Insert is not in the keymap grammar, so normalizeKey drops it: route the clipboard chords
+    // before that. A key the keymap can express is routed after it, so a user binding still wins.
+    if (key === null) {
+      if (!routeClipboardChord(ev)) return true;
+      if (ev.preventDefault) ev.preventDefault();
+      return false;
+    }
     const chord = {
       ctrl: ev.ctrlKey,
       alt: ev.altKey,
@@ -1758,6 +1785,7 @@ function openPane(paneId, opts) {
     } else if (!handled && !customWasArmed) {
       handled = processCustomChord(paneId, chord, true);
     }
+    if (!handled) handled = routeClipboardChord(ev);
     if (!handled) {
       return true;
     }
