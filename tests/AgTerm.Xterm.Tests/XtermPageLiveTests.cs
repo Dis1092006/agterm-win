@@ -955,6 +955,83 @@ public class XtermPageLiveTests
         Assert.Equal("false", mode9001);
     }
 
+    /// <summary>
+    /// Claude Code does not push the kitty protocol on its own: it sends CSI > 5 u followed by
+    /// CSI > 4 ; 2 m (modifyOtherKeys level 2) in one write, and pops both on exit. xterm.js has no
+    /// modifyOtherKeys support, so the trailing push is parsed as an unknown CSI and must not
+    /// disturb the kitty state the first sequence established. Pins the real byte sequence, with a
+    /// hardware-shaped event.code, because the two pushes only ever arrive together.
+    /// </summary>
+    [Fact]
+    public async Task Shift_enter_survives_the_modify_other_keys_push_that_follows_the_kitty_one()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("kitty-both"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+
+        await _webView.RunAsync(_ =>
+        {
+            // exactly what Claude Code writes on entry, in one chunk
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("\u001b[?9001h\u001b[<u\u001b[>5u\u001b[>4;2m"));
+            return Task.FromResult(0);
+        });
+        await Task.Delay(200);
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              const ev = new KeyboardEvent("keydown", {
+                key: "Enter", code: "Enter", shiftKey: true, cancelable: true });
+              Object.defineProperty(ev, "keyCode", { value: 13, configurable: true });
+              Object.defineProperty(ev, "which", { value: 13, configurable: true });
+              agterm.textareaFor("kitty-both").dispatchEvent(ev);
+              return true;
+            })()
+            """));
+
+        var deadline = Environment.TickCount64 + 5000;
+        while (data.Count < 1 && Environment.TickCount64 < deadline)
+            await Task.Delay(25);
+
+        Assert.Equal(["\u001b[13;2u"], data);
+    }
+
+    /// <summary>
+    /// Suspending win32-input-mode for the kitty protocol must last exactly as long as the request:
+    /// an app that pops the stack (CSI &lt; u) goes back to the win32 key records mode 9001 asked
+    /// for. Pins the restore, so the suspension cannot leak into the next program in the pane.
+    /// </summary>
+    [Fact]
+    public async Task Popping_the_kitty_stack_gives_win32_input_mode_back()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("kitty-pop"));
+
+        async Task FeedAsync(string vt) => await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes(vt));
+            return Task.FromResult(0);
+        });
+        async Task<string> Mode9001Async() => await _webView.RunAsync(
+            async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                "agterm.win32InputModeEncodes(\"kitty-pop\")"));
+
+        await FeedAsync("\u001b[?9001h");
+        await Task.Delay(200);
+        Assert.Equal("true", await Mode9001Async());
+
+        // the app asks for the kitty protocol: it outranks mode 9001 while the request stands
+        await FeedAsync("\u001b[>5u\u001b[>4;2m");
+        await Task.Delay(200);
+        Assert.Equal("false", await Mode9001Async());
+
+        // and pops it on exit
+        await FeedAsync("\u001b[<u");
+        await Task.Delay(200);
+        Assert.Equal("true", await Mode9001Async());
+    }
+
     private static RendererSettingsSnapshot MakeSnapshot(
         double fontSize = 14,
         bool screenReaderMode = false) =>

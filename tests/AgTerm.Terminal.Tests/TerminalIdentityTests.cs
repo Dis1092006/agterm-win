@@ -17,22 +17,31 @@ public class TerminalIdentityTests
     }
 
     [Fact]
-    public void Pane_environment_announces_a_windows_terminal_session()
+    public void Pane_environment_does_not_claim_to_be_windows_terminal()
     {
-        // WT_SESSION is how a Windows terminal is recognized by TUIs that special-case it;
-        // Claude Code reads it to decide it may push the kitty keyboard protocol, which is what
-        // makes Shift+Enter distinguishable from Enter.
-        var env = TerminalIdentity.PaneEnvironment("tok");
-        Assert.True(Guid.TryParse(env["WT_SESSION"], out var id), $"not a GUID: {env["WT_SESSION"]}");
-        Assert.NotEqual(Guid.Empty, id);
+        // WT_SESSION was declared to make Claude Code request the kitty keyboard protocol. It does
+        // the opposite: for terminal=windows-terminal it demands a CONFIRMED reply to CSI ? u
+        // before enabling extended keys, and ConPTY answers terminal queries itself instead of
+        // passing them through, so that reply never arrives and Shift+Enter stays a bare CR.
+        Assert.DoesNotContain("WT_SESSION", TerminalIdentity.PaneEnvironment("tok").Keys);
     }
 
     [Fact]
-    public void Each_pane_gets_its_own_session_id()
+    public void Pane_environment_declares_a_terminal_that_is_trusted_for_extended_keys()
     {
-        Assert.NotEqual(
-            TerminalIdentity.PaneEnvironment("a")["WT_SESSION"],
-            TerminalIdentity.PaneEnvironment("b")["WT_SESSION"]);
+        // Claude Code settles extendedKeys from the environment only for a name on its own short
+        // list, and pushes the kitty protocol on the same test. Leaving TERM_PROGRAM unset does
+        // not mean "no name": detection falls through to TERM, so the terminal became
+        // "xterm-256color", which is not on the list, and extendedKeys went off entirely.
+        Assert.Equal("ghostty", TerminalIdentity.PaneEnvironment("tok")["TERM_PROGRAM"]);
+    }
+
+    [Fact]
+    public void Inherited_windows_terminal_session_is_removed()
+    {
+        // launching agterm-win from Windows Terminal would otherwise leak its WT_SESSION into the
+        // child and reinstate the strict path
+        Assert.Contains("WT_SESSION", TerminalIdentity.RemovedVariables);
     }
 
     [Fact]
@@ -44,14 +53,15 @@ public class TerminalIdentityTests
     }
 
     [Fact]
-    public void Inherited_terminal_identification_is_removed()
+    public void Inherited_terminal_identification_is_overridden_and_its_version_removed()
     {
-        // TERM_PROGRAM is checked BEFORE WT_SESSION by the detection order Claude Code uses and
-        // is returned verbatim, so an inherited "zed" or "vscode" would win and the protocol
-        // would never be requested. Overwriting is not enough — it must be absent.
-        Assert.Contains("TERM_PROGRAM", TerminalIdentity.RemovedVariables);
+        // TERM_PROGRAM is declared, and an explicit extra of the same name beats what the child
+        // would inherit, so an inherited "zed" or "vscode" cannot win. TERM_PROGRAM_VERSION has no
+        // declared value to beat it with, so it has to be removed: left alone, the launcher's
+        // version would be read as this terminal's.
         Assert.Contains("TERM_PROGRAM_VERSION", TerminalIdentity.RemovedVariables);
-        Assert.DoesNotContain("TERM_PROGRAM", TerminalIdentity.PaneEnvironment("tok").Keys);
+        Assert.DoesNotContain("TERM_PROGRAM_VERSION", TerminalIdentity.PaneEnvironment("tok").Keys);
+        Assert.DoesNotContain("TERM_PROGRAM", TerminalIdentity.RemovedVariables);
     }
 
     [Fact]

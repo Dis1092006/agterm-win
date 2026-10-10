@@ -146,12 +146,14 @@ public class XtermPaneSurfaceTests
     }
 
     [Fact]
-    public async Task Shell_is_told_it_runs_in_a_windows_terminal_and_not_in_the_launcher()
+    public async Task Shell_is_told_the_declared_terminal_and_not_the_launchers()
     {
-        // the identification a TUI negotiates against: WT_SESSION present (Claude Code requires a
-        // recognized terminal before it will request the kitty keyboard protocol) and the
-        // launcher's TERM_PROGRAM gone, since it is read first and would win
+        // the identification a TUI negotiates against: TERM_PROGRAM declared (read first and
+        // returned verbatim, so it IS the terminal name), the launcher's value beaten, and an
+        // inherited WT_SESSION gone, since it would make Claude Code demand a CSI ? u reply that
+        // ConPTY never lets through (PLATFORM-NOTES).
         Environment.SetEnvironmentVariable("TERM_PROGRAM", "zed");
+        Environment.SetEnvironmentVariable("WT_SESSION", "inherited-from-the-launcher");
         try
         {
             using var surface = await OpenAsync();
@@ -162,12 +164,14 @@ public class XtermPaneSurfaceTests
             var screen = WaitForScreen(surface, "term=[xterm-256color]");
             var line = screen.Split('\n').Last(l => l.Contains("mark wt=[") && !l.Contains("echo mark"));
             Assert.DoesNotContain("prog=[zed]", line);
-            Assert.Contains("prog=[%TERM_PROGRAM%]", line); // removed, so never expanded
-            Assert.Matches(@"wt=\[[0-9a-fA-F-]{36}\]", line);
+            Assert.Contains("prog=[ghostty]", line); // declared, so the launcher's value loses
+            Assert.DoesNotContain("inherited-from-the-launcher", line);
+            Assert.Contains("wt=[%WT_SESSION%]", line); // removed, so never expanded
         }
         finally
         {
             Environment.SetEnvironmentVariable("TERM_PROGRAM", null);
+            Environment.SetEnvironmentVariable("WT_SESSION", null);
         }
     }
 

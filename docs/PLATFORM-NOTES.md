@@ -425,7 +425,8 @@ Upstream does not carry this. agterm draws on Ghostty, which implements the kitt
 That is a feature gap in the engine, not a parity divergence: the control API, the keymap grammar and the builtin actions are untouched. It is recorded here because the fix pins a prerelease.
 
 - **The core runs on a 6.1.0 beta.** `vtExtensions` (`kittyKeyboard`, `win32InputMode`) is the option that carries it, and 6.1.0-beta is the first release to have it. `src/AgTerm.Xterm/Assets/vendor/MANIFEST.md` holds the pins and explains why the addons sit at a lower beta number than the core.
-- **Both extensions are off by default in the engine, and both are enabled here.** `buildTerminalOptions` sets them for every pane. `win32InputMode` (`DECSET 9001`) is the ConPTY-native way to report full key events and helps TUI input generally; it is independent of the kitty protocol, and the engine prefers it when an app enables both.
+- **Both extensions are off by default in the engine, and both are enabled here.** `buildTerminalOptions` sets them for every pane. `win32InputMode` (`DECSET 9001`) is the ConPTY-native way to report full key events and helps TUI input generally.
+- **The kitty protocol outranks win32-input-mode here, and the engine does the opposite.** `KeyboardService.evaluateKeyDown` checks win32-input-mode first and returns before the kitty path, so an app that enables both gets win32 key records. Claude Code enables both: it writes `DECSET 9001` at startup and then `CSI > 5 u`. Measured from the real `claude.exe` through a pseudoconsole, the first bytes out are `ESC[?9001h`, then `ESC[<u ESC[>5u ESC[>4;2m`. Shift+Enter then left as `ESC[13;28;13;1;16;1_`, which Claude Code does not read as Shift+Enter, so it submitted the prompt instead of inserting a newline. Ctrl+Enter worked throughout, because it survives as a win32 record the app does understand - that asymmetry is what identifies this bug. `openPane` watches the kitty push and pop and clears the `win32InputMode` option while a request is in effect, so the pane encodes what the app asked for. The mode itself stays set: `DECSET 9001` is the app's, not ours, and the option is what the engine consults. `XtermPageLiveTests.Popping_the_kitty_stack_gives_win32_input_mode_back` pins the restore.
 - **An app that never asks keeps the old encoding.** The protocol is opt-in over the wire: the engine answers `CSI ? u`, tracks the stack pushed by `CSI > flags u` and popped by `CSI < n u`, and reports CSI u only while a request is in effect. Enabling the option changes nothing for a program that does not use it. `XtermPageLiveTests.Shift_enter_reports_kitty_csi_u_while_the_keyboard_protocol_is_pushed` pins all three states: CR before the push, `ESC [13;2u` for Shift+Enter while pushed, CR again after the pop.
 - **Host chord interception runs first and is unaffected.** `attachCustomKeyEventHandler` sees the DOM event before any encoding, so which chords reach the pty is still decided by the keymap, not by the protocol.
 
@@ -433,16 +434,39 @@ Claude Code is the case that motivated this: its newline-without-submit binding 
 
 ## Terminal identification for spawned shells
 
-Upstream needs none of this. agterm runs on Ghostty, so a child process reads Ghostty's own `TERM=xterm-ghostty` and `TERM_PROGRAM=ghostty` and knows what it is talking to. Here the children are spawned by a WinUI app, and the app declared nothing: `AGTERM_PANE_ID` was the only variable added, so everything else was inherited from whatever started agterm-win. Launched from an IDE terminal, the shell reported that IDE. `TerminalIdentity` now declares the identification, and `ConPtySession.RemoveEnvironment` can drop an inherited variable instead of only overwriting it.
+Upstream needs none of this. agterm runs on Ghostty, so a child process reads Ghostty's own `TERM=xterm-ghostty` and `TERM_PROGRAM=ghostty` and knows what it is talking to. Here the children are spawned by a WinUI app, and the app declared nothing: `AGTERM_PANE_ID` was the only variable added, so everything else was inherited from whatever started agterm-win. Launched from an IDE terminal, the shell reported that IDE. `TerminalIdentity` declares the identification, and `ConPtySession.RemoveEnvironment` can drop an inherited variable instead of only overwriting it.
 
-This matters beyond cosmetics because programs gate features on it. Claude Code requests the kitty keyboard protocol only for a terminal it recognizes, from a fixed list; for anything else it sends no request at all, and Shift+Enter stays CR no matter what the engine supports. So the engine change in the previous section only takes effect once the terminal identifies itself.
-
-- **`WT_SESSION` is set to a fresh GUID per pane.** It announces a Windows terminal session, which is the honest claim for a ConPTY-backed terminal on Windows, and a real one issues a session id per tab. It is also the only identification that does not require a version: a program claiming to be Ghostty or iTerm gets compared against `TERM_PROGRAM_VERSION` for feature support, which would mean publishing a fake version number and keeping it plausible as those terminals release.
 - **`TERM` is declared as `xterm-256color`.** What xterm.js implements. Inheriting left it describing a different emulator, or missing entirely when the app was launched from Explorer.
-- **`TERM_PROGRAM` and `TERM_PROGRAM_VERSION` are removed, not overwritten.** Detection generally tests whether `TERM_PROGRAM` is set before falling through to Windows signals, and returns its value verbatim, so an inherited name wins over `WT_SESSION` no matter what else is declared. Removal is why `RemoveEnvironment` exists; an explicit extra of the same name still wins, so the two can be combined.
-- **The cost is one performance optimization.** Claude Code skips its `DECSTBM` scrolling-region path when `WT_SESSION` is set and repaints more instead, presumably from conhost history. Correct either way, and it does not disable the progress reporting (`OSC 9;4`) that xterm.js has no support for — that is suppressed for Windows terminal sessions, which suits this port.
+- **`TERM_PROGRAM` is declared as `ghostty`.** See below: this is an allowlist key, not a description.
+- **`TERM_PROGRAM_VERSION` and `WT_SESSION` are removed.** `TERM_PROGRAM_VERSION` has no declared value to beat it with, so an inherited version would be read as this terminal's. `WT_SESSION` is read later in the same detection chain and reinstates the Windows Terminal path on its own.
 
-This is identification chosen to satisfy other programs' allowlists, so it is a claim about behaviour rather than provenance: any program reading `WT_SESSION` will conclude it is inside Windows Terminal. No divergence was found for the features involved, but the mechanism deserves the same scrutiny if a future program gates something else on the same variable.
+### The terminal name is an allowlist key
+
+Programs gate keyboard features on the terminal name, and Claude Code is the case this port had to satisfy: without the kitty keyboard protocol, Enter and Shift+Enter both reach the pty as CR and newline-without-submit cannot work.
+
+It settles `extendedKeys` from the environment only for a name on a fixed list - `iTerm.app`, `kitty`, `WezTerm`, `ghostty`, `tmux`, `windows-terminal`, `WarpTerminal` - and pushes the protocol (`CSI > 5 u`) on the same test. Two findings, both measured rather than reasoned:
+
+**`windows-terminal` is the one entry that costs the feature.** For that name specifically, Claude Code additionally requires a CONFIRMED reply to the kitty query `CSI ? u`. A default does not count, only an answer that came back. That answer never arrives, and not because of the engine. ConPTY answers terminal queries itself instead of forwarding them:
+
+| Query | Answer when fed straight into xterm.js | Answer through ConPTY |
+|---|---|---|
+| `CSI > 0 q` (XTVERSION) | `DCS >\|xterm.js(6.1.0-beta.304) ST` | none |
+| `CSI ? u` (kitty) | `CSI ? 0 u` | none |
+| `CSI c` (primary DA) | `CSI ? 1 ; 2 c` | `CSI ? 61 ; 6 ; 7 ; 21 ; 22 ; 23 ; 24 ; 28 ; 32 ; 42 c` |
+
+The third row is the tell: a reply arrives, but it is conhost's signature, not xterm.js's. conhost answers what it knows and silently swallows what it does not. `PSEUDOCONSOLE_PASSTHROUGH_MODE` (flag `0x8`) was tried on build 26200 and changed none of this.
+
+**Declaring no name is not an option.** The detection chain ends with `return process.env.TERM`, so with `TERM_PROGRAM` unset the terminal was named `xterm-256color`, which is not on the list, and `extendedKeys` went off entirely - worse than the Windows Terminal claim it replaced.
+
+That leaves the list. `ghostty` is the entry this port can carry: the others are gated on a version string that would have to be published and kept plausible as those terminals release, and `windows-terminal` is the dead end above.
+
+This is a claim about behaviour, not provenance, and it is narrower than it looks. The protocol stays opt-in over the wire: the engine reports `CSI u` only while an application has pushed the stack, so a program that never asks keeps the legacy encoding. Capabilities that are probe-confirmed rather than name-granted - kitty graphics, pixel mouse - stay off on their own, because the probe gets no reply through ConPTY.
+
+The engine side is not in question: feeding either `CSI > 5 u` (what Claude Code sends) or `CSI > 1 u` into a live pane makes a following Shift+Enter arrive as `ESC [13;2u` instead of CR. Both are covered by live tests.
+
+What the name gives up is one performance optimization that was tied to `WT_SESSION`: Claude Code skipped its `DECSTBM` scrolling-region path for a Windows terminal session and repainted more instead. Correct either way.
+
+If a future program needs something else from the name, the question to ask first is whether it queries the terminal to confirm what the name claims. Any capability confirmed by a query hits the same wall, until ConPTY forwards queries or this port answers them itself.
 
 ## Assets must survive packaging, not only a build
 

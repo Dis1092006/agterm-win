@@ -1775,6 +1775,33 @@ function openPane(paneId, opts) {
     if (programmaticFocusPaneId !== paneId) emitPaneFocus(paneId);
   });
 
+  // The pushed kitty flags live on the engine's core service; 0 means nothing is pushed.
+  const kittyFlags = () => term._core?.coreService?.kittyKeyboard?.flags ?? 0;
+
+  // An app that pushes the kitty keyboard protocol has asked for CSI u encoding, but the engine
+  // checks win32-input-mode first and answers from event.code, so Shift+Enter would leave as a
+  // win32 key record the app does not read. Claude Code enables both (DECSET 9001, then CSI > 5 u)
+  // and loses Shift+Enter that way. Suspending mode 9001 while a kitty request is in effect keeps
+  // the encoding the app actually asked for; popping the stack restores it.
+  // Returning false leaves the sequences to xterm's own handlers.
+  const syncKeyboardPrecedence = () => {
+    const kittyRequested = kittyFlags() > 0;
+    if (kittyRequested === pane.kittySuspendedWin32) return;
+    pane.kittySuspendedWin32 = kittyRequested;
+    term.options.vtExtensions = {
+      kittyKeyboard: true,
+      win32InputMode: !kittyRequested,
+    };
+  };
+  term.parser.registerCsiHandler({ prefix: ">", final: "u" }, () => {
+    queueMicrotask(syncKeyboardPrecedence);
+    return false;
+  });
+  term.parser.registerCsiHandler({ prefix: "<", final: "u" }, () => {
+    queueMicrotask(syncKeyboardPrecedence);
+    return false;
+  });
+
   // OSC 0/1/2 → session title (manual VT parsing is banned; xterm's handler is the source)
   term.onTitleChange((title) => post({ type: "title", paneId, title }));
 
@@ -2105,7 +2132,13 @@ window.agterm = {
   },
   // test-only: the pane's real textarea, so a test can dispatch an event it built itself
   textareaFor: (paneId) => withPane(paneId, (p) => p.term.textarea),
-  // test-only: is DECSET 9001 (win32-input-mode) active? it outranks the kitty protocol
+  // test-only: does win32-input-mode still decide the encoding? mode 9001 stays set while the
+  // kitty protocol is pushed, so the option is what the engine actually consults.
+  win32InputModeEncodes: (paneId) =>
+    withPane(paneId, (p) => !!p.term.options.vtExtensions?.win32InputMode
+      && !!p.term.modes.win32InputMode),
+  // test-only: is DECSET 9001 set? the app sets it; whether it decides the encoding is
+  // win32InputModeEncodes above
   win32InputModeActive: (paneId) =>
     withPane(paneId, (p) => !!p.term.modes.win32InputMode),
   // test-only: run a synthetic keydown through the real xterm key path (chord interception).
