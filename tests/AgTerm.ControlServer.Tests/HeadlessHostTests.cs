@@ -271,6 +271,23 @@ public sealed class HeadlessHostTests : IDisposable
     }
 
     [Fact]
+    public void PasteSelectAllAndCopyOnAnUnrealizedPaneReportNotRealized()
+    {
+        var id = NewSession();
+        var parked = new FakeSurface { Realized = false, ScreenText = "x", Selection = "stale" };
+        _host.Store.SessionWithId(Guid.Parse(id))!.Surface = parked;
+
+        foreach (var cmd in new[] { Command.SessionPaste, Command.SessionSelectAll, Command.SessionCopy })
+        {
+            var response = Send(new ControlRequest { Cmd = cmd, Target = id });
+            Assert.False(response.Ok, $"{cmd} must not answer ok for a pane with no terminal");
+            Assert.Equal("session not realized", response.Error);
+        }
+        Assert.Equal(0, parked.PasteCount);
+        Assert.Equal(0, parked.SelectAllCount);
+    }
+
+    [Fact]
     public void WindowZoomReturnsThePinnedHeadlessError()
     {
         var response = Send(new ControlRequest { Cmd = Command.WindowZoom });

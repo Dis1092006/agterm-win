@@ -527,3 +527,4 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - `session.type`, `session.text`, `font.inc|dec|reset` report `invalid pane: X` from the dispatcher, before target resolution (upstream `b3ef1baf`). The aliases upstream added with horizontal splits (`eb29d556`) are not adopted.
 - `session.overlay.open` refuses `--size-percent` outside 1..100 in the dispatcher and in the CLI, where it was clamped (upstream `94c509bf`, `c9c9b81e`).
 - `session type --stdin` and `quick type --stdin` read raw bytes and refuse invalid UTF-8 with `stdin must be valid UTF-8` (upstream `7b8f63cf`). A leading BOM is kept as U+FEFF; what Swift does with it is not verified.
+- `session.paste`, `session.selectall` and `session.copy` answer `session not realized` when the pane has no terminal behind it: a pending realize or stopped output (upstream `9f145925`).

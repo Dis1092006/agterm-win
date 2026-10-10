@@ -23,6 +23,8 @@ public sealed class PendingTerminalSurface : IHeadlessSurface
 
     public string? SelectedText => null;
 
+    public bool IsRealized => false;
+
     public void SelectAll()
     {
     }

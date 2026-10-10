@@ -144,6 +144,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
     public string? ReadScreenText(bool all, int? lines) =>
         OnUi(() => Pane.Terminal.ReadTextAsync(all, lines));
 
+    public bool IsRealized => !IsOutputStopped;
+
     public string? SelectedText =>
         OnUi(() => Pane.Terminal.GetSelectionAsync()) is { Length: > 0 } text ? text : null;
 

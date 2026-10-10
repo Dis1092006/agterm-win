@@ -11,6 +11,7 @@ namespace AgTerm.ControlServer;
 ///  - Inject         ↔ GhosttySurfaceView.inject(text:)        (session.type / quick.type)
 ///  - ReadScreenText ↔ readScreenText(all:lines:)              (session.text / quick.text)
 ///  - SelectedText   ↔ readSelection()                         (session.copy)
+///  - IsRealized     ↔ GhosttySurfaceView.isRealized            (session.copy / session.selectall)
 ///  - SelectAll      ↔ performBindingAction("select_all")      (session.selectall)
 ///  - Paste          ↔ performBindingAction("paste_from_clipboard") (session.paste)
 ///  - PerformBindingAction ↔ performBindingAction(_:) with a Bool result (font.inc/dec/reset)
@@ -38,6 +39,10 @@ public interface IHeadlessSurface : ITerminalSurface
 
     /// <summary>Run a named libghostty binding action (the font arms). False = not realized.</summary>
     bool PerformBindingAction(string action);
+
+    /// <summary>False while the pane has no terminal behind it (pending realize, output stopped).
+    /// session.selectall and session.copy check it; Paste reports the same state by returning false.</summary>
+    bool IsRealized => true;
 }
 
 /// <summary>
@@ -78,6 +83,8 @@ public sealed class FakeSurface : IHeadlessSurface
     public int SelectAllCount { get; private set; }
 
     public string? SelectedText => Selection;
+
+    public bool IsRealized => Realized;
 
     public bool Inject(string text)
     {

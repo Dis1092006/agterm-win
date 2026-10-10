@@ -1210,7 +1210,7 @@ public sealed class HeadlessControlActions : IControlActions
         {
             // addressableSurface, not Surface: it must resolve the SAME pane session.selectall acted
             // on, including a promoted split survivor.
-            if (store.SessionWithId(id)?.AddressableSurface is not IHeadlessSurface surface)
+            if (store.SessionWithId(id)?.AddressableSurface is not IHeadlessSurface surface || !surface.IsRealized)
                 return Err("session not realized");
             var text = surface.SelectedText;
             if (string.IsNullOrEmpty(text))
@@ -1223,18 +1223,22 @@ public sealed class HeadlessControlActions : IControlActions
         SurfaceBindingAction(target, window, surface => surface.Paste());
 
     public ControlResponse SelectAllSession(string? target, string? window) =>
-        SurfaceBindingAction(target, window, surface => surface.SelectAll());
+        SurfaceBindingAction(target, window, surface =>
+        {
+            if (!surface.IsRealized) return false;
+            surface.SelectAll();
+            return true;
+        });
 
     /// <summary>Port of the upstream surfaceBindingAction: run the action on the session's
-    /// addressable surface; a never-shown session (no attached surface) errors. The action's own
-    /// result is deliberately ignored, matching upstream (only the font arm checks it).</summary>
-    private ControlResponse SurfaceBindingAction(string? target, string? window, Action<IHeadlessSurface> action)
+    /// addressable surface. A never-shown session (no attached surface) and an action that
+    /// reports false both answer "session not realized".</summary>
+    private ControlResponse SurfaceBindingAction(string? target, string? window, Func<IHeadlessSurface, bool> action)
     {
         return ResolveSession(target, window, (store, id) =>
         {
-            if (store.SessionWithId(id)?.AddressableSurface is not IHeadlessSurface surface)
+            if (store.SessionWithId(id)?.AddressableSurface is not IHeadlessSurface surface || !action(surface))
                 return Err("session not realized");
-            action(surface);
             return OkId(id);
         });
     }
