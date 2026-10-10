@@ -67,6 +67,11 @@ public sealed class ControlDispatcher
     private static ControlResponse? NulRejection(string text) =>
         text.Contains('\0') ? Err("text must not contain a NUL byte") : null;
 
+    /// <summary>The --pane check of the commands that act on one terminal (session.type,
+    /// session.text, font.*). It runs before the action, so a bad pane wins over target errors.</summary>
+    private static ControlResponse? SurfacePaneRejection(string? raw) =>
+        raw is not null && StatusPanes.FromWire(raw) is null ? Err($"invalid pane: {raw}") : null;
+
     private ControlResponse DispatchEventsRead(ControlRequest request)
     {
         var args = request.Args;
@@ -392,6 +397,8 @@ public sealed class ControlDispatcher
                     return Err("session.type requires text");
                 if (NulRejection(text) is { } nul)
                     return nul;
+                if (SurfacePaneRejection(request.Args?.Pane) is { } badPane)
+                    return badPane;
                 return await _actions.TypeSession(request.Target, request.Args?.Window,
                     new ControlSessionTypeOptions(text,
                         Select: request.Args?.Select ?? false,
@@ -451,14 +458,11 @@ public sealed class ControlDispatcher
         switch (request.Cmd)
         {
             case Command.FontInc:
-                return _actions.Font(request.Target, request.Args?.Window,
-                    request.Args?.Pane, "increase_font_size:1");
+                return DispatchFont(request, "increase_font_size:1");
             case Command.FontDec:
-                return _actions.Font(request.Target, request.Args?.Window,
-                    request.Args?.Pane, "decrease_font_size:1");
+                return DispatchFont(request, "decrease_font_size:1");
             case Command.FontReset:
-                return _actions.Font(request.Target, request.Args?.Window,
-                    request.Args?.Pane, "reset_font_size");
+                return DispatchFont(request, "reset_font_size");
             case Command.Quick:
                 return _actions.SetQuickTerminal(request.Args?.Mode);
             case Command.KeymapReload:
@@ -596,6 +600,13 @@ public sealed class ControlDispatcher
             new ControlSessionBackgroundOptions(watermark));
     }
 
+    private ControlResponse DispatchFont(ControlRequest request, string action)
+    {
+        if (SurfacePaneRejection(request.Args?.Pane) is { } badPane)
+            return badPane;
+        return _actions.Font(request.Target, request.Args?.Window, request.Args?.Pane, action);
+    }
+
     private ControlResponse DispatchSessionText(ControlRequest request)
     {
         var all = request.Args?.All ?? false;
@@ -604,6 +615,8 @@ public sealed class ControlDispatcher
             return Err("use either --all or --lines, not both");
         if (lines is <= 0)
             return Err("--lines must be greater than 0");
+        if (SurfacePaneRejection(request.Args?.Pane) is { } badPane)
+            return badPane;
         return _actions.ReadSessionText(request.Target, request.Args?.Window,
             new ControlSessionTextOptions(request.Args?.Pane, all, lines));
     }

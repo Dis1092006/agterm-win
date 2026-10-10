@@ -1524,6 +1524,60 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task PaneTakingCommandsRejectAnUnknownPaneWithoutCallingTheAction()
+    {
+        var requests = new[]
+        {
+            new ControlRequest { Cmd = Command.SessionType, Target = "s", Args = new ControlArgs { Text = "x", Pane = "middle" } },
+            new ControlRequest { Cmd = Command.SessionText, Target = "s", Args = new ControlArgs { Pane = "middle" } },
+            new ControlRequest { Cmd = Command.FontInc, Target = "s", Args = new ControlArgs { Pane = "middle" } },
+            new ControlRequest { Cmd = Command.FontDec, Target = "s", Args = new ControlArgs { Pane = "middle" } },
+            new ControlRequest { Cmd = Command.FontReset, Target = "s", Args = new ControlArgs { Pane = "middle" } },
+        };
+        foreach (var request in requests)
+        {
+            var actions = new MockControlActions();
+            var dispatcher = new ControlDispatcher(actions);
+
+            var response = await dispatcher.Dispatch(request);
+
+            ExpectResponse(Err("invalid pane: middle"), response);
+            Assert.Empty(actions.Calls);
+        }
+    }
+
+    [Fact]
+    public async Task SessionTypeReportsNulBeforeAnUnknownPane()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = "s",
+            Args = new ControlArgs { Text = "a\0b", Pane = "middle" },
+        });
+
+        ExpectResponse(Err("text must not contain a NUL byte"), response);
+    }
+
+    [Fact]
+    public async Task SessionTextReportsAnExtentErrorBeforeAPaneOne()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionText, Target = "s",
+            Args = new ControlArgs { Pane = "middle", All = true, Lines = 5 },
+        });
+
+        ExpectResponse(Err("use either --all or --lines, not both"), response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
     public async Task SessionTypeRoutesParsedOptionsAndEchoesActionResponse()
     {
         var actions = new MockControlActions();
