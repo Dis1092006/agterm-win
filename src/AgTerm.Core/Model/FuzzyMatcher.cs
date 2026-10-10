@@ -84,7 +84,7 @@ public static class FuzzyMatcher
         var substringIndex = target.IndexOf(term, StringComparison.Ordinal);
         if (substringIndex >= 0)
         {
-            return 5 + CountTextElements(target.AsSpan(0, substringIndex));
+            return 5 + Math.Min(CountTextElements(target.AsSpan(0, substringIndex)), 34);
         }
 
         var termElements = TextElements(term);

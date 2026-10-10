@@ -107,4 +107,23 @@ public sealed class FuzzyMatcherTests
 
         Assert.Equal(["Panel Split"], ranked);
     }
+
+    [Fact]
+    public void Substring_in_one_target_ranks_above_subsequence_in_another()
+    {
+        // Regression for upstream #371: the literal "stem" at offset 43 used to score 48 and rank
+        // below /opt/steam's scattered subsequence at 46.
+        const string stems = "~/Music/Ableton/Exports/2026/album/bounces/stems";
+
+        var ranked = FuzzyMatcher.Rank("stem", new[] { "/opt/steam", stems }, item => new[] { item });
+
+        Assert.Equal(new[] { stems, "/opt/steam" }, ranked);
+    }
+
+    [Fact]
+    public void Substring_band_caps_at_thirty_nine()
+    {
+        Assert.Equal(39, FuzzyMatcher.Score("z", new string('a', 40) + "z"));
+        Assert.Equal(39, FuzzyMatcher.Score("z", new string('a', 80) + "z"));
+    }
 }
