@@ -137,7 +137,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
     public bool Inject(string text)
     {
         if (IsOutputStopped) return false;
-        Pane.Pty.WriteText(KeystrokeText.ToPtyInput(text));
+        KeystrokeText.Write(text, Pane.Pty.WriteText, Thread.Sleep);
         return true;
     }
 
