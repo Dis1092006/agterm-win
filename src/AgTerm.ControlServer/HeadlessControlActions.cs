@@ -945,6 +945,8 @@ public sealed class HeadlessControlActions : IControlActions
         if (_store.SessionWithId(surfaceId.SessionId) is null)
             return Err($"no such surface: {surfaceId.RawValue}");
         var zoomTarget = new TerminalZoomTarget.Session(surfaceId.SessionId, surfaceId.Surface);
+        var want = mode.DesiredValue(Zoom.Target == zoomTarget);
+        if (want && Zoom.Target != zoomTarget && Pick.PendingModalError is { } pickError) return Err(pickError);
         // hide is idempotent: skip the availability check for off — the desired end state holds.
         if (mode != ControlToggleMode.Off
             && !IsZoomTargetAvailable(zoomTarget))
@@ -956,6 +958,8 @@ public sealed class HeadlessControlActions : IControlActions
     private ControlResponse SetActiveSurfaceZoom(string? window, ControlToggleMode mode)
     {
         if (ResolveWindowGate(window) is { } error) return error;
+        if (Zoom.Target is null && mode != ControlToggleMode.Off && Pick.PendingModalError is { } pickError)
+            return Err(pickError);
         TerminalZoomTarget effectiveTarget;
         if (Zoom.Target is { } current)
         {
@@ -1051,6 +1055,7 @@ public sealed class HeadlessControlActions : IControlActions
                     _dashboardChanged?.Invoke();
                 return Ok();
             }
+            if (Pick.PendingModalError is { } pickError) return Err(pickError);
             var sessionIds = new List<Guid>();
             var unresolved = new List<string>();
             if (mru)
@@ -1289,6 +1294,7 @@ public sealed class HeadlessControlActions : IControlActions
             }
             return OkId(id);
         }
+        if (Pick.PendingModalError is { } pickError) return Err(pickError);
         if (Zoom.Target is not null)
             return Err("terminal zoom active");
 
@@ -1668,6 +1674,7 @@ public sealed class HeadlessControlActions : IControlActions
         if (ControlToggleModes.Parse(mode, onToken: "show", offToken: "hide") is not { } parsedMode)
             return Err($"invalid quick mode: {mode ?? "toggle"}");
         var want = parsedMode.DesiredValue(Quick.Visible);
+        if (want && Pick.PendingModalError is { } pickError) return Err(pickError);
         if (Zoom.Target is not null)
         {
             // a script must always be able to DISMISS the quick terminal: hiding un-zooms a zoomed

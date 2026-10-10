@@ -115,6 +115,34 @@ public sealed class HeadlessHostTests : IDisposable
         Assert.Equal(PickRegistry.WindowNotOpenError, response.Error);
     }
 
+    [Fact]
+    public void PendingPickRefusesCoversButAllowsDismissals()
+    {
+        var session = NewSession();
+        Send(OpenPick("a"));
+
+        Assert.Equal("pick pending", Send(new ControlRequest { Cmd = Command.Quick, Args = new ControlArgs { Mode = "show" } }).Error);
+        Assert.True(Send(new ControlRequest { Cmd = Command.Quick, Args = new ControlArgs { Mode = "hide" } }).Ok);
+
+        Assert.Equal("pick pending", Send(new ControlRequest { Cmd = Command.SurfaceZoom, Args = new ControlArgs { Mode = "show" } }).Error);
+        Assert.True(Send(new ControlRequest { Cmd = Command.SurfaceZoom, Args = new ControlArgs { Mode = "hide" } }).Ok);
+
+        Assert.Equal("pick pending", Send(new ControlRequest { Cmd = Command.Dashboard, Args = new ControlArgs { Targets = new[] { session } } }).Error);
+        Assert.True(Send(new ControlRequest { Cmd = Command.Dashboard, Args = new ControlArgs { Close = true } }).Ok);
+    }
+
+    [Fact]
+    public void PendingPickRefusesSearchNavigationButAllowsClose()
+    {
+        var session = NewSession();
+        _host.Store.SessionWithId(Guid.Parse(session))!.Surface = new FakeSurface { ScreenText = "needle" };
+        Send(OpenPick("a"));
+
+        Assert.Equal("pick pending", Send(new ControlRequest { Cmd = Command.SessionSearch, Target = session, Args = new ControlArgs { Text = "needle" } }).Error);
+        Assert.Equal("pick pending", Send(new ControlRequest { Cmd = Command.SessionSearch, Target = session, Args = new ControlArgs { To = "next" } }).Error);
+        Assert.True(Send(new ControlRequest { Cmd = Command.SessionSearch, Target = session, Args = new ControlArgs { To = "close" } }).Ok);
+    }
+
     /// <summary>Creates a session over the pipe (creating its workspace by name when needed) and
     /// returns the new session id exactly as it came off the wire.</summary>
     private string NewSession(string workspaceName = "work")
