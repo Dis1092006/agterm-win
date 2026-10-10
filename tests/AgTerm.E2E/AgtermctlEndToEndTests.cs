@@ -13,6 +13,25 @@ namespace AgTerm.E2E;
 public class AgtermctlEndToEndTests : ControlApiTestCase
 {
     [Fact]
+    public async Task Pick_waits_for_the_answer_and_prints_it()
+    {
+        var stdout = new StringWriter();
+        var run = Task.Run(() => RunCtlWithStdin(new[] { "pick" }, "alpha" + Environment.NewLine + "beta" + Environment.NewLine, stdout));
+        string? id = null;
+        for (var i = 0; i < 200 && id is null; i++)
+        {
+            id = Host.Actions.Pick.PendingId;
+            if (id is null) await Task.Delay(25);
+        }
+        Assert.NotNull(id);
+
+        Host.Actions.Pick.Resolve(id!, AgTerm.Core.Protocol.ControlPickResult.Picked("beta", "beta", 1));
+
+        Assert.Equal(0, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("{\"result\":\"picked\",\"id\":\"beta\",\"label\":\"beta\",\"index\":1}", stdout.ToString().Trim());
+    }
+
+    [Fact]
     public void TreeSessionNewStatusAndEventsRoundTripThroughTheCli()
     {
         // session new prints the fresh id (a create command echoes result.id).

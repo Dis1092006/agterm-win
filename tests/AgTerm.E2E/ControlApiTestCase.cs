@@ -89,6 +89,30 @@ public abstract class ControlApiTestCase : IDisposable
         return (exit, stdout.ToString(), stderr.ToString());
     }
 
+    /// <summary>RunCtl for a command that reads its items from stdin (pick): the parsed command gets
+    /// the given text as UTF-8 bytes. Takes the writer so a test can read output while the run blocks.</summary>
+    protected int RunCtlWithStdin(string[] argv, string stdin, TextWriter stdout)
+    {
+        var parsed = (AgTerm.Cli.PickCommands.Open)AgTerm.Cli.Agtermctl.ParseAsRoot(argv);
+        var command = new AgTerm.Cli.PickCommands.Open
+        {
+            Prompt = parsed.Prompt,
+            Query = parsed.Query,
+            Select = parsed.Select,
+            AllowCustom = parsed.AllowCustom,
+            Follow = parsed.Follow,
+            NoBlock = parsed.NoBlock,
+            Client = parsed.Client,
+            StdinStream = () => new MemoryStream(Encoding.UTF8.GetBytes(stdin)),
+        };
+        return command.Execute(new AgTerm.Cli.CliEnvironment
+        {
+            GetEnv = key => key == "AGTERM_CONTROL_SOCKET" ? Host.PipeName : null,
+            Out = stdout,
+            Error = new StringWriter(),
+        });
+    }
+
     private static string ReadLine(PipeStream pipe)
     {
         var buffer = new MemoryStream();

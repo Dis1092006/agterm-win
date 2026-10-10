@@ -75,6 +75,104 @@ internal static class PickStdin
     }
 }
 
+/// <summary>Port of upstream's pick ModalCommandRunner: open, then poll pick.result by id until a
+/// terminal outcome. The server never blocks, so other clients keep working while a user decides.</summary>
+internal static class PickRunner
+{
+    public static TimeSpan PollDelay(int pendingPolls) =>
+        pendingPolls < 10 ? TimeSpan.FromSeconds(0.1) : TimeSpan.FromSeconds(0.5);
+
+    public static int ExitCode(ControlPickOutcome outcome) => outcome switch
+    {
+        ControlPickOutcome.Picked or ControlPickOutcome.Custom => 0,
+        ControlPickOutcome.Cancelled => 2,
+        _ => 1,
+    };
+
+    public static int RunOpen(CliEnvironment env, IConnectionOptions options, ControlRequest open, bool noBlock)
+    {
+        var pipe = options.PipeName(env.GetEnv);
+        var opened = env.Send(pipe, open);
+        if (!opened.Ok)
+        {
+            ClientOutput.PrintResponse(env, opened, options.Json);
+            return 1;
+        }
+        if (opened.Result?.Id is not { } id)
+        {
+            env.Error.WriteLine("error: pick.open result missing id");
+            return 1;
+        }
+        if (noBlock)
+        {
+            env.Out.WriteLine(ControlJson.Serialize(new ControlResult { Id = id }));
+            return 0;
+        }
+
+        for (var pendingPolls = 0; ; pendingPolls++)
+        {
+            ControlResponse polled;
+            try
+            {
+                // no window: the id is global, so a frontmost change cannot make the poll miss it
+                polled = env.Send(pipe, new ControlRequest { Cmd = WireCommand.PickResult, Target = id });
+            }
+            catch (AgTerm.ControlServer.PipeClientException)
+            {
+                CancelBestEffort(env, pipe, id);
+                throw;
+            }
+            if (!polled.Ok)
+            {
+                // the server no longer has the pick, so there is nothing to cancel
+                ClientOutput.PrintResponse(env, polled, options.Json);
+                return 1;
+            }
+            if (polled.Result?.Pick is not { } result)
+            {
+                env.Error.WriteLine("error: pick.result missing result");
+                CancelBestEffort(env, pipe, id);
+                return 1;
+            }
+            if (result.Result != ControlPickOutcome.Pending)
+            {
+                env.Out.WriteLine(ControlJson.Serialize(result));
+                return ExitCode(result.Result);
+            }
+            env.Sleep(PollDelay(pendingPolls));
+        }
+    }
+
+    public static int PrintResult(CliEnvironment env, IConnectionOptions options, ControlRequest request)
+    {
+        var response = env.Send(options.PipeName(env.GetEnv), request);
+        if (!response.Ok)
+        {
+            ClientOutput.PrintResponse(env, response, options.Json);
+            return 1;
+        }
+        if (response.Result?.Pick is not { } result)
+        {
+            env.Error.WriteLine("error: pick.result missing result");
+            return 1;
+        }
+        env.Out.WriteLine(ControlJson.Serialize(result));
+        return ExitCode(result.Result);
+    }
+
+    private static void CancelBestEffort(CliEnvironment env, string pipe, string id)
+    {
+        try
+        {
+            env.Send(pipe, new ControlRequest { Cmd = WireCommand.PickCancel, Target = id });
+        }
+        catch (AgTerm.ControlServer.PipeClientException)
+        {
+            // the transport already failed once; the caller rethrows the original failure
+        }
+    }
+}
+
 internal static class PickCommands
 {
     /// <summary>`agtermctl pick [open]`: show a picker in agterm, wait for the answer, print it.
@@ -95,6 +193,8 @@ internal static class PickCommands
         public Func<Stream> StdinStream { get; init; } = Console.OpenStandardInput;
 
         public ControlRequest MakeRequest() => MakeRequest(TypedStdin.ReadAll(StdinStream()));
+
+        public int Execute(CliEnvironment env) => PickRunner.RunOpen(env, Options, MakeRequest(), NoBlock);
 
         internal ControlRequest MakeRequest(byte[] stdin) => new()
         {
@@ -124,6 +224,8 @@ internal static class PickCommands
             Target = Id,
             Args = Client.WithWindow(),
         };
+
+        public int Execute(CliEnvironment env) => PickRunner.PrintResult(env, Options, MakeRequest());
     }
 
     /// <summary>`agtermctl pick cancel ID`: close a pending picker as cancelled.</summary>
