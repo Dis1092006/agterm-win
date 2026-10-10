@@ -539,3 +539,9 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - Upstream quotes a captured command for its POSIX shell. The port types one only when each argument is made of letters, digits, spaces and `_ - . / \ : + ~` (`WindowsCommandLine.IsInertForShells`, following upstream `131dfc61`), because the line is typed into pwsh or cmd and CreateProcess quoting does not protect it. A command with `=` or `,` (for example `--opt=value`) is not replayed and the pane starts a plain shell.
 - `window.select` makes the window frontmost for routing even when Windows refuses to activate it for a background caller (upstream `28cad2c1` takes frontmost the same way).
 - Palette fuzzy ranking caps a substring match at `5 + min(offset, 34)`, under the subsequence floor of 40 (upstream `2c8ad9f1`).
+
+## Upstream features adopted beyond the pin
+
+New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `7df70fe`. `parity/adopted.json` lists them for the parity tests.
+
+- `pick` (`pick.open`, `pick.result`, `pick.cancel`, `tree.pickPending`): the native picker a script drives through `agtermctl pick` (upstream `6b6323ed`, `33cd0872`, `d9da472e`). Design: `docs/superpowers/specs/2026-10-10-pick-design.md`.

@@ -7,34 +7,34 @@ namespace AgTerm.Core.Tests.Protocol;
 public class CommandTests
 {
     [Fact]
-    public void AllWireStringsFromParitySurfaceRoundTrip()
+    public void AllWireStringsFromPinAndAdoptedRoundTrip()
     {
-        using var doc = JsonDocument.Parse(File.ReadAllText(Repo.File("parity/surface.json")));
-        var wires = doc.RootElement.GetProperty("control").GetProperty("commands")
-            .EnumerateArray().Select(c => c.GetProperty("wire").GetString()!).ToList();
+        var wires = ParitySurface.Pin("commands").Concat(ParitySurface.Adopted("commands")).ToList();
 
-        Assert.Equal(66, wires.Count);
+        Assert.Equal(69, wires.Count);
         foreach (var wire in wires)
         {
             var cmd = JsonSerializer.Deserialize<Command>($"\"{wire}\"", ControlJson.Options);
-            var encoded = JsonSerializer.Serialize(cmd, ControlJson.Options);
-            Assert.Equal($"\"{wire}\"", encoded);
+            Assert.Equal($"\"{wire}\"", JsonSerializer.Serialize(cmd, ControlJson.Options));
         }
     }
 
     [Fact]
-    public void EnumCoversExactlyTheSurfaceCommandSet()
+    public void EnumCoversExactlyPinPlusAdoptedCommands()
     {
-        using var doc = JsonDocument.Parse(File.ReadAllText(Repo.File("parity/surface.json")));
-        var wires = doc.RootElement.GetProperty("control").GetProperty("commands")
-            .EnumerateArray().Select(c => c.GetProperty("wire").GetString()!)
+        var expected = ParitySurface.Pin("commands").Concat(ParitySurface.Adopted("commands"))
             .OrderBy(w => w, StringComparer.Ordinal).ToList();
-
         var enumWires = Enum.GetValues<Command>()
             .Select(c => JsonSerializer.Deserialize<string>(JsonSerializer.Serialize(c, ControlJson.Options))!)
             .OrderBy(w => w, StringComparer.Ordinal).ToList();
 
-        Assert.Equal(wires, enumWires);
+        Assert.Equal(expected, enumWires);
+    }
+
+    [Fact]
+    public void EveryAdoptedCommandExistsUpstream()
+    {
+        Assert.All(ParitySurface.Adopted("commands"), wire => Assert.Contains(wire, ParitySurface.Upstream("commands")));
     }
 
     [Theory]

@@ -172,6 +172,27 @@ public sealed record ControlArgs
     [JsonPropertyName("follow")]
     public bool? Follow { get; init; }
 
+    /// <summary>pick.open choices. An empty array is sent as [] (an itemless prompt with allowCustom).</summary>
+    [JsonPropertyName("items")]
+    public ControlPickItem[]? Items { get; init; }
+
+    /// <summary>pick.open placeholder of the query field.</summary>
+    [JsonPropertyName("prompt")]
+    public string? Prompt { get; init; }
+
+    /// <summary>pick.open initial text of the query field.</summary>
+    [JsonPropertyName("query")]
+    public string? Query { get; init; }
+
+    /// <summary>pick.open: accept an unmatched non-blank query as a custom answer.</summary>
+    [JsonPropertyName("allowCustom")]
+    public bool? AllowCustom { get; init; }
+
+    /// <summary>pick.open item id highlighted on open (CLI --select). Its own field because select is
+    /// session.type's Bool.</summary>
+    [JsonPropertyName("selection")]
+    public string? Selection { get; init; }
+
     /// <summary>Target window (id / prefix / "active" = frontmost) for session/workspace/tree/font
     /// commands.</summary>
     [JsonPropertyName("window")]

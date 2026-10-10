@@ -1,0 +1,21 @@
+{
+  "comment": "Upstream commands and fields taken beyond the parity pin 7df70fe. Each entry names the upstream commit it follows. Parity tests check: port = parity/surface.json + this file, and every entry exists in docs/upstream/surface-v0.36.0.json where that snapshot covers the section.",
+  "commands": [
+    { "wire": "pick.open", "upstream": "6b6323ed" },
+    { "wire": "pick.result", "upstream": "6b6323ed" },
+    { "wire": "pick.cancel", "upstream": "6b6323ed" }
+  ],
+  "args": [
+    { "name": "items", "upstream": "6b6323ed" },
+    { "name": "prompt", "upstream": "6b6323ed" },
+    { "name": "query", "upstream": "33cd0872" },
+    { "name": "allowCustom", "upstream": "6b6323ed" },
+    { "name": "selection", "upstream": "d9da472e" }
+  ],
+  "result": [
+    { "name": "pick", "upstream": "6b6323ed" }
+  ],
+  "tree": [
+    { "name": "pickPending", "upstream": "6b6323ed" }
+  ]
+}

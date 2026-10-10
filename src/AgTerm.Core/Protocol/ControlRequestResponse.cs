@@ -89,6 +89,10 @@ public sealed record ControlResult
     /// <summary>A page from the app-run event ring, present for events.read success and cursor errors.</summary>
     [JsonPropertyName("events")]
     public ControlEventBatch? Events { get; init; }
+
+    /// <summary>pick.result payload.</summary>
+    [JsonPropertyName("pick")]
+    public ControlPickResult? Pick { get; init; }
 }
 
 /// <summary>

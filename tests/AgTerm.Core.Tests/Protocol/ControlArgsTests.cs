@@ -14,7 +14,9 @@ public class ControlArgsTests
         Repeats = true, Pane = "s", PaneId = "s", Ratio = 0.5, RatioDelta = 0.5, All = true,
         Lines = 3, To = "s", After = "s", Before = "s", Run = "s", Kinds = new[] { "a" }, Limit = 3,
         Title = "s", Body = "s", Command = "s", Wait = true, SizePercent = 3, Full = true,
-        Follow = true, Window = "s", Width = 3, Height = 3, X = 3, Y = 3, Display = 3,
+        Follow = true,
+        Items = new[] { new ControlPickItem { Id = "a", Label = "A" } }, Prompt = "s", Query = "s", AllowCustom = true, Selection = "s",
+        Window = "s", Width = 3, Height = 3, X = 3, Y = 3, Display = 3,
         Status = "s", Blink = true, AutoReset = true, Sound = "s", Light = "s", Dark = "s",
         Close = true, FontSize = 12.5, AutoSize = true, Mru = true,
     };
@@ -32,16 +34,22 @@ public class ControlArgsTests
     }
 
     [Fact]
-    public void PropertyNamesMatchParitySurfaceByteForByteAndInOrder()
+    public void PropertyNamesMatchPinPlusAdoptedInUpstreamOrder()
     {
-        using var doc = JsonDocument.Parse(File.ReadAllText(Repo.File("parity/surface.json")));
-        var expected = doc.RootElement.GetProperty("control").GetProperty("args")
-            .EnumerateArray().Select(a => a.GetProperty("name").GetString()!).ToList();
+        Assert.All(ParitySurface.Pin("args"), name => Assert.Contains(name, ParitySurface.Upstream("args")));
+        Assert.All(ParitySurface.Adopted("args"), name => Assert.Contains(name, ParitySurface.Upstream("args")));
 
         using var serialized = JsonDocument.Parse(ControlJson.Serialize(AllFieldsSet()));
         var actual = serialized.RootElement.EnumerateObject().Select(p => p.Name).ToList();
 
-        Assert.Equal(expected, actual);
+        Assert.Equal(ParitySurface.Expected("args", "args"), actual);
+    }
+
+    [Fact]
+    public void EmptyItemsAreSentDistinctFromAbsentItems()
+    {
+        Assert.Equal("{\"items\":[]}", ControlJson.Serialize(new ControlArgs { Items = Array.Empty<ControlPickItem>() }));
+        Assert.Equal("{}", ControlJson.Serialize(new ControlArgs()));
     }
 
     [Fact]

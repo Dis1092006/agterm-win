@@ -200,6 +200,10 @@ public sealed record ControlTree
     /// <summary>The dashboard's font mode: auto | fixed | untouched; null when no dashboard is open.</summary>
     [JsonPropertyName("dashboardFontMode")]
     public string? DashboardFontMode { get; init; }
+
+    /// <summary>The pending pick id of the projected window; null when none.</summary>
+    [JsonPropertyName("pickPending")]
+    public string? PickPending { get; init; }
 }
 
 /// <summary>
