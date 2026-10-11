@@ -16,7 +16,8 @@ public sealed record PendingPick(
 /// oldest answer, not the oldest transfer.</summary>
 public sealed record ResolvedPick(string Id, ControlPickResult Result, long Sequence);
 
-/// <summary>Port of upstream PickController: the window's modal slot and its retained results.
+/// <summary>Port of upstream PickController: the window's modal slot, held by a pick or a GUI
+/// question, and the retained pick results.
 /// The control dispatch thread opens and reads it, the UI thread resolves it.</summary>
 public sealed class PickController
 {
@@ -26,14 +27,35 @@ public sealed class PickController
 
     public const string AlreadyPendingError = "pick already pending";
     public const string PendingError = "pick pending";
+    public const string AskAlreadyPendingError = "ask already pending";
+    public const string AskPendingError = "ask pending";
 
     private static long s_sequence;
     private readonly object _gate = new();
     private readonly List<ResolvedPick> _recent = new();
     private PendingPick? _pending;
+    private PendingAsk? _pendingAsk;
     private bool _closed;
 
+    public PickController() : this(new AskRegistry())
+    {
+    }
+
+    /// <summary>asks is the app-wide registry a GUI question registers in.</summary>
+    public PickController(AskRegistry asks)
+    {
+        ArgumentNullException.ThrowIfNull(asks);
+        Asks = asks;
+    }
+
     public event Action? Changed;
+
+    public AskRegistry Asks { get; }
+
+    public PendingAsk? PendingAsk
+    {
+        get { lock (_gate) return _pendingAsk; }
+    }
 
     public PendingPick? Pending
     {
@@ -49,17 +71,34 @@ public sealed class PickController
 
     public string? PendingId => Pending?.Id;
 
-    public bool ModalPending => Pending is not null;
+    public bool ModalPending
+    {
+        get { lock (_gate) return _pending is not null || _pendingAsk is not null; }
+    }
 
     /// <summary>The error a control command gets while the slot is taken, or null when free.</summary>
-    public string? PendingModalError => ModalPending ? PendingError : null;
+    public string? PendingModalError
+    {
+        get
+        {
+            lock (_gate)
+                return _pendingAsk is not null ? AskPendingError : _pending is not null ? PendingError : null;
+        }
+    }
+
+    /// <summary>The error a refused pick.open or ask.open answers: upstream names what holds the
+    /// slot, not what the caller asked for.</summary>
+    public string SlotTakenError
+    {
+        get { lock (_gate) return _pendingAsk is not null ? AskAlreadyPendingError : AlreadyPendingError; }
+    }
 
     public bool Open(PendingPick pick)
     {
         ArgumentNullException.ThrowIfNull(pick);
         lock (_gate)
         {
-            if (_closed || _pending is not null) return false;
+            if (_closed || _pending is not null || _pendingAsk is not null) return false;
             _pending = pick;
         }
         Changed?.Invoke();
@@ -82,6 +121,48 @@ public sealed class PickController
 
     public bool Cancel(string pickId) => Resolve(pickId, ControlPickResult.Cancelled());
 
+    /// <summary>Registers the question and takes the slot in one step, so a poll can never find the
+    /// id in neither place.</summary>
+    public bool OpenAsk(PendingAsk ask, Guid windowId)
+    {
+        ArgumentNullException.ThrowIfNull(ask);
+        lock (_gate)
+        {
+            if (_closed || _pending is not null || _pendingAsk is not null) return false;
+            if (!Asks.Register(ask.Id, new AskOwner.Window(windowId))) return false;
+            _pendingAsk = ask;
+        }
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>Records the outcome when askId is still the pending question; a stale id or a
+    /// pending outcome is ignored, so a late UI answer cannot overwrite an ask.cancel.</summary>
+    public bool ResolveAsk(string askId, ControlAskResult outcome)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        lock (_gate)
+        {
+            if (!FinishAskLocked(askId, outcome)) return false;
+        }
+        Changed?.Invoke();
+        return true;
+    }
+
+    public bool CancelAsk(string askId) => ResolveAsk(askId, ControlAskResult.Cancelled());
+
+    /// <summary>The user's dismissal (Esc, the close_session chord), kept apart from an
+    /// administrative cancel.</summary>
+    public bool EscapeAsk(string askId) => ResolveAsk(askId, ControlAskResult.Escaped());
+
+    private bool FinishAskLocked(string askId, ControlAskResult outcome)
+    {
+        if (_pendingAsk?.Id != askId || outcome.Result == ControlAskOutcome.Pending) return false;
+        Asks.Retain(askId, outcome);
+        _pendingAsk = null;
+        return true;
+    }
+
     public ControlPickResult? Result(string pickId)
     {
         lock (_gate)
@@ -94,6 +175,7 @@ public sealed class PickController
     internal void CancelPending()
     {
         if (PendingId is { } id) Cancel(id);
+        if (PendingAsk is { } ask) CancelAsk(ask.Id);
     }
 
     /// <summary>Closes the controller and cancels its pending pick in one step. Changed is not raised
@@ -104,9 +186,15 @@ public sealed class PickController
         lock (_gate)
         {
             _closed = true;
-            if (_pending is not { } pending) return false;
-            FinishLocked(pending.Id, ControlPickResult.Cancelled());
-            return true;
+            var changed = false;
+            if (_pending is { } pending)
+            {
+                FinishLocked(pending.Id, ControlPickResult.Cancelled());
+                changed = true;
+            }
+            if (_pendingAsk is { } ask)
+                changed |= FinishAskLocked(ask.Id, ControlAskResult.Cancelled());
+            return changed;
         }
     }
 
@@ -140,6 +228,20 @@ public sealed class PickRegistry
     private readonly object _gate = new();
     private readonly Dictionary<Guid, PickController> _controllers = new();
     private readonly List<(Guid WindowId, ResolvedPick Pick)> _retained = new();
+
+    public PickRegistry() : this(new AskRegistry())
+    {
+    }
+
+    public PickRegistry(AskRegistry asks)
+    {
+        ArgumentNullException.ThrowIfNull(asks);
+        Asks = asks;
+    }
+
+    /// <summary>The app-wide question registry. Every window's PickController and AppStore use this
+    /// one instance, so ask.result finds a question in any window.</summary>
+    public AskRegistry Asks { get; }
 
     public void Register(Guid windowId, PickController controller)
     {
