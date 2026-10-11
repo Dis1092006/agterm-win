@@ -36,6 +36,9 @@
     <Compile Include="..\..\src\AgTerm.App\PaletteAutoFollowLease.cs" Link="App\PaletteAutoFollowLease.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteItemViewModel.cs" Link="App\PaletteItemViewModel.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteKeys.cs" Link="App\PaletteKeys.cs" />
+    <Compile Include="..\..\src\AgTerm.App\AskPanelLayout.cs" Link="App\AskPanelLayout.cs" />
+    <Compile Include="..\..\src\AgTerm.App\AskKeys.cs" Link="App\AskKeys.cs" />
+    <Compile Include="..\..\src\AgTerm.App\AskAnchorGeometry.cs" Link="App\AskAnchorGeometry.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteLayout.cs" Link="App\PaletteLayout.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteOpenOptions.cs" Link="App\PaletteOpenOptions.cs" />
     <Compile Include="..\..\src\AgTerm.App\PickPalette.cs" Link="App\PickPalette.cs" />
