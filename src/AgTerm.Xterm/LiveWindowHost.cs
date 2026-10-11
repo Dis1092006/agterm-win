@@ -36,7 +36,6 @@ public sealed class LiveWindowHost
         WindowId = windowId;
         Picks = picks ?? new PickRegistry();
         Pick = new PickController();
-        Picks.Register(WindowId, Pick);
         _windowName = windowName;
         Ring = ring;
         _stateDirectory = stateDirectory;
@@ -77,6 +76,8 @@ public sealed class LiveWindowHost
 
         Actions = CreateActions();
         _dispatcher = new ControlDispatcher(Actions);
+        // Last, so pick.open cannot reach a window whose store and actions are still being built.
+        Picks.Register(WindowId, Pick);
     }
 
     public Guid WindowId { get; }

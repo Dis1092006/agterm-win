@@ -987,6 +987,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         application.Dispose();
 
         Assert.Null(pick.Pending);
+        Assert.True(pick.IsClosed, "a pick.open still in flight must find the window closed.");
     }
 
     [Fact]
@@ -1001,6 +1002,23 @@ public sealed class LiveWindowControlE2ETests : IDisposable
 
         Assert.True(client.Send(OpenPickRequest(window: secondId.ToString("D"), follow: true)).Ok);
 
+        Assert.Equal(secondId, application.ActiveWindowId);
+    }
+
+    [Fact]
+    public void Pick_open_with_follow_still_answers_when_the_activation_is_refused()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController { ActivateError = new InvalidOperationException("refused") });
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var response = client.Send(OpenPickRequest(window: secondId.ToString("D"), follow: true));
+
+        Assert.True(response.Ok, response.Error);
+        Assert.NotNull(response.Result!.Id);
         Assert.Equal(secondId, application.ActiveWindowId);
     }
 
@@ -1152,6 +1170,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public Dictionary<Guid, LiveWindowPresentation> Presentations { get; } = new();
         public int DisplayCount { get; set; } = 1;
         public Exception? OpenError { get; set; }
+        public Exception? ActivateError { get; set; }
         public Action<Guid>? Activated { get; set; }
         public Func<Guid, Task>? Closed { get; set; }
 
@@ -1167,6 +1186,8 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public Task ActivateWindowAsync(Guid windowId, CancellationToken cancellationToken)
         {
             ActivationRequests.Add(windowId);
+            if (ActivateError is not null)
+                return Task.FromException(ActivateError);
             Activated?.Invoke(windowId);
             return Task.CompletedTask;
         }

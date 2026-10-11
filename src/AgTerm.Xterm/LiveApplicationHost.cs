@@ -328,6 +328,7 @@ public sealed class LiveApplicationHost : IDisposable
     {
         LiveControlHost[] attachments;
         LiveWindowHost[] windows;
+        Guid[] windowIds;
         lock (_gate)
         {
             if (_disposed)
@@ -335,12 +336,14 @@ public sealed class LiveApplicationHost : IDisposable
             _disposed = true;
             attachments = _attachments.Values.ToArray();
             windows = _openWindows.Values.ToArray();
+            windowIds = _openWindows.Keys.ToArray();
             foreach (var window in windows) window.StopDispatching();
             _attachments.Clear();
             _attachingWindows.Clear();
         }
 
-        _picks.CancelAll();
+        // Unregister closes each controller as well as cancelling it, so a pick.open already in flight fails.
+        foreach (var windowId in windowIds) _picks.Unregister(windowId);
         _server.Stop();
         foreach (var attachment in attachments) attachment.Dispose();
         foreach (var window in windows) window.Save();
@@ -524,7 +527,14 @@ public sealed class LiveApplicationHost : IDisposable
         if (request.Cmd == Command.PickOpen && request.Args?.Follow == true && response?.Ok == true
             && _windowController is not null)
         {
-            await _windowController.ActivateWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _windowController.ActivateWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The pick is open and the client needs its id, like window.select with a refused activation.
+            }
             ReportActivated(windowId);
         }
         return response;
