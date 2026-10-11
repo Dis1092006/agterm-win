@@ -214,6 +214,50 @@ public class SessionAskTests
         Assert.Equal(ControlAskResult.Cancelled(), store.Asks.Find(ask.Id)!.Result);
     }
 
+    private static AppStore StoreSeeing(Action<ControlEventDraft> sink)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "agterm-tests-" + Guid.NewGuid().ToString("D"));
+        return new AppStore(persistence: new PersistenceStore(dir), controlEventSink: sink, stateDirectory: dir);
+    }
+
+    [Fact]
+    public void ASoftCloseCancelsTheQuestionBeforeAnnouncingTheClose()
+    {
+        Session? session = null;
+        var pendingWhenAnnounced = new List<PendingAsk?>();
+        var store = StoreSeeing(draft =>
+        {
+            if (draft.Kind == ControlEventKind.SessionClosed) pendingWhenAnnounced.Add(session!.AskPending);
+        });
+        var workspace = store.AddWorkspace("work");
+        session = store.AddSession(workspace.Id, "/tmp")!;
+        store.AddSession(workspace.Id, "/tmp");
+        store.OpenAsk(session.Id, Ask(), null, WindowId);
+
+        Assert.True(store.SoftCloseSession(session.Id, 60));
+
+        Assert.Equal(new PendingAsk?[] { null }, pendingWhenAnnounced);
+    }
+
+    [Fact]
+    public void ASoftWorkspaceRemovalCancelsTheQuestionBeforeAnnouncingTheClose()
+    {
+        Session? session = null;
+        var pendingWhenAnnounced = new List<PendingAsk?>();
+        var store = StoreSeeing(draft =>
+        {
+            if (draft.Kind == ControlEventKind.SessionClosed) pendingWhenAnnounced.Add(session!.AskPending);
+        });
+        store.AddSession(store.AddWorkspace("keep").Id, "/tmp");
+        var doomed = store.AddWorkspace("doomed");
+        session = store.AddSession(doomed.Id, "/tmp")!;
+        store.OpenAsk(session.Id, Ask(), null, WindowId);
+
+        Assert.True(store.SoftRemoveWorkspace(doomed.Id, 60));
+
+        Assert.Equal(new PendingAsk?[] { null }, pendingWhenAnnounced);
+    }
+
     [Fact]
     public void ASoftCloseCancelsTheQuestionAndUndoRestoresTheSessionWithoutIt()
     {

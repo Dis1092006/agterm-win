@@ -42,13 +42,14 @@ public sealed partial class AppStore
         var workspace = Workspaces[location.WorkspaceIndex];
         var wasActive = SelectedSessionId == sessionId;
         var session = workspace.Sessions[location.SessionIndex];
+        // a subscriber told the session closed must not still see its question pending
+        CancelPendingAsk(session);
         workspace.Sessions.RemoveAt(location.SessionIndex);
         EmitSessionClosed(session, workspace.Id);
         // undo reinserts THIS object, so an override payload armed at bootstrap and never consumed
         // would survive the round trip and fire when the restored session's surface is built. Drop
         // it here; the persisted pin is untouched and still fires on the next launch.
         session.ClearPendingRestoreOverrides();
-        CancelPendingAsk(session);
         var closeId = Guid.NewGuid();
         var close = new PendingSessionClose(session, workspace.Id, workspace.Name,
             location.WorkspaceIndex, location.SessionIndex, closeId);
@@ -165,6 +166,7 @@ public sealed partial class AppStore
         var index = Workspaces.FindIndex(w => w.Id == workspaceId);
         if (index < 0) return false;
         var visibleWorkspace = Workspaces[index];
+        foreach (var session in visibleWorkspace.Sessions) CancelPendingAsk(session);
         Workspaces.RemoveAt(index);
         ForgetFreshWorkspace(workspaceId);
         foreach (var session in visibleWorkspace.Sessions) EmitSessionClosed(session, visibleWorkspace.Id);
@@ -173,7 +175,6 @@ public sealed partial class AppStore
         foreach (var session in workspace.Sessions)
         {
             session.ClearPendingRestoreOverrides(); // same undo hazard
-            CancelPendingAsk(session);
         }
         var removingActive = SelectedSessionId is { } active && workspace.Sessions.Any(s => s.Id == active);
         var restoringSelection = removingActive ? SelectedSessionId : null;
