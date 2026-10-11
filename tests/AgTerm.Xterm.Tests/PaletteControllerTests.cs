@@ -201,6 +201,26 @@ public sealed class PaletteViewSourceTests
     }
 
     [Fact]
+    public void MainWindow_restores_focus_on_activation_only_without_an_open_palette()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        Assert.Contains("_restoreFocusWhenActivated && !PaletteOverlay.IsOpen", source, StringComparison.Ordinal);
+        var reset = source.IndexOf("_restoreFocusWhenActivated = false;\n        PaletteOverlay.Open(PickPalette", StringComparison.Ordinal);
+        var resetCrlf = source.IndexOf("_restoreFocusWhenActivated = false;\r\n        PaletteOverlay.Open(PickPalette", StringComparison.Ordinal);
+        Assert.True(reset >= 0 || resetCrlf >= 0, "the flag must be cleared right before the pick opens.");
+    }
+
+    [Fact]
+    public void MainWindow_answers_the_pick_before_awaiting_the_palette_close()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        Assert.Matches(@"_shownPickId = null;\s+pickHost\.Host\.Actions\.Pick\.Resolve\(pickId", source);
+        Assert.Matches(@"_shownPickId = null;\s+host\.Host\.Actions\.Pick\.Cancel\(pickId", source);
+    }
+
+    [Fact]
     public void MainWindow_presents_the_windows_pick_and_resolves_it()
     {
         var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));

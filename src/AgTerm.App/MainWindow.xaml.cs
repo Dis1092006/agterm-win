@@ -368,7 +368,7 @@ public sealed partial class MainWindow : Window
             return;
 
         _applicationHost.ReportActivated(_windowId);
-        if (_restoreFocusWhenActivated)
+        if (_restoreFocusWhenActivated && !PaletteOverlay.IsOpen)
         {
             _restoreFocusWhenActivated = false;
             FocusActiveTerminal();
@@ -1068,6 +1068,7 @@ public sealed partial class MainWindow : Window
         await _paletteAutoFollow.AcquireAsync(() =>
             host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
         _shownPickId = pending.Id;
+        _restoreFocusWhenActivated = false;
         PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending));
     }
 
@@ -1292,8 +1293,8 @@ public sealed partial class MainWindow : Window
         if (_shownPickId is { } pickId && _host is { } host)
         {
             _shownPickId = null;
-            await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
             host.Host.Actions.Pick.Cancel(pickId);
+            await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
             RestoreFocusAfterPick();
             return;
         }
@@ -1305,8 +1306,8 @@ public sealed partial class MainWindow : Window
         if (_shownPickId is { } pickId && _host is { } pickHost)
         {
             _shownPickId = null;
-            await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
             pickHost.Host.Actions.Pick.Resolve(pickId, PickPalette.Outcome(item));
+            await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
             RestoreFocusAfterPick();
             return;
         }
