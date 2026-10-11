@@ -15,10 +15,9 @@ public sealed record PaletteItemViewModel
         string? statusColor = null,
         StatusShape? statusShape = null)
     {
-        if (string.IsNullOrWhiteSpace(id))
-            throw new ArgumentException("Palette item id is required.", nameof(id));
-        if (string.IsNullOrWhiteSpace(title))
-            throw new ArgumentException("Palette item title is required.", nameof(title));
+        // Pick rows come from the caller unchecked, so a blank id or title must not throw here.
+        ArgumentNullException.ThrowIfNull(id);
+        ArgumentNullException.ThrowIfNull(title);
 
         Id = id;
         Title = title;
@@ -45,6 +44,19 @@ public sealed record PaletteItemViewModel
     public string Id { get; }
 
     public string Title { get; }
+
+    /// <summary>The row's position in the caller's pick list; null for built-in rows.</summary>
+    public int? SourceIndex { get; init; }
+
+    /// <summary>The trimmed query a "Use ..." row answers with; null for every other row.</summary>
+    public string? CustomAnswer { get; private init; }
+
+    public bool IsCustomAnswer => CustomAnswer is not null;
+
+    public IReadOnlyList<string> TitleKeys => new[] { Title };
+
+    public static PaletteItemViewModel ForCustomAnswer(string query) =>
+        new("custom-answer", $"Use \"{query}\"") { CustomAnswer = query };
 
     public string? Subtitle { get; }
 

@@ -131,16 +131,14 @@ public sealed class PaletteControllerTests
     }
 
     [Fact]
-    public void Open_rejects_duplicate_or_blank_stable_ids()
+    public void Open_rejects_duplicate_ids_but_accepts_blank_ids_and_whitespace_titles()
     {
         var controller = new PaletteController();
+        Assert.Throws<ArgumentException>(() => controller.Open([Item("same", "One"), Item("same", "Two")]));
 
-        Assert.Throws<ArgumentException>(() => controller.Open([Item("", "Blank")]));
-        Assert.Throws<ArgumentException>(() => controller.Open(
-        [
-            Item("same", "One"),
-            Item("same", "Two"),
-        ]));
+        controller.Open([Item("", "Blank id"), Item("ws", "   ")]);
+
+        Assert.Equal(2, controller.FilteredItems.Count);
     }
 
     [Fact]

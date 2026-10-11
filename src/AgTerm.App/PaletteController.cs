@@ -7,7 +7,7 @@ public sealed class PaletteController
 {
     private IReadOnlyList<PaletteItemViewModel> _allItems = Array.Empty<PaletteItemViewModel>();
     private IReadOnlyList<PaletteItemViewModel> _filteredItems = Array.Empty<PaletteItemViewModel>();
-    private bool _preserveInputOrderForEmptyQuery;
+    private PaletteOpenOptions _options = new();
 
     public event Action? Changed;
 
@@ -26,20 +26,24 @@ public sealed class PaletteController
 
     public void Open(
         IEnumerable<PaletteItemViewModel> items,
-        bool preserveInputOrderForEmptyQuery = false)
+        bool preserveInputOrderForEmptyQuery = false) =>
+        Open(items, new PaletteOpenOptions { PreserveInputOrderForEmptyQuery = preserveInputOrderForEmptyQuery });
+
+    public void Open(IEnumerable<PaletteItemViewModel> items, PaletteOpenOptions options)
     {
         ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(options);
 
         var snapshot = items.ToArray();
         if (snapshot.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() != snapshot.Length)
             throw new ArgumentException("Palette item ids must be unique.", nameof(items));
 
         _allItems = new ReadOnlyCollection<PaletteItemViewModel>(snapshot);
-        _preserveInputOrderForEmptyQuery = preserveInputOrderForEmptyQuery;
-        Query = string.Empty;
-        SelectedIndex = 0;
+        _options = options;
+        Query = options.InitialQuery;
         IsOpen = true;
         Refilter();
+        SelectedIndex = InitialSelectionIndex(options.InitialSelectionId);
         Changed?.Invoke();
     }
 
@@ -100,22 +104,41 @@ public sealed class PaletteController
         SelectedIndex = 0;
         _allItems = Array.Empty<PaletteItemViewModel>();
         _filteredItems = Array.Empty<PaletteItemViewModel>();
-        _preserveInputOrderForEmptyQuery = false;
+        _options = new PaletteOpenOptions();
         Changed?.Invoke();
+    }
+
+    /// <summary>An initial selection that the query hides falls back to the first row, so a pick
+    /// never opens with nothing highlighted.</summary>
+    private int InitialSelectionIndex(string? selectionId)
+    {
+        if (selectionId is null)
+            return 0;
+
+        for (var index = 0; index < _filteredItems.Count; index++)
+        {
+            var row = _filteredItems[index];
+            if (!row.IsCustomAnswer && row.Id == selectionId)
+                return index;
+        }
+
+        return 0;
     }
 
     private void Refilter()
     {
-        if (_preserveInputOrderForEmptyQuery && string.IsNullOrWhiteSpace(Query))
-        {
-            _filteredItems = _allItems;
-            return;
-        }
+        var blank = string.IsNullOrWhiteSpace(Query);
+        Func<PaletteItemViewModel, IReadOnlyList<string>> keys = _options.MatchTitleOnly
+            ? static item => item.TitleKeys
+            : static item => item.SearchKeys;
 
-        var ranked = FuzzyMatcher.Rank(
-            Query.Trim(),
-            _allItems,
-            static item => item.SearchKeys);
-        _filteredItems = new ReadOnlyCollection<PaletteItemViewModel>(ranked.ToArray());
+        IReadOnlyList<PaletteItemViewModel> rows = blank && _options.PreserveInputOrderForEmptyQuery
+            ? _allItems
+            : FuzzyMatcher.Rank(Query.Trim(), _allItems, keys);
+
+        if (_options.AllowCustomAnswer && !blank && rows.Count == 0)
+            rows = new[] { PaletteItemViewModel.ForCustomAnswer(Query.Trim()) };
+
+        _filteredItems = new ReadOnlyCollection<PaletteItemViewModel>(rows.ToArray());
     }
 }
