@@ -190,6 +190,31 @@ public sealed class PaletteLayoutTests
 public sealed class PaletteViewSourceTests
 {
     [Fact]
+    public void Code_behind_supports_pick_options_ctrl_j_k_and_a_cancel_chord()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "PaletteView.xaml.cs"));
+
+        Assert.Contains("PaletteOpenOptions options", source, StringComparison.Ordinal);
+        Assert.Contains("PaletteKeys.SelectionStep(", source, StringComparison.Ordinal);
+        Assert.Contains("QueryBox.SelectAll()", source, StringComparison.Ordinal);
+        Assert.Contains("public Func<VirtualKey, bool>? CancelChord", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MainWindow_presents_the_windows_pick_and_resolves_it()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        Assert.Contains(".Pick.Changed +=", source, StringComparison.Ordinal);
+        Assert.Contains("SyncPickAsync", source, StringComparison.Ordinal);
+        Assert.Contains("PickPalette.Outcome(", source, StringComparison.Ordinal);
+        Assert.Contains(".Pick.Resolve(", source, StringComparison.Ordinal);
+        Assert.Contains(".Pick.Cancel(", source, StringComparison.Ordinal);
+        Assert.Contains(".Pick.ModalPending", source, StringComparison.Ordinal);
+        Assert.Contains("BuiltinAction.CloseSession", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MainWindow_hosts_palette_after_its_single_WebView_as_a_full_window_sibling()
     {
         var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml"));

@@ -37,15 +37,30 @@ public sealed partial class PaletteView : UserControl
     {
         if (string.IsNullOrWhiteSpace(placeholder))
             throw new ArgumentException("Palette placeholder is required.", nameof(placeholder));
+        Open(placeholder, items, new PaletteOpenOptions { PreserveInputOrderForEmptyQuery = preserveInputOrderForEmptyQuery });
+    }
+
+    /// <summary>The pick path: an empty placeholder is allowed because a caller's prompt may be "".</summary>
+    public void Open(string placeholder, IReadOnlyList<PaletteItemViewModel> items, PaletteOpenOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(placeholder);
         ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(options);
 
         QueryBox.PlaceholderText = placeholder;
         Visibility = Visibility.Visible;
         ApplyAvailableHeight(ActualHeight);
-        _controller.Open(items, preserveInputOrderForEmptyQuery);
+        _controller.Open(items, options);
         FocusQueryBox();
         DispatcherQueue.TryEnqueue(FocusQueryBox);
+        if (options.InitialQuery.Length > 0)
+        {
+            // a seeded query opens selected so the first keystroke replaces it, as upstream
+            DispatcherQueue.TryEnqueue(() => QueryBox.SelectAll());
+        }
     }
+
+    public Func<VirtualKey, bool>? CancelChord { get; set; }
 
     public void Close()
     {
@@ -122,6 +137,20 @@ public sealed partial class PaletteView : UserControl
 
     private void OnQueryBoxKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        var step = PaletteKeys.SelectionStep((int)e.Key, IsDown(VirtualKey.Control), IsDown(VirtualKey.Shift), IsDown(VirtualKey.Menu));
+        if (step != 0)
+        {
+            _controller.MoveSelection(step);
+            e.Handled = true;
+            return;
+        }
+        if (CancelChord?.Invoke(e.Key) == true)
+        {
+            Cancel();
+            e.Handled = true;
+            return;
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Down:
@@ -142,6 +171,10 @@ public sealed partial class PaletteView : UserControl
 
         e.Handled = true;
     }
+
+    private static bool IsDown(VirtualKey key) =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     private void OnResultsSelectionChanged(object sender, SelectionChangedEventArgs e)
     {

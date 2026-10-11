@@ -551,3 +551,5 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - `agtermctl pick` drops a leading UTF-8 BOM from stdin before deciding between JSON and lines. Windows PowerShell 5.1 and Notepad write one.
   - Malformed JSON or invalid UTF-8 on stdin gives `stdin must be UTF-8 text or a JSON item array` and exit 1. Upstream prints a Swift decoder description for malformed JSON.
   - `agtermctl` writes in the console's output code page, the .NET default. pwsh decodes captured native output with that same code page, so `$x = agtermctl pick ...` keeps non-ASCII labels; a console set to UTF-8 gets UTF-8. Upstream always writes UTF-8, because macOS terminals are UTF-8.
+  - A pick that arrives while a built-in palette is open closes it at once in any window. Upstream does that at once only in the frontmost window, because each window here has one palette view.
+  - The picker is centered in the window, as the other palettes are; centering over the terminal area (upstream #367) is not ported.

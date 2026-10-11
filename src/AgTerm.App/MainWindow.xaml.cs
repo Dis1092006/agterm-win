@@ -75,6 +75,9 @@ public sealed partial class MainWindow : Window
     private bool _closeWithoutShutdown;
     private Guid? _pendingCloseId;
     private readonly PaletteAutoFollowLease _paletteAutoFollow = new();
+    private string? _shownPickId;
+    private bool _windowIsActive;
+    private bool _restoreFocusWhenActivated;
     private WindowPaletteMode? _openPaletteMode;
 
     private sealed record StartupState(
@@ -99,9 +102,7 @@ public sealed partial class MainWindow : Window
         PaletteOverlay.ItemAccepted += item => ObserveTaskFault(
             HandlePaletteItemAcceptedAsync(item),
             "Palette item acceptance failed");
-        PaletteOverlay.Cancelled += () => ObserveTaskFault(
-            _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync()),
-            "Palette cancellation failed");
+        PaletteOverlay.Cancelled += () => ObserveTaskFault(HandlePaletteCancelledAsync(), "Palette cancellation failed");
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
             load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
             runOnUi: work =>
@@ -362,10 +363,16 @@ public sealed partial class MainWindow : Window
 
     private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
     {
+        _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
         if (args.WindowActivationState == WindowActivationState.Deactivated)
             return;
 
         _applicationHost.ReportActivated(_windowId);
+        if (_restoreFocusWhenActivated)
+        {
+            _restoreFocusWhenActivated = false;
+            FocusActiveTerminal();
+        }
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -1024,7 +1031,59 @@ public sealed partial class MainWindow : Window
         host.Host.Actions.KeymapReloaded += keymap => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
             ArmAsync(keymap),
             "Set reloaded hotkey manifest failed"));
+        // Changed fires on the control dispatch thread, maybe under host locks, and can arrive out of order:
+        // only enqueue here, and SyncPickAsync re-reads Pick.Pending when it runs on the UI thread.
+        host.Host.Actions.Pick.Changed += () => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+            _paletteTransitions.RunAsync(SyncPickAsync),
+            "Pick presentation failed"));
+        PaletteOverlay.CancelChord = IsCloseSessionChord;
+        ObserveTaskFault(_paletteTransitions.RunAsync(SyncPickAsync), "Pick presentation failed");
     }
+
+    /// <summary>Makes the palette match the window's pick: show a newly pending pick, close one that was
+    /// answered or cancelled elsewhere. It reads the controller every time, so a pick resolved before
+    /// the UI got to it is never shown.</summary>
+    private async Task SyncPickAsync()
+    {
+        if (_host is not { } host)
+            return;
+        var pending = host.Host.Actions.Pick.Pending;
+        if (pending is null)
+        {
+            if (_shownPickId is null)
+                return;
+            _shownPickId = null;
+            PaletteOverlay.Close();
+            await FinishPaletteCloseAsync(restoreFocus: false);
+            RestoreFocusAfterPick();
+            return;
+        }
+        if (_shownPickId == pending.Id)
+            return;
+        if (PaletteOverlay.IsOpen)
+        {
+            PaletteOverlay.Close();
+            await FinishPaletteCloseAsync(restoreFocus: false);
+        }
+        await _paletteAutoFollow.AcquireAsync(() =>
+            host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
+        _shownPickId = pending.Id;
+        PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending));
+    }
+
+    private void RestoreFocusAfterPick()
+    {
+        // a picker answered in a background window must not pull focus away from the user's foreground app
+        if (_windowIsActive)
+            FocusActiveTerminal();
+        else
+            _restoreFocusWhenActivated = true;
+    }
+
+    private bool IsCloseSessionChord(VirtualKey key) =>
+        _shownPickId is not null
+        && PhysicalFromKey(key) is { } physical
+        && _hotkeyStates.Active.Router.Handle(physical) == BuiltinAction.CloseSession;
 
     private async Task RefreshInterceptChordsAsync()
     {
@@ -1152,6 +1211,8 @@ public sealed partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(states);
 
         var host = await _hostReady.Task.WaitAsync(cancellationToken);
+        if (host.Host.Actions.Pick.ModalPending)
+            return;
         var keymap = _hotkeyStates.Active.Keymap;
         var currentTheme = LiveThemeSettings.Resolve(
             _settings,
@@ -1226,8 +1287,30 @@ public sealed partial class MainWindow : Window
             FocusActiveTerminal();
     }
 
+    private async Task HandlePaletteCancelledAsync()
+    {
+        if (_shownPickId is { } pickId && _host is { } host)
+        {
+            _shownPickId = null;
+            await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
+            host.Host.Actions.Pick.Cancel(pickId);
+            RestoreFocusAfterPick();
+            return;
+        }
+        await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync());
+    }
+
     private async Task HandlePaletteItemAcceptedAsync(PaletteItemViewModel item)
     {
+        if (_shownPickId is { } pickId && _host is { } pickHost)
+        {
+            _shownPickId = null;
+            await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
+            pickHost.Host.Actions.Pick.Resolve(pickId, PickPalette.Outcome(item));
+            RestoreFocusAfterPick();
+            return;
+        }
+
         WindowPaletteMode? mode = null;
         await _paletteTransitions.RunAsync(async () =>
         {
