@@ -62,6 +62,10 @@ public sealed partial class PaletteView : UserControl
 
     public Func<VirtualKey, bool>? CancelChord { get; set; }
 
+    /// <summary>Tells whether the host window is active. The click that activates a window is also
+    /// delivered to the scrim, and it must not cancel a pick shown in the background.</summary>
+    public Func<bool>? IsWindowActive { get; set; }
+
     public void Close()
     {
         if (!_controller.IsOpen)
@@ -193,5 +197,17 @@ public sealed partial class PaletteView : UserControl
         AcceptSelected();
     }
 
-    private void OnDismissSurfaceTapped(object sender, TappedRoutedEventArgs e) => Cancel();
+    private bool _pressStartedInactive;
+
+    private void OnDismissSurfacePointerPressed(object sender, PointerRoutedEventArgs e) =>
+        _pressStartedInactive = IsWindowActive?.Invoke() == false;
+
+    private void OnDismissSurfaceTapped(object sender, TappedRoutedEventArgs e)
+    {
+        var ignore = _pressStartedInactive;
+        _pressStartedInactive = false;
+        if (ignore)
+            return;
+        Cancel();
+    }
 }

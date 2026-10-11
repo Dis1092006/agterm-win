@@ -793,6 +793,15 @@ public sealed partial class MainWindow : Window
             sidebar.SnapshotChanged += ApplyChrome;
             sidebar.Start();
         });
+        // Wired here, not in ArmHotkeysAsync: a failed WebView2 page must not leave a pending pick unseen.
+        // Changed fires on the control dispatch thread, maybe under host locks, and can arrive out of order:
+        // only enqueue here, and SyncPickAsync re-reads Pick.Pending when it runs on the UI thread.
+        host.Host.Actions.Pick.Changed += () => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+            _paletteTransitions.RunAsync(SyncPickAsync),
+            "Pick presentation failed"));
+        PaletteOverlay.CancelChord = IsCloseSessionChord;
+        PaletteOverlay.IsWindowActive = () => _windowIsActive;
+        ObserveTaskFault(_paletteTransitions.RunAsync(SyncPickAsync), "Pick presentation failed");
         ObserveTaskFault(ArmHotkeysAsync(host), "Arm hotkeys failed");
     }
 
@@ -1031,13 +1040,6 @@ public sealed partial class MainWindow : Window
         host.Host.Actions.KeymapReloaded += keymap => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
             ArmAsync(keymap),
             "Set reloaded hotkey manifest failed"));
-        // Changed fires on the control dispatch thread, maybe under host locks, and can arrive out of order:
-        // only enqueue here, and SyncPickAsync re-reads Pick.Pending when it runs on the UI thread.
-        host.Host.Actions.Pick.Changed += () => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
-            _paletteTransitions.RunAsync(SyncPickAsync),
-            "Pick presentation failed"));
-        PaletteOverlay.CancelChord = IsCloseSessionChord;
-        ObserveTaskFault(_paletteTransitions.RunAsync(SyncPickAsync), "Pick presentation failed");
     }
 
     /// <summary>Makes the palette match the window's pick: show a newly pending pick, close one that was

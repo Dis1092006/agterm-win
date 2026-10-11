@@ -12,6 +12,7 @@
     <Grid>
         <Grid x:Name="DismissSurface"
               Background="#66000000"
+              PointerPressed="OnDismissSurfacePointerPressed"
               Tapped="OnDismissSurfaceTapped"
               AutomationProperties.AccessibilityView="Raw" />
 

@@ -201,6 +201,32 @@ public sealed class PaletteViewSourceTests
     }
 
     [Fact]
+    public void Scrim_ignores_the_tap_of_a_press_that_activated_the_window()
+    {
+        var root = FindRepoRoot();
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "PaletteView.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "PaletteView.xaml.cs"));
+
+        Assert.Contains("PointerPressed=\"OnDismissSurfacePointerPressed\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("public Func<bool>? IsWindowActive", code, StringComparison.Ordinal);
+        Assert.Contains("_pressStartedInactive = IsWindowActive?.Invoke() == false", code, StringComparison.Ordinal);
+        Assert.Matches(@"OnDismissSurfaceTapped\([^)]*\)\s*\{\s*var ignore = _pressStartedInactive;\s*_pressStartedInactive = false;\s*if \(ignore\)\s*return;\s*Cancel\(\);", code);
+    }
+
+    [Fact]
+    public void MainWindow_wires_the_pick_before_the_page_is_awaited()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        var subscribe = source.IndexOf(".Pick.Changed +=", StringComparison.Ordinal);
+        var arm = source.IndexOf("ObserveTaskFault(ArmHotkeysAsync(host)", StringComparison.Ordinal);
+        var armMethod = source.IndexOf("private async Task ArmHotkeysAsync", StringComparison.Ordinal);
+        Assert.True(subscribe >= 0 && arm >= 0 && subscribe < arm, "the pick subscription must come before ArmHotkeysAsync is started.");
+        Assert.True(subscribe < armMethod);
+        Assert.Contains("PaletteOverlay.IsWindowActive = () => _windowIsActive;", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MainWindow_restores_focus_on_activation_only_without_an_open_palette()
     {
         var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
