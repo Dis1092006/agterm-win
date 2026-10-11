@@ -198,6 +198,47 @@ public sealed class Session
     /// surface even if split focus moves afterwards. Ephemeral.</summary>
     public ITerminalSurface? SearchSurface { get; set; }
 
+    /// <summary>Stable identity of the left pane slot's shell, so an ask anchored to a pane can
+    /// tell the pane it covered from the one that replaced it (upstream paneIdentity). Not the
+    /// surface's pane token: a session that is not realized has no surface.</summary>
+    public Guid PaneIdentity { get; private set; } = Guid.NewGuid();
+
+    private Guid? _splitPaneIdentity;
+
+    /// <summary>The split pane's identity while the session has a split (shown or hidden).</summary>
+    public Guid? SplitPaneIdentity => HasSplit ? _splitPaneIdentity ??= Guid.NewGuid() : null;
+
+    /// <summary>The surviving split shell becomes the left pane, and keeps its identity.</summary>
+    internal void PromoteSplitPaneIdentity()
+    {
+        PaneIdentity = _splitPaneIdentity ?? Guid.NewGuid();
+        _splitPaneIdentity = null;
+    }
+
+    internal void ForgetSplitPaneIdentity() => _splitPaneIdentity = null;
+
+    public OverlayPane? PaneRole(Guid identity)
+    {
+        if (identity == PaneIdentity) return OverlayPane.Left;
+        if (identity == SplitPaneIdentity) return OverlayPane.Right;
+        return null;
+    }
+
+    /// <summary>Whether the detail area lays this pane out now: both panes while the split is
+    /// shown, else the focused one.</summary>
+    public bool RendersPane(OverlayPane pane) =>
+        IsSplit || pane == (SplitFocused ? OverlayPane.Right : OverlayPane.Left);
+
+    /// <summary>The session's pending terminal question, independent of the overlay slot.
+    /// AppStore owns every change, so the registry retains the outcome before the slot clears.</summary>
+    public PendingAsk? AskPending { get; internal set; }
+
+    /// <summary>The covered pane's identity; null covers the whole session.</summary>
+    public Guid? AskPaneIdentity { get; internal set; }
+
+    /// <summary>The covered pane's current role; null for a session-wide question.</summary>
+    public OverlayPane? AskTargetPane => AskPaneIdentity is { } identity ? PaneRole(identity) : null;
+
     /// <summary>
     /// The sidebar label: a non-blank CustomName wins; otherwise the non-blank terminal title of the
     /// focused pane; otherwise the basename of the focused pane's cwd. Both name sources are trimmed,

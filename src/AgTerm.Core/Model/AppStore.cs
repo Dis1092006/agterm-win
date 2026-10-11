@@ -254,7 +254,8 @@ public sealed partial class AppStore
                                    Func<string?>? dashboardHighlighted = null,
                                    Func<double?>? dashboardFontSize = null,
                                    Func<string?>? dashboardFontMode = null,
-                                   Func<string?>? pickPending = null)
+                                   Func<string?>? pickPending = null,
+                                   Func<string?>? askPending = null)
     {
         var activeId = SelectedSessionId;
         var activeWorkspaceId = activeId is { } id ? WorkspaceForSession(id)?.Id : null;
@@ -287,6 +288,13 @@ public sealed partial class AppStore
                     SplitFocused = session.HasSplit ? session.SplitFocused : null,
                     Overlay = session.OverlayActive,
                     OverlaySizePercent = session.OverlayActive ? session.OverlaySizePercent : null,
+                    Ask = session.AskPending is { } ask
+                        ? new ControlSessionAsk
+                        {
+                            Id = ask.Id,
+                            Pane = session.AskTargetPane is { } pane ? OverlayPanes.Wire(pane) : null,
+                        }
+                        : null,
                     Scratch = session.ScratchActive,
                     Flagged = session.Flagged,
                     CommandWait = session.InitialCommand is not null && session.CommandWait ? true : null,
@@ -334,6 +342,7 @@ public sealed partial class AppStore
             DashboardFontSize = dashboardFontSize?.Invoke(),
             DashboardFontMode = dashboardFontMode?.Invoke(),
             PickPending = pickPending?.Invoke(),
+            AskPending = askPending?.Invoke(),
         };
     }
 
@@ -539,6 +548,7 @@ public sealed partial class AppStore
         var wasActive = SelectedSessionId == sessionId;
         var workspace = Workspaces[location.WorkspaceIndex];
         var removed = workspace.Sessions[location.SessionIndex];
+        CancelPendingAsk(removed);
         workspace.Sessions.RemoveAt(location.SessionIndex);
         EmitSessionClosed(removed, workspace.Id);
         RecordRecentClosedSession(removed, workspace.Id, workspace.Name,
@@ -577,6 +587,7 @@ public sealed partial class AppStore
         var index = Workspaces.FindIndex(w => w.Id == workspaceId);
         if (index < 0) return;
         var workspace = Workspaces[index];
+        foreach (var session in workspace.Sessions) CancelPendingAsk(session);
         var removingActive = SelectedSessionId is { } active
             && workspace.Sessions.Any(s => s.Id == active);
         RecordRecentClosedWorkspace(workspace, removingActive ? SelectedSessionId : null);

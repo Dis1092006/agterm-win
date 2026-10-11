@@ -108,6 +108,9 @@ public sealed partial class AppStore
     public void CloseSplit(Guid sessionId)
     {
         if (SessionWithId(sessionId) is not { } session) return;
+        if (session.AskPaneIdentity is { } anchored && anchored == session.SplitPaneIdentity)
+            CancelPendingAsk(session);
+        session.ForgetSplitPaneIdentity();
         session.IsSplit = false;
         session.HasSplit = false;
         session.SplitFocused = false;
@@ -153,6 +156,8 @@ public sealed partial class AppStore
         survivor.PromoteToPrimaryPane();
         session.Surface = survivor;
         session.SplitSurface = null;
+        if (session.AskPaneIdentity == session.PaneIdentity) CancelPendingAsk(session);
+        session.PromoteSplitPaneIdentity();
         session.IsSplit = false;
         session.HasSplit = false;
         session.SplitFocused = false;

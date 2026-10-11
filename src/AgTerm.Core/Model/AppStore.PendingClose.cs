@@ -48,6 +48,7 @@ public sealed partial class AppStore
         // would survive the round trip and fire when the restored session's surface is built. Drop
         // it here; the persisted pin is untouched and still fires on the next launch.
         session.ClearPendingRestoreOverrides();
+        CancelPendingAsk(session);
         var closeId = Guid.NewGuid();
         var close = new PendingSessionClose(session, workspace.Id, workspace.Name,
             location.WorkspaceIndex, location.SessionIndex, closeId);
@@ -98,7 +99,11 @@ public sealed partial class AppStore
             }
         }
         if (closes.Count == 0) return false;
-        foreach (var close in closes) close.Session.ClearPendingRestoreOverrides(); // same undo hazard as the singular close
+        foreach (var close in closes)
+        {
+            close.Session.ClearPendingRestoreOverrides(); // same undo hazard as the singular close
+            CancelPendingAsk(close.Session);
+        }
 
         var previousSelection = SelectedSessionId;
         var removingActive = previousSelection is { } prev && targetIds.Contains(prev);
@@ -165,7 +170,11 @@ public sealed partial class AppStore
         foreach (var session in visibleWorkspace.Sessions) EmitSessionClosed(session, visibleWorkspace.Id);
         if (visibleWorkspace.Sessions.Count == 0) ScheduleTreeChanged();
         var workspace = FoldingPendingCloses(visibleWorkspace);
-        foreach (var session in workspace.Sessions) session.ClearPendingRestoreOverrides(); // same undo hazard
+        foreach (var session in workspace.Sessions)
+        {
+            session.ClearPendingRestoreOverrides(); // same undo hazard
+            CancelPendingAsk(session);
+        }
         var removingActive = SelectedSessionId is { } active && workspace.Sessions.Any(s => s.Id == active);
         var restoringSelection = removingActive ? SelectedSessionId : null;
         if (FocusedWorkspaceId == workspaceId) FocusedWorkspaceId = null;
