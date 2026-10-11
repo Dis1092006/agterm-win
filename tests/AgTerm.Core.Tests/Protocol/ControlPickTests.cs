@@ -67,8 +67,27 @@ public class ControlPickTests
     }
 
     [Fact]
-    public void AdoptedResultAndArgsExistUpstream()
+    public void AdoptedResultFieldsExistUpstream()
     {
+        Assert.All(ParitySurface.Pin("result"), name => Assert.Contains(name, ParitySurface.Upstream("result")));
         Assert.All(ParitySurface.Adopted("result"), name => Assert.Contains(name, ParitySurface.Upstream("result")));
+    }
+
+    [Fact]
+    public void ResultPropertyNamesMatchPinPlusAdoptedInUpstreamOrder()
+    {
+        var result = new ControlResult
+        {
+            Id = "s", Tree = new ControlTree { Workspaces = Array.Empty<ControlWorkspaceNode>() }, Text = "s",
+            Windows = Array.Empty<ControlWindowNode>(), ExitCode = 1, Count = 1, Affected = 1, Theme = "s",
+            Themes = new[] { "a" }, Ratio = 0.5, Sync = true, Light = "s", Dark = "s",
+            Events = new ControlEventBatch { Run = Guid.NewGuid(), Next = 1, Items = Array.Empty<ControlEvent>() },
+            Pick = ControlPickResult.Pending(),
+        };
+
+        using var serialized = JsonDocument.Parse(ControlJson.Serialize(result));
+        var actual = serialized.RootElement.EnumerateObject().Select(p => p.Name).ToList();
+
+        Assert.Equal(ParitySurface.Expected("result", "result"), actual);
     }
 }

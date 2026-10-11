@@ -540,6 +540,8 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - `window.select` makes the window frontmost for routing even when Windows refuses to activate it for a background caller (upstream `28cad2c1` takes frontmost the same way).
 - Palette fuzzy ranking caps a substring match at `5 + min(offset, 34)`, under the subsequence floor of 40 (upstream `2c8ad9f1`).
 - While a pick is pending in a window, `quick show`, `surface.zoom` turning a zoom on, `dashboard` opening and `session.search` open/next/prev answer `pick pending`; dismissals keep working (upstream `6b6323ed`).
+- Every palette moves the selection with Ctrl+J and Ctrl+K, with Control as the only modifier (upstream `2fb0ca72`). The letter keys are matched by virtual key, so on a non-Latin layout they follow the physical QWERTY positions.
+- Palettes accept blank ids, whitespace-only labels and an empty placeholder, because pick sends them.
 
 ## Upstream features adopted beyond the pin
 
@@ -549,7 +551,9 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The headless host keeps a pick pending until it is cancelled or a test resolves it through `HeadlessControlActions.Pick`; it never answers `no pick surface`.
   - A pick item decoded with a null `id` or `label` is refused with `invalid request: pick item requires id and label`; upstream fails the Swift decode with its own message.
   - `agtermctl pick` drops a leading UTF-8 BOM from stdin before deciding between JSON and lines. Windows PowerShell 5.1 and Notepad write one.
-  - Malformed JSON or invalid UTF-8 on stdin gives `stdin must be UTF-8 text or a JSON item array` and exit 1. Upstream prints a Swift decoder description for malformed JSON.
+  - Malformed JSON or invalid UTF-8 on stdin gives `stdin must be UTF-8 text or a JSON item array` and exit 1. Upstream prints a Swift decoder description for malformed JSON. Every stdin error exits 1 here where upstream exits 64.
   - `agtermctl` writes in the console's output code page, the .NET default. pwsh decodes captured native output with that same code page, so `$x = agtermctl pick ...` keeps non-ASCII labels; a console set to UTF-8 gets UTF-8. Upstream always writes UTF-8, because macOS terminals are UTF-8.
   - A pick that arrives while a built-in palette is open closes it at once in any window. Upstream does that at once only in the frontmost window, because each window here has one palette view.
   - The picker is centered in the window, as the other palettes are; centering over the terminal area (upstream #367) is not ported.
+  - Item ids are compared after NFC normalization, which matches Swift `String` equality.
+  - `pick.open` with no open window answers `no open window`. Other commands answer `no such window: active` in the same state.
