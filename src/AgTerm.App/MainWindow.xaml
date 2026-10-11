@@ -87,6 +87,9 @@
         <local:PaletteView x:Name="PaletteOverlay"
                            Grid.RowSpan="2"
                            Canvas.ZIndex="100" />
+        <local:AskView x:Name="AskOverlay"
+                       Grid.Row="1"
+                       Canvas.ZIndex="100" />
 
         <InfoBar x:Name="NotificationBanner"
                  Grid.Row="1"

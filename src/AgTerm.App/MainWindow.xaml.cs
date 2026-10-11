@@ -76,6 +76,7 @@ public sealed partial class MainWindow : Window
     private Guid? _pendingCloseId;
     private readonly PaletteAutoFollowLease _paletteAutoFollow = new();
     private string? _shownPickId;
+    private string? _shownAskId;
     private bool _windowIsActive;
     private bool _restoreFocusWhenActivated;
     private WindowPaletteMode? _openPaletteMode;
@@ -103,6 +104,9 @@ public sealed partial class MainWindow : Window
             HandlePaletteItemAcceptedAsync(item),
             "Palette item acceptance failed");
         PaletteOverlay.Cancelled += () => ObserveTaskFault(HandlePaletteCancelledAsync(), "Palette cancellation failed");
+        AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
+        AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
+        TerminalView.SizeChanged += (_, _) => UpdateAskAnchor();
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
             load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
             runOnUi: work =>
@@ -375,7 +379,9 @@ public sealed partial class MainWindow : Window
         _applicationHost.ReportActivated(_windowId);
         if (PaletteOverlay.IsOpen)
             PaletteOverlay.FocusQuery();
-        if (_restoreFocusWhenActivated && !PaletteOverlay.IsOpen)
+        if (AskOverlay.IsOpen)
+            AskOverlay.FocusPanel();
+        if (_restoreFocusWhenActivated && !PaletteOverlay.IsOpen && !AskOverlay.IsOpen)
         {
             _restoreFocusWhenActivated = false;
             FocusActiveTerminal();
@@ -531,6 +537,8 @@ public sealed partial class MainWindow : Window
 
                 var previousSelection = _selection;
                 _selection = snapshot;
+                // a split toggle or a divider drag moves the pane a question is anchored to
+                UpdateAskAnchor();
                 _selectedSessionId = snapshot.SessionId;
                 SetTerminalCompositionOnly(
                     snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId)
@@ -805,12 +813,13 @@ public sealed partial class MainWindow : Window
         });
         // Wired here, not in ArmHotkeysAsync: a failed WebView2 page must not leave a pending pick unseen.
         // Changed fires on the control dispatch thread, maybe under host locks, and can arrive out of order:
-        // only enqueue here, and SyncPickAsync re-reads Pick.Pending when it runs on the UI thread.
+        // only enqueue here, and SyncModalAsync re-reads Pick.Pending and Pick.PendingAsk when it runs on the UI thread.
         host.Host.Actions.Pick.Changed += () => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
-            _paletteTransitions.RunAsync(SyncPickAsync),
-            "Pick presentation failed"));
+            _paletteTransitions.RunAsync(SyncModalAsync),
+            "Modal presentation failed"));
         PaletteOverlay.CancelChord = IsCloseSessionChord;
-        ObserveTaskFault(_paletteTransitions.RunAsync(SyncPickAsync), "Pick presentation failed");
+        AskOverlay.CancelChord = IsCloseSessionChord;
+        ObserveTaskFault(_paletteTransitions.RunAsync(SyncModalAsync), "Modal presentation failed");
         ObserveTaskFault(ArmHotkeysAsync(host), "Arm hotkeys failed");
     }
 
@@ -1083,6 +1092,79 @@ public sealed partial class MainWindow : Window
         PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending), takeFocus: _windowIsActive);
     }
 
+    private async Task SyncModalAsync()
+    {
+        await SyncPickAsync();
+        await SyncAskAsync();
+    }
+
+    /// <summary>Makes the dialog match the window's GUI question: show a new one, close one that was
+    /// answered or cancelled elsewhere. It reads the controller every time, as SyncPickAsync does.</summary>
+    private async Task SyncAskAsync()
+    {
+        if (_host is not { } host)
+            return;
+        var pending = host.Host.Actions.Pick.PendingAsk;
+        if (pending is null)
+        {
+            if (_shownAskId is null)
+                return;
+            _shownAskId = null;
+            AskOverlay.Close();
+            await FinishPaletteCloseAsync(restoreFocus: false);
+            RestoreFocusAfterPick();
+            return;
+        }
+        if (_shownAskId == pending.Id)
+            return;
+        if (PaletteOverlay.IsOpen)
+        {
+            PaletteOverlay.Close();
+            await FinishPaletteCloseAsync(restoreFocus: false);
+        }
+        await _paletteAutoFollow.AcquireAsync(() =>
+            host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
+        _shownAskId = pending.Id;
+        _restoreFocusWhenActivated = false;
+        AskOverlay.Open(pending, _rendererSettings.FontSize, takeFocus: _windowIsActive);
+        UpdateAskAnchor();
+    }
+
+    private void UpdateAskAnchor()
+    {
+        if (!AskOverlay.IsOpen || _host is not { } host || host.Host.Actions.Pick.PendingAsk is not { } ask)
+            return;
+        var bounds = TerminalView.TransformToVisual(AskOverlay)
+            .TransformBounds(new Windows.Foundation.Rect(0, 0, TerminalView.ActualWidth, TerminalView.ActualHeight));
+        var area = new AskRect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+        AskOverlay.SetAnchor(ask.Anchor?.Pane is { } pane
+            ? AskAnchorGeometry.Pane(area, pane, _selection.IsSplit, _selection.SplitRatio ?? AppStore.SplitRatioDefault)
+            : area);
+    }
+
+    private async Task HandleAskAnsweredAsync(string askId, int index)
+    {
+        if (_shownAskId != askId || _host is not { } host || host.Host.Actions.Pick.PendingAsk is not { } ask || ask.Id != askId)
+            return;
+        _shownAskId = null;
+        AskOverlay.Close();
+        var button = ask.Buttons[index];
+        host.Host.Actions.Pick.ResolveAsk(askId, ControlAskResult.Answered(button.Id, button.Label, index));
+        await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
+        RestoreFocusAfterPick();
+    }
+
+    private async Task HandleAskEscapedAsync(string askId)
+    {
+        if (_shownAskId != askId || _host is not { } host)
+            return;
+        _shownAskId = null;
+        AskOverlay.Close();
+        host.Host.Actions.Pick.EscapeAsk(askId);
+        await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
+        RestoreFocusAfterPick();
+    }
+
     private void RestoreFocusAfterPick()
     {
         // a picker answered in a background window must not pull focus away from the user's foreground app
@@ -1093,7 +1175,7 @@ public sealed partial class MainWindow : Window
     }
 
     private bool IsCloseSessionChord(VirtualKey key) =>
-        _shownPickId is not null
+        (_shownPickId is not null || _shownAskId is not null)
         && PhysicalFromKey(key) is { } physical
         && _hotkeyStates.Active.Router.Handle(physical) == BuiltinAction.CloseSession;
 
@@ -1146,6 +1228,7 @@ public sealed partial class MainWindow : Window
 
     private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
+        if (AskOverlay.IsOpen) return;
         // A focused plain-text control (e.g. the sidebar's inline rename box) must receive every
         // keystroke as text; letting single-letter chords (e.g. "n", "r") pre-empt it here would
         // silently eat characters before they ever reach the TextBox.
