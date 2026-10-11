@@ -21,6 +21,7 @@ public sealed class LiveWindowHost
     private readonly string _stateDirectory;
     private readonly string _homeDirectory;
     private string _windowName;
+    private readonly bool _terminalAskSupported;
 
     internal LiveWindowHost(
         Guid windowId,
@@ -31,8 +32,10 @@ public sealed class LiveWindowHost
         RecentClosedStore recentClosedStore,
         bool seedIfEmpty,
         bool launchRestore,
-        PickRegistry? picks = null)
+        PickRegistry? picks = null,
+        bool terminalAskSupported = true)
     {
+        _terminalAskSupported = terminalAskSupported;
         WindowId = windowId;
         Picks = picks ?? new PickRegistry();
         Pick = new PickController(Picks.Asks);
@@ -325,5 +328,6 @@ public sealed class LiveWindowHost
             configDirectory: _stateDirectory,
             homeDirectory: _homeDirectory,
             pick: Pick,
-            picks: Picks);
+            picks: Picks,
+            terminalAskSupported: _terminalAskSupported);
 }

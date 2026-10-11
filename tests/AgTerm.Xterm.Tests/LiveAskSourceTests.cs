@@ -14,6 +14,13 @@ public sealed class LiveAskSourceTests
     }
 
     [Fact]
+    public void The_app_refuses_terminal_asks_in_every_window_until_stage_two()
+    {
+        var source = Source("src", "AgTerm.App", "App.xaml.cs");
+        Assert.Contains("TerminalAskSupported = false", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_live_control_host_reconciles_a_gui_ask_anchor_after_every_change()
     {
         var source = Source("src", "AgTerm.Xterm", "LiveControlHost.cs");
