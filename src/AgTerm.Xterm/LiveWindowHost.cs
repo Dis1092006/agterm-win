@@ -35,7 +35,7 @@ public sealed class LiveWindowHost
     {
         WindowId = windowId;
         Picks = picks ?? new PickRegistry();
-        Pick = new PickController();
+        Pick = new PickController(Picks.Asks);
         _windowName = windowName;
         Ring = ring;
         _stateDirectory = stateDirectory;
@@ -55,6 +55,7 @@ public sealed class LiveWindowHost
             stateDirectory: stateDirectory)
         {
             PendingCloseFinalizationScheduler = action => RunLocked(action),
+            Asks = Picks.Asks,
         };
 
         var snapshot = _persistence.Load();

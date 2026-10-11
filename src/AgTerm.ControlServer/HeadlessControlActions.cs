@@ -142,6 +142,7 @@ public sealed class HeadlessControlActions : IControlActions
     private double _dashboardBaseFontSize;
     private readonly Action<string>? _paneFocusRequested;
     private readonly Action<HeadlessSearchUpdate>? _searchUpdated;
+    private readonly bool _terminalAskSupported;
     private readonly Action? _quickChanged;
     private readonly Action<bool>? _zoomActiveChanged;
     private readonly Action? _zoomChanged;
@@ -170,12 +171,16 @@ public sealed class HeadlessControlActions : IControlActions
                                   Action<LiveStatusNotificationRequest>? statusNotificationRequested = null,
                                   Func<TerminalZoomTarget, bool>? zoomTargetAvailable = null,
                                   PickController? pick = null,
-                                  PickRegistry? picks = null)
+                                  PickRegistry? picks = null,
+                                  bool terminalAskSupported = true)
     {
         Picks = picks ?? new PickRegistry();
-        Pick = pick ?? new PickController();
+        Pick = pick ?? new PickController(Picks.Asks);
         if (pick is null) Picks.Register(windowId, Pick);
         _store = store;
+        // one registry per application: terminal asks in any window and GUI asks share it
+        _store.Asks = Picks.Asks;
+        _terminalAskSupported = terminalAskSupported;
         _ring = ring;
         WindowId = windowId;
         WindowName = windowName;
@@ -215,6 +220,10 @@ public sealed class HeadlessControlActions : IControlActions
     public PickController Pick { get; }
 
     public PickRegistry Picks { get; }
+
+    public const string TerminalAskUnsupportedError = "terminal ask is not supported yet, use --style gui";
+
+    public AskRegistry Asks => Picks.Asks;
 
     public HeadlessThemeSlots Theme { get; } = new();
 
@@ -337,7 +346,8 @@ public sealed class HeadlessControlActions : IControlActions
                 dashboardHighlighted: () => Dashboard.IsOpen ? Dashboard.Highlighted?.ControlRef : null,
                 dashboardFontSize: () => Dashboard.IsOpen ? Dashboard.AppliedFontSize : null,
                 dashboardFontMode: () => Dashboard.IsOpen ? FontModeWire(Dashboard.FontMode) : null,
-                pickPending: () => Pick.PendingId);
+                pickPending: () => Pick.PendingId,
+                askPending: () => Pick.PendingAsk?.Id);
             return new ControlResponse { Ok = true, Result = new ControlResult { Tree = tree } };
         });
     }
@@ -1754,7 +1764,7 @@ public sealed class HeadlessControlActions : IControlActions
         {
             if (Pick.Open(pick))
                 return new ControlResponse { Ok = true, Result = new ControlResult { Id = pick.Id } };
-            return Err(Pick.IsClosed ? PickRegistry.WindowNotOpenError : PickController.AlreadyPendingError);
+            return Err(Pick.IsClosed ? PickRegistry.WindowNotOpenError : Pick.SlotTakenError);
         });
 
     public ControlResponse PickResult(string target, string? window) =>
@@ -1763,14 +1773,89 @@ public sealed class HeadlessControlActions : IControlActions
     public ControlResponse CancelPick(string target, string? window) =>
         window is null ? Picks.Cancel(target, null) : ResolveWindowId(window, id => Picks.Cancel(target, id));
 
-    // MARK: - ask (temporary until the host-side ask slot lands)
+    // MARK: - ask
 
-    public ControlResponse OpenAsk(PendingAsk ask, string? target, string? window, ControlAskPlacement placement, bool follow) =>
-        Err("ask is not available yet");
+    public ControlResponse OpenAsk(PendingAsk ask, string? target, string? window, ControlAskPlacement placement, bool follow)
+    {
+        // follow is applied by the live application host after this succeeds, as for pick.open
+        if (ask.Style == ControlAskStyle.Terminal)
+        {
+            if (!_terminalAskSupported) return Err(TerminalAskUnsupportedError);
+            return ResolveSession(target, window, (store, id) => OpenTerminalAsk(store, id, ask, placement));
+        }
+        if (target is not null)
+            return ResolveSession(target, window, (store, id) => OpenGuiAsk(store, id, ask, placement));
+        return ResolvePlacementStore(window, store => OpenGuiAsk(store, null, ask, placement));
+    }
 
-    public ControlResponse AskResult(string target, string? window) => AskRegistry.Unknown(target);
+    private ControlResponse OpenTerminalAsk(AppStore store, Guid sessionId, PendingAsk ask, ControlAskPlacement placement)
+    {
+        if (store.SessionWithId(sessionId) is not { } session) return Err("no such session");
+        if (!PanePlacement.TryResolve(placement.Pane, placement.PaneId, session, requireVisible: true,
+                PanePlacement.AskInvalidPaneError, out var resolved, out var error))
+            return Err(error!);
+        if (!store.OpenAsk(sessionId, ask, resolved.Identity, WindowId))
+            return Err(PickController.AskAlreadyPendingError);
+        return OkAsk(ask.Id, resolved.Pane);
+    }
 
-    public ControlResponse CancelAsk(string target, string? window) => AskRegistry.Unknown(target);
+    private ControlResponse OpenGuiAsk(AppStore store, Guid? sessionId, PendingAsk ask, ControlAskPlacement placement)
+    {
+        AskAnchor? anchor = null;
+        if (sessionId is { } id)
+        {
+            if (store.SessionWithId(id) is not { } session) return Err("no such session");
+            if (store.SelectedSessionId != id || Zoom.Target is not null || Dashboard.IsOpen)
+                return Err("session not visible");
+            if (!PanePlacement.TryResolve(placement.Pane, placement.PaneId, session, requireVisible: true,
+                    PanePlacement.AskInvalidPaneError, out var resolved, out var error))
+                return Err(error!);
+            anchor = new AskAnchor(id, resolved.Pane, resolved.Identity);
+        }
+        if (!Pick.OpenAsk(ask with { Anchor = anchor }, WindowId))
+            return Err(Pick.IsClosed ? PickRegistry.WindowNotOpenError : Pick.SlotTakenError);
+        return OkAsk(ask.Id, anchor?.Pane);
+    }
+
+    private static ControlResponse OkAsk(string id, OverlayPane? pane) => new()
+    {
+        Ok = true,
+        Result = new ControlResult { Id = id, Pane = pane is { } role ? OverlayPanes.Wire(role) : null },
+    };
+
+    public ControlResponse AskResult(string target, string? window) =>
+        window is null ? Asks.Result(target, null) : ResolveWindowId(window, id => Asks.Result(target, id));
+
+    public ControlResponse CancelAsk(string target, string? window) =>
+        window is null ? CancelAskIn(target, null) : ResolveWindowId(window, id => CancelAskIn(target, id));
+
+    private ControlResponse CancelAskIn(string target, Guid? windowId)
+    {
+        if (Asks.Find(target) is not { } found || (windowId is { } wanted && found.WindowId != wanted))
+            return AskRegistry.Unknown(target);
+        if (found.Result.Result != ControlAskOutcome.Pending) return Ok();
+        // the live application host routes a cancel to the owner's window; this window cannot
+        // reach another window's model
+        if (found.WindowId != WindowId) return AskRegistry.Unknown(target);
+        switch (found.LiveOwner)
+        {
+            case AskOwner.Window:
+                Pick.CancelAsk(target);
+                break;
+            case AskOwner.Session owner:
+                _store.CancelAsk(owner.SessionId, target);
+                break;
+        }
+        return Ok();
+    }
+
+    /// <summary>A GUI question anchored to a session ends once its session or pane leaves the
+    /// screen, as upstream's view cancels it. Runs under the host lock after model changes.</summary>
+    public void ReconcileAskAnchor()
+    {
+        if (Pick.PendingAsk is { Anchor: { } anchor } ask && !AskAnchors.IsShown(_store, anchor))
+            Pick.CancelAsk(ask.Id);
+    }
 
     // MARK: - window commands
     //
