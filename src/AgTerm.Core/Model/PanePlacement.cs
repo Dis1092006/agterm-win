@@ -61,14 +61,15 @@ public static class PanePlacement
 
 public static class AskAnchors
 {
-    /// <summary>Whether a GUI question's anchor is still on screen: its session selected and, for a
-    /// pane anchor, the same pane in the same role and laid out. Zoom and the dashboard are refused
-    /// while a GUI question is pending, so they need no check here.</summary>
+    /// <summary>Whether a GUI question's anchor is still on screen (upstream askAnchorIsValid): its
+    /// session selected and, for a pane anchor, the pane's identity still maps to some laid-out role.
+    /// The role may differ from the one at open time: closing the left pane promotes the right one.
+    /// Zoom and the dashboard are refused while a GUI question is pending, so they need no check here.</summary>
     public static bool IsShown(AppStore store, AskAnchor anchor)
     {
         if (store.SelectedSessionId != anchor.SessionId || store.SessionWithId(anchor.SessionId) is not { } session)
             return false;
-        if (anchor.PaneIdentity is not { } identity) return true;
-        return session.PaneRole(identity) is { } role && role == anchor.Pane && session.RendersPane(role);
+        if (anchor.PaneIdentity is not { } identity) return anchor.Pane is null;
+        return session.PaneRole(identity) is { } role && session.RendersPane(role);
     }
 }

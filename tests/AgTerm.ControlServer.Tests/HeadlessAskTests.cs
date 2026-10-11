@@ -189,6 +189,21 @@ public sealed class HeadlessAskTests : IDisposable
     }
 
     [Fact]
+    public void APaneAnchoredGuiAskIsCancelledWhenItsPaneIsNoLongerLaidOut()
+    {
+        var session = SelectedSession();
+        Assert.True(Send(new ControlRequest { Cmd = Command.SessionSplit, Target = session, Args = new ControlArgs { Mode = "on" } }).Ok);
+        var id = Send(OpenAsk("gui", target: session, pane: "right")).Result!.Id!;
+        Assert.True(Send(new ControlRequest { Cmd = Command.SessionFocus, Target = session, Args = new ControlArgs { Pane = "left" } }).Ok);
+        Assert.Equal(id, Tree().AskPending);
+
+        Assert.True(Send(new ControlRequest { Cmd = Command.SessionSplit, Target = session, Args = new ControlArgs { Mode = "off" } }).Ok);
+
+        Assert.Equal(ControlAskResult.Cancelled(), Result(id));
+        Assert.Null(Tree().AskPending);
+    }
+
+    [Fact]
     public void AnUnanchoredGuiAskSurvivesASelectionChange()
     {
         var first = SelectedSession();

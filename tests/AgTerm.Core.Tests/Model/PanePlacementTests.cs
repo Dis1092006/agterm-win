@@ -111,7 +111,17 @@ public class PanePlacementTests
 
         store.ClosePrimaryPane(session.Id);
 
-        Assert.False(AskAnchors.IsShown(store, right));
+        Assert.True(AskAnchors.IsShown(store, right));
         Assert.False(AskAnchors.IsShown(store, left));
+    }
+
+    [Fact]
+    public void AnAnchorWithoutAnIdentityIsShownOnlyWhenItNamesNoPane()
+    {
+        var (store, session) = SplitSession();
+        store.SelectSession(session.Id);
+
+        Assert.True(AskAnchors.IsShown(store, new AskAnchor(session.Id)));
+        Assert.False(AskAnchors.IsShown(store, new AskAnchor(session.Id, OverlayPane.Left)));
     }
 }

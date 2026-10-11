@@ -1147,16 +1147,28 @@ public sealed partial class MainWindow : Window
         UpdateAskAnchor();
     }
 
-    private void UpdateAskAnchor()
+    private async void UpdateAskAnchor()
     {
         if (!AskOverlay.IsOpen || _host is not { } host || host.Host.Actions.Pick.PendingAsk is not { } ask)
             return;
         var bounds = TerminalView.TransformToVisual(AskOverlay)
             .TransformBounds(new Windows.Foundation.Rect(0, 0, TerminalView.ActualWidth, TerminalView.ActualHeight));
         var area = new AskRect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-        AskOverlay.SetAnchor(ask.Anchor?.Pane is { } pane
-            ? AskAnchorGeometry.Pane(area, pane, _selection.IsSplit, _selection.SplitRatio ?? AppStore.SplitRatioDefault)
+        var pane = await CurrentAskPaneRoleAsync(host, ask.Anchor);
+        if (!AskOverlay.IsOpen || host.Host.Actions.Pick.PendingAsk?.Id != ask.Id)
+            return;
+        AskOverlay.SetAnchor(pane is { } role
+            ? AskAnchorGeometry.Pane(area, role, _selection.IsSplit, _selection.SplitRatio ?? AppStore.SplitRatioDefault)
             : area);
+    }
+
+    // the anchor's role at open time goes stale: closing the left pane promotes the right one, and
+    // the question stays up over the surviving pane, which then fills the whole area
+    private static Task<OverlayPane?> CurrentAskPaneRoleAsync(LiveControlHost host, AskAnchor? anchor)
+    {
+        if (anchor is not { PaneIdentity: { } identity })
+            return Task.FromResult<OverlayPane?>(null);
+        return host.StoreCoordinator.ReadAsync(store => store.SessionWithId(anchor.SessionId)?.PaneRole(identity));
     }
 
     private async Task HandleAskAnsweredAsync(string askId, int index)
