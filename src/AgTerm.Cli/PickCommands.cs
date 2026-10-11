@@ -79,6 +79,7 @@ internal static class PickStdin
 /// terminal outcome. The server never blocks, so other clients keep working while a user decides.</summary>
 internal static class PickRunner
 {
+    /// <summary>pendingPolls is the 0-based count of pending polls so far (upstream's helper is 1-based).</summary>
     public static TimeSpan PollDelay(int pendingPolls) =>
         pendingPolls < 10 ? TimeSpan.FromSeconds(0.1) : TimeSpan.FromSeconds(0.5);
 
@@ -166,7 +167,7 @@ internal static class PickRunner
         {
             env.Send(pipe, new ControlRequest { Cmd = WireCommand.PickCancel, Target = id });
         }
-        catch (AgTerm.ControlServer.PipeClientException)
+        catch (Exception)
         {
             // the transport already failed once; the caller rethrows the original failure
         }

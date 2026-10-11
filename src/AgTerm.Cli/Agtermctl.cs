@@ -46,11 +46,6 @@ public static class Agtermctl
         return command;
     }
 
-    /// <summary>Write UTF-8 to stdout. Without it a non-ASCII label comes out in the console code
-    /// page, and `$x = agtermctl pick ...` in pwsh reads it back garbled. Upstream always writes UTF-8.</summary>
-    internal static void UseUtf8Output() =>
-        Console.OutputEncoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-
     /// <summary>The user-facing message for a parse/validation error — the port of
     /// Agtermctl.message(for:).</summary>
     public static string Message(Exception error) => error.Message;

@@ -142,20 +142,4 @@ public class PickRunnerTests
         Assert.Equal(1, PickRunner.PrintResult(script.Env(), Options, request));
         Assert.Equal("{\"result\":\"pending\"}" + Environment.NewLine, script.Out.ToString());
     }
-
-    [Fact]
-    public void UseUtf8OutputSwitchesTheConsoleToUtf8WithoutBom()
-    {
-        var previous = Console.OutputEncoding;
-        try
-        {
-            Agtermctl.UseUtf8Output();
-            Assert.Equal("utf-8", Console.OutputEncoding.WebName);
-            Assert.Empty(Console.OutputEncoding.GetPreamble());
-        }
-        finally
-        {
-            Console.OutputEncoding = previous;
-        }
-    }
 }

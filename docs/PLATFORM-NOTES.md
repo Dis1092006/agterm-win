@@ -550,4 +550,4 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - A pick item decoded with a null `id` or `label` is refused with `invalid request: pick item requires id and label`; upstream fails the Swift decode with its own message.
   - `agtermctl pick` drops a leading UTF-8 BOM from stdin before deciding between JSON and lines. Windows PowerShell 5.1 and Notepad write one.
   - Malformed JSON or invalid UTF-8 on stdin gives `stdin must be UTF-8 text or a JSON item array` and exit 1. Upstream prints a Swift decoder description for malformed JSON.
-  - `agtermctl` writes UTF-8 to stdout for every command, so a non-ASCII label survives a pwsh capture. Upstream always writes UTF-8.
+  - `agtermctl` writes in the console's output code page, the .NET default. pwsh decodes captured native output with that same code page, so `$x = agtermctl pick ...` keeps non-ASCII labels; a console set to UTF-8 gets UTF-8. Upstream always writes UTF-8, because macOS terminals are UTF-8.
