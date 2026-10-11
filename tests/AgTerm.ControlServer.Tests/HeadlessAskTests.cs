@@ -204,6 +204,25 @@ public sealed class HeadlessAskTests : IDisposable
     }
 
     [Fact]
+    public void ARightPaneAnchoredGuiAskSurvivesTheLeftPaneClosing()
+    {
+        var session = SelectedSession();
+        Assert.True(Send(new ControlRequest { Cmd = Command.SessionSplit, Target = session, Args = new ControlArgs { Mode = "on" } }).Ok);
+        var id = Send(OpenAsk("gui", target: session, pane: "right")).Result!.Id!;
+
+        _host.RunLocked(() =>
+        {
+            // headless sessions have no surfaces, and ClosePrimaryPane closes a session with no live split pane
+            _host.Store.SessionWithId(Guid.Parse(session))!.SplitSurface = new FakeSurface();
+            _host.Store.ClosePrimaryPane(Guid.Parse(session));
+            _host.Actions.ReconcileAskAnchor();
+        });
+
+        Assert.Equal(ControlAskResult.Pending(), Result(id));
+        Assert.Equal(id, Tree().AskPending);
+    }
+
+    [Fact]
     public void AnUnanchoredGuiAskSurvivesASelectionChange()
     {
         var first = SelectedSession();

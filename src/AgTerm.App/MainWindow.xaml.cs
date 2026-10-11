@@ -106,7 +106,7 @@ public sealed partial class MainWindow : Window
         PaletteOverlay.Cancelled += () => ObserveTaskFault(HandlePaletteCancelledAsync(), "Palette cancellation failed");
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
         AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
-        TerminalView.SizeChanged += (_, _) => UpdateAskAnchor();
+        TerminalView.SizeChanged += (_, _) => ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
             load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
             runOnUi: work =>
@@ -538,7 +538,7 @@ public sealed partial class MainWindow : Window
                 var previousSelection = _selection;
                 _selection = snapshot;
                 // a split toggle or a divider drag moves the pane a question is anchored to
-                UpdateAskAnchor();
+                ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
                 _selectedSessionId = snapshot.SessionId;
                 SetTerminalCompositionOnly(
                     snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId)
@@ -1144,19 +1144,29 @@ public sealed partial class MainWindow : Window
         _shownAskId = pending.Id;
         _restoreFocusWhenActivated = false;
         AskOverlay.Open(pending, _rendererSettings.FontSize, takeFocus: _windowIsActive);
-        UpdateAskAnchor();
+        await UpdateAskAnchorAsync();
     }
 
-    private async void UpdateAskAnchor()
+    private async Task UpdateAskAnchorAsync()
     {
         if (!AskOverlay.IsOpen || _host is not { } host || host.Host.Actions.Pick.PendingAsk is not { } ask)
             return;
+        OverlayPane? pane;
+        try
+        {
+            pane = await CurrentAskPaneRoleAsync(host, ask.Anchor);
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or OperationCanceledException)
+        {
+            // the window is closing: its close cancels the question, so there is nothing to place
+            return;
+        }
+        if (!AskOverlay.IsOpen || host.Host.Actions.Pick.PendingAsk?.Id != ask.Id)
+            return;
+        // bounds and split state are read together, after the await, so they describe the same moment
         var bounds = TerminalView.TransformToVisual(AskOverlay)
             .TransformBounds(new Windows.Foundation.Rect(0, 0, TerminalView.ActualWidth, TerminalView.ActualHeight));
         var area = new AskRect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-        var pane = await CurrentAskPaneRoleAsync(host, ask.Anchor);
-        if (!AskOverlay.IsOpen || host.Host.Actions.Pick.PendingAsk?.Id != ask.Id)
-            return;
         AskOverlay.SetAnchor(pane is { } role
             ? AskAnchorGeometry.Pane(area, role, _selection.IsSplit, _selection.SplitRatio ?? AppStore.SplitRatioDefault)
             : area);
