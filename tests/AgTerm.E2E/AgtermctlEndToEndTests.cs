@@ -32,6 +32,67 @@ public class AgtermctlEndToEndTests : ControlApiTestCase
     }
 
     [Fact]
+    public async Task Ask_waits_for_the_answer_and_prints_it()
+    {
+        var stdout = new StringWriter();
+        var run = Task.Run(() => RunCtlTo(new[] { "ask", "Deploy?", "--button", "yes=Yes", "--button", "no", "--style", "gui" }, stdout));
+        var id = await PendingAskIdAsync(() => Host.Actions.Pick.PendingAsk?.Id);
+
+        Host.Actions.Pick.ResolveAsk(id, AgTerm.Core.Protocol.ControlAskResult.Answered("no", "no", 1));
+
+        Assert.Equal(0, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("{\"result\":\"answered\",\"id\":\"no\",\"label\":\"no\",\"index\":1}", stdout.ToString().Trim());
+    }
+
+    [Fact]
+    public async Task Ask_exits_three_when_the_user_dismisses_a_terminal_question()
+    {
+        var stdout = new StringWriter();
+        var run = Task.Run(() => RunCtlTo(new[] { "ask", "Deploy?", "--button", "yes" }, stdout));
+        Guid sessionId = default;
+        var id = await PendingAskIdAsync(() =>
+        {
+            string? found = null;
+            Host.RunLocked(() =>
+            {
+                var session = Host.Store.ActiveSession;
+                sessionId = session?.Id ?? default;
+                found = session?.AskPending?.Id;
+            });
+            return found;
+        });
+
+        Host.RunLocked(() => Host.Store.ResolveAsk(sessionId, id, AgTerm.Core.Protocol.ControlAskResult.Escaped()));
+
+        Assert.Equal(3, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("{\"result\":\"escaped\"}", stdout.ToString().Trim());
+    }
+
+    [Fact]
+    public async Task Ask_exits_two_when_another_client_cancels_it()
+    {
+        var stdout = new StringWriter();
+        var run = Task.Run(() => RunCtlTo(new[] { "ask", "Deploy?", "--button", "yes", "--style", "gui" }, stdout));
+        var id = await PendingAskIdAsync(() => Host.Actions.Pick.PendingAsk?.Id);
+
+        Assert.Equal(0, RunCtl("ask", "cancel", id).Exit);
+
+        Assert.Equal(2, await run.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("{\"result\":\"cancelled\"}", stdout.ToString().Trim());
+    }
+
+    private static async Task<string> PendingAskIdAsync(Func<string?> read)
+    {
+        for (var i = 0; i < 200; i++)
+        {
+            if (read() is { } id) return id;
+            await Task.Delay(25);
+        }
+        Assert.Fail("no ask became pending");
+        return "";
+    }
+
+    [Fact]
     public void TreeSessionNewStatusAndEventsRoundTripThroughTheCli()
     {
         // session new prints the fresh id (a create command echoes result.id).

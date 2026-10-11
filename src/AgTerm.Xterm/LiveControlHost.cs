@@ -172,6 +172,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 NotificationRequested = QueueNotificationRequested,
                 StatusNotificationRequested = QueueStatusNotificationRequested,
                 ZoomTargetAvailable = IsZoomTargetRealized,
+                TerminalAskSupported = false,
             }));
         }
         else
@@ -205,7 +206,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 statusNotificationRequested: QueueStatusNotificationRequested,
                 zoomTargetAvailable: IsZoomTargetRealized,
                 pick: windowHost.Pick,
-                picks: windowHost.Picks);
+                picks: windowHost.Picks,
+                terminalAskSupported: false);
             windowHost.AttachLive(actions, ReserveSurface, _scopeFactory);
         }
         if (options.InitialTheme is { } initialTheme)
@@ -977,6 +979,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private void ReconcileSurfacesLocked()
     {
+        Host.Actions.ReconcileAskAnchor();
         var coordinator = _coordinator;
         if (coordinator is null)
         {

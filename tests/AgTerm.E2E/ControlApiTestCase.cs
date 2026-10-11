@@ -89,6 +89,15 @@ public abstract class ControlApiTestCase : IDisposable
         return (exit, stdout.ToString(), stderr.ToString());
     }
 
+    /// <summary>RunCtl that writes to the given writer, so a test can read output while a blocking command (ask) runs.</summary>
+    protected int RunCtlTo(string[] argv, TextWriter stdout) =>
+        AgTerm.Cli.Agtermctl.Run(argv, new AgTerm.Cli.CliEnvironment
+        {
+            GetEnv = key => key == "AGTERM_CONTROL_SOCKET" ? Host.PipeName : null,
+            Out = stdout,
+            Error = new StringWriter(),
+        });
+
     /// <summary>RunCtl for a command that reads its items from stdin (pick): the parsed command gets
     /// the given text as UTF-8 bytes. Takes the writer so a test can read output while the run blocks.</summary>
     protected int RunCtlWithStdin(string[] argv, string stdin, TextWriter stdout)

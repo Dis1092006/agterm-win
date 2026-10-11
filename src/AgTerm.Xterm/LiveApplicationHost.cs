@@ -310,6 +310,7 @@ public sealed class LiveApplicationHost : IDisposable
         try
         {
             await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
+            window.RunLocked(window.Store.CancelAllAsks);
             EmitWindowLifecycleEvents(
                 windowId,
                 window.CaptureLifecycleSessions(),
@@ -344,6 +345,7 @@ public sealed class LiveApplicationHost : IDisposable
 
         // Unregister closes each controller as well as cancelling it, so a pick.open already in flight fails.
         foreach (var windowId in windowIds) _picks.Unregister(windowId);
+        foreach (var window in windows) window.RunLocked(window.Store.CancelAllAsks);
         _server.Stop();
         foreach (var attachment in attachments) attachment.Dispose();
         foreach (var window in windows) window.Save();
@@ -384,6 +386,12 @@ public sealed class LiveApplicationHost : IDisposable
         // frontmost change while a CLI polls cannot orphan its pick
         if (request.Cmd is Command.PickResult or Command.PickCancel && request.Target is { } pickId)
             return RoutePickLookup(request.Cmd, pickId, request.Args?.Window);
+        // ask ids are global: a lookup follows the id to its owner window, open or closed, so a
+        // frontmost change while a CLI polls cannot orphan the question
+        if (request.Cmd == Command.AskResult && request.Target is { } askId)
+            return RouteAskResult(askId, request.Args?.Window);
+        if (request.Cmd == Command.AskCancel && request.Target is { } cancelId)
+            return await RouteAskCancelAsync(request, cancelId, cancellationToken).ConfigureAwait(false);
 
         var target = request.Args?.Window?.Trim();
         LiveWindowEntry[] entries;
@@ -402,7 +410,7 @@ public sealed class LiveApplicationHost : IDisposable
                 return new ControlResponse
                 {
                     Ok = false,
-                    Error = request.Cmd == Command.PickOpen ? "no open window" : "no such window: active",
+                    Error = request.Cmd is Command.PickOpen or Command.AskOpen ? "no open window" : "no such window: active",
                 };
             windowId = active;
         }
@@ -524,7 +532,7 @@ public sealed class LiveApplicationHost : IDisposable
                 Error = "window not open — window.select it first",
             };
         var response = await window.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
-        if (request.Cmd == Command.PickOpen && request.Args?.Follow == true && response?.Ok == true
+        if (request.Cmd is Command.PickOpen or Command.AskOpen && request.Args?.Follow == true && response?.Ok == true
             && _windowController is not null)
         {
             try
@@ -533,32 +541,56 @@ public sealed class LiveApplicationHost : IDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The pick is open and the client needs its id, like window.select with a refused activation.
+                // The modal is open and the client needs its id, like window.select with a refused activation.
             }
             ReportActivated(windowId);
         }
         return response;
     }
 
+    /// <summary>A pick or ask lookup's --window: any known window, open or closed, so a retained
+    /// result of a closed window stays readable.</summary>
+    private ControlResponse? ResolveLookupWindow(string? window, out Guid? windowId)
+    {
+        windowId = null;
+        var selector = window?.Trim();
+        if (string.IsNullOrEmpty(selector)) return null;
+        LiveWindowEntry[] entries;
+        Guid? active;
+        lock (_gate)
+        {
+            entries = _windows.ToArray();
+            active = ActiveWindowIdLocked();
+        }
+        var resolution = ControlResolve.Resolve(selector, entries.Select(entry => entry.Id).ToArray(), active);
+        if (resolution.Kind != TargetResolution.Outcome.Resolved)
+            return new ControlResponse { Ok = false, Error = ControlResolve.ErrorMessage("window", selector, resolution) };
+        windowId = resolution.Id;
+        return null;
+    }
+
     private ControlResponse RoutePickLookup(Command command, string pickId, string? window)
     {
-        Guid? windowId = null;
-        var selector = window?.Trim();
-        if (!string.IsNullOrEmpty(selector))
-        {
-            LiveWindowEntry[] entries;
-            Guid? active;
-            lock (_gate)
-            {
-                entries = _windows.ToArray();
-                active = ActiveWindowIdLocked();
-            }
-            var resolution = ControlResolve.Resolve(selector, entries.Select(entry => entry.Id).ToArray(), active);
-            if (resolution.Kind != TargetResolution.Outcome.Resolved)
-                return new ControlResponse { Ok = false, Error = ControlResolve.ErrorMessage("window", selector, resolution) };
-            windowId = resolution.Id;
-        }
+        if (ResolveLookupWindow(window, out var windowId) is { } error) return error;
         return command == Command.PickResult ? _picks.Result(pickId, windowId) : _picks.Cancel(pickId, windowId);
+    }
+
+    private ControlResponse RouteAskResult(string askId, string? window) =>
+        ResolveLookupWindow(window, out var windowId) ?? _picks.Asks.Result(askId, windowId);
+
+    /// <summary>A pending question lives under its owner window's model lock, so the cancel runs
+    /// in that window, not in the frontmost one.</summary>
+    private async Task<ControlResponse?> RouteAskCancelAsync(ControlRequest request, string askId, CancellationToken cancellationToken)
+    {
+        if (ResolveLookupWindow(request.Args?.Window, out var windowId) is { } error) return error;
+        if (_picks.Asks.Find(askId) is not { } found || (windowId is { } wanted && found.WindowId != wanted))
+            return AskRegistry.Unknown(askId);
+        if (found.LiveOwner is null) return new ControlResponse { Ok = true };
+        LiveWindowHost? owner;
+        lock (_gate) _openWindows.TryGetValue(found.WindowId, out owner);
+        if (owner is null) return AskRegistry.Unknown(askId);
+        var routed = request with { Args = (request.Args ?? new ControlArgs()) with { Window = null } };
+        return await owner.DispatchAsync(routed, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<ControlResponse> NewWindowAsync(
@@ -757,6 +789,7 @@ public sealed class LiveApplicationHost : IDisposable
         }
 
         await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
+        window.RunLocked(window.Store.CancelAllAsks);
         if (attachment is not null)
             await attachment.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
         window.CancelPendingSave();
@@ -1120,6 +1153,7 @@ public sealed class LiveApplicationHost : IDisposable
 
     private static bool UsesSingleSessionTarget(Command command) => command is
         Command.SessionDuplicate
+        or Command.AskOpen
         or Command.SessionSelect
         or Command.SessionClose
         or Command.SessionRename

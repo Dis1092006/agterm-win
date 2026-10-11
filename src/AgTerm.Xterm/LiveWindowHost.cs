@@ -132,6 +132,7 @@ public sealed class LiveWindowHost
                 try
                 {
                     response = _dispatcher.Dispatch(request).GetAwaiter().GetResult();
+                    Actions.ReconcileAskAnchor();
                 }
                 catch
                 {

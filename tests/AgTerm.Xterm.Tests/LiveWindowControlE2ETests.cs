@@ -1035,6 +1035,164 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Equal("no open window", new ControlPipeClient(application.PipeName).Send(OpenPickRequest()).Error);
     }
 
+    private static ControlRequest OpenAskRequest(string style = "gui", string? window = null, string? target = null, bool follow = false) => new()
+    {
+        Cmd = Command.AskOpen,
+        Target = target,
+        Args = new ControlArgs
+        {
+            Title = "Continue?",
+            Buttons = new[] { new ControlAskButton { Id = "yes", Label = "Yes" } },
+            Style = style,
+            Window = window,
+            Follow = follow ? true : null,
+        },
+    };
+
+    private static ControlAskResult? AskResult(ControlPipeClient client, string id, string? window = null) =>
+        client.Send(new ControlRequest
+        {
+            Cmd = Command.AskResult, Target = id,
+            Args = window is null ? null : new ControlArgs { Window = window },
+        }).Result?.Ask;
+
+    private static string FirstSessionId(ControlPipeClient client, Guid windowId) =>
+        client.Send(new ControlRequest { Cmd = Command.Tree, Args = new ControlArgs { Window = windowId.ToString("D") } })
+            .Result!.Tree!.Workspaces.SelectMany(w => w.Sessions).First().Id;
+
+    [Fact]
+    public void Ask_result_finds_the_ask_by_id_after_the_frontmost_window_changes()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var id = client.Send(OpenAskRequest()).Result!.Id!;
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowSelect, Target = secondId.ToString("D") }).Ok);
+
+        Assert.Equal(ControlAskResult.Pending(), AskResult(client, id));
+        Assert.Equal($"unknown ask: {id}", client.Send(new ControlRequest
+        {
+            Cmd = Command.AskResult, Target = id, Args = new ControlArgs { Window = secondId.ToString("D") },
+        }).Error);
+    }
+
+    [Fact]
+    public void Ask_cancel_reaches_a_terminal_ask_in_a_background_window()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var opened = client.Send(OpenAskRequest("terminal", window: firstId.ToString("D")));
+        Assert.True(opened.Ok, opened.Error);
+        var id = opened.Result!.Id!;
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowSelect, Target = secondId.ToString("D") }).Ok);
+
+        Assert.Equal($"unknown ask: {id}", client.Send(new ControlRequest
+        {
+            Cmd = Command.AskCancel, Target = id, Args = new ControlArgs { Window = secondId.ToString("D") },
+        }).Error);
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.AskCancel, Target = id }).Ok);
+
+        Assert.Equal(ControlAskResult.Cancelled(), AskResult(client, id));
+        var tree = client.Send(new ControlRequest { Cmd = Command.Tree, Args = new ControlArgs { Window = firstId.ToString("D") } }).Result!.Tree!;
+        Assert.All(tree.Workspaces.SelectMany(w => w.Sessions), session => Assert.Null(session.Ask));
+    }
+
+    [Fact]
+    public void Ask_open_with_a_session_target_routes_to_the_owning_window()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var session = FirstSessionId(client, firstId);
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowSelect, Target = secondId.ToString("D") }).Ok);
+
+        var opened = client.Send(OpenAskRequest("terminal", target: session));
+
+        Assert.True(opened.Ok, opened.Error);
+        Assert.Equal(ControlAskResult.Pending(), AskResult(client, opened.Result!.Id!, firstId.ToString("D")));
+    }
+
+    [Fact]
+    public async Task Closing_the_window_cancels_its_asks_and_keeps_the_results_readable()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var gui = client.Send(OpenAskRequest(window: firstId.ToString("D"))).Result!.Id!;
+        var terminal = client.Send(OpenAskRequest("terminal", window: firstId.ToString("D"))).Result!.Id!;
+
+        await application.CloseWindowAsync(firstId);
+
+        foreach (var id in new[] { gui, terminal })
+        {
+            Assert.Equal(ControlAskResult.Cancelled(), AskResult(client, id));
+            Assert.Equal(ControlAskResult.Cancelled(), AskResult(client, id, firstId.ToString("D")));
+            Assert.True(client.Send(new ControlRequest { Cmd = Command.AskCancel, Target = id }).Ok);
+        }
+    }
+
+    [Fact]
+    public void Disposing_the_application_cancels_every_pending_ask()
+    {
+        var firstId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
+        var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var gui = client.Send(OpenAskRequest()).Result!.Id!;
+        var terminal = client.Send(OpenAskRequest("terminal")).Result!.Id!;
+        var window = application.GetOpenWindow(firstId);
+
+        application.Dispose();
+
+        Assert.Null(window.Pick.PendingAsk);
+        Assert.Equal(ControlAskResult.Cancelled(), window.Pick.Asks.Find(gui)!.Result);
+        Assert.Equal(ControlAskResult.Cancelled(), window.Pick.Asks.Find(terminal)!.Result);
+    }
+
+    [Fact]
+    public void Ask_open_with_follow_takes_frontmost()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        Assert.True(client.Send(OpenAskRequest(window: secondId.ToString("D"), follow: true)).Ok);
+
+        Assert.Equal(secondId, application.ActiveWindowId);
+    }
+
+    [Fact]
+    public async Task Ask_open_with_no_open_window_answers_no_open_window()
+    {
+        var onlyId = Guid.NewGuid();
+        WriteWindowSnapshot(onlyId, "alpha");
+        WriteIndex(onlyId, new IndexEntry(onlyId, "only", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        await application.CloseWindowAsync(onlyId);
+
+        Assert.Equal("no open window", new ControlPipeClient(application.PipeName).Send(OpenAskRequest()).Error);
+    }
+
     private LiveApplicationHost CreateApplication(ILiveWindowController? windows = null) =>
         new(new LiveApplicationHostOptions
         {
@@ -1064,6 +1222,24 @@ public sealed class LiveWindowControlE2ETests : IDisposable
                     Id = Guid.NewGuid(),
                     Name = workspaceName,
                     Sessions = Array.Empty<SessionSnapshot>(),
+                },
+            ],
+        });
+    }
+
+    private void WriteWindowSnapshotWithSession(Guid windowId, string workspaceName)
+    {
+        var sessionId = Guid.NewGuid();
+        WriteWindowSnapshot(windowId, new Snapshot
+        {
+            SelectedSessionId = sessionId,
+            Workspaces =
+            [
+                new WorkspaceSnapshot
+                {
+                    Id = Guid.NewGuid(),
+                    Name = workspaceName,
+                    Sessions = [new SessionSnapshot { Id = sessionId, Cwd = Path.GetTempPath() }],
                 },
             ],
         });

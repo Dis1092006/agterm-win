@@ -546,6 +546,8 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - `window.select` makes the window frontmost for routing even when Windows refuses to activate it for a background caller (upstream `28cad2c1` takes frontmost the same way).
 - Palette fuzzy ranking caps a substring match at `5 + min(offset, 34)`, under the subsequence floor of 40 (upstream `2c8ad9f1`).
 - While a pick is pending in a window, `quick show`, `surface.zoom` turning a zoom on, `dashboard` opening and `session.search` open/next/prev answer `pick pending`; dismissals keep working (upstream `6b6323ed`).
+- While a `gui` question is pending in a window, the same four commands answer `ask pending`, and a `pick.open` answers `ask already pending` (upstream `32ec288d`). A pick refuses an `ask.open` with `pick already pending`.
+- Closing a session (hard or soft, alone or in a batch), removing its workspace, closing the pane a question covers, closing or deleting the window, and quitting cancel its terminal questions; undo brings a session back without its question (upstream `1b765e69`). A `gui` question anchored to a session is cancelled when that session is deselected or the anchored pane leaves the screen.
 - Every palette moves the selection with Ctrl+J and Ctrl+K, with Control as the only modifier (upstream `2fb0ca72`). The letter keys are matched by virtual key, so on a non-Latin layout they follow the physical QWERTY positions.
 - Palettes accept blank ids, whitespace-only labels and an empty placeholder, because pick sends them.
 
@@ -563,3 +565,13 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The picker is centered in the window, as the other palettes are; centering over the terminal area (upstream #367) is not ported.
   - Item ids are compared after NFC normalization, which matches Swift `String` equality.
   - `pick.open` with no open window answers `no open window`. Other commands answer `no such window: active` in the same state.
+- `ask` (`ask.open`, `ask.result`, `ask.cancel`, `tree.askPending`, session `ask`): a question with 1 to 6 buttons that a script drives through `agtermctl ask` (upstream `32ec288d`, `1b765e69`). Design: `docs/superpowers/specs/2026-10-11-ask-design.md`.
+  - The live app answers a `terminal` request with `terminal ask is not supported yet, use --style gui` until the xterm page draws terminal questions. The headless host keeps both styles.
+  - The headless host keeps a question pending until it is cancelled or a test answers it through `HeadlessControlActions.Pick` or `AppStore.ResolveAsk`; it never answers `no ask surface`.
+  - A button decoded with a null `id` or `label` is refused with `invalid request: ask button requires id and label`; upstream fails the Swift decode with its own message.
+  - Remote presentation of questions is not ported: no `reason` in the result, no `remote` or `replica` in the tree.
+  - A `gui` question closes a built-in palette at once in any window, as a pick does.
+  - Button ids are compared after NFC normalization, which matches Swift `String` equality.
+  - `AskRegistry` keeps the pending ids itself. Upstream asks the owner through a closure; here the owner's model is behind the window lock and polls arrive on the pipe thread.
+  - `ask.cancel` without `--window` runs in the owner's window, wherever the frontmost window is.
+  - A hotkey matches by virtual key, so on a Cyrillic layout the key at the Latin letter's position presses the button. Upstream matches the typed character, and there a hotkey does nothing on a non-Latin layout.
