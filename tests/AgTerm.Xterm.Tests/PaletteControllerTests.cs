@@ -208,7 +208,8 @@ public sealed class PaletteViewSourceTests
         var code = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "PaletteView.xaml.cs"));
 
         Assert.Contains("PointerPressed=\"OnDismissSurfacePointerPressed\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("public void NotePointerActivation()", code, StringComparison.Ordinal);
+        Assert.Contains("public void NoteActivation()", code, StringComparison.Ordinal);
+        Assert.Contains("_activationClicks.Activated(Environment.TickCount64)", code, StringComparison.Ordinal);
         Assert.Contains("_activationClicks.Pressed(Environment.TickCount64)", code, StringComparison.Ordinal);
         Assert.Matches(@"OnDismissSurfaceTapped\([^)]*\)\s*\{\s*if \(_activationClicks\.ShouldIgnoreTap\(\)\)\s*return;\s*Cancel\(\);", code);
     }
@@ -223,7 +224,11 @@ public sealed class PaletteViewSourceTests
         var armMethod = source.IndexOf("private async Task ArmHotkeysAsync", StringComparison.Ordinal);
         Assert.True(subscribe >= 0 && arm >= 0 && subscribe < arm, "the pick subscription must come before ArmHotkeysAsync is started.");
         Assert.True(subscribe < armMethod);
-        Assert.Matches(@"WindowActivationState\.PointerActivated\)\s*PaletteOverlay\.NotePointerActivation\(\);", source);
+        // WinUI 3 reports a click activation as CodeActivated, so every activation is noted
+        Assert.Matches(@"WindowActivationState\.Deactivated\)\s*return;\s*PaletteOverlay\.NoteActivation\(\);", source);
+        // a pick shown in a background window must not take focus (that activates the window)
+        Assert.Contains("PickPalette.Options(pending), takeFocus: _windowIsActive)", source, StringComparison.Ordinal);
+        Assert.Contains("PaletteOverlay.FocusQuery();", source, StringComparison.Ordinal);
     }
 
     [Fact]

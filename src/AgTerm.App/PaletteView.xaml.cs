@@ -42,7 +42,8 @@ public sealed partial class PaletteView : UserControl
     }
 
     /// <summary>The pick path: an empty placeholder is allowed because a caller's prompt may be "".</summary>
-    public void Open(string placeholder, IReadOnlyList<PaletteItemViewModel> items, PaletteOpenOptions options)
+    public void Open(string placeholder, IReadOnlyList<PaletteItemViewModel> items, PaletteOpenOptions options,
+                     bool takeFocus = true)
     {
         ArgumentNullException.ThrowIfNull(placeholder);
         ArgumentNullException.ThrowIfNull(items);
@@ -52,8 +53,10 @@ public sealed partial class PaletteView : UserControl
         Visibility = Visibility.Visible;
         ApplyAvailableHeight(ActualHeight);
         _controller.Open(items, options);
-        FocusQueryBox();
-        DispatcherQueue.TryEnqueue(FocusQueryBox);
+        // focusing the query box activates the window, which a pick sent to a background window
+        // must not do; the host calls FocusQuery when the user activates the window
+        if (takeFocus)
+            FocusQuery();
         if (options.InitialQuery.Length > 0)
         {
             // a seeded query opens selected so the first keystroke replaces it, as upstream
@@ -63,9 +66,9 @@ public sealed partial class PaletteView : UserControl
 
     public Func<VirtualKey, bool>? CancelChord { get; set; }
 
-    /// <summary>The host window calls this when a mouse click activated it. That click also reaches
-    /// the scrim, and it must not cancel a pick shown in the background.</summary>
-    public void NotePointerActivation() => _activationClicks.PointerActivated(Environment.TickCount64);
+    /// <summary>The host window calls this on every activation. The click that activates a window
+    /// also reaches the scrim, and it must not cancel a pick shown in the background.</summary>
+    public void NoteActivation() => _activationClicks.Activated(Environment.TickCount64);
 
     public void Close()
     {
@@ -117,6 +120,12 @@ public sealed partial class PaletteView : UserControl
         {
             _syncing = false;
         }
+    }
+
+    public void FocusQuery()
+    {
+        FocusQueryBox();
+        DispatcherQueue.TryEnqueue(FocusQueryBox);
     }
 
     private void FocusQueryBox() => QueryBox.Focus(FocusState.Programmatic);

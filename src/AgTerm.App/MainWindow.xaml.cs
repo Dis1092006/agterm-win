@@ -366,10 +366,11 @@ public sealed partial class MainWindow : Window
         _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
         if (args.WindowActivationState == WindowActivationState.Deactivated)
             return;
-        if (args.WindowActivationState == WindowActivationState.PointerActivated)
-            PaletteOverlay.NotePointerActivation();
+        PaletteOverlay.NoteActivation();
 
         _applicationHost.ReportActivated(_windowId);
+        if (PaletteOverlay.IsOpen)
+            PaletteOverlay.FocusQuery();
         if (_restoreFocusWhenActivated && !PaletteOverlay.IsOpen)
         {
             _restoreFocusWhenActivated = false;
@@ -1072,7 +1073,7 @@ public sealed partial class MainWindow : Window
             host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
         _shownPickId = pending.Id;
         _restoreFocusWhenActivated = false;
-        PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending));
+        PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending), takeFocus: _windowIsActive);
     }
 
     private void RestoreFocusAfterPick()
