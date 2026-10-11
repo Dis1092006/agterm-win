@@ -10,6 +10,7 @@ public sealed partial class PaletteView : UserControl
 {
     private readonly PaletteController _controller = new();
     private readonly ObservableCollection<PaletteItemViewModel> _items = new();
+    private readonly ActivationClickFilter _activationClicks = new();
     private bool _syncing;
 
     public PaletteView()
@@ -62,9 +63,9 @@ public sealed partial class PaletteView : UserControl
 
     public Func<VirtualKey, bool>? CancelChord { get; set; }
 
-    /// <summary>Tells whether the host window is active. The click that activates a window is also
-    /// delivered to the scrim, and it must not cancel a pick shown in the background.</summary>
-    public Func<bool>? IsWindowActive { get; set; }
+    /// <summary>The host window calls this when a mouse click activated it. That click also reaches
+    /// the scrim, and it must not cancel a pick shown in the background.</summary>
+    public void NotePointerActivation() => _activationClicks.PointerActivated(Environment.TickCount64);
 
     public void Close()
     {
@@ -197,16 +198,12 @@ public sealed partial class PaletteView : UserControl
         AcceptSelected();
     }
 
-    private bool _pressStartedInactive;
-
     private void OnDismissSurfacePointerPressed(object sender, PointerRoutedEventArgs e) =>
-        _pressStartedInactive = IsWindowActive?.Invoke() == false;
+        _activationClicks.Pressed(Environment.TickCount64);
 
     private void OnDismissSurfaceTapped(object sender, TappedRoutedEventArgs e)
     {
-        var ignore = _pressStartedInactive;
-        _pressStartedInactive = false;
-        if (ignore)
+        if (_activationClicks.ShouldIgnoreTap())
             return;
         Cancel();
     }

@@ -208,9 +208,9 @@ public sealed class PaletteViewSourceTests
         var code = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "PaletteView.xaml.cs"));
 
         Assert.Contains("PointerPressed=\"OnDismissSurfacePointerPressed\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("public Func<bool>? IsWindowActive", code, StringComparison.Ordinal);
-        Assert.Contains("_pressStartedInactive = IsWindowActive?.Invoke() == false", code, StringComparison.Ordinal);
-        Assert.Matches(@"OnDismissSurfaceTapped\([^)]*\)\s*\{\s*var ignore = _pressStartedInactive;\s*_pressStartedInactive = false;\s*if \(ignore\)\s*return;\s*Cancel\(\);", code);
+        Assert.Contains("public void NotePointerActivation()", code, StringComparison.Ordinal);
+        Assert.Contains("_activationClicks.Pressed(Environment.TickCount64)", code, StringComparison.Ordinal);
+        Assert.Matches(@"OnDismissSurfaceTapped\([^)]*\)\s*\{\s*if \(_activationClicks\.ShouldIgnoreTap\(\)\)\s*return;\s*Cancel\(\);", code);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public sealed class PaletteViewSourceTests
         var armMethod = source.IndexOf("private async Task ArmHotkeysAsync", StringComparison.Ordinal);
         Assert.True(subscribe >= 0 && arm >= 0 && subscribe < arm, "the pick subscription must come before ArmHotkeysAsync is started.");
         Assert.True(subscribe < armMethod);
-        Assert.Contains("PaletteOverlay.IsWindowActive = () => _windowIsActive;", source, StringComparison.Ordinal);
+        Assert.Matches(@"WindowActivationState\.PointerActivated\)\s*PaletteOverlay\.NotePointerActivation\(\);", source);
     }
 
     [Fact]

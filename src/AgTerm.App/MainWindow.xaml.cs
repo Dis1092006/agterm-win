@@ -366,6 +366,8 @@ public sealed partial class MainWindow : Window
         _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
         if (args.WindowActivationState == WindowActivationState.Deactivated)
             return;
+        if (args.WindowActivationState == WindowActivationState.PointerActivated)
+            PaletteOverlay.NotePointerActivation();
 
         _applicationHost.ReportActivated(_windowId);
         if (_restoreFocusWhenActivated && !PaletteOverlay.IsOpen)
@@ -800,7 +802,6 @@ public sealed partial class MainWindow : Window
             _paletteTransitions.RunAsync(SyncPickAsync),
             "Pick presentation failed"));
         PaletteOverlay.CancelChord = IsCloseSessionChord;
-        PaletteOverlay.IsWindowActive = () => _windowIsActive;
         ObserveTaskFault(_paletteTransitions.RunAsync(SyncPickAsync), "Pick presentation failed");
         ObserveTaskFault(ArmHotkeysAsync(host), "Arm hotkeys failed");
     }
