@@ -103,6 +103,7 @@ public static class Agtermctl
                      WindowCommands.Build(bindings),
                      QuickCommands.Build(bindings),
                      PickCommands.Build(bindings),
+                     AskCommands.Build(bindings),
                      SidebarCommands.Build(bindings),
                      NotifyCommand.Build(bindings),
                      FontCommands.Build(bindings),
