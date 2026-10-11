@@ -45,7 +45,7 @@ public class ControlDispatcherAskTests
         { new ControlArgs { Title = "Choose", Buttons = Enumerable.Range(0, 7).Select(i => Button($"{i}", $"Button {i}")).ToArray() }, "too many buttons (max 6)" },
         { new ControlArgs { Title = "Choose", Buttons = new[] { Button("empty", "") } }, "ask button label must not be empty" },
         { new ControlArgs { Title = "Choose", Buttons = new[] { Button("same", "First"), Button("same", "Second") } }, "ask button ids must be unique" },
-        { new ControlArgs { Title = "Choose", Buttons = new[] { Button("café", "First"), Button("café", "Second") } }, "ask button ids must be unique" },
+        { new ControlArgs { Title = "Choose", Buttons = new[] { Button("caf\u00E9", "First"), Button("cafe\u0301", "Second") } }, "ask button ids must be unique" },
         { new ControlArgs { Title = "Bad\ntitle", Buttons = new[] { Button("yes", "Yes") } }, "ask text must not contain control characters" },
         { new ControlArgs { Title = "Choose", Message = "Bad\tmessage", Buttons = new[] { Button("yes", "Yes") } }, "ask text must not contain control characters" },
         { new ControlArgs { Title = "Choose", Buttons = new[] { Button("yes", "Bad\u007Flabel") } }, "ask text must not contain control characters" },
@@ -114,7 +114,7 @@ public class ControlDispatcherAskTests
     [InlineData("\t")]
     [InlineData("\u001B")]
     [InlineData("→")]
-    [InlineData("é")]
+    [InlineData("00E9")]
     [InlineData("á")]
     [InlineData("\U0001F98A")]
     public async Task HotkeysMustBeSingleAsciiLetters(string hotkey) =>
@@ -249,9 +249,21 @@ public class ControlDispatcherAskTests
     [Fact]
     public async Task ADefaultMatchesACanonicallyEquivalentId()
     {
-        var (response, _) = await Open(new ControlArgs { Title = "Choose", Buttons = new[] { Button("café", "Cafe") }, DefaultButton = "café" });
+        var (response, _) = await Open(new ControlArgs { Title = "Choose", Buttons = new[] { Button("caf\u00E9", "Cafe") }, DefaultButton = "cafe\u0301" });
         Assert.True(response!.Ok);
     }
+
+    [Fact]
+    public async Task ADestructiveIdMatchesACanonicallyEquivalentButtonId()
+    {
+        var (response, _) = await Open(new ControlArgs { Title = "Choose", Buttons = new[] { Button("caf\u00E9", "Cafe") }, DestructiveButton = "cafe\u0301" });
+        Assert.True(response!.Ok);
+    }
+
+    [Fact]
+    public async Task CanonicallyEquivalentDefaultAndDestructiveIdsAreRefused() =>
+        AssertRejected("default button must not be destructive",
+            await Open(new ControlArgs { Title = "Choose", Buttons = new[] { Button("caf\u00E9", "Cafe") }, DefaultButton = "caf\u00E9", DestructiveButton = "cafe\u0301" }));
 
     [Fact]
     public async Task RepeatedOpensGenerateDistinctIds()
