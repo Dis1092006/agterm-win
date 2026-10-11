@@ -434,6 +434,9 @@ public sealed partial class MainWindow : Window
             userDataFolder: WebViewProfile.Directory(),
             options: new CoreWebView2EnvironmentOptions());
         await TerminalView.EnsureCoreWebView2Async(environment);
+        // Ctrl+wheel would scale the whole page, every pane of the window at once, and the font
+        // commands would then work inside the scaled page; the font size has its own commands
+        TerminalView.CoreWebView2.Settings.IsZoomControlEnabled = false;
         // A process death AFTER this point leaves the CoreWebView2 object alive but dead, so every
         // later pane open throws. Init failure itself is reported by
         // ReportPageInitializationFailureAsync instead.
