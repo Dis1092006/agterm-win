@@ -519,6 +519,12 @@ A failure to create the directory surfaces through the existing path: the call s
 The WinUI app reaches WebView2 through the Windows App SDK projection, which exposes a narrower surface than the standalone `Microsoft.Web.WebView2` package the test fixture uses. `CoreWebView2Environment.CreateAsync` there takes no arguments, and the only way to name a user data folder is `CreateWithOptionsAsync(browserExecutableFolder, userDataFolder, options)`. Code copied from the fixture, or from Microsoft's WebView2 documentation, will not compile against the app's projection.
 
 
+## Bringing a window to the front
+
+`window.select` and `pick.open --follow` bring the target window to the front, as upstream does. `Window.Activate` does not do that for a window that is already open: measured with `window.select` from a separate terminal, the window stayed behind and its taskbar button did not flash, even after that terminal had called `AllowSetForegroundWindow(ASFW_ANY)`. `MainWindow.ActivateWindow` therefore also calls `SetForegroundWindow` (`WindowForeground.Raise`).
+
+Windows refuses that call while another application is in front, for example when `agtermctl` runs in a separate terminal and agterm is behind it. Then the window's taskbar button flashes until the user switches to it. Upstream brings agterm in front of other applications, which macOS allows. The routing side does not depend on it: the window is frontmost for routing either way.
+
 ## Upstream behavior adopted beyond the pin
 
 The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.

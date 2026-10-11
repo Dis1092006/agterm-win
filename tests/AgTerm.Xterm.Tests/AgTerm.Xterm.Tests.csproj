@@ -31,6 +31,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\AgTerm.App\ContentDialogCoordinator.cs" Link="App\ContentDialogCoordinator.cs" />
     <Compile Include="..\..\src\AgTerm.App\ActivationClickFilter.cs" Link="App\ActivationClickFilter.cs" />
+    <Compile Include="..\..\src\AgTerm.App\WindowForeground.cs" Link="App\WindowForeground.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteController.cs" Link="App\PaletteController.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteAutoFollowLease.cs" Link="App\PaletteAutoFollowLease.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteItemViewModel.cs" Link="App\PaletteItemViewModel.cs" />

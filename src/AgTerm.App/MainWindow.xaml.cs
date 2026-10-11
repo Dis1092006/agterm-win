@@ -218,7 +218,11 @@ public sealed partial class MainWindow : Window
 
     internal Guid WindowId => _windowId;
 
-    internal void ActivateWindow() => Activate();
+    internal void ActivateWindow()
+    {
+        Activate();
+        WindowForeground.Raise(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
 
     internal Task RequestManagedCloseAsync()
     {
