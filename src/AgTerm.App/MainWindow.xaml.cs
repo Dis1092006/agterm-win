@@ -998,6 +998,13 @@ public sealed partial class MainWindow : Window
 
     private void FocusTerminal(string paneId)
     {
+        if (AskOverlay.IsOpen)
+        {
+            // keys in the WebView2 would reach the shell and the page's chords while the question is modal
+            if (_windowIsActive)
+                AskOverlay.FocusPanel();
+            return;
+        }
         TerminalView.Focus(FocusState.Programmatic);
         if (_surfaces.TryGetValue(paneId, out var surface))
         {
@@ -1092,10 +1099,20 @@ public sealed partial class MainWindow : Window
         PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending), takeFocus: _windowIsActive);
     }
 
+    /// <summary>The shown modal syncs first: its close releases the auto-follow lease and restores
+    /// focus, which must not happen after the other modal has opened in the same pass.</summary>
     private async Task SyncModalAsync()
     {
-        await SyncPickAsync();
-        await SyncAskAsync();
+        if (_shownAskId is not null)
+        {
+            await SyncAskAsync();
+            await SyncPickAsync();
+        }
+        else
+        {
+            await SyncPickAsync();
+            await SyncAskAsync();
+        }
     }
 
     /// <summary>Makes the dialog match the window's GUI question: show a new one, close one that was
@@ -1156,7 +1173,7 @@ public sealed partial class MainWindow : Window
 
     private async Task HandleAskEscapedAsync(string askId)
     {
-        if (_shownAskId != askId || _host is not { } host)
+        if (_shownAskId != askId || _host is not { } host || host.Host.Actions.Pick.PendingAsk?.Id != askId)
             return;
         _shownAskId = null;
         AskOverlay.Close();
@@ -1272,6 +1289,8 @@ public sealed partial class MainWindow : Window
     /// socket drives. Returns whether an action fired.</summary>
     private bool HandleChord(PhysicalChord physical, long? generation = null)
     {
+        if (AskOverlay.IsOpen)
+            return false;
         var hotkeyState = generation is { } value
             ? _hotkeyStates.Resolve(value)
             : _hotkeyStates.Active;
