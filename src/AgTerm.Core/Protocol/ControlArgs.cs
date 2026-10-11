@@ -141,7 +141,7 @@ public sealed record ControlArgs
     [JsonPropertyName("limit")]
     public int? Limit { get; init; }
 
-    /// <summary>Desktop-notification title for notify (defaults to the target session's name).</summary>
+    /// <summary>Desktop-notification title for notify (defaults to the target session's name); the dialog title for ask.open.</summary>
     [JsonPropertyName("title")]
     public string? Title { get; init; }
 
@@ -172,6 +172,10 @@ public sealed record ControlArgs
     [JsonPropertyName("follow")]
     public bool? Follow { get; init; }
 
+    /// <summary>ask.open text under the title.</summary>
+    [JsonPropertyName("message")]
+    public string? Message { get; init; }
+
     /// <summary>pick.open choices. An empty array is sent as [] (an itemless prompt with allowCustom).</summary>
     [JsonPropertyName("items")]
     public ControlPickItem[]? Items { get; init; }
@@ -193,12 +197,32 @@ public sealed record ControlArgs
     [JsonPropertyName("selection")]
     public string? Selection { get; init; }
 
+    /// <summary>ask.open choices in caller order (1...6).</summary>
+    [JsonPropertyName("buttons")]
+    public ControlAskButton[]? Buttons { get; init; }
+
+    /// <summary>ask.open button id highlighted on open.</summary>
+    [JsonPropertyName("defaultButton")]
+    public string? DefaultButton { get; init; }
+
+    /// <summary>ask.open style: terminal (default) or gui.</summary>
+    [JsonPropertyName("style")]
+    public string? Style { get; init; }
+
+    /// <summary>ask.open button block alignment: left, center or right (default).</summary>
+    [JsonPropertyName("align")]
+    public string? Align { get; init; }
+
+    /// <summary>ask.open button id drawn as destructive.</summary>
+    [JsonPropertyName("destructiveButton")]
+    public string? DestructiveButton { get; init; }
+
     /// <summary>Target window (id / prefix / "active" = frontmost) for session/workspace/tree/font
     /// commands.</summary>
     [JsonPropertyName("window")]
     public string? Window { get; init; }
 
-    /// <summary>New window frame width in points for window.resize.</summary>
+    /// <summary>window.resize width in points, or ask.open panel width as an integer percent of the anchor (10...100).</summary>
     [JsonPropertyName("width")]
     public int? Width { get; init; }
 

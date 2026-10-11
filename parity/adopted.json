@@ -3,19 +3,34 @@
   "commands": [
     { "wire": "pick.open", "upstream": "6b6323ed" },
     { "wire": "pick.result", "upstream": "6b6323ed" },
-    { "wire": "pick.cancel", "upstream": "6b6323ed" }
+    { "wire": "pick.cancel", "upstream": "6b6323ed" },
+    { "wire": "ask.open", "upstream": "32ec288d" },
+    { "wire": "ask.result", "upstream": "32ec288d" },
+    { "wire": "ask.cancel", "upstream": "32ec288d" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
     { "name": "prompt", "upstream": "6b6323ed" },
     { "name": "query", "upstream": "33cd0872" },
     { "name": "allowCustom", "upstream": "6b6323ed" },
-    { "name": "selection", "upstream": "d9da472e" }
+    { "name": "selection", "upstream": "d9da472e" },
+    { "name": "message", "upstream": "32ec288d" },
+    { "name": "buttons", "upstream": "32ec288d" },
+    { "name": "defaultButton", "upstream": "32ec288d" },
+    { "name": "style", "upstream": "32ec288d" },
+    { "name": "align", "upstream": "32ec288d" },
+    { "name": "destructiveButton", "upstream": "32ec288d" }
   ],
   "result": [
-    { "name": "pick", "upstream": "6b6323ed" }
+    { "name": "pick", "upstream": "6b6323ed" },
+    { "name": "pane", "upstream": "1b765e69" },
+    { "name": "ask", "upstream": "32ec288d" }
   ],
   "tree": [
-    { "name": "pickPending", "upstream": "6b6323ed" }
+    { "name": "pickPending", "upstream": "6b6323ed" },
+    { "name": "askPending", "upstream": "32ec288d" }
+  ],
+  "sessionNode": [
+    { "name": "ask", "upstream": "1b765e69" }
   ]
 }

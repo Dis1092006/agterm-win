@@ -80,9 +80,10 @@ public class ControlPickTests
         {
             Id = "s", Tree = new ControlTree { Workspaces = Array.Empty<ControlWorkspaceNode>() }, Text = "s",
             Windows = Array.Empty<ControlWindowNode>(), ExitCode = 1, Count = 1, Affected = 1, Theme = "s",
-            Themes = new[] { "a" }, Ratio = 0.5, Sync = true, Light = "s", Dark = "s",
+            Themes = new[] { "a" }, Ratio = 0.5, Pane = "s", Sync = true, Light = "s", Dark = "s",
             Events = new ControlEventBatch { Run = Guid.NewGuid(), Next = 1, Items = Array.Empty<ControlEvent>() },
             Pick = ControlPickResult.Pending(),
+            Ask = ControlAskResult.Pending(),
         };
 
         using var serialized = JsonDocument.Parse(ControlJson.Serialize(result));

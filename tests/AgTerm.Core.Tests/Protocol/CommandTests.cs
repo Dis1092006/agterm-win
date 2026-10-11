@@ -11,7 +11,7 @@ public class CommandTests
     {
         var wires = ParitySurface.Pin("commands").Concat(ParitySurface.Adopted("commands")).ToList();
 
-        Assert.Equal(69, wires.Count);
+        Assert.Equal(72, wires.Count);
         foreach (var wire in wires)
         {
             var cmd = JsonSerializer.Deserialize<Command>($"\"{wire}\"", ControlJson.Options);

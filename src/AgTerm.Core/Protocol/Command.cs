@@ -80,6 +80,9 @@ public enum Command
     PickOpen,
     PickResult,
     PickCancel,
+    AskOpen,
+    AskResult,
+    AskCancel,
     /// <summary>
     /// UI-TEST-ONLY upstream (XCUITest appearance flip). Kept in the enum so the wire string decodes,
     /// but NOT implemented in the Windows port — recorded as an intentional skip in the parity manifest.
@@ -160,6 +163,9 @@ public static class CommandWire
         (Command.PickOpen, "pick.open"),
         (Command.PickResult, "pick.result"),
         (Command.PickCancel, "pick.cancel"),
+        (Command.AskOpen, "ask.open"),
+        (Command.AskResult, "ask.result"),
+        (Command.AskCancel, "ask.cancel"),
         (Command.DebugAppearance, "debug.appearance"),
     };
 

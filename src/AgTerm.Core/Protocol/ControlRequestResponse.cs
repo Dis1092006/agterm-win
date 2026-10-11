@@ -75,6 +75,10 @@ public sealed record ControlResult
     [JsonPropertyName("ratio")]
     public double? Ratio { get; init; }
 
+    /// <summary>The resolved pane role (left or right) echoed by ask.open for a pane anchor.</summary>
+    [JsonPropertyName("pane")]
+    public string? Pane { get; init; }
+
     /// <summary>Light/dark syncing state for theme.set/theme.list; while syncing, theme is absent
     /// and the state rides sync/light/dark.</summary>
     [JsonPropertyName("sync")]
@@ -93,6 +97,10 @@ public sealed record ControlResult
     /// <summary>pick.result payload.</summary>
     [JsonPropertyName("pick")]
     public ControlPickResult? Pick { get; init; }
+
+    /// <summary>ask.result payload.</summary>
+    [JsonPropertyName("ask")]
+    public ControlAskResult? Ask { get; init; }
 }
 
 /// <summary>

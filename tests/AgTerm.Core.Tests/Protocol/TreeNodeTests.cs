@@ -21,6 +21,7 @@ public class TreeNodeTests
     {
         Id = "id", Name = "n", Cwd = "/w", Title = "t", Active = true, Split = true,
         SplitRatio = 0.4, SplitFocused = true, Overlay = true, OverlaySizePercent = 60,
+        Ask = new ControlSessionAsk { Id = "A", Pane = "left" },
         Scratch = true, Flagged = true, CommandWait = true,
         Foreground = new[] { "ssh", "host" }, SplitForeground = new[] { "top" },
         RestoreCommand = "make", SplitRestoreCommand = "",
@@ -32,9 +33,10 @@ public class TreeNodeTests
     };
 
     [Fact]
-    public void SessionNodeFieldNamesMatchParitySurfaceInOrder()
+    public void SessionNodeFieldNamesMatchPinPlusAdoptedInUpstreamOrder()
     {
-        Assert.Equal(SurfaceFieldNames("sessionNode"), PropertyNames(ControlJson.Serialize(FullSessionNode())));
+        Assert.All(ParitySurface.Adopted("sessionNode"), name => Assert.Contains(name, ParitySurface.Upstream("sessionNode")));
+        Assert.Equal(ParitySurface.Expected("sessionNode", "sessionNode"), PropertyNames(ControlJson.Serialize(FullSessionNode())));
     }
 
     [Fact]

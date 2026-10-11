@@ -62,6 +62,10 @@ public sealed record ControlSessionNode
     [JsonPropertyName("overlaySizePercent")]
     public int? OverlaySizePercent { get; init; }
 
+    /// <summary>The pending terminal question; GUI questions are reported at the tree's top level.</summary>
+    [JsonPropertyName("ask")]
+    public ControlSessionAsk? Ask { get; init; }
+
     [JsonPropertyName("scratch")]
     public bool Scratch { get; init; }
 
@@ -204,6 +208,10 @@ public sealed record ControlTree
     /// <summary>The pending pick id of the projected window; null when none.</summary>
     [JsonPropertyName("pickPending")]
     public string? PickPending { get; init; }
+
+    /// <summary>The pending GUI question id of the projected window; null when none.</summary>
+    [JsonPropertyName("askPending")]
+    public string? AskPending { get; init; }
 }
 
 /// <summary>
