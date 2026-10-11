@@ -593,9 +593,14 @@ public sealed class LiveApplicationHost : IDisposable
         if (found.LiveOwner is null) return new ControlResponse { Ok = true };
         LiveWindowHost? owner;
         lock (_gate) _openWindows.TryGetValue(found.WindowId, out owner);
-        if (owner is null) return AskRegistry.Unknown(askId);
+        // a window mid-close has left the open set or stopped dispatching, but its close cancels the
+        // question: the caller asked for exactly that outcome
+        if (owner is null) return new ControlResponse { Ok = true };
         var routed = request with { Args = (request.Args ?? new ControlArgs()) with { Window = null } };
-        return await owner.DispatchAsync(routed, cancellationToken).ConfigureAwait(false);
+        var response = await owner.DispatchAsync(routed, cancellationToken).ConfigureAwait(false);
+        return response is { Ok: false, Error: LiveWindowHost.WindowNotOpenError }
+            ? new ControlResponse { Ok = true }
+            : response;
     }
 
     private async Task<ControlResponse> NewWindowAsync(

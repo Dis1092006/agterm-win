@@ -145,7 +145,8 @@ public sealed partial class AskView : UserControl
         Scrim.Height = _anchor.Height;
 
         var maxWidth = AskPanelLayout.MaxPanelWidth(_anchor.Width, _fontSize, ask.Width);
-        var available = Math.Max(0, maxWidth - 2 * AskPanelLayout.PanelPadding);
+        var border = Panel.BorderThickness;
+        var available = Math.Max(0, maxWidth - 2 * AskPanelLayout.PanelPadding - border.Left - border.Right);
         var natural = _buttons.Select(NaturalWidth).ToArray();
         var arrangement = AskPanelLayout.Arrange(natural, available);
         ArrangeButtons(ask.Align, arrangement);
@@ -153,7 +154,8 @@ public sealed partial class AskView : UserControl
         Panel.Width = double.NaN;
         Panel.MaxWidth = maxWidth;
         if (ask.Width is not null) Panel.Width = maxWidth;
-        PanelScroll.MaxHeight = Math.Max(0, AskPanelLayout.MaxPanelHeight(_anchor.Height) - 2 * AskPanelLayout.PanelPadding);
+        PanelScroll.MaxHeight = Math.Max(
+            0, AskPanelLayout.MaxPanelHeight(_anchor.Height) - 2 * AskPanelLayout.PanelPadding - border.Top - border.Bottom);
         Panel.Measure(new Size(maxWidth, double.PositiveInfinity));
         var size = Panel.DesiredSize;
         Canvas.SetLeft(Panel, _anchor.X + (_anchor.Width - size.Width) / 2);
@@ -223,6 +225,9 @@ public sealed partial class AskView : UserControl
         {
             case AskIntentOutcome.Moved:
                 ApplyHighlight();
+                // Tab must not leave the highlight off screen in a scrolled panel
+                if (_navigation.Highlighted is { } highlighted && highlighted < _buttons.Count)
+                    _buttons[highlighted].StartBringIntoView();
                 break;
             case AskIntentOutcome.Answer answer:
                 Answered?.Invoke(ask.Id, answer.Index);

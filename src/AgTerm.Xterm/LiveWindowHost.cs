@@ -84,6 +84,8 @@ public sealed class LiveWindowHost
         Picks.Register(WindowId, Pick);
     }
 
+    internal const string WindowNotOpenError = "window not open — window.select it first";
+
     public Guid WindowId { get; }
 
     public PickController Pick { get; }
@@ -121,7 +123,7 @@ public sealed class LiveWindowHost
                     return new ControlResponse
                     {
                         Ok = false,
-                        Error = "window not open — window.select it first",
+                        Error = WindowNotOpenError,
                     };
                 }
                 _acceptedDispatches++;
