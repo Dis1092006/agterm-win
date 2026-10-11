@@ -57,6 +57,8 @@ public sealed class ControlDispatcher
                 return DispatchDashboard(request);
             case Command.PickOpen or Command.PickResult or Command.PickCancel:
                 return DispatchPickCommand(request);
+            case Command.AskOpen or Command.AskResult or Command.AskCancel:
+                return DispatchAskCommand(request);
             case Command.DebugAppearance:
                 // UI-test-only seam handled host-side (out of the parity surface on Windows).
                 return null;
@@ -133,6 +135,98 @@ public sealed class ControlDispatcher
             default:
                 throw new InvalidOperationException($"unexpected pick command: {request.Cmd}");
         }
+    }
+
+    private const string InvalidAskButton = "invalid request: ask button requires id and label";
+
+    private ControlResponse DispatchAskCommand(ControlRequest request)
+    {
+        switch (request.Cmd)
+        {
+            case Command.AskOpen:
+                return DispatchAskOpen(request);
+            case Command.AskResult:
+                return request.Target is { } resultTarget
+                    ? _actions.AskResult(resultTarget, request.Args?.Window)
+                    : Err("ask.result requires an ask id");
+            case Command.AskCancel:
+                return request.Target is { } cancelTarget
+                    ? _actions.CancelAsk(cancelTarget, request.Args?.Window)
+                    : Err("ask.cancel requires an ask id");
+            default:
+                throw new InvalidOperationException($"unexpected ask command: {request.Cmd}");
+        }
+    }
+
+    /// <summary>Port of upstream ControlDispatcher+Ask: host-free validation in upstream's order,
+    /// before the host resolves placement or touches a slot.</summary>
+    private ControlResponse DispatchAskOpen(ControlRequest request)
+    {
+        var args = request.Args;
+        if (args?.Title is not { } title || string.IsNullOrWhiteSpace(title))
+            return Err("ask.open requires a title");
+        if (args.Buttons is not { } buttons)
+            return Err("ask.open requires buttons");
+        if (buttons.Length == 0)
+            return Err("ask.open requires at least one button");
+        if (buttons.Length > ControlAskButton.MaxButtons)
+            return Err($"too many buttons (max {ControlAskButton.MaxButtons})");
+        // System.Text.Json binds an explicit null to a required string; Swift fails the decode
+        if (buttons.Any(button => button is null || button.Id is null || button.Label is null))
+            return Err(InvalidAskButton);
+        if (buttons.Any(button => button.Label.Length == 0))
+            return Err("ask button label must not be empty");
+        var ids = buttons.Select(button => button.Id.Normalize(NormalizationForm.FormC)).ToArray();
+        if (ids.Distinct(StringComparer.Ordinal).Count() != ids.Length)
+            return Err("ask button ids must be unique");
+        if (CommandRestore.HasControlCharacter(title) || CommandRestore.HasControlCharacter(args.Message ?? "")
+            || buttons.Any(button => CommandRestore.HasControlCharacter(button.Label)))
+            return Err("ask text must not contain control characters");
+        foreach (var (role, id) in new[] { ("default", args.DefaultButton), ("destructive", args.DestructiveButton) })
+        {
+            if (id is not null && Array.IndexOf(ids, id.Normalize(NormalizationForm.FormC)) < 0)
+                return Err($"unknown {role} button: {id}");
+        }
+        if (args.DestructiveButton is not null && AskIds.Same(args.DefaultButton, args.DestructiveButton))
+            return Err("default button must not be destructive");
+        if (ControlAskStyles.FromWire(args.Style ?? "terminal") is not { } style)
+            return Err("unknown style");
+        if (ControlAskAlignments.FromWire(args.Align ?? "right") is not { } align)
+            return Err("unknown align");
+        if (args.Width is { } width && (width < 10 || width > 100))
+            return Err("width must be 10 to 100");
+        if (HotkeyRejection(buttons) is { } hotkeyError)
+            return Err(hotkeyError);
+        if (style == ControlAskStyle.Gui && (args.Pane is not null || args.PaneId is not null) && request.Target is null)
+            return Err("--pane requires a session");
+        OverlayPane? pane = null;
+        if (args.Pane is { } rawPane && (pane = OverlayPanes.FromControlName(rawPane)) is null)
+            return Err("--pane must be left or right");
+        var ask = new PendingAsk(
+            Guid.NewGuid().ToString("D").ToUpperInvariant(),
+            title,
+            args.Message,
+            buttons.Select(button => button with { Hotkey = button.Hotkey?.ToLowerInvariant() }).ToArray(),
+            args.DefaultButton,
+            args.DestructiveButton,
+            style,
+            align,
+            args.Width);
+        return _actions.OpenAsk(ask, request.Target, args.Window, new ControlAskPlacement(pane, args.PaneId), args.Follow == true);
+    }
+
+    private static string? HotkeyRejection(IEnumerable<ControlAskButton> buttons)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var button in buttons)
+        {
+            if (button.Hotkey is not { } hotkey) continue;
+            if (hotkey.Length != 1 || !char.IsAsciiLetter(hotkey[0]))
+                return "ask button hotkey must be one ASCII letter";
+            if (!seen.Add(hotkey.ToLowerInvariant()))
+                return "ask button hotkeys must be unique";
+        }
+        return null;
     }
 
     private ControlResponse DispatchEventsRead(ControlRequest request)

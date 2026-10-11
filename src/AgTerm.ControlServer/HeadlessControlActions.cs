@@ -1763,6 +1763,15 @@ public sealed class HeadlessControlActions : IControlActions
     public ControlResponse CancelPick(string target, string? window) =>
         window is null ? Picks.Cancel(target, null) : ResolveWindowId(window, id => Picks.Cancel(target, id));
 
+    // MARK: - ask (temporary until the host-side ask slot lands)
+
+    public ControlResponse OpenAsk(PendingAsk ask, string? target, string? window, ControlAskPlacement placement, bool follow) =>
+        Err("ask is not available yet");
+
+    public ControlResponse AskResult(string target, string? window) => AskRegistry.Unknown(target);
+
+    public ControlResponse CancelAsk(string target, string? window) => AskRegistry.Unknown(target);
+
     // MARK: - window commands
     //
     // The headless host owns exactly ONE virtual window (never on screen). Arms that only need the

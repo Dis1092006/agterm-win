@@ -99,6 +99,9 @@ public sealed class MockControlActions : IControlActions
         public sealed record PickOpen(PendingPick Pick, string? Window, bool Follow) : Call;
         public sealed record PickResult(string Target, string? Window) : Call;
         public sealed record PickCancel(string Target, string? Window) : Call;
+        public sealed record AskOpen(PendingAsk Ask, string? Target, string? Window, ControlAskPlacement Placement, bool Follow) : Call;
+        public sealed record AskResult(string Target, string? Window) : Call;
+        public sealed record AskCancel(string Target, string? Window) : Call;
     }
 
     public List<Call> Calls { get; } = new();
@@ -147,6 +150,9 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextPickOpenResponse = new() { Ok = true };
     public ControlResponse NextPickResultResponse = new() { Ok = true };
     public ControlResponse NextPickCancelResponse = new() { Ok = true };
+    public ControlResponse NextAskOpenResponse = new() { Ok = true };
+    public ControlResponse NextAskResultResponse = new() { Ok = true };
+    public ControlResponse NextAskCancelResponse = new() { Ok = true };
     public ControlResponse NextSessionRestoreResponse = new() { Ok = true };
 
     public ControlResponse ControlTree(string? window)
@@ -550,5 +556,23 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.PickCancel(target, window));
         return NextPickCancelResponse;
+    }
+
+    public ControlResponse OpenAsk(PendingAsk ask, string? target, string? window, ControlAskPlacement placement, bool follow)
+    {
+        Calls.Add(new Call.AskOpen(ask, target, window, placement, follow));
+        return NextAskOpenResponse;
+    }
+
+    public ControlResponse AskResult(string target, string? window)
+    {
+        Calls.Add(new Call.AskResult(target, window));
+        return NextAskResultResponse;
+    }
+
+    public ControlResponse CancelAsk(string target, string? window)
+    {
+        Calls.Add(new Call.AskCancel(target, window));
+        return NextAskCancelResponse;
     }
 }

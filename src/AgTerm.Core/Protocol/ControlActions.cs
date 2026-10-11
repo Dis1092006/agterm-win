@@ -83,9 +83,16 @@ public interface IControlActions
     ControlResponse OpenPick(PendingPick pick, string? window, bool follow);
     ControlResponse PickResult(string target, string? window);
     ControlResponse CancelPick(string target, string? window);
+    ControlResponse OpenAsk(PendingAsk ask, string? target, string? window, ControlAskPlacement placement, bool follow);
+    ControlResponse AskResult(string target, string? window);
+    ControlResponse CancelAsk(string target, string? window);
 }
 
 public sealed record ControlSessionTypeOptions(string Text, bool Select, string? Pane);
+
+/// <summary>The pane selectors of ask.open, resolved by the host against the target session:
+/// PaneId is a live pane token that overrides Pane.</summary>
+public sealed record ControlAskPlacement(OverlayPane? Pane = null, string? PaneId = null);
 
 public sealed record ControlSessionOverlayOpenOptions(
     string Command, string? Cwd, bool Wait, int? SizePercent, string? BackgroundColor,
