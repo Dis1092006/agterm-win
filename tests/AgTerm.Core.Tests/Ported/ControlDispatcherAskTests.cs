@@ -114,7 +114,7 @@ public class ControlDispatcherAskTests
     [InlineData("\t")]
     [InlineData("\u001B")]
     [InlineData("→")]
-    [InlineData("00E9")]
+    [InlineData("\u00E9")]
     [InlineData("á")]
     [InlineData("\U0001F98A")]
     public async Task HotkeysMustBeSingleAsciiLetters(string hotkey) =>
