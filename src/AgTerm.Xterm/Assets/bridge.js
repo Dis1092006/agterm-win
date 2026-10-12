@@ -455,7 +455,7 @@ function clearPaneOverlayStyles(pane) {
   pane.el.style.boxShadow = "";
   pane.el.style.border = "";
   pane.el.style.pointerEvents = "";
-  pane.el.style.opacity = "";
+  pane.el.style.visibility = "";
 }
 
 function clearLayeredPresentationStyles() {
@@ -644,7 +644,8 @@ function applyLayeredPresentation(validLayered, shouldFocusLayer) {
     if (!basePane) return false;
     basePane.el.classList.add("overlay-base-pane");
     // Full cover keeps base xterms mounted and sized so output continues without a remount.
-    basePane.el.style.opacity = validLayered.sizePercent === null ? "0" : "1";
+    // visibility, unlike opacity, lets a pane question inside the base pane show itself again.
+    basePane.el.style.visibility = validLayered.sizePercent === null ? "hidden" : "";
     basePane.el.style.pointerEvents =
       validLayered.sizePercent === null ? "none" : "auto";
   }
@@ -1508,15 +1509,17 @@ function focusAskLayer() {
   }
 }
 
-function askCoveredPaneId() {
+// a session-wide question belongs to the pane the layout focuses: the split's right pane, or the
+// scratch or overlay drawn over the main pane, never a hidden or covered one
+function askOwnerPaneId() {
   if (!askState) return null;
-  return askState.paneId ?? askState.coveredPaneIds[0] ?? null;
+  return askState.paneId ?? visibleFocusedPaneId();
 }
 
 // window chords keep working over a question; only built-in chords, as the menu would
 function routeAskChord(ev) {
   const key = normalizeKey(ev.key);
-  const paneId = askCoveredPaneId();
+  const paneId = askOwnerPaneId();
   if (key === null || paneId === null) return;
   const chord = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key };
   if (!interceptChords.some((c) => samePhysicalChord(c, chord))) return;
@@ -1647,7 +1650,7 @@ function layoutAsk(payload) {
 function removeAsk() {
   if (!askLayerEl) return;
   const hadFocus = askLayerEl.contains(document.activeElement);
-  const paneId = askCoveredPaneId();
+  const paneId = askOwnerPaneId();
   if (askResizeObserver) askResizeObserver.disconnect();
   askResizeObserver = null;
   const layer = askLayerEl;

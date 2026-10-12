@@ -239,8 +239,9 @@ public sealed partial class AskView : UserControl
     {
         if (_ask is null)
             return;
-        // focus restored on window activation goes to the last focused element, the terminal, not the dialog
-        if (args.NewFocusedElement is not { } target || IsInside(target))
+        // focus restored on window activation goes to the last focused element, the terminal, not the dialog;
+        // a ContentDialog opens in a popup, and pulling focus back would leave keys under its backdrop
+        if (args.NewFocusedElement is not { } target || IsInside(target) || IsInOpenPopup(target))
             return;
         if (!args.TrySetNewFocusedElement(this))
             args.TryCancel();
@@ -250,6 +251,19 @@ public sealed partial class AskView : UserControl
     {
         for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
             if (ReferenceEquals(node, this)) return true;
+        return false;
+    }
+
+    private bool IsInOpenPopup(DependencyObject element)
+    {
+        if (XamlRoot is null)
+            return false;
+        var roots = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot)
+            .Select(popup => popup.Child)
+            .OfType<DependencyObject>()
+            .ToArray();
+        for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+            if (roots.Any(root => ReferenceEquals(root, node))) return true;
         return false;
     }
 

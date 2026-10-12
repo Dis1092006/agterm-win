@@ -21,11 +21,12 @@
         height: 100%;
         width: 100%;
       }
+      /* above a pane question's layer, under a session-wide one */
       #search-bar {
         position: absolute;
         top: 8px;
         right: 10px;
-        z-index: 40;
+        z-index: 70;
         display: flex;
         align-items: center;
         gap: 4px;
@@ -120,6 +121,7 @@
         outline: 2px solid #60cdff;
         outline-offset: -2px;
       }
+      /* a full-size overlay hides the base pane, but a question on that pane still shows above it */
       .ask-layer {
         position: absolute;
         inset: 0;
@@ -129,9 +131,12 @@
         justify-content: center;
         background: rgba(0, 0, 0, 0.2);
         outline: none;
+        visibility: visible;
+        pointer-events: auto;
       }
       .ask-layer.ask-session {
         position: fixed;
+        z-index: 80;
       }
       .ask-panel {
         box-sizing: border-box;

@@ -105,8 +105,31 @@ public sealed class AskViewSourceTests
         var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
         Assert.Contains("LosingFocus=\"OnLosingFocus\"", xaml, StringComparison.Ordinal);
         Assert.Matches(new Regex(
-            @"private void OnLosingFocus\(UIElement sender, LosingFocusEventArgs args\)\s*\{\s*if \(_ask is null\)\s*return;(?:\s*//[^\n]*)*\s*if \(args\.NewFocusedElement is not \{ \} target \|\| IsInside\(target\)\)\s*return;\s*if \(!args\.TrySetNewFocusedElement\(this\)\)\s*args\.TryCancel\(\);\s*\}"),
+            @"private void OnLosingFocus\(UIElement sender, LosingFocusEventArgs args\)\s*\{\s*if \(_ask is null\)\s*return;(?:\s*//[^\n]*)*\s*if \(args\.NewFocusedElement is not \{ \} target \|\| IsInside\(target\) \|\| IsInOpenPopup\(target\)\)\s*return;\s*if \(!args\.TrySetNewFocusedElement\(this\)\)\s*args\.TryCancel\(\);\s*\}"),
             code);
+    }
+
+    [Fact]
+    public void The_dialog_lets_focus_go_to_a_content_dialog_opened_in_a_popup()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Matches(new Regex(
+            @"private bool IsInOpenPopup\(DependencyObject element\)\s*\{\s*if \(XamlRoot is null\)\s*return false;\s*var roots = VisualTreeHelper\.GetOpenPopupsForXamlRoot\(XamlRoot\)\s*\.Select\(popup => popup\.Child\)\s*\.OfType<DependencyObject>\(\)\s*\.ToArray\(\);\s*for \(var node = element; node is not null; node = VisualTreeHelper\.GetParent\(node\)\)\s*if \(roots\.Any\(root => ReferenceEquals\(root, node\)\)\) return true;\s*return false;\s*\}"),
+            code);
+    }
+
+    // a fault while arming the hotkeys must not leave a drawn question without its answer path
+    [Fact]
+    public void The_window_subscribes_to_terminal_question_events_with_the_other_page_events()
+    {
+        var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
+        Assert.Matches(new Regex(
+            @"page\.DashboardClosed \+= OnPageDashboardClosed;\s*page\.AskIntentReceived \+= OnPageAskIntentReceived;\s*page\.AskFocusChanged \+= OnPageAskFocusChanged;"),
+            source);
+        var arm = Regex.Match(source, @"private async Task ArmHotkeysAsync\(LiveControlHost host\)\s*\{.*?\n    \}", RegexOptions.Singleline);
+        Assert.True(arm.Success);
+        Assert.DoesNotContain("AskIntentReceived", arm.Value, StringComparison.Ordinal);
+        Assert.DoesNotContain("AskFocusChanged", arm.Value, StringComparison.Ordinal);
     }
 
     [Fact]

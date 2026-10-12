@@ -87,6 +87,10 @@ public class XtermPageAskLiveTests
                 const key = (key, code, extra) => layer.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key, code, bubbles: true, cancelable: true }, extra || {})));
                 key('Tab', 'Tab');
                 key('Tab', 'Tab', { shiftKey: true });
+                key('ArrowRight', 'ArrowRight');
+                key('ArrowDown', 'ArrowDown');
+                key('ArrowLeft', 'ArrowLeft');
+                key('ArrowUp', 'ArrowUp');
                 key('Enter', 'Enter');
                 key('Escape', 'Escape');
                 key('н', 'KeyY');
@@ -95,7 +99,7 @@ public class XtermPageAskLiveTests
             """));
         await Task.Delay(200);
 
-        Assert.Equal(new[] { "Forward", "Backward", "Activate", "Cancel", "Hotkey:y" }, intents);
+        Assert.Equal(new[] { "Forward", "Backward", "Forward", "Forward", "Backward", "Backward", "Activate", "Cancel", "Hotkey:y" }, intents);
         Assert.Empty(data);
     }
 
@@ -192,6 +196,7 @@ public class XtermPageAskLiveTests
         await _webView.RunAsync(_ => page.OpenTerminalAsync("main"));
         await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "main", "Shell")));
         await _webView.RunAsync<object?>(_ => { view.Focus(); return Task.FromResult<object?>(null); });
+        await Task.Delay(500); // focusing the page re-focuses the pane's terminal and reports it
         var focus = new System.Collections.Concurrent.ConcurrentQueue<string?>();
         page.AskFocusChanged += focus.Enqueue;
 
@@ -237,5 +242,161 @@ public class XtermPageAskLiveTests
 
         Assert.Equal("\"150px\"", after);
         Assert.NotEqual(before, after);
+    }
+
+    [Fact]
+    public async Task Answering_a_session_wide_question_focuses_the_pane_the_split_focuses()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("left"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Split(1, "left", "right", 0.5, "right")));
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.SetInterceptChordsAsync(new[] { new AgTerm.Core.Keymap.PhysicalChord(false, true, false, "n") });
+            return null;
+        });
+        var chords = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        page.ChordPressed += (paneId, _) => chords.Enqueue(paneId);
+
+        var focused = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{SessionPayload("[\"left\",\"right\"]")}});
+                document.querySelector('.ask-layer').dispatchEvent(
+                    new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', altKey: true, bubbles: true, cancelable: true }));
+                agterm.applyAsk(null);
+                return document.querySelector('[data-pane-id="right"]').contains(document.activeElement);
+            })()
+            """);
+        await Task.Delay(200);
+
+        Assert.Equal("true", focused);
+        Assert.Equal(new[] { "right" }, chords);
+    }
+
+    [Fact]
+    public async Task Answering_a_session_wide_question_focuses_the_layer_over_the_main_pane()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("main"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("scratch"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            1, new TerminalLayout.Single(1, "main", "Shell"), new TerminalLayer("scratch"))));
+
+        var focused = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{SessionPayload("[\"main\",\"scratch\"]")}});
+                agterm.applyAsk(null);
+                return document.querySelector('[data-pane-id="scratch"]').contains(document.activeElement);
+            })()
+            """);
+
+        Assert.Equal("true", focused);
+    }
+
+    [Fact]
+    public async Task A_pane_question_draws_and_takes_clicks_above_a_full_size_program_overlay()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("overlay"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            1, new TerminalLayout.Single(1, "right", "Shell"), new TerminalLayer("overlay"))));
+
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{Payload}});
+                const layer = document.querySelector('.ask-layer');
+                const r = layer.querySelector('.ask-panel').getBoundingClientRect();
+                const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+                let opacity = 1;
+                for (let node = layer; node; node = node.parentElement) opacity *= parseFloat(getComputedStyle(node).opacity);
+                return {
+                    visibility: getComputedStyle(layer).visibility,
+                    opacity,
+                    width: r.width,
+                    height: r.height,
+                    hit: hit !== null && layer.contains(hit),
+                };
+            })()
+            """);
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.Equal("visible", root.GetProperty("visibility").GetString());
+        Assert.Equal(1.0, root.GetProperty("opacity").GetDouble());
+        Assert.True(root.GetProperty("width").GetDouble() > 0);
+        Assert.True(root.GetProperty("height").GetDouble() > 0);
+        Assert.True(root.GetProperty("hit").GetBoolean());
+    }
+
+    // ruling: a pane question leaves the search bar above it, a session-wide question covers it
+    [Fact]
+    public async Task The_search_bar_stacks_above_a_pane_question_and_below_a_session_wide_one()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("left"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Split(1, "left", "right", 0.5, "left")));
+
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                agterm.openSearch('left', '', '', false);
+                const z = (el) => parseInt(getComputedStyle(el).zIndex, 10);
+                const search = z(document.getElementById('search-bar'));
+                agterm.applyAsk({{Payload}});
+                const pane = z(document.querySelector('.ask-layer'));
+                agterm.applyAsk({{SessionPayload("[\"left\",\"right\"]")}});
+                const session = z(document.querySelector('.ask-layer'));
+                return { search, pane, session };
+            })()
+            """);
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        var search = root.GetProperty("search").GetInt32();
+        Assert.True(root.GetProperty("pane").GetInt32() < search, state);
+        Assert.True(search < root.GetProperty("session").GetInt32(), state);
+    }
+
+    private const string ThreeButtonPayload = """
+        {"askId":"ROW","paneId":"right","coveredPaneIds":["right"],"title":"Files exist","message":null,
+         "buttons":[{"runs":[{"text":"Keep both","underline":false}],"destructive":false},
+                    {"runs":[{"text":"Replace all","underline":false}],"destructive":false},
+                    {"runs":[{"text":"Skip these","underline":false}],"destructive":false}],
+         "highlighted":0,"align":"right","width":null}
+        """;
+
+    private const string ButtonArrangement = """
+        (() => {
+            const tops = Array.from(document.querySelectorAll('.ask-button')).map(b => Math.round(b.getBoundingClientRect().top));
+            return {
+                column: document.querySelector('.ask-buttons').classList.contains('ask-column'),
+                sameRow: tops.every(t => t === tops[0]),
+                stacked: tops.every((t, i) => i === 0 || t > tops[i - 1]),
+            };
+        })()
+        """;
+
+    [Fact]
+    public async Task The_buttons_sit_in_a_row_in_a_wide_pane_and_stack_when_the_row_does_not_fit()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "right", "Shell")));
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ThreeButtonPayload}}); return 1; })()""");
+
+        using (var wide = JsonDocument.Parse(await EvalAsync(view, ButtonArrangement)))
+        {
+            Assert.False(wide.RootElement.GetProperty("column").GetBoolean());
+            Assert.True(wide.RootElement.GetProperty("sameRow").GetBoolean());
+        }
+
+        await EvalAsync(view, "(() => { document.querySelector('[data-pane-id=\"right\"]').style.width = '200px'; return 1; })()");
+        await Task.Delay(500);
+
+        using var narrow = JsonDocument.Parse(await EvalAsync(view, ButtonArrangement));
+        Assert.True(narrow.RootElement.GetProperty("column").GetBoolean());
+        Assert.True(narrow.RootElement.GetProperty("stacked").GetBoolean());
     }
 }

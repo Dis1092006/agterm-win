@@ -371,7 +371,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         var dashboardFontSize = _host.Actions.Dashboard.IsOpen
             ? _host.Actions.Dashboard.AppliedFontSize
             : null;
-        var terminalAsk = TerminalAskVisibility.For(_host.Store, _host.Actions.Zoom.Target is not null, _host.Actions.Dashboard.IsOpen);
+        var terminalAsk = TerminalAskVisibility.For(
+            _host.Store, _host.Actions.Zoom.Target is not null, _host.Actions.Dashboard.IsOpen, QuickTerminalShown());
         if (selectedSessionId is not { } id)
         {
             return new LiveSelectionSnapshot(
@@ -421,6 +422,11 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             dashboardFontSize,
             TerminalAsk: terminalAsk);
     }
+
+    // the same test ToTerminalLayout uses to draw the quick layer: a quick terminal that failed to
+    // realize is not on screen, so it must not keep the question hidden
+    private bool QuickTerminalShown() =>
+        _host.Actions.Quick.Visible && !string.IsNullOrWhiteSpace(_host.Actions.Quick.Surface?.PaneToken);
 
     private IReadOnlyList<TerminalDashboardCell> CaptureDashboardCells()
     {

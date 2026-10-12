@@ -553,6 +553,43 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         Assert.IsNotType<TerminalLayout.Layered>(hiddenLayout);
     }
 
+    // spec 5: the quick terminal takes input before a terminal question. LiveStoreCoordinator does
+    // not watch the quick terminal itself; LiveControlHost republishes on every quick change, so the
+    // real host is the one to drive here.
+    [Fact]
+    public async Task The_quick_terminal_hides_a_pending_terminal_question_until_it_hides_again()
+    {
+        WaitForText(">");
+        var hidden = new TaskCompletionSource<LiveSelectionSnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var back = new TaskCompletionSource<LiveSelectionSnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _host.StoreCoordinator.SelectionSnapshotChanged += snapshot =>
+        {
+            if (snapshot.QuickVisible && !string.IsNullOrEmpty(snapshot.QuickPaneId))
+            {
+                if (snapshot.TerminalAsk is null) hidden.TrySetResult(snapshot);
+            }
+            else if (hidden.Task.IsCompleted && !snapshot.QuickVisible && snapshot.TerminalAsk is not null)
+            {
+                back.TrySetResult(snapshot);
+            }
+        };
+        var ask = new PendingAsk("ASK", "Continue?", null, new[] { new ControlAskButton { Id = "yes", Label = "Yes" } },
+            null, null, ControlAskStyle.Terminal, ControlAskAlignment.Right, null);
+        _host.Host.RunLocked(() => _host.Host.Store.OpenAsk(
+            _host.Host.Store.SelectedSessionId!.Value, ask, null, Guid.NewGuid()));
+
+        var realization = SubscribeNextQuickRealizationAsync();
+        CtlOk("quick", "show");
+        await realization;
+        await hidden.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        CtlOk("quick", "hide");
+        var restored = await back.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Same(ask, restored.TerminalAsk!.Ask);
+    }
+
     // Q5.3: host API toggle show → CLI type/text → CLI hide → host API toggle show → same token.
     // Verifies ToggleQuickTerminalAsync shows when hidden, integrates with CLI I/O, and keeps
     // the surface alive across a CLI hide so the second host-API show reuses the same pane token.

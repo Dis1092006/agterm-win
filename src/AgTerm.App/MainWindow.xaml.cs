@@ -460,6 +460,8 @@ public sealed partial class MainWindow : Window
         page.DashboardHighlighted += OnPageDashboardHighlighted;
         page.DashboardActivated += OnPageDashboardActivated;
         page.DashboardClosed += OnPageDashboardClosed;
+        page.AskIntentReceived += OnPageAskIntentReceived;
+        page.AskFocusChanged += OnPageAskFocusChanged;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
@@ -1057,10 +1059,6 @@ public sealed partial class MainWindow : Window
             await PublishHotkeyManifestAsync(page, keymap);
         }
         await ArmAsync(host.Host.Actions.LoadKeymap());
-        page.AskIntentReceived += (askId, intent) => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
-            HandleTerminalAskIntentAsync(askId, intent),
-            "Terminal ask intent failed"));
-        page.AskFocusChanged += askId => DispatcherQueue.TryEnqueue(() => _focusedAskId = askId);
         page.BuiltinHotkeyPressed += hit => DispatcherQueue.TryEnqueue(() =>
             HandleChord(hit.Chord, hit.Generation));
         page.CustomCommandPressed += hit => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
@@ -1224,6 +1222,14 @@ public sealed partial class MainWindow : Window
         var page = await _pageTask;
         await page.ApplyAskAsync(view);
     }
+
+    private void OnPageAskIntentReceived(string askId, AskIntent intent) =>
+        DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+            HandleTerminalAskIntentAsync(askId, intent),
+            "Terminal ask intent failed"));
+
+    private void OnPageAskFocusChanged(string? askId) =>
+        DispatcherQueue.TryEnqueue(() => _focusedAskId = askId);
 
     private async Task HandleTerminalAskIntentAsync(string askId, AskIntent intent)
     {
