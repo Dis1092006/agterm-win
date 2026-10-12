@@ -68,6 +68,7 @@ let splitFitRafHandle = 0;
 let overlayCatcherEl = null;
 let dashboardActivationTimer = null;
 let askLayerEl = null;
+let askResizeObserver = null;
 let askState = null; // { askId, paneId, coveredPaneIds, payload }
 
 function searchDecorations() {
@@ -312,7 +313,7 @@ function focusPane(paneId, emitEvent) {
   const pane = panes.get(paneId);
   if (!pane) return false;
   if (askLayerEl && askState.coveredPaneIds.includes(paneId)) {
-    askLayerEl.focus();
+    focusAskLayer();
     if (emitEvent) emitPaneFocus(paneId);
     return true;
   }
@@ -1497,6 +1498,16 @@ function askIntentFromKey(ev) {
   return letter ? { intent: "hotkey", letter } : null;
 }
 
+// the layer sits inside its pane element, whose focusin would report a pane focus nobody asked for
+function focusAskLayer() {
+  programmaticFocusPaneId = askState.paneId;
+  try {
+    askLayerEl.focus();
+  } finally {
+    programmaticFocusPaneId = null;
+  }
+}
+
 function askCoveredPaneId() {
   if (!askState) return null;
   return askState.paneId ?? askState.coveredPaneIds[0] ?? null;
@@ -1535,11 +1546,14 @@ function buildAskLayer(payload) {
   layer.setAttribute("aria-label", payload.title);
   layer.addEventListener("keydown", onAskKeyDown);
   layer.addEventListener("focus", () => post({ type: "askFocus", askId: payload.askId }));
-  layer.addEventListener("blur", () => post({ type: "askFocus", askId: null }));
+  // a layer being removed is reported by removeAsk, so a blur fired during removal must stay silent
+  layer.addEventListener("blur", () => {
+    if (askLayerEl === layer) post({ type: "askFocus", askId: null });
+  });
   layer.addEventListener("pointerdown", (ev) => {
     if (ev.target.closest(".ask-button")) return;
     ev.preventDefault();
-    layer.focus();
+    focusAskLayer();
     if (payload.paneId) emitPaneFocus(payload.paneId);
   });
 
@@ -1634,9 +1648,13 @@ function removeAsk() {
   if (!askLayerEl) return;
   const hadFocus = askLayerEl.contains(document.activeElement);
   const paneId = askCoveredPaneId();
-  askLayerEl.remove();
+  if (askResizeObserver) askResizeObserver.disconnect();
+  askResizeObserver = null;
+  const layer = askLayerEl;
   askLayerEl = null;
   askState = null;
+  layer.remove();
+  if (hadFocus) post({ type: "askFocus", askId: null });
   if (hadFocus && paneId) focusPane(paneId, false);
 }
 
@@ -1654,8 +1672,13 @@ function applyAsk(payload) {
     askLayerEl = buildAskLayer(payload);
     host.appendChild(askLayerEl);
     askState = { askId: payload.askId, paneId: payload.paneId, coveredPaneIds: payload.coveredPaneIds };
-    if (payload.coveredPaneIds.includes(coveredFocus)) askLayerEl.focus();
+    askResizeObserver = new ResizeObserver(() => {
+      if (askState && askState.payload) layoutAsk(askState.payload);
+    });
+    askResizeObserver.observe(host);
+    if (payload.coveredPaneIds.includes(coveredFocus)) focusAskLayer();
   }
+  askState.coveredPaneIds = payload.coveredPaneIds;
   applyAskHighlight(payload);
   layoutAsk(payload);
   askState.payload = payload;
