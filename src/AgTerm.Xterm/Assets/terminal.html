@@ -120,6 +120,61 @@
         outline: 2px solid #60cdff;
         outline-offset: -2px;
       }
+      .ask-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.2);
+        outline: none;
+      }
+      .ask-layer.ask-session {
+        position: fixed;
+      }
+      .ask-panel {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        width: max-content;
+        overflow: auto;
+        border: 1px solid;
+      }
+      .ask-title {
+        font-weight: bold;
+        overflow-wrap: anywhere;
+      }
+      .ask-message {
+        overflow-wrap: anywhere;
+      }
+      .ask-buttons-row {
+        display: flex;
+        min-width: 0;
+      }
+      .ask-buttons {
+        display: inline-grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 1fr;
+        max-width: 100%;
+      }
+      .ask-buttons.ask-column {
+        grid-auto-flow: row;
+        grid-template-columns: minmax(0, max-content);
+      }
+      .ask-button {
+        border: 0;
+        font: inherit;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .ask-buttons.ask-column .ask-button {
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+      .ask-button.ask-destructive {
+        font-weight: bold;
+      }
       /* xterm's own padding is 0; keep a hairline inset so glyphs don't touch the window edge */
       .xterm {
         padding: 2px;

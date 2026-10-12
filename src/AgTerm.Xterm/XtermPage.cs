@@ -18,6 +18,11 @@ public sealed class XtermPage
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
+    private static readonly JsonSerializerOptions AskScriptLiteral = new(XtermTerminal.ScriptLiteral)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+    };
+
     private readonly IWebViewScriptHost _host;
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Dictionary<string, XtermTerminal> _terminals = new();
@@ -72,6 +77,29 @@ public sealed class XtermPage
 
         var payload = JsonSerializer.Serialize(settings, RendererSettingsScriptLiteral);
         return _host.ExecuteScriptAsync($"agterm.applyRendererSettings({payload})");
+    }
+
+    public Task ApplyAskAsync(TerminalAskView? view)
+    {
+        if (view is null)
+            return _host.ExecuteScriptAsync("agterm.applyAsk(null)");
+        var payload = JsonSerializer.Serialize(new
+        {
+            askId = view.AskId,
+            paneId = view.PaneId,
+            coveredPaneIds = view.CoveredPaneIds,
+            title = view.Title,
+            message = view.Message,
+            buttons = view.Buttons.Select(button => new
+            {
+                runs = button.Runs.Select(run => new { text = run.Text, underline = run.Underline }),
+                destructive = button.Destructive,
+            }),
+            highlighted = view.Highlighted,
+            align = view.Align,
+            width = view.Width,
+        }, AskScriptLiteral);
+        return _host.ExecuteScriptAsync($"agterm.applyAsk({payload})");
     }
 
     public Task ApplySearchAsync(
@@ -132,6 +160,12 @@ public sealed class XtermPage
     public event Action<string, string, int, int?>? SearchUpdated;
 
     public event Action<string>? SearchClosed;
+
+    /// <summary>The user acted on the terminal question the page shows.</summary>
+    public event Action<string, Core.Model.AskIntent>? AskIntentReceived;
+
+    /// <summary>The question took the page focus (its id) or lost it (null).</summary>
+    public event Action<string?>? AskFocusChanged;
 
     public event Action<string>? DashboardHighlighted;
 
@@ -288,6 +322,17 @@ public sealed class XtermPage
         writer.WriteEndObject();
     }
 
+    private static Core.Model.AskIntent? AskIntentFrom(BridgeMessage msg) => msg.Intent switch
+    {
+        "forward" => new Core.Model.AskIntent.Forward(),
+        "backward" => new Core.Model.AskIntent.Backward(),
+        "activate" => new Core.Model.AskIntent.Activate(),
+        "cancel" => new Core.Model.AskIntent.Cancel(),
+        "hotkey" when msg.Letter is { Length: 1 } letter => new Core.Model.AskIntent.Hotkey(letter),
+        "press" when msg.Index is { } index => new Core.Model.AskIntent.Press(index),
+        _ => null,
+    };
+
     private void OnMessage(string json)
     {
         BridgeMessage? msg;
@@ -339,6 +384,16 @@ public sealed class XtermPage
                     msg.Alt ?? false,
                     msg.Shift ?? false,
                     customKey)));
+            return;
+        }
+        if (msg is { Type: "askIntent", AskId: { } askId } && AskIntentFrom(msg) is { } intent)
+        {
+            AskIntentReceived?.Invoke(askId, intent);
+            return;
+        }
+        if (msg?.Type == "askFocus")
+        {
+            AskFocusChanged?.Invoke(msg.AskId);
             return;
         }
         if (msg?.Type == "pasteRequested")
@@ -446,5 +501,9 @@ internal sealed record BridgeMessage
     [JsonPropertyName("needle")] public string? Needle { get; init; }
     [JsonPropertyName("count")] public int? Count { get; init; }
     [JsonPropertyName("selected")] public int? Selected { get; init; }
+    [JsonPropertyName("askId")] public string? AskId { get; init; }
+    [JsonPropertyName("intent")] public string? Intent { get; init; }
+    [JsonPropertyName("letter")] public string? Letter { get; init; }
+    [JsonPropertyName("index")] public int? Index { get; init; }
     [JsonPropertyName("controlRef")] public string? ControlRef { get; init; }
 }

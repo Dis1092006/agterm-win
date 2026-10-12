@@ -67,6 +67,8 @@ let splitDragState = null;
 let splitFitRafHandle = 0;
 let overlayCatcherEl = null;
 let dashboardActivationTimer = null;
+let askLayerEl = null;
+let askState = null; // { askId, paneId, coveredPaneIds, payload }
 
 function searchDecorations() {
   return {
@@ -309,6 +311,11 @@ function emitPaneFocus(paneId) {
 function focusPane(paneId, emitEvent) {
   const pane = panes.get(paneId);
   if (!pane) return false;
+  if (askLayerEl && askState.coveredPaneIds.includes(paneId)) {
+    askLayerEl.focus();
+    if (emitEvent) emitPaneFocus(paneId);
+    return true;
+  }
   programmaticFocusPaneId = paneId;
   try {
     pane.term.focus();
@@ -1458,6 +1465,207 @@ function normalizeKey(key) {
   }
 }
 
+// Terminal-style ask (upstream AskDialogView, terminal style). The host owns the highlight and the
+// answer; the page draws the payload and reports intents, so both dialog styles share one model.
+function rgbaFromHex(color, alpha) {
+  const rgb = parseHexRgb(color);
+  return rgb ? `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})` : color;
+}
+
+function askIntentFromKey(ev) {
+  if (ev.ctrlKey || ev.altKey || ev.metaKey) return null;
+  switch (ev.key) {
+    case "Tab":
+      return { intent: ev.shiftKey ? "backward" : "forward" };
+    case "ArrowRight":
+    case "ArrowDown":
+      return { intent: "forward" };
+    case "ArrowLeft":
+    case "ArrowUp":
+      return { intent: "backward" };
+    case "Enter":
+      return { intent: "activate" };
+    case "Escape":
+      return { intent: "cancel" };
+  }
+  // the virtual-key rule: on a non-Latin layout the key's Latin position names the hotkey
+  const letter = /^[a-zA-Z]$/.test(ev.key)
+    ? ev.key.toLowerCase()
+    : /^Key[A-Z]$/.test(ev.code || "")
+      ? ev.code.slice(3).toLowerCase()
+      : null;
+  return letter ? { intent: "hotkey", letter } : null;
+}
+
+function askCoveredPaneId() {
+  if (!askState) return null;
+  return askState.paneId ?? askState.coveredPaneIds[0] ?? null;
+}
+
+// window chords keep working over a question; only built-in chords, as the menu would
+function routeAskChord(ev) {
+  const key = normalizeKey(ev.key);
+  const paneId = askCoveredPaneId();
+  if (key === null || paneId === null) return;
+  const chord = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key };
+  if (!interceptChords.some((c) => samePhysicalChord(c, chord))) return;
+  post({ type: "chord", paneId, generation: hotkeyGeneration, ...chord });
+}
+
+function onAskKeyDown(ev) {
+  if (!askState) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  const intent = askIntentFromKey(ev);
+  if (intent) post({ type: "askIntent", askId: askState.askId, ...intent });
+  else routeAskChord(ev);
+}
+
+function askFontSize(paneId) {
+  const pane = paneId ? panes.get(paneId) : null;
+  return pane ? pane.term.options.fontSize : rendererSettings.fontSize;
+}
+
+function buildAskLayer(payload) {
+  const layer = document.createElement("div");
+  layer.className = payload.paneId ? "ask-layer" : "ask-layer ask-session";
+  layer.tabIndex = 0;
+  layer.dataset.askId = payload.askId;
+  layer.setAttribute("role", "dialog");
+  layer.setAttribute("aria-label", payload.title);
+  layer.addEventListener("keydown", onAskKeyDown);
+  layer.addEventListener("focus", () => post({ type: "askFocus", askId: payload.askId }));
+  layer.addEventListener("blur", () => post({ type: "askFocus", askId: null }));
+  layer.addEventListener("pointerdown", (ev) => {
+    if (ev.target.closest(".ask-button")) return;
+    ev.preventDefault();
+    layer.focus();
+    if (payload.paneId) emitPaneFocus(payload.paneId);
+  });
+
+  const fg = rendererSettings.foregroundColor;
+  const bg = rendererSettings.backgroundColor;
+  const fontSize = askFontSize(payload.paneId);
+  const cell = Math.max(8, fontSize * 0.6);
+
+  const panel = document.createElement("div");
+  panel.className = "ask-panel";
+  panel.style.background = bg;
+  panel.style.color = fg;
+  panel.style.borderColor = rgbaFromHex(fg, 0.3);
+  panel.style.fontFamily = rendererSettings.fontFamily;
+  panel.style.fontSize = `${fontSize}px`;
+  panel.style.padding = `${2 * cell}px`;
+  panel.style.gap = `${1.5 * cell}px`;
+
+  const title = document.createElement("div");
+  title.className = "ask-title";
+  title.textContent = payload.title;
+  panel.appendChild(title);
+  if (payload.message) {
+    const message = document.createElement("div");
+    message.className = "ask-message";
+    message.style.color = rgbaFromHex(fg, 0.7);
+    message.textContent = payload.message;
+    panel.appendChild(message);
+  }
+
+  const row = document.createElement("div");
+  row.className = "ask-buttons-row";
+  row.style.justifyContent =
+    payload.align === "left" ? "flex-start" : payload.align === "center" ? "center" : "flex-end";
+  const buttons = document.createElement("div");
+  buttons.className = "ask-buttons";
+  buttons.style.gap = `${cell}px`;
+  payload.buttons.forEach((choice, index) => {
+    const button = document.createElement("button");
+    button.className = choice.destructive ? "ask-button ask-destructive" : "ask-button";
+    button.tabIndex = -1;
+    button.style.padding = `${0.4 * cell}px ${0.5 * cell}px`;
+    for (const run of choice.runs) {
+      const node = run.underline ? document.createElement("u") : document.createElement("span");
+      node.textContent = run.text;
+      button.appendChild(node);
+    }
+    // answering with the mouse must not move focus
+    button.addEventListener("pointerdown", (ev) => ev.preventDefault());
+    button.addEventListener("click", () =>
+      post({ type: "askIntent", askId: payload.askId, intent: "press", index }),
+    );
+    buttons.appendChild(button);
+  });
+  row.appendChild(buttons);
+  panel.appendChild(row);
+  layer.appendChild(panel);
+  return layer;
+}
+
+function applyAskHighlight(payload) {
+  if (!askLayerEl) return;
+  const fg = rendererSettings.foregroundColor;
+  const bg = rendererSettings.backgroundColor;
+  askLayerEl.querySelectorAll(".ask-button").forEach((button, index) => {
+    const on = index === payload.highlighted;
+    button.classList.toggle("ask-highlighted", on);
+    button.style.background = on ? fg : rgbaFromHex(fg, 0.12);
+    button.style.color = on ? bg : fg;
+  });
+}
+
+function layoutAsk(payload) {
+  if (!askLayerEl) return;
+  const panel = askLayerEl.querySelector(".ask-panel");
+  const buttons = askLayerEl.querySelector(".ask-buttons");
+  const cell = Math.max(8, askFontSize(payload.paneId) * 0.6);
+  const area = askLayerEl.getBoundingClientRect();
+  const maxWidth =
+    typeof payload.width === "number"
+      ? (area.width * payload.width) / 100
+      : Math.min(area.width * 0.9, 72 * cell);
+  panel.style.maxWidth = `${Math.max(0, maxWidth)}px`;
+  panel.style.width = typeof payload.width === "number" ? `${Math.max(0, maxWidth)}px` : "max-content";
+  panel.style.maxHeight = `${Math.max(0, area.height - 2 * cell)}px`;
+  buttons.classList.remove("ask-column");
+  if (buttons.scrollWidth > buttons.parentElement.clientWidth + 0.5)
+    buttons.classList.add("ask-column");
+}
+
+function removeAsk() {
+  if (!askLayerEl) return;
+  const hadFocus = askLayerEl.contains(document.activeElement);
+  const paneId = askCoveredPaneId();
+  askLayerEl.remove();
+  askLayerEl = null;
+  askState = null;
+  if (hadFocus && paneId) focusPane(paneId, false);
+}
+
+function applyAsk(payload) {
+  if (!payload) {
+    removeAsk();
+    return true;
+  }
+  const sameAsk = askState && askState.askId === payload.askId && askState.paneId === payload.paneId;
+  if (!sameAsk) {
+    const coveredFocus = visibleFocusedPaneId();
+    removeAsk();
+    const host = payload.paneId ? panes.get(payload.paneId)?.el : document.body;
+    if (!host) return false;
+    askLayerEl = buildAskLayer(payload);
+    host.appendChild(askLayerEl);
+    askState = { askId: payload.askId, paneId: payload.paneId, coveredPaneIds: payload.coveredPaneIds };
+    if (payload.coveredPaneIds.includes(coveredFocus)) askLayerEl.focus();
+  }
+  applyAskHighlight(payload);
+  layoutAsk(payload);
+  askState.payload = payload;
+  return true;
+}
+
+window.addEventListener("resize", () => {
+  if (askState && askState.payload) layoutAsk(askState.payload);
+});
+
 function samePhysicalChord(left, right) {
   return (
     left.ctrl === right.ctrl &&
@@ -2069,6 +2277,7 @@ window.agterm = {
   getRendererSettings,
   getRendererCapabilities,
   applyLayout,
+  applyAsk,
   fit: (paneId) => fitAndReport(paneId),
   text: (paneId, all, lines) =>
     withPane(paneId, (p) => bufferText(p.term, all, lines)),
