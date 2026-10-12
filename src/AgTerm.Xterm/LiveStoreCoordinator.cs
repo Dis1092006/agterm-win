@@ -30,7 +30,8 @@ public sealed record LiveSelectionSnapshot(
     bool DashboardOpen = false,
     IReadOnlyList<TerminalDashboardCell>? DashboardCells = null,
     string? DashboardHighlighted = null,
-    double? DashboardFontSize = null)
+    double? DashboardFontSize = null,
+    TerminalAskPlacement? TerminalAsk = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -144,6 +145,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     private readonly Action _onSidebarChanged;
     private readonly Action _onSidebarVisibilityChanged;
     private readonly Action _onSelectionChanged;
+    private readonly Action _onAsksChanged;
     private int _disposed;
     private long _sidebarGeneration;
     private long _selectionNotificationGeneration;
@@ -193,12 +195,14 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         _onSidebarChanged = OnSidebarInvalidated;
         _onSidebarVisibilityChanged = OnSidebarInvalidated;
         _onSelectionChanged = OnSelectionChanged;
+        _onAsksChanged = OnAsksChanged;
 
         _host.RunLocked(() =>
         {
             _host.Store.SidebarChanged += _onSidebarChanged;
             _host.Store.SidebarVisibilityChanged += _onSidebarVisibilityChanged;
             _host.Store.SelectionChanged += _onSelectionChanged;
+            _host.Store.AsksChanged += _onAsksChanged;
         });
     }
 
@@ -297,6 +301,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             _host.Store.SidebarChanged -= _onSidebarChanged;
             _host.Store.SidebarVisibilityChanged -= _onSidebarVisibilityChanged;
             _host.Store.SelectionChanged -= _onSelectionChanged;
+            _host.Store.AsksChanged -= _onAsksChanged;
         });
     }
 
@@ -321,6 +326,13 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         }
 
         PublishSelectionSnapshot(snapshot);
+    }
+
+    private void OnAsksChanged()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+        PublishSelectionSnapshot(CaptureSelectionSnapshot());
     }
 
     private void OnSelectionChanged()
@@ -359,6 +371,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         var dashboardFontSize = _host.Actions.Dashboard.IsOpen
             ? _host.Actions.Dashboard.AppliedFontSize
             : null;
+        var terminalAsk = TerminalAskVisibility.For(_host.Store, _host.Actions.Zoom.Target is not null, _host.Actions.Dashboard.IsOpen);
         if (selectedSessionId is not { } id)
         {
             return new LiveSelectionSnapshot(
@@ -405,7 +418,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             _host.Actions.Dashboard.IsOpen,
             dashboardCells,
             dashboardHighlighted,
-            dashboardFontSize);
+            dashboardFontSize,
+            TerminalAsk: terminalAsk);
     }
 
     private IReadOnlyList<TerminalDashboardCell> CaptureDashboardCells()

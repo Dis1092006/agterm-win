@@ -441,6 +441,24 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Opening_a_terminal_ask_republishes_the_selection_snapshot_with_it()
+    {
+        using var coordinator = BuildCoordinator();
+        var published = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.SelectionSnapshotChanged += snapshot =>
+        {
+            if (snapshot.TerminalAsk is not null) published.TrySetResult(snapshot);
+        };
+        var ask = new PendingAsk("ASK", "Continue?", null, new[] { new AgTerm.Core.Protocol.ControlAskButton { Id = "yes", Label = "Yes" } },
+            null, null, AgTerm.Core.Protocol.ControlAskStyle.Terminal, AgTerm.Core.Protocol.ControlAskAlignment.Right, null);
+
+        _host.RunLocked(() => _host.Store.OpenAsk(_host.Store.SelectedSessionId!.Value, ask, null, Guid.NewGuid()));
+
+        var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Same(ask, snapshot.TerminalAsk!.Ask);
+    }
+
+    [Fact]
     public async Task Selection_snapshot_refreshes_after_sidebar_invalidation()
     {
         using var coordinator = BuildCoordinator();

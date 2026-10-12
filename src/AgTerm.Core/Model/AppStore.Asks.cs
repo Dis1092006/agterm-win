@@ -8,6 +8,9 @@ public sealed partial class AppStore
     /// window, so ask.result finds a terminal question in any window.</summary>
     public AskRegistry Asks { get; set; } = new();
 
+    /// <summary>Raised under the host's model lock after a terminal question opens or ends, so the window redraws it.</summary>
+    public event Action? AsksChanged;
+
     /// <summary>One terminal question per session. Registers the id and fills the slot in one step
     /// under the host's model lock.</summary>
     public bool OpenAsk(Guid sessionId, PendingAsk ask, Guid? paneIdentity, Guid windowId)
@@ -17,6 +20,7 @@ public sealed partial class AppStore
         if (!Asks.Register(ask.Id, new AskOwner.Session(sessionId, windowId))) return false;
         session.AskPending = ask;
         session.AskPaneIdentity = paneIdentity;
+        AsksChanged?.Invoke();
         return true;
     }
 
@@ -45,6 +49,7 @@ public sealed partial class AppStore
         Asks.Retain(askId, outcome);
         session.AskPending = null;
         session.AskPaneIdentity = null;
+        AsksChanged?.Invoke();
         return true;
     }
 }
