@@ -312,29 +312,4 @@ public sealed class HeadlessAskTests : IDisposable
         Assert.Equal(ControlAskResult.Answered("no", "No", 1), Result(terminal));
         Assert.Null(SessionAsk(session));
     }
-
-    [Fact]
-    public void AHostThatCannotDrawTerminalAsksRefusesThemButKeepsGuiAsks()
-    {
-        var stateDir = Directory.CreateTempSubdirectory("agterm-ask-").FullName;
-        try
-        {
-            using var host = new HeadlessHost(new HeadlessHostOptions
-            {
-                StateDir = stateDir,
-                ConfigDir = stateDir,
-                PipeName = "agterm-test-" + Guid.NewGuid().ToString("N"),
-                TerminalAskSupported = false,
-            });
-            host.Start();
-            var client = new ControlPipeClient(host.PipeName);
-
-            Assert.Equal("terminal ask is not supported yet, use --style gui", client.Send(OpenAsk()).Error);
-            Assert.True(client.Send(OpenAsk("gui")).Ok);
-        }
-        finally
-        {
-            Directory.Delete(stateDir, recursive: true);
-        }
-    }
 }

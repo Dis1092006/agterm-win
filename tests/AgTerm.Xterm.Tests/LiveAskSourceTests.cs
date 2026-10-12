@@ -6,18 +6,23 @@ public sealed class LiveAskSourceTests
         File.ReadAllText(Path.Combine(new[] { FindRepoRoot() }.Concat(path).ToArray()));
 
     [Fact]
-    public void The_live_control_host_refuses_terminal_asks_until_the_page_draws_them()
+    public void The_live_app_no_longer_refuses_terminal_asks()
     {
-        var source = Source("src", "AgTerm.Xterm", "LiveControlHost.cs");
-        Assert.Contains("TerminalAskSupported = false", source, StringComparison.Ordinal);
-        Assert.Contains("terminalAskSupported: false", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void The_app_refuses_terminal_asks_in_every_window_until_stage_two()
-    {
-        var source = Source("src", "AgTerm.App", "App.xaml.cs");
-        Assert.Contains("TerminalAskSupported = false", source, StringComparison.Ordinal);
+        foreach (var path in new[]
+        {
+            new[] { "src", "AgTerm.Xterm", "LiveControlHost.cs" },
+            new[] { "src", "AgTerm.Xterm", "LiveApplicationHost.cs" },
+            new[] { "src", "AgTerm.Xterm", "LiveWindowHost.cs" },
+            new[] { "src", "AgTerm.App", "App.xaml.cs" },
+            new[] { "src", "AgTerm.ControlServer", "HeadlessHost.cs" },
+            new[] { "src", "AgTerm.ControlServer", "HeadlessControlActions.cs" },
+        })
+        {
+            var source = Source(path);
+            Assert.DoesNotContain("TerminalAskSupported", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("terminalAskSupported", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("not supported yet", source, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

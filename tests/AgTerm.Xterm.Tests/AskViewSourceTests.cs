@@ -109,6 +109,19 @@ public sealed class AskViewSourceTests
             code);
     }
 
+    [Fact]
+    public void The_window_draws_the_terminal_question_and_answers_it()
+    {
+        var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
+        Assert.Contains("new TerminalAskNavigator()", source, StringComparison.Ordinal);
+        Assert.Contains("snapshot.TerminalAsk", source, StringComparison.Ordinal);
+        Assert.Contains(".ApplyAskAsync(", source, StringComparison.Ordinal);
+        Assert.Contains(".AskIntentReceived +=", source, StringComparison.Ordinal);
+        Assert.Contains(".AskFocusChanged +=", source, StringComparison.Ordinal);
+        Assert.Contains("store.ResolveAsk(", source, StringComparison.Ordinal);
+        Assert.Contains("EscapeFocusedTerminalAsk", source, StringComparison.Ordinal);
+    }
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

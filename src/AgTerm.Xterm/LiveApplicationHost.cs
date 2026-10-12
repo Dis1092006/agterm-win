@@ -14,9 +14,6 @@ public sealed record LiveApplicationHostOptions
     public string? HomeDirectory { get; init; }
 
     public ILiveWindowController? WindowController { get; init; }
-
-    /// <summary>The app draws terminal questions only from stage 2; tests keep the default.</summary>
-    public bool TerminalAskSupported { get; init; } = true;
 }
 
 public sealed record LiveWindowEntry(
@@ -34,7 +31,6 @@ public sealed class LiveApplicationHost : IDisposable
     private readonly string _stateDirectory;
     private readonly string _homeDirectory;
     private readonly ILiveWindowController? _windowController;
-    private readonly bool _terminalAskSupported;
     private readonly RecentClosedStore _recentClosedStore;
     private readonly SemaphoreSlim _recentClosedGate = new(1, 1);
     private readonly Dictionary<Guid, LiveWindowHost> _openWindows = new();
@@ -54,7 +50,6 @@ public sealed class LiveApplicationHost : IDisposable
         _homeDirectory = options.HomeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _windowController = options.WindowController;
-        _terminalAskSupported = options.TerminalAskSupported;
         _recentClosedStore = new RecentClosedStore(_stateDirectory);
         Ring = new ControlEventRing();
 
@@ -1266,8 +1261,7 @@ public sealed class LiveApplicationHost : IDisposable
             _recentClosedStore,
             seedIfEmpty,
             launchRestore,
-            _picks,
-            _terminalAskSupported);
+            _picks);
 
     private void SetOpen(Guid windowId, bool isOpen)
     {

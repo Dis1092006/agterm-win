@@ -142,7 +142,6 @@ public sealed class HeadlessControlActions : IControlActions
     private double _dashboardBaseFontSize;
     private readonly Action<string>? _paneFocusRequested;
     private readonly Action<HeadlessSearchUpdate>? _searchUpdated;
-    private readonly bool _terminalAskSupported;
     private readonly Action? _quickChanged;
     private readonly Action<bool>? _zoomActiveChanged;
     private readonly Action? _zoomChanged;
@@ -171,8 +170,7 @@ public sealed class HeadlessControlActions : IControlActions
                                   Action<LiveStatusNotificationRequest>? statusNotificationRequested = null,
                                   Func<TerminalZoomTarget, bool>? zoomTargetAvailable = null,
                                   PickController? pick = null,
-                                  PickRegistry? picks = null,
-                                  bool terminalAskSupported = true)
+                                  PickRegistry? picks = null)
     {
         Picks = picks ?? new PickRegistry();
         Pick = pick ?? new PickController(Picks.Asks);
@@ -180,7 +178,6 @@ public sealed class HeadlessControlActions : IControlActions
         _store = store;
         // one registry per application: terminal asks in any window and GUI asks share it
         _store.Asks = Picks.Asks;
-        _terminalAskSupported = terminalAskSupported;
         _ring = ring;
         WindowId = windowId;
         WindowName = windowName;
@@ -220,8 +217,6 @@ public sealed class HeadlessControlActions : IControlActions
     public PickController Pick { get; }
 
     public PickRegistry Picks { get; }
-
-    public const string TerminalAskUnsupportedError = "terminal ask is not supported yet, use --style gui";
 
     public AskRegistry Asks => Picks.Asks;
 
@@ -1780,7 +1775,6 @@ public sealed class HeadlessControlActions : IControlActions
         // follow is applied by the live application host after this succeeds, as for pick.open
         if (ask.Style == ControlAskStyle.Terminal)
         {
-            if (!_terminalAskSupported) return Err(TerminalAskUnsupportedError);
             return ResolveSession(target, window, (store, id) => OpenTerminalAsk(store, id, ask, placement));
         }
         if (target is not null)

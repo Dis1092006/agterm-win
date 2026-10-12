@@ -24,7 +24,6 @@ public partial class App : Application, ILiveWindowController
         {
             PipeName = ControlPipeName.Resolve(),
             WindowController = this,
-            TerminalAskSupported = false,
         });
         _applicationHost = applicationHost;
         foreach (var windowId in applicationHost.LaunchWindowIds)

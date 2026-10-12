@@ -1106,27 +1106,6 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     }
 
     [Fact]
-    public void An_application_that_cannot_draw_terminal_asks_refuses_them_in_every_window_but_keeps_gui_asks()
-    {
-        var firstId = Guid.NewGuid();
-        WriteWindowSnapshotWithSession(firstId, "alpha");
-        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
-        using var application = new LiveApplicationHost(new LiveApplicationHostOptions
-        {
-            StateDir = _stateDir,
-            HomeDirectory = _stateDir,
-            PipeName = "agterm-window-control-" + Guid.NewGuid().ToString("N"),
-            WindowController = new FakeWindowController(),
-            TerminalAskSupported = false,
-        });
-        application.Start();
-        var client = new ControlPipeClient(application.PipeName);
-
-        Assert.Equal("terminal ask is not supported yet, use --style gui", client.Send(OpenAskRequest("terminal")).Error);
-        Assert.True(client.Send(OpenAskRequest("gui")).Ok);
-    }
-
-    [Fact]
     public void Ask_open_with_a_session_target_routes_to_the_owning_window()
     {
         var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();

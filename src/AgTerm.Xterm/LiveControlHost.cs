@@ -172,7 +172,6 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 NotificationRequested = QueueNotificationRequested,
                 StatusNotificationRequested = QueueStatusNotificationRequested,
                 ZoomTargetAvailable = IsZoomTargetRealized,
-                TerminalAskSupported = false,
             }));
         }
         else
@@ -206,8 +205,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 statusNotificationRequested: QueueStatusNotificationRequested,
                 zoomTargetAvailable: IsZoomTargetRealized,
                 pick: windowHost.Pick,
-                picks: windowHost.Picks,
-                terminalAskSupported: false);
+                picks: windowHost.Picks);
             windowHost.AttachLive(actions, ReserveSurface, _scopeFactory);
         }
         if (options.InitialTheme is { } initialTheme)

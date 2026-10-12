@@ -97,10 +97,6 @@ public sealed record HeadlessHostOptions
 
     /// <summary>Optional live-only availability check for a realized zoom target pane.</summary>
     public Func<TerminalZoomTarget, bool>? ZoomTargetAvailable { get; init; }
-
-    /// <summary>Whether the host can draw a terminal-style ask. The live app answers false until it
-    /// draws them inside the xterm page.</summary>
-    public bool TerminalAskSupported { get; init; } = true;
 }
 
 /// <summary>
@@ -168,8 +164,7 @@ public sealed class HeadlessHost : IDisposable
             themeChanged: options.ThemeChanged,
             notificationRequested: options.NotificationRequested,
             statusNotificationRequested: options.StatusNotificationRequested,
-            zoomTargetAvailable: options.ZoomTargetAvailable,
-            terminalAskSupported: options.TerminalAskSupported);
+            zoomTargetAvailable: options.ZoomTargetAvailable);
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.

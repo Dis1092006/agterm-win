@@ -59,6 +59,8 @@ public sealed partial class MainWindow : Window
     private AppSettings _settings; // UI-thread confined
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
     private bool _systemDark; // UI-thread confined
+    private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
+    private string? _focusedAskId; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private WindowCommandRouter? _commandRouter; // UI-thread confined
@@ -546,6 +548,7 @@ public sealed partial class MainWindow : Window
                     || snapshot.DashboardOpen);
                 SubmitLayout();
                 SubmitSearchPresentation(previousSelection, snapshot);
+                PresentTerminalAsk(snapshot.TerminalAsk);
             });
         };
 
@@ -699,9 +702,10 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.DuplicateSession] = Sync(HasSelectedSession, sidebar.DuplicateActiveSession),
             [BuiltinAction.CloseSession] = Async(
                 HasSelectedSession,
-                () => _selectedSessionId is { } selectedSessionId
-                    ? sidebar.CloseSessionsAsync(new[] { selectedSessionId }, CurrentSidebarCloseOptions())
-                    : Task.CompletedTask),
+                () => EscapeFocusedTerminalAsk() ? Task.CompletedTask
+                    : _selectedSessionId is { } selectedSessionId
+                        ? sidebar.CloseSessionsAsync(new[] { selectedSessionId }, CurrentSidebarCloseOptions())
+                        : Task.CompletedTask),
             [BuiltinAction.ReopenRecent] = Async(
                 () => true,
                 async () => _ = await _applicationHost.ReopenLatestRecentClosedAsync(_windowId)),
@@ -1053,6 +1057,10 @@ public sealed partial class MainWindow : Window
             await PublishHotkeyManifestAsync(page, keymap);
         }
         await ArmAsync(host.Host.Actions.LoadKeymap());
+        page.AskIntentReceived += (askId, intent) => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+            HandleTerminalAskIntentAsync(askId, intent),
+            "Terminal ask intent failed"));
+        page.AskFocusChanged += askId => DispatcherQueue.TryEnqueue(() => _focusedAskId = askId);
         page.BuiltinHotkeyPressed += hit => DispatcherQueue.TryEnqueue(() =>
             HandleChord(hit.Chord, hit.Generation));
         page.CustomCommandPressed += hit => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
@@ -1202,6 +1210,43 @@ public sealed partial class MainWindow : Window
         host.Host.Actions.Pick.EscapeAsk(askId);
         await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
         RestoreFocusAfterPick();
+    }
+
+    private void PresentTerminalAsk(TerminalAskPlacement? placement)
+    {
+        var view = _terminalAsks.Present(placement);
+        if (view is null) _focusedAskId = null;
+        ObserveTaskFault(ApplyTerminalAskAsync(view), "Apply terminal ask failed");
+    }
+
+    private async Task ApplyTerminalAskAsync(TerminalAskView? view)
+    {
+        var page = await _pageTask;
+        await page.ApplyAskAsync(view);
+    }
+
+    private async Task HandleTerminalAskIntentAsync(string askId, AskIntent intent)
+    {
+        switch (_terminalAsks.Apply(askId, intent))
+        {
+            case TerminalAskResolution.Redraw redraw:
+                await ApplyTerminalAskAsync(redraw.View);
+                break;
+            case TerminalAskResolution.Resolve resolve when _host is { } host:
+                // the store raises AsksChanged, and the republished snapshot clears the page
+                await host.StoreCoordinator.MutateAsync(store => store.ResolveAsk(resolve.SessionId, resolve.AskId, resolve.Result));
+                break;
+        }
+    }
+
+    /// <summary>Upstream's Command-W dismisses the question that owns input; one drawn but not
+    /// focused, or hidden, leaves the chord to close the session.</summary>
+    private bool EscapeFocusedTerminalAsk()
+    {
+        if (_focusedAskId is not { } askId || _terminalAsks.CurrentAskId != askId)
+            return false;
+        ObserveTaskFault(HandleTerminalAskIntentAsync(askId, new AskIntent.Cancel()), "Terminal ask dismissal failed");
+        return true;
     }
 
     private void RestoreFocusAfterPick()
