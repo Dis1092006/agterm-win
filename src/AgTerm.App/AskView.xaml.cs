@@ -101,9 +101,26 @@ public sealed partial class AskView : UserControl
             var pressed = index;
             button.Click += (_, _) => Handle(new AskIntent.Press(pressed));
             _buttons.Add(button);
+            if (AskIds.Same(choice.Id, ask.DestructiveId))
+                KeepDestructiveColors(button);
             // in the live tree before the first measure, so the button template is applied
             ButtonHost.Children.Add(button);
         }
+    }
+
+    /// <summary>The button templates take the PointerOver and Pressed visuals from theme resources, not
+    /// from the local Background and Foreground. The overrides must be in place before the template's
+    /// first apply, because a ThemeResource resolves against the button's own resources only then.</summary>
+    private static void KeepDestructiveColors(Button button)
+    {
+        var critical = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"];
+        var white = new SolidColorBrush(Microsoft.UI.Colors.White);
+        button.Resources["AccentButtonBackgroundPointerOver"] = critical;
+        button.Resources["AccentButtonBackgroundPressed"] = critical;
+        button.Resources["AccentButtonForegroundPointerOver"] = white;
+        button.Resources["AccentButtonForegroundPressed"] = white;
+        button.Resources["ButtonForegroundPointerOver"] = critical;
+        button.Resources["ButtonForegroundPressed"] = critical;
     }
 
     private void ApplyHighlight()
@@ -216,6 +233,24 @@ public sealed partial class AskView : UserControl
         var intent = AskKeys.Intent((int)e.Key, IsDown(VirtualKey.Shift), IsDown(VirtualKey.Control),
             IsDown(VirtualKey.Menu), IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows));
         if (intent is not null) Handle(intent);
+    }
+
+    private void OnLosingFocus(UIElement sender, LosingFocusEventArgs args)
+    {
+        if (_ask is null)
+            return;
+        // focus restored on window activation goes to the last focused element, the terminal, not the dialog
+        if (args.NewFocusedElement is not { } target || IsInside(target))
+            return;
+        if (!args.TrySetNewFocusedElement(this))
+            args.TryCancel();
+    }
+
+    private bool IsInside(DependencyObject element)
+    {
+        for (var node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+            if (ReferenceEquals(node, this)) return true;
+        return false;
     }
 
     private void Handle(AskIntent intent)

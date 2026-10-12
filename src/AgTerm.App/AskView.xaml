@@ -6,6 +6,7 @@
     IsTabStop="True"
     UseSystemFocusVisuals="False"
     KeyDown="OnKeyDown"
+    LosingFocus="OnLosingFocus"
     AutomationProperties.Name="Question">
     <Canvas x:Name="Root" Background="Transparent">
         <Border x:Name="Scrim" Background="#33000000" />

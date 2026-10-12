@@ -76,6 +76,39 @@ public sealed class AskViewSourceTests
         Assert.Contains("_restoreFocusWhenActivated && !PaletteOverlay.IsOpen && !AskOverlay.IsOpen", source, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("AccentButtonBackgroundPointerOver")]
+    [InlineData("AccentButtonBackgroundPressed")]
+    [InlineData("AccentButtonForegroundPointerOver")]
+    [InlineData("AccentButtonForegroundPressed")]
+    [InlineData("ButtonForegroundPointerOver")]
+    [InlineData("ButtonForegroundPressed")]
+    public void The_destructive_button_overrides_its_hover_and_pressed_resource(string key)
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Contains($"Resources[\"{key}\"]", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_destructive_button_keeps_its_colors_before_it_enters_the_tree()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Matches(new Regex(
+            @"if \(AskIds\.Same\(choice\.Id, ask\.DestructiveId\)\)\s*KeepDestructiveColors\(button\);(?:\s*//[^\n]*)*\s*ButtonHost\.Children\.Add\(button\);"),
+            code);
+    }
+
+    [Fact]
+    public void The_dialog_takes_focus_back_while_open()
+    {
+        var xaml = Source("src", "AgTerm.App", "AskView.xaml");
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Contains("LosingFocus=\"OnLosingFocus\"", xaml, StringComparison.Ordinal);
+        Assert.Matches(new Regex(
+            @"private void OnLosingFocus\(UIElement sender, LosingFocusEventArgs args\)\s*\{\s*if \(_ask is null\)\s*return;(?:\s*//[^\n]*)*\s*if \(args\.NewFocusedElement is not \{ \} target \|\| IsInside\(target\)\)\s*return;\s*if \(!args\.TrySetNewFocusedElement\(this\)\)\s*args\.TryCancel\(\);\s*\}"),
+            code);
+    }
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
