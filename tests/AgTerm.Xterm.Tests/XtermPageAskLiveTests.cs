@@ -330,6 +330,31 @@ public class XtermPageAskLiveTests
         Assert.True(root.GetProperty("hit").GetBoolean());
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(50)]
+    public async Task Answering_a_question_on_a_base_pane_under_an_overlay_focuses_the_overlay(int? sizePercent)
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("overlay"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            1, new TerminalLayout.Single(1, "right", "Shell"), new TerminalLayer("overlay", sizePercent))));
+
+        var focused = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{Payload}});
+                const layer = document.querySelector('.ask-layer');
+                layer.focus();
+                const layerFocused = document.activeElement === layer;
+                agterm.applyAsk(null);
+                return layerFocused && document.querySelector('[data-pane-id="overlay"]').contains(document.activeElement);
+            })()
+            """);
+
+        Assert.Equal("true", focused);
+    }
+
     // ruling: a pane question leaves the search bar above it, a session-wide question covers it
     [Fact]
     public async Task The_search_bar_stacks_above_a_pane_question_and_below_a_session_wide_one()

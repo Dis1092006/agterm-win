@@ -1509,10 +1509,16 @@ function focusAskLayer() {
   }
 }
 
-// a session-wide question belongs to the pane the layout focuses: the split's right pane, or the
-// scratch or overlay drawn over the main pane, never a hidden or covered one
+// The pane that takes the keys after the answer, and that window chords over the question come
+// from. A session-wide question uses the pane the layout focuses: the split's right pane, or the
+// scratch or overlay drawn over the main pane. A pane question under a layer gives way to the layer,
+// as upstream releases focus to the topmost surface: a full-size layer hides its base pane, which
+// cannot take focus, and a partial one would send the keys to a shell drawn under it.
 function askOwnerPaneId() {
   if (!askState) return null;
+  const underLayer =
+    visibleLayout?.type === "layered" && askState.paneId !== visibleLayout.layerPaneId;
+  if (underLayer) return visibleFocusedPaneId();
   return askState.paneId ?? visibleFocusedPaneId();
 }
 
