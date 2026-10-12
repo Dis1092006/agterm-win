@@ -355,6 +355,131 @@ public class XtermPageAskLiveTests
         Assert.Equal("true", focused);
     }
 
+    private static string PanePayload(string askId, string paneId, string covered) =>
+        Payload.Replace("\"askId\":\"ASK\"", $"\"askId\":\"{askId}\"")
+            .Replace("\"paneId\":\"right\",\"coveredPaneIds\":[\"right\"]", $"\"paneId\":\"{paneId}\",\"coveredPaneIds\":{covered}");
+
+    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootOverlayAsync(bool split, int? sizePercent)
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("left"));
+        if (split) await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("overlay"));
+        TerminalLayout baseLayout = split
+            ? new TerminalLayout.Split(1, "left", "right", 0.5, "left")
+            : new TerminalLayout.Single(1, "left", "Shell");
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            1, baseLayout, new TerminalLayer("overlay", sizePercent))));
+        await _webView.RunAsync<object?>(_ => { view.Focus(); return Task.FromResult<object?>(null); });
+        await Task.Delay(500); // focusing the page re-focuses the layer's terminal and reports it
+        return (page, view);
+    }
+
+    private const string OverlayFocused =
+        "document.querySelector('[data-pane-id=\"overlay\"]').contains(document.activeElement)";
+
+    // a user click on a terminal focuses its helper textarea outside any programmatic focus
+    private const string ClickOverlay =
+        "document.querySelector('[data-pane-id=\"overlay\"] .xterm-helper-textarea').focus();";
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(50)]
+    public async Task A_pane_question_on_the_focused_side_takes_the_overlay_focus(int? sizePercent)
+    {
+        var (_, view) = await BootOverlayAsync(split: true, sizePercent);
+
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                const before = {{OverlayFocused}};
+                agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\",\"overlay\"]")}});
+                const layer = document.querySelector('.ask-layer');
+                const taken = document.activeElement === layer;
+                agterm.focus('overlay');
+                const refocused = document.activeElement === layer;
+                agterm.applyAsk(null);
+                return { before, taken, refocused, answered: {{OverlayFocused}} };
+            })()
+            """);
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("before").GetBoolean(), state);
+        Assert.True(root.GetProperty("taken").GetBoolean(), state);
+        Assert.True(root.GetProperty("refocused").GetBoolean(), state);
+        Assert.True(root.GetProperty("answered").GetBoolean(), state);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(50)]
+    public async Task A_pane_question_on_the_other_side_leaves_the_overlay_focused(int? sizePercent)
+    {
+        var (_, view) = await BootOverlayAsync(split: true, sizePercent);
+
+        var focused = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{PanePayload("ASK", "right", "[\"right\"]")}});
+                const kept = {{OverlayFocused}};
+                agterm.focus('overlay');
+                return kept && {{OverlayFocused}};
+            })()
+            """);
+
+        Assert.Equal("true", focused);
+    }
+
+    // upstream deferMouseToAsk: the program keeps its keys because the session's focus moves away
+    [Fact]
+    public async Task A_click_on_the_overlay_over_a_split_moves_the_session_focus_to_the_other_side()
+    {
+        var (page, view) = await BootOverlayAsync(split: true, sizePercent: null);
+        await EvalAsync(view, $$"""
+            (() => { agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\",\"overlay\"]")}}); return 1; })()
+            """);
+        var paneFocus = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        page.PaneFocusChanged += paneFocus.Enqueue;
+
+        var clicked = await EvalAsync(view, $$"""(() => { {{ClickOverlay}} return {{OverlayFocused}}; })()""");
+        await Task.Delay(300);
+
+        Assert.Equal("true", clicked);
+        Assert.Equal(new[] { "overlay", "right" }, paneFocus);
+    }
+
+    [Fact]
+    public async Task A_click_on_the_overlay_over_a_single_pane_keeps_the_keys_until_the_next_question()
+    {
+        var (_, view) = await BootOverlayAsync(split: false, sizePercent: null);
+        var covered = "[\"left\",\"overlay\"]";
+
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{PanePayload("ASK", "left", covered)}});
+                {{ClickOverlay}}
+                agterm.focus('overlay');
+                const afterRefocus = {{OverlayFocused}};
+                agterm.applyAsk({{PanePayload("ASK", "left", covered)}});
+                agterm.focus('overlay');
+                const afterRedraw = {{OverlayFocused}};
+                document.querySelector('.ask-layer').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+                agterm.focus('overlay');
+                const questionClicked = document.activeElement === document.querySelector('.ask-layer');
+                {{ClickOverlay}}
+                agterm.applyAsk({{PanePayload("NEXT", "left", covered)}});
+                const next = document.activeElement === document.querySelector('.ask-layer');
+                return { afterRefocus, afterRedraw, questionClicked, next };
+            })()
+            """);
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("afterRefocus").GetBoolean(), state);
+        Assert.True(root.GetProperty("afterRedraw").GetBoolean(), state);
+        Assert.True(root.GetProperty("questionClicked").GetBoolean(), state);
+        Assert.True(root.GetProperty("next").GetBoolean(), state);
+    }
+
     // ruling: a pane question leaves the search bar above it, a session-wide question covers it
     [Fact]
     public async Task The_search_bar_stacks_above_a_pane_question_and_below_a_session_wide_one()

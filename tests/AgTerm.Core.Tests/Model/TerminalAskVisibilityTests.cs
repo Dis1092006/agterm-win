@@ -53,6 +53,65 @@ public class TerminalAskVisibilityTests
         Assert.Equal(new[] { "right-token" }, placement.CoveredPaneIds);
     }
 
+    private static void OpenOverlay(Session session)
+    {
+        session.OverlaySurface = new SpySurface("overlay-token");
+        session.OverlayActive = true;
+    }
+
+    // upstream wantsFocus: a pane question on the session's focused side takes the overlay's focus
+    [Fact]
+    public void APaneQuestionOnTheFocusedSideAlsoCoversTheOverlay()
+    {
+        var (store, session) = Selected();
+        OpenOverlay(session);
+        session.SplitFocused = false;
+        store.OpenAsk(session.Id, Ask(), session.PaneIdentity, WindowId);
+
+        var placement = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal("left-token", placement.PaneId);
+        Assert.Equal(new[] { "left-token", "overlay-token" }, placement.CoveredPaneIds);
+    }
+
+    [Fact]
+    public void APaneQuestionOnTheUnfocusedSideLeavesTheOverlayUncovered()
+    {
+        var (store, session) = Selected();
+        OpenOverlay(session);
+        session.SplitFocused = true;
+        store.OpenAsk(session.Id, Ask(), session.PaneIdentity, WindowId);
+
+        var placement = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal(new[] { "left-token" }, placement.CoveredPaneIds);
+    }
+
+    [Fact]
+    public void APaneQuestionOnTheOnlyShownPaneCoversTheOverlay()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
+        session.Surface = new SpySurface("left-token");
+        store.SelectSession(session.Id);
+        OpenOverlay(session);
+        store.OpenAsk(session.Id, Ask(), session.PaneIdentity, WindowId);
+
+        var placement = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal(new[] { "left-token", "overlay-token" }, placement.CoveredPaneIds);
+    }
+
+    [Fact]
+    public void APaneQuestionWithoutAShownOverlayCoversOnlyItsPane()
+    {
+        var (store, session) = Selected();
+        OpenOverlay(session);
+        session.OverlayActive = false;
+        session.SplitFocused = false;
+        store.OpenAsk(session.Id, Ask(), session.PaneIdentity, WindowId);
+
+        var placement = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal(new[] { "left-token" }, placement.CoveredPaneIds);
+    }
+
     [Fact]
     public void ZoomAndTheDashboardHideEveryQuestion()
     {

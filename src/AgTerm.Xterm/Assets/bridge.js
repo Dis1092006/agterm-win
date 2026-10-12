@@ -69,7 +69,7 @@ let overlayCatcherEl = null;
 let dashboardActivationTimer = null;
 let askLayerEl = null;
 let askResizeObserver = null;
-let askState = null; // { askId, paneId, coveredPaneIds, payload }
+let askState = null; // { askId, paneId, coveredPaneIds, releasedLayerPaneId, payload }
 
 function searchDecorations() {
   return {
@@ -312,7 +312,7 @@ function emitPaneFocus(paneId) {
 function focusPane(paneId, emitEvent) {
   const pane = panes.get(paneId);
   if (!pane) return false;
-  if (askLayerEl && askState.coveredPaneIds.includes(paneId)) {
+  if (askCovers(paneId)) {
     focusAskLayer();
     if (emitEvent) emitPaneFocus(paneId);
     return true;
@@ -1509,6 +1509,35 @@ function focusAskLayer() {
   }
 }
 
+function askCovers(paneId) {
+  return (
+    askLayerEl !== null &&
+    askState.coveredPaneIds.includes(paneId) &&
+    askState.releasedLayerPaneId !== paneId
+  );
+}
+
+function askCoversLayer(paneId) {
+  return (
+    askState?.paneId != null &&
+    visibleLayout?.type === "layered" &&
+    visibleLayout.layerPaneId === paneId &&
+    askCovers(paneId)
+  );
+}
+
+// Upstream deferMouseToAsk: a click on the program outside a pane question gives the program the
+// keys. Over a split the session's focus moves to the other side, as upstream flips splitFocused,
+// and the host republishes the question without the layer. A pane shown alone has no other side,
+// so the page keeps the layer released until the user clicks the question or a new one arrives.
+function releaseAskLayer(layerPaneId) {
+  const base = visibleLayout.base;
+  const otherSide =
+    base.type === "split" ? base.paneIds.find((id) => id !== askState.paneId) : undefined;
+  if (otherSide) emitPaneFocus(otherSide);
+  else askState.releasedLayerPaneId = layerPaneId;
+}
+
 // The pane that takes the keys after the answer, and that window chords over the question come
 // from. A session-wide question uses the pane the layout focuses: the split's right pane, or the
 // scratch or overlay drawn over the main pane. A pane question under a layer gives way to the layer,
@@ -1562,6 +1591,7 @@ function buildAskLayer(payload) {
   layer.addEventListener("pointerdown", (ev) => {
     if (ev.target.closest(".ask-button")) return;
     ev.preventDefault();
+    askState.releasedLayerPaneId = null;
     focusAskLayer();
     if (payload.paneId) emitPaneFocus(payload.paneId);
   });
@@ -1680,7 +1710,12 @@ function applyAsk(payload) {
     if (!host) return false;
     askLayerEl = buildAskLayer(payload);
     host.appendChild(askLayerEl);
-    askState = { askId: payload.askId, paneId: payload.paneId, coveredPaneIds: payload.coveredPaneIds };
+    askState = {
+      askId: payload.askId,
+      paneId: payload.paneId,
+      coveredPaneIds: payload.coveredPaneIds,
+      releasedLayerPaneId: null,
+    };
     askResizeObserver = new ResizeObserver(() => {
       if (askState && askState.payload) layoutAsk(askState.payload);
     });
@@ -2040,7 +2075,9 @@ function openPane(paneId, opts) {
 
   // Any user/programmatic focus transition on a pane is surfaced to host orchestration.
   el.addEventListener("focusin", () => {
-    if (programmaticFocusPaneId !== paneId) emitPaneFocus(paneId);
+    if (programmaticFocusPaneId === paneId) return;
+    emitPaneFocus(paneId);
+    if (askCoversLayer(paneId)) releaseAskLayer(paneId);
   });
 
   // The pushed kitty flags live on the engine's core service; 0 means nothing is pushed.

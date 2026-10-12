@@ -32,7 +32,17 @@ public static class TerminalAskVisibility
         if (session.AskTargetPane is not { } pane || !session.RendersPane(pane) || session.ScratchActive)
             return null;
         var paneId = pane == OverlayPane.Left ? session.Surface?.PaneToken : session.SplitSurface?.PaneToken;
-        return string.IsNullOrWhiteSpace(paneId) ? null : new TerminalAskPlacement(session.Id, ask, pane, paneId, new[] { paneId });
+        return string.IsNullOrWhiteSpace(paneId) ? null : new TerminalAskPlacement(session.Id, ask, pane, paneId, PaneQuestionCovers(session, pane, paneId));
+    }
+
+    /// <summary>Upstream's overlay belongs to the session's focused side and defers its focus to a
+    /// question there (wantsFocus, deferFocusToAsk), so that question also covers the overlay pane.
+    /// A pane shown alone is the focused side.</summary>
+    private static string[] PaneQuestionCovers(Session session, OverlayPane pane, string paneId)
+    {
+        var focusedSide = !session.IsSplit || pane == (session.SplitFocused ? OverlayPane.Right : OverlayPane.Left);
+        var overlayId = session.OverlayActive ? session.OverlaySurface?.PaneToken : null;
+        return focusedSide && !string.IsNullOrWhiteSpace(overlayId) ? new[] { paneId, overlayId } : new[] { paneId };
     }
 
     private static string[] SessionPaneIds(Session session) =>
