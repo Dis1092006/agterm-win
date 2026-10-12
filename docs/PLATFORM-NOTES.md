@@ -566,7 +566,9 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Item ids are compared after NFC normalization, which matches Swift `String` equality.
   - `pick.open` with no open window answers `no open window`. Other commands answer `no such window: active` in the same state.
 - `ask` (`ask.open`, `ask.result`, `ask.cancel`, `tree.askPending`, session `ask`): a question with 1 to 6 buttons that a script drives through `agtermctl ask` (upstream `32ec288d`, `1b765e69`). Design: `docs/superpowers/specs/2026-10-11-ask-design.md`.
-  - The live app answers a `terminal` request with `terminal ask is not supported yet, use --style gui` until the xterm page draws terminal questions. The headless host keeps both styles.
+  - The terminal style is drawn as HTML inside the xterm page over the pane or the whole session. The host keeps the highlight; the page reports keys and clicks as intents. A hotkey uses the typed letter when it is ASCII, else the key's Latin position (`KeyboardEvent.code`), so it works on a Cyrillic layout; upstream uses the typed character only.
+  - Over a terminal question, window chords from the built-in keymap keep working; custom command chords and the clipboard chords do not reach a covered pane.
+  - A terminal question hides while the quick terminal is shown and comes back when it hides, as under zoom and the dashboard; it stays pending. Upstream's quick terminal is a separate floating window drawn over the question; here it is a layer in the same page, so a question drawn above it would take its clicks.
   - The headless host keeps a question pending until it is cancelled or a test answers it through `HeadlessControlActions.Pick` or `AppStore.ResolveAsk`; it never answers `no ask surface`.
   - A button decoded with a null `id` or `label` is refused with `invalid request: ask button requires id and label`; upstream fails the Swift decode with its own message.
   - Remote presentation of questions is not ported: no `reason` in the result, no `remote` or `replica` in the tree.

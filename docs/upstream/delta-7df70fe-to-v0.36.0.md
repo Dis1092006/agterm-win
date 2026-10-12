@@ -65,9 +65,9 @@
 
 **Windows:** WebView2 уже есть в `AgTerm.Xterm`.
 
-## 4. UI-примитивы для скриптов (pick реализован 2026-10-10, ask: этап 1 (gui) реализован 2026-10-11)
+## 4. UI-примитивы для скриптов (pick реализован 2026-10-10, ask реализован 2026-10-12)
 
-`pick` реализован, см. `docs/superpowers/specs/2026-10-10-pick-design.md`; `ask` работает в стиле `gui` (этап 1, см. `docs/superpowers/specs/2026-10-11-ask-design.md`), стиль `terminal` будет в этапе 2; `session.hud` ещё нет.
+`pick` и `ask` реализованы, см. `docs/superpowers/specs/2026-10-10-pick-design.md` и `docs/superpowers/specs/2026-10-11-ask-design.md`; `session.hud` ещё нет.
 
 - **pick** – `pick.open`, `pick.result`, `pick.cancel`. Варианты из stdin строками или JSON, блокирующий и неблокирующий режимы, `allowCustom`, `--query`, `--select ID`. Сопоставляется только label; при пустом запросе сохраняется порядок от вызывающего; пустой список разрешён. В `tree`: `pickPending` #316, #339, #597.
 - **ask** – `ask.open`, `ask.result`, `ask.cancel`. 1–6 кнопок, результат: кнопка, `escaped` или `cancelled`. Стиль `terminal` привязан к сессии или панели и закрывает только её; стиль `gui` модален для окна и делит слот с `pick`. В `tree`: `ask` у сессии, `askPending` наверху #556, #561.
