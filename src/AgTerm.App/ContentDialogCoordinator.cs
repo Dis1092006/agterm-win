@@ -6,6 +6,10 @@ public sealed class ContentDialogCoordinator : IDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private int _disposed;
 
+    /// <summary>Raised after each dialog run ends, also when the run faults, before the next queued
+    /// dialog starts.</summary>
+    public event Action? DialogClosed;
+
     public async Task<T> RunAsync<T>(Func<Task<T>> showAsync)
     {
         ArgumentNullException.ThrowIfNull(showAsync);
@@ -18,7 +22,14 @@ public sealed class ContentDialogCoordinator : IDisposable
         }
         finally
         {
-            _gate.Release();
+            try
+            {
+                DialogClosed?.Invoke();
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
     }
 

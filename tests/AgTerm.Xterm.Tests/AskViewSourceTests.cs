@@ -114,8 +114,41 @@ public sealed class AskViewSourceTests
     {
         var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
         Assert.Matches(new Regex(
-            @"private bool IsInOpenPopup\(DependencyObject element\)\s*\{\s*if \(XamlRoot is null\)\s*return false;\s*var roots = VisualTreeHelper\.GetOpenPopupsForXamlRoot\(XamlRoot\)\s*\.Select\(popup => popup\.Child\)\s*\.OfType<DependencyObject>\(\)\s*\.ToArray\(\);\s*for \(var node = element; node is not null; node = VisualTreeHelper\.GetParent\(node\)\)\s*if \(roots\.Any\(root => ReferenceEquals\(root, node\)\)\) return true;\s*return false;\s*\}"),
+            @"private bool IsInOpenPopup\(DependencyObject element\)\s*\{\s*var roots = OpenPopups\(\)\s*\.Select\(popup => popup\.Child\)\s*\.OfType<DependencyObject>\(\)\s*\.ToArray\(\);\s*for \(var node = element; node is not null; node = VisualTreeHelper\.GetParent\(node\)\)\s*if \(roots\.Any\(root => ReferenceEquals\(root, node\)\)\) return true;\s*return false;\s*\}"),
             code);
+        Assert.Matches(new Regex(
+            @"private IReadOnlyList<Popup> OpenPopups\(\) =>\s*XamlRoot is null \? \[\] : VisualTreeHelper\.GetOpenPopupsForXamlRoot\(XamlRoot\);"),
+            code);
+    }
+
+    [Fact]
+    public void The_dialog_leaves_focus_in_an_open_content_dialog()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        // activation and Open(takeFocus: true) both focus through FocusPanel, now and on the dispatcher
+        Assert.Matches(new Regex(
+            @"public void FocusPanel\(\)\s*\{\s*FocusUnlessContentDialogOpen\(\);\s*DispatcherQueue\.TryEnqueue\(FocusUnlessContentDialogOpen\);\s*\}"),
+            code);
+        Assert.Matches(new Regex(
+            @"private void FocusUnlessContentDialogOpen\(\)\s*\{(?:\s*//[^\n]*)*\s*if \(!IsContentDialogOpen\(\)\)\s*Focus\(FocusState\.Programmatic\);\s*\}"),
+            code);
+        Assert.Matches(new Regex(
+            @"private bool IsContentDialogOpen\(\) =>\s*OpenPopups\(\)\.Any\(popup => popup\.Child is ContentDialog\);"),
+            code);
+        Assert.Matches(new Regex(@"if \(takeFocus\) FocusPanel\(\);"), code);
+    }
+
+    [Fact]
+    public void The_window_focuses_the_question_after_any_content_dialog_closes()
+    {
+        var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
+        Assert.Contains("_contentDialogs.DialogClosed += FocusAskAfterContentDialog;", source, StringComparison.Ordinal);
+        Assert.Matches(new Regex(
+            @"private void FocusAskAfterContentDialog\(\)\s*\{\s*if \(AskOverlay\.IsOpen && _windowIsActive\)\s*AskOverlay\.FocusPanel\(\);\s*\}"),
+            source);
+        // both dialogs go through the coordinator, so its event covers each of them
+        Assert.Equal(2, Regex.Matches(source, @"await dialog\.ShowAsync\(\)").Count);
+        Assert.Equal(2, Regex.Matches(source, @"_contentDialogs\.RunAsync\(").Count);
     }
 
     // a fault while arming the hotkeys must not leave a drawn question without its answer path

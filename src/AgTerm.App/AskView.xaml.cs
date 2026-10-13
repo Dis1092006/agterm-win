@@ -3,6 +3,7 @@ using AgTerm.Core.Protocol;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -71,8 +72,16 @@ public sealed partial class AskView : UserControl
 
     public void FocusPanel()
     {
-        Focus(FocusState.Programmatic);
-        DispatcherQueue.TryEnqueue(() => Focus(FocusState.Programmatic));
+        FocusUnlessContentDialogOpen();
+        DispatcherQueue.TryEnqueue(FocusUnlessContentDialogOpen);
+    }
+
+    private void FocusUnlessContentDialogOpen()
+    {
+        // the dialog is modal for the window: focus moved under its backdrop gets no keys; the host
+        // focuses the question again when the dialog closes
+        if (!IsContentDialogOpen())
+            Focus(FocusState.Programmatic);
     }
 
     private void BuildButtons(PendingAsk ask)
@@ -254,11 +263,15 @@ public sealed partial class AskView : UserControl
         return false;
     }
 
+    private IReadOnlyList<Popup> OpenPopups() =>
+        XamlRoot is null ? [] : VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot);
+
+    private bool IsContentDialogOpen() =>
+        OpenPopups().Any(popup => popup.Child is ContentDialog);
+
     private bool IsInOpenPopup(DependencyObject element)
     {
-        if (XamlRoot is null)
-            return false;
-        var roots = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot)
+        var roots = OpenPopups()
             .Select(popup => popup.Child)
             .OfType<DependencyObject>()
             .ToArray();

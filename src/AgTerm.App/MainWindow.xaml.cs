@@ -108,6 +108,7 @@ public sealed partial class MainWindow : Window
         PaletteOverlay.Cancelled += () => ObserveTaskFault(HandlePaletteCancelledAsync(), "Palette cancellation failed");
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
         AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
+        _contentDialogs.DialogClosed += FocusAskAfterContentDialog;
         TerminalView.SizeChanged += (_, _) => ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
             load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
@@ -877,6 +878,14 @@ public sealed partial class MainWindow : Window
             };
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         });
+    }
+
+    // a closing ContentDialog gives focus back to the element it took it from, which is the terminal
+    // when the question arrived while the dialog was open
+    private void FocusAskAfterContentDialog()
+    {
+        if (AskOverlay.IsOpen && _windowIsActive)
+            AskOverlay.FocusPanel();
     }
 
     private static void EnsureWindowCommandSucceeded(ControlResponse response)
