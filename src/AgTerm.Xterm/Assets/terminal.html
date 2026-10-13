@@ -17,7 +17,9 @@
         background: #0c0c0c;
         overflow: hidden;
       }
+      /* the containing block of a session-wide hud; the layered layout sets the same inline */
       #panes {
+        position: relative;
         height: 100%;
         width: 100%;
       }
@@ -179,6 +181,42 @@
       }
       .ask-button.ask-destructive {
         font-weight: bold;
+      }
+      /* above the overlay layer (20), under a pane question (60) and the search bar (70). Visible over
+         a base pane a full-size scratch hides, because upstream draws the hud above the scratch */
+      .hud-layer {
+        position: absolute;
+        z-index: 40;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        overflow: hidden;
+        pointer-events: none;
+        visibility: visible;
+      }
+      /* a row wider than the panel overflows both sides and the panel clips it; it never wraps again */
+      .hud-row {
+        display: flex;
+        flex: none;
+        justify-content: center;
+        white-space: pre;
+      }
+      .hud-row > span {
+        flex: none;
+      }
+      /* upstream's helper dims the detail with SGR 2, which xterm.js draws at half opacity */
+      .hud-dim {
+        opacity: 0.5;
+      }
+      .hud-probe {
+        position: absolute;
+        left: -10000px;
+        top: 0;
+        visibility: hidden;
+        white-space: pre;
+        line-height: normal;
+        pointer-events: none;
       }
       /* xterm's own padding is 0; keep a hairline inset so glyphs don't touch the window edge */
       .xterm {

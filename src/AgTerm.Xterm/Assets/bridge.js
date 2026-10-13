@@ -13,6 +13,7 @@
 //                                              {type:'pasteRequested', paneId}   right-click paste
 //                                              {type:'dashboardHighlight'|'dashboardActivate', controlRef}
 //                                              {type:'dashboardClose'}
+//                                              {type:'hudMetrics', paneId, fontSize, cellWidth, cellHeight, session:{width,height}, left?, right?, pane?}
 //   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize}) → {cols,rows},
 //     agterm.showPane(paneId), agterm.closePane(paneId), agterm.applyLayout(layout), and the per-pane reads/writes:
 //     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
@@ -22,6 +23,7 @@
 //     agterm.setChords([{ctrl,alt,shift,key}]) — compatibility built-in-only hotkey table.
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
 //     agterm.getRendererCapabilities(paneId).
+//     agterm.applyHud(payload|null): the session.hud panel, drawn as the host sized it.
 //     layout schema:
 //       {type:'single', generation, paneId, title} |
 //       {type:'empty', generation} |
@@ -61,6 +63,16 @@ const SPLIT_DIVIDER_WIDTH_PX = 4;
 const OVERLAY_CATCHER_Z_INDEX = 10;
 const OVERLAY_LAYER_Z_INDEX = 20;
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const HEX_DIGITS_RE = /^[0-9a-fA-F]{6}$/;
+// HudLayout's panel constants in AgTerm.Core: the page draws the box the store measured
+const HUD_PADDING_WIDTH_PX = 8;
+const HUD_PADDING_HEIGHT_PX = 6;
+const HUD_FRAME_COLUMNS = 2;
+const HUD_FRAME_ROWS = 1;
+const HUD_EDGE_MARGIN = 0.1;
+const HUD_BORDER = "1px solid rgba(255, 255, 255, 0.3)";
+const HUD_CORNER_RADIUS_PX = 8;
+const HUD_BANDS = Object.freeze({ top: -1, left: -1, center: 0, bottom: 1, right: 1 });
 
 let splitDividerEl = null;
 let splitDragState = null;
@@ -70,6 +82,13 @@ let dashboardActivationTimer = null;
 let askLayerEl = null;
 let askResizeObserver = null;
 let askState = null; // { askId, paneId, coveredPaneIds, releasedLayerPaneId, payload }
+let hudLayerEl = null;
+let hudState = null; // { revision, payload }
+let hudSpinnerTimer = null;
+let hudSpinnerFrame = 0;
+let hudProbeEl = null;
+let hudRefreshQueued = false;
+let lastHudMetricsKey = null;
 
 function searchDecorations() {
   return {
@@ -1396,6 +1415,7 @@ function applyRendererSettings(settings) {
     applyRendererSettingsToPane(pane, rendererSettings, dashboardFontSize);
   }
   applyPageBackground(rendererSettings);
+  if (hudState) renderHud();
   fitAndReportVisiblePanes();
   return panes.size;
 }
@@ -1745,6 +1765,238 @@ window.addEventListener("resize", () => {
   if (askState && askState.payload) layoutAsk(askState.payload);
 });
 
+// session.hud (upstream WindowContentView+Detail.swift and hud.sh). The host wraps and sizes the
+// panel; the page draws the rows it gets and reports the cell and the pane sizes the host measures
+// with, so the panel on screen and the sizes `tree` reads back come from the same numbers. The panel
+// is passive: it takes no focus and no pointer input.
+const hudGeometryObserver = new ResizeObserver(() => scheduleHudRefresh());
+hudGeometryObserver.observe(container);
+
+// the store keeps a color as the caller sent it, and the #rrggbb rule lets the hash be left out
+function hudColor(color, fallback) {
+  if (typeof color !== "string") return fallback;
+  if (HEX_COLOR_RE.test(color)) return color;
+  return HEX_DIGITS_RE.test(color) ? `#${color}` : fallback;
+}
+
+// The store fixes a panel's font at open, as upstream reads it once, so a later session zoom does
+// not resize it. Before any panel is up the host scales the renderer-font cell to the font it opens with.
+function hudFontSize(payload) {
+  if (payload && typeof payload.fontSize === "number" && Number.isFinite(payload.fontSize))
+    return payload.fontSize;
+  return rendererSettings.fontSize;
+}
+
+// HudLayout counts columns and rows in this cell: the advance of one digit and its line box
+function measureHudCell(fontSize) {
+  if (!hudProbeEl) {
+    hudProbeEl = document.createElement("span");
+    hudProbeEl.className = "hud-probe";
+    hudProbeEl.setAttribute("aria-hidden", "true");
+    hudProbeEl.textContent = "0";
+    document.body.appendChild(hudProbeEl);
+  }
+  hudProbeEl.style.fontFamily = rendererSettings.fontFamily;
+  hudProbeEl.style.fontSize = `${fontSize}px`;
+  const rect = hudProbeEl.getBoundingClientRect();
+  return { width: rect.width, height: rect.height };
+}
+
+// The panes of the base layout the page shows. The page does not know pane roles: a hidden split
+// shows its right pane alone, so a single pane is reported as `pane` and the host names its role.
+// Zoom and the dashboard draw no panel, and their cells are not the session's panes, so they report
+// nothing.
+function hudMeasuredPanes() {
+  const layout = visibleLayout?.type === "layered" ? visibleLayout.base : visibleLayout;
+  if (!layout || (layout.type !== "single" && layout.type !== "split")) return null;
+  const [firstPaneId, rightPaneId = null] = layout.paneIds;
+  return { firstPaneId, rightPaneId };
+}
+
+function hudRect(el) {
+  const rect = el.getBoundingClientRect();
+  return { width: rect.width, height: rect.height };
+}
+
+function hudMetricsMessage() {
+  const shown = hudMeasuredPanes();
+  const first = shown ? panes.get(shown.firstPaneId) : null;
+  if (!first) return null;
+  const right = shown.rightPaneId ? panes.get(shown.rightPaneId) : null;
+  if (shown.rightPaneId && !right) return null;
+  const fontSize = hudFontSize(hudState ? hudState.payload : null);
+  const cell = measureHudCell(fontSize);
+  const message = {
+    type: "hudMetrics",
+    paneId: shown.firstPaneId,
+    fontSize,
+    cellWidth: cell.width,
+    cellHeight: cell.height,
+    session: hudRect(container),
+  };
+  if (right) {
+    message.left = hudRect(first.el);
+    message.right = hudRect(right.el);
+  } else {
+    message.pane = hudRect(first.el);
+  }
+  return message;
+}
+
+// equal values are not posted again: the host answers new metrics with a redraw, which measures again
+function reportHudMetrics() {
+  const message = hudMetricsMessage();
+  if (!message) return;
+  const key = JSON.stringify(message);
+  if (key === lastHudMetricsKey) return;
+  lastHudMetricsKey = key;
+  post(message);
+}
+
+// fitAndReport runs once per pane on a layout change; one refresh after the last of them is enough
+function scheduleHudRefresh() {
+  if (hudRefreshQueued) return;
+  hudRefreshQueued = true;
+  queueMicrotask(() => {
+    hudRefreshQueued = false;
+    if (hudState) renderHud();
+    reportHudMetrics();
+  });
+}
+
+function hudBands(position) {
+  const [vertical, horizontal] =
+    position === "center" ? ["center", "center"] : String(position).split("-");
+  return { vertical: HUD_BANDS[vertical] ?? 0, horizontal: HUD_BANDS[horizontal] ?? 0 };
+}
+
+// upstream OverlayPanelStyle.offset: half the room the panel and its edge margin leave on the axis,
+// toward the anchor's edge
+function hudOffset(extent, fraction, band, margin) {
+  return band * Math.max(0, extent * ((1 - fraction) / 2 - margin));
+}
+
+function layoutHud() {
+  const host = hudLayerEl.parentElement;
+  if (!host) return;
+  const payload = hudState.payload;
+  const area = host.getBoundingClientRect();
+  const width = (area.width * payload.widthPercent) / 100;
+  const height =
+    typeof payload.heightPoints === "number"
+      ? payload.heightPoints
+      : (area.height * payload.heightPercent) / 100;
+  const margin = payload.sticky ? 0 : HUD_EDGE_MARGIN;
+  const bands = hudBands(payload.position);
+  const left =
+    (area.width - width) / 2 +
+    hudOffset(area.width, payload.widthPercent / 100, bands.horizontal, margin);
+  const top =
+    (area.height - height) / 2 +
+    hudOffset(area.height, height / Math.max(area.height, 1), bands.vertical, margin);
+  hudLayerEl.style.left = `${left}px`;
+  hudLayerEl.style.top = `${top}px`;
+  hudLayerEl.style.width = `${width}px`;
+  hudLayerEl.style.height = `${height}px`;
+}
+
+function hudSpinnerGlyph() {
+  const frames = hudState.payload.spinnerFrames;
+  return Array.isArray(frames) && frames.length > 0
+    ? frames[hudSpinnerFrame % frames.length]
+    : null;
+}
+
+function buildHudRow(row, glyph, cell) {
+  const el = document.createElement("div");
+  el.className = row.dim ? "hud-row hud-dim" : "hud-row";
+  el.style.height = `${cell.height}px`;
+  el.style.lineHeight = `${cell.height}px`;
+  if (glyph !== null) {
+    const spinner = document.createElement("span");
+    spinner.className = "hud-spinner";
+    spinner.textContent = glyph;
+    el.appendChild(spinner);
+  }
+  const text = document.createElement("span");
+  text.className = "hud-text";
+  text.textContent = glyph !== null ? ` ${row.text}` : row.text;
+  el.appendChild(text);
+  return el;
+}
+
+function renderHud() {
+  const payload = hudState.payload;
+  const fontSize = hudFontSize(payload);
+  const cell = measureHudCell(fontSize);
+  const frameRows = payload.frame ? HUD_FRAME_ROWS : 0;
+  const style = hudLayerEl.style;
+  style.fontFamily = rendererSettings.fontFamily;
+  style.fontSize = `${fontSize}px`;
+  style.background = hudColor(payload.background, rendererSettings.backgroundColor);
+  style.color = hudColor(payload.foreground, rendererSettings.foregroundColor);
+  style.border = payload.frame ? HUD_BORDER : "0";
+  style.borderRadius = payload.frame ? `${HUD_CORNER_RADIUS_PX}px` : "0";
+  style.padding =
+    `${HUD_PADDING_HEIGHT_PX + frameRows * cell.height}px ` +
+    `${HUD_PADDING_WIDTH_PX + HUD_FRAME_COLUMNS * cell.width}px`;
+  const glyph = hudSpinnerGlyph();
+  hudLayerEl.replaceChildren(
+    ...payload.rows.map((row, index) => buildHudRow(row, index === 0 ? glyph : null, cell)),
+  );
+  layoutHud();
+}
+
+function stopHudSpinner() {
+  if (hudSpinnerTimer !== null) clearInterval(hudSpinnerTimer);
+  hudSpinnerTimer = null;
+  hudSpinnerFrame = 0;
+}
+
+function startHudSpinner() {
+  const frames = hudState.payload.spinnerFrames;
+  const interval = hudState.payload.spinnerInterval;
+  if (!Array.isArray(frames) || frames.length < 2 || !(interval > 0)) return;
+  hudSpinnerTimer = setInterval(() => {
+    hudSpinnerFrame = (hudSpinnerFrame + 1) % frames.length;
+    const glyph = hudLayerEl ? hudLayerEl.querySelector(".hud-spinner") : null;
+    if (glyph) glyph.textContent = frames[hudSpinnerFrame];
+  }, interval * 1000);
+}
+
+function removeHud() {
+  stopHudSpinner();
+  if (hudLayerEl) hudLayerEl.remove();
+  hudLayerEl = null;
+  hudState = null;
+}
+
+function applyHud(payload) {
+  if (!payload) {
+    removeHud();
+    return true;
+  }
+  const host = payload.paneId ? panes.get(payload.paneId)?.el : container;
+  if (!host) {
+    removeHud();
+    return false;
+  }
+  // a re-measure of the same panel keeps the spinner turning; an open or an update brings a new
+  // revision and restarts it with that revision's frames
+  const samePanel = hudState !== null && hudState.revision === payload.revision;
+  if (!samePanel) stopHudSpinner();
+  if (!hudLayerEl) {
+    hudLayerEl = document.createElement("div");
+    hudLayerEl.className = "hud-layer";
+  }
+  if (hudLayerEl.parentElement !== host) host.appendChild(hudLayerEl);
+  hudState = { revision: payload.revision, payload };
+  renderHud();
+  if (!samePanel) startHudSpinner();
+  reportHudMetrics();
+  return true;
+}
+
 function samePhysicalChord(left, right) {
   return (
     left.ctrl === right.ctrl &&
@@ -1928,6 +2180,7 @@ function openPane(paneId, opts) {
   el.dataset.paneId = paneId;
   el.style.display = "none";
   container.appendChild(el);
+  hudGeometryObserver.observe(el);
 
   const term = new Terminal(
     buildTerminalOptions(
@@ -2179,6 +2432,8 @@ function closePane(paneId) {
 
   panes.delete(paneId);
   pane.term.dispose();
+  hudGeometryObserver.unobserve(pane.el);
+  if (hudLayerEl && pane.el.contains(hudLayerEl)) removeHud();
   pane.el.remove();
 
   if (!paneIsVisible && visiblePaneId === paneId) visiblePaneId = null;
@@ -2267,6 +2522,7 @@ function fitAndReport(paneId) {
   const pane = panes.get(paneId);
   if (!pane) return null;
   pane.fitAddon.fit();
+  scheduleHudRefresh();
   post({ type: "resize", paneId, cols: pane.term.cols, rows: pane.term.rows });
   return { cols: pane.term.cols, rows: pane.term.rows };
 }
@@ -2366,6 +2622,7 @@ window.agterm = {
   getRendererCapabilities,
   applyLayout,
   applyAsk,
+  applyHud,
   fit: (paneId) => fitAndReport(paneId),
   text: (paneId, all, lines) =>
     withPane(paneId, (p) => bufferText(p.term, all, lines)),
