@@ -20,8 +20,13 @@ public sealed record HudSessionMetrics(double FontSize, double CellWidth, double
             _ => Right,
         };
         if (rect is not { } area) return PaneMetrics.Unmeasured;
-        var scale = FontSize > 0 ? fontSize / FontSize : 1;
+        var scale = UsableFontSize(FontSize) is { } probe ? fontSize / probe : 1;
         return new PaneMetrics(CellWidth * scale, CellHeight * scale, area.Width, area.Height,
             HudLayout.PanelPaddingWidth, HudLayout.PanelPaddingHeight);
     }
+
+    /// <summary>Null for a probe font of 0, below 0 or not finite: it would scale the cell to nothing
+    /// or to NaN, and a HUD that took it as its font would keep a collapsed panel until the next open.</summary>
+    internal static double? UsableFontSize(double? size) =>
+        size is { } value && double.IsFinite(value) && value > 0 ? value : null;
 }

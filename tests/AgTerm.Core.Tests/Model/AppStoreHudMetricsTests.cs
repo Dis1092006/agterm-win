@@ -55,6 +55,12 @@ public class AppStoreHudMetricsTests
     }
 
     [Fact]
+    public void ForAProbeWithAnInfiniteFontSizeKeepsTheCell()
+    {
+        Assert.Equal(new PaneMetrics(8, 18, 1000, 640, 8, 6), Metrics(fontSize: double.PositiveInfinity).For(null, 24));
+    }
+
+    [Fact]
     public void MetricsWithNoHudAreOnlyStoredAndTheNextOpenMeasuresAgainstThem()
     {
         var (store, session) = NewSession();
@@ -133,6 +139,40 @@ public class AppStoreHudMetricsTests
 
         Assert.False(store.SetHudMetrics(session.Id, Metrics(fontSize: 30) with { CellWidth = 16, CellHeight = 36 }));
         Assert.Equal(15, session.HudFontSize);
+        Assert.Equal(new HudPanelSize(11, 11, 66), session.HudPanelSize);
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void AProbeWithNoUsableFontDoesNotFixTheHudsFont(double probeFont)
+    {
+        var (store, session) = NewSession();
+        store.OpenHud(session.Id, new HudSpec("working"), null);
+
+        store.SetHudMetrics(session.Id, Metrics(fontSize: probeFont));
+        Assert.Null(session.HudFontSize);
+
+        store.SetHudMetrics(session.Id, Metrics());
+        Assert.Equal(12, session.HudFontSize);
+        Assert.Equal(new HudPanelSize(11, 11, 66), session.HudPanelSize);
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(double.NaN)]
+    public void AnOpenOverAStoredProbeWithNoUsableFontLeavesTheFontOpen(double probeFont)
+    {
+        var (store, session) = NewSession();
+        store.SetHudMetrics(session.Id, Metrics(fontSize: probeFont));
+
+        store.OpenHud(session.Id, new HudSpec("working"), null);
+        Assert.Null(session.HudFontSize);
+
+        store.SetHudMetrics(session.Id, Metrics());
+        Assert.Equal(12, session.HudFontSize);
         Assert.Equal(new HudPanelSize(11, 11, 66), session.HudPanelSize);
     }
 
