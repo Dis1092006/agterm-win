@@ -550,6 +550,7 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - Closing a session (hard or soft, alone or in a batch), removing its workspace, closing the pane a question covers, closing or deleting the window, and quitting cancel its terminal questions; undo brings a session back without its question (upstream `1b765e69`). A `gui` question anchored to a session is cancelled when that session is deselected or the anchored pane leaves the screen.
 - Every palette moves the selection with Ctrl+J and Ctrl+K, with Control as the only modifier (upstream `2fb0ca72`). The letter keys are matched by virtual key, so on a non-Latin layout they follow the physical QWERTY positions.
 - Palettes accept blank ids, whitespace-only labels and an empty placeholder, because pick sends them.
+- While a HUD holds a session's overlay slot, `session.overlay.open` replaces it with the program, `session.overlay.close` closes it and answers ok, `session.overlay.resize --size-percent N` sets its width and keeps that width through re-measures until the next open or update, `session.overlay.resize --full` answers `a hud is always floating: pass --size-percent, not --full`, and `session.overlay.result` answers `no overlay result: the slot holds a hud` (upstream `d0bec154`, `3ac149e6`). Beside a HUD, `tree` reads `overlay: false` and lists no overlay surface.
 
 ## Upstream features adopted beyond the pin
 
@@ -578,3 +579,12 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - `AskRegistry` keeps the pending ids itself. Upstream asks the owner through a closure; here the owner's model is behind the window lock and polls arrive on the pipe thread.
   - `ask.cancel` without `--window` runs in the owner's window, wherever the frontmost window is.
   - A hotkey matches by virtual key, so on a Cyrillic layout the key at the Latin letter's position presses the button. Upstream matches the typed character, and there a hotkey does nothing on a non-Latin layout.
+- `session.hud` (`session.hud.open`, `session.hud.update`, `session.hud.close`, session `hud`): a passive message panel that a script posts over a session through `agtermctl session hud` (upstream `d0bec154`, `1923906e`, `224321c5`, `094dc986`, `9247b96f`, `8e710a6e`, `3ac149e6`). Design: `docs/superpowers/specs/2026-10-13-hud-design.md`.
+  - The panel is an HTML layer in the xterm page, drawn from rows the host wraps and sizes. Upstream runs a helper script in a terminal surface and passes it a body file. The port has neither, so `hud helper is not bundled in this build` and `could not write the hud message` never occur.
+  - `sizePercent` and `heightPercent` in `tree` come from a cell the page measures in CSS pixels, in the terminal's font. For the same text they differ from the numbers macOS reports; the clamp rules are the same.
+  - The panel hides while the quick terminal is shown and comes back when it hides, as under zoom and the dashboard. Upstream's quick terminal is a separate window above the session; here it is a layer in the same page.
+  - The reason in `cannot read --file <path>: <reason>` is the .NET exception message.
+  - `agtermctl session hud --file` drops a leading UTF-8 BOM before it sends the message. Windows PowerShell 5.1 and Notepad write one, and the server would count it as part of the text.
+  - The `--markdown` help says a link opens on a Ctrl+click, where upstream says command-click.
+  - Ctrl+W closes the session, and a HUD goes down only with that soft close: a HUD with `--hide-after` closes, one without stays and comes back on undo. Upstream's Command-W takes the session's overlay slot down first and leaves the session open.
+  - Until the markdown stage lands, `markdown: true` is refused with `session.hud.open: --markdown is not supported yet` or `session.hud.update: --markdown is not supported yet`. `agtermctl` already sends `--markdown`.
