@@ -1853,6 +1853,8 @@ public sealed class HeadlessControlActions : IControlActions
 
     // MARK: - hud
 
+    // placeholder until Task 6: the headless host has no HUD store yet, so open refuses and update
+    // and close answer as if no HUD is open. Task 6 replaces all three.
     public ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
         Err("hud is not available yet");
 
