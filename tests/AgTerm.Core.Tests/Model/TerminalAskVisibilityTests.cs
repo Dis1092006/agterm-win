@@ -85,6 +85,20 @@ public class TerminalAskVisibilityTests
         Assert.Equal(new[] { "left-token" }, placement.CoveredPaneIds);
     }
 
+    [Theory]
+    [InlineData(true, new[] { "right-token", "overlay-token" })]
+    [InlineData(false, new[] { "right-token" })]
+    public void ARightPaneQuestionCoversTheOverlayOnlyWhileTheRightSideIsFocused(bool splitFocused, string[] covered)
+    {
+        var (store, session) = Selected();
+        OpenOverlay(session);
+        session.SplitFocused = splitFocused;
+        store.OpenAsk(session.Id, Ask(), session.SplitPaneIdentity, WindowId);
+
+        var placement = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal(covered, placement.CoveredPaneIds);
+    }
+
     [Fact]
     public void APaneQuestionOnTheOnlyShownPaneCoversTheOverlay()
     {

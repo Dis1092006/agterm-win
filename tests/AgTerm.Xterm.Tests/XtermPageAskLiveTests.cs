@@ -371,16 +371,44 @@ public class XtermPageAskLiveTests
         await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
             1, baseLayout, new TerminalLayer("overlay", sizePercent))));
         await _webView.RunAsync<object?>(_ => { view.Focus(); return Task.FromResult<object?>(null); });
-        await Task.Delay(500); // focusing the page re-focuses the layer's terminal and reports it
+        await WaitForScriptAsync(view, $"document.hasFocus() && {OverlayFocused}");
         return (page, view);
+    }
+
+    private async Task WaitForScriptAsync(Microsoft.Web.WebView2.WinForms.WebView2 view, string condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (await EvalAsync(view, $"(() => {condition})()") != "true")
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException($"Not met within the timeout: {condition}");
+            await Task.Delay(25);
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("Condition not met within the timeout.");
+            await Task.Delay(25);
+        }
     }
 
     private const string OverlayFocused =
         "document.querySelector('[data-pane-id=\"overlay\"]').contains(document.activeElement)";
 
-    // a user click on a terminal focuses its helper textarea outside any programmatic focus
+    // a mouse click on a terminal: a pointerdown, then xterm focuses its helper textarea
     private const string ClickOverlay =
-        "document.querySelector('[data-pane-id=\"overlay\"] .xterm-helper-textarea').focus();";
+        "document.querySelector('[data-pane-id=\"overlay\"] .xterm').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));"
+        + "document.querySelector('[data-pane-id=\"overlay\"] .xterm-helper-textarea').focus();";
+
+    // a WebView2 focus restore or a script focus: focusin on the terminal without a pointer
+    private const string FocusOverlayWithoutPointer = "panes.get('overlay').term.focus();";
+
+    private const string QuestionFocused = "document.activeElement === document.querySelector('.ask-layer')";
 
     [Theory]
     [InlineData(null)]
@@ -430,21 +458,100 @@ public class XtermPageAskLiveTests
     }
 
     // upstream deferMouseToAsk: the program keeps its keys because the session's focus moves away
-    [Fact]
-    public async Task A_click_on_the_overlay_over_a_split_moves_the_session_focus_to_the_other_side()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(50)]
+    public async Task A_click_on_the_overlay_over_a_split_moves_the_session_focus_to_the_other_side(int? sizePercent)
     {
-        var (page, view) = await BootOverlayAsync(split: true, sizePercent: null);
+        var (page, view) = await BootOverlayAsync(split: true, sizePercent);
         await EvalAsync(view, $$"""
             (() => { agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\",\"overlay\"]")}}); return 1; })()
             """);
         var paneFocus = new System.Collections.Concurrent.ConcurrentQueue<string>();
         page.PaneFocusChanged += paneFocus.Enqueue;
 
-        var clicked = await EvalAsync(view, $$"""(() => { {{ClickOverlay}} return {{OverlayFocused}}; })()""");
-        await Task.Delay(300);
+        var beforeRepublish = await EvalAsync(view, $$"""
+            (() => { {{ClickOverlay}} agterm.focus('overlay'); return {{OverlayFocused}}; })()
+            """);
+        await WaitUntilAsync(() => paneFocus.Contains("right") && paneFocus.Contains("overlay"));
 
-        Assert.Equal("true", clicked);
-        Assert.Equal(new[] { "overlay", "right" }, paneFocus);
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\"]")}});
+                agterm.focus('overlay');
+                const republished = {{OverlayFocused}};
+                agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\",\"overlay\"]")}});
+                return { republished, focusBack: {{QuestionFocused}} };
+            })()
+            """);
+
+        Assert.Equal("true", beforeRepublish);
+        Assert.DoesNotContain("left", paneFocus);
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("republished").GetBoolean(), state);
+        Assert.True(root.GetProperty("focusBack").GetBoolean(), state);
+    }
+
+    // only a pointer releases the overlay: an Alt+Tab focus restore must not move the session's focus
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_focus_of_the_overlay_without_a_pointer_keeps_it_covered(bool split)
+    {
+        var (page, view) = await BootOverlayAsync(split, sizePercent: null);
+        var paneFocus = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        page.PaneFocusChanged += paneFocus.Enqueue;
+
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\",\"overlay\"]")}});
+                {{FocusOverlayWithoutPointer}}
+                const moved = {{OverlayFocused}};
+                agterm.focus('overlay');
+                const covered = {{QuestionFocused}};
+                agterm.focus('left');
+                return { moved, covered };
+            })()
+            """);
+        // the page reports in order, so the last focus above arriving means any report before it has too
+        await WaitUntilAsync(() => paneFocus.Contains("left"));
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("moved").GetBoolean(), state);
+        Assert.True(root.GetProperty("covered").GetBoolean(), state);
+        Assert.DoesNotContain("right", paneFocus);
+    }
+
+    // upstream wantsFocus turns true once the overlay on the question's side is shown
+    [Theory]
+    [InlineData(null)]
+    [InlineData(50)]
+    public async Task An_overlay_opened_over_a_pending_pane_question_gives_the_question_the_keys(int? sizePercent)
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("left"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("overlay"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "left", "Shell")));
+        await EvalAsync(view, $$"""
+            (() => { agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\"]")}}); return 1; })()
+            """);
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            2, new TerminalLayout.Single(2, "left", "Shell"), new TerminalLayer("overlay", sizePercent))));
+
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                const layoutFocusedOverlay = {{OverlayFocused}};
+                agterm.applyAsk({{PanePayload("ASK", "left", "[\"left\",\"overlay\"]")}});
+                return { layoutFocusedOverlay, taken: {{QuestionFocused}} };
+            })()
+            """);
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("layoutFocusedOverlay").GetBoolean(), state);
+        Assert.True(root.GetProperty("taken").GetBoolean(), state);
     }
 
     [Fact]

@@ -342,7 +342,7 @@ public sealed class MainWindowSplitWiringTests
             FindRepoRoot(), "src", "AgTerm.Xterm", "Assets", "bridge.js"));
 
         Assert.Contains("programmaticFocusPaneId", source, StringComparison.Ordinal);
-        Assert.Contains("if (programmaticFocusPaneId === paneId) return;\n    emitPaneFocus(paneId);", source.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Contains("if (programmaticFocusPaneId !== paneId) emitPaneFocus(paneId)", source, StringComparison.Ordinal);
         Assert.Contains("focus: (paneId) => focusPane(paneId, true)", source, StringComparison.Ordinal);
     }
 

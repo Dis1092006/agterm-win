@@ -1528,14 +1528,25 @@ function askCoversLayer(paneId) {
 
 // Upstream deferMouseToAsk: a click on the program outside a pane question gives the program the
 // keys. Over a split the session's focus moves to the other side, as upstream flips splitFocused,
-// and the host republishes the question without the layer. A pane shown alone has no other side,
-// so the page keeps the layer released until the user clicks the question or a new one arrives.
+// and the host republishes the question without the layer; the release holds until then. A pane
+// shown alone has no other side, so the release holds until the user clicks the question or a new
+// one arrives.
 function releaseAskLayer(layerPaneId) {
+  askState.releasedLayerPaneId = layerPaneId;
   const base = visibleLayout.base;
   const otherSide =
     base.type === "split" ? base.paneIds.find((id) => id !== askState.paneId) : undefined;
   if (otherSide) emitPaneFocus(otherSide);
-  else askState.releasedLayerPaneId = layerPaneId;
+}
+
+// Upstream wantsFocus turns true when the focused pane becomes covered, for example when the
+// overlay opens over a pending question or the session's focus comes back to the question's side.
+function updateAskCoverage(coveredPaneIds) {
+  const focusedPaneId = visibleFocusedPaneId();
+  const wasCovered = askCovers(focusedPaneId);
+  askState.coveredPaneIds = coveredPaneIds;
+  if (!coveredPaneIds.includes(askState.releasedLayerPaneId)) askState.releasedLayerPaneId = null;
+  if (!wasCovered && askCovers(focusedPaneId)) focusAskLayer();
 }
 
 // The pane that takes the keys after the answer, and that window chords over the question come
@@ -1721,8 +1732,9 @@ function applyAsk(payload) {
     });
     askResizeObserver.observe(host);
     if (payload.coveredPaneIds.includes(coveredFocus)) focusAskLayer();
+  } else {
+    updateAskCoverage(payload.coveredPaneIds);
   }
-  askState.coveredPaneIds = payload.coveredPaneIds;
   applyAskHighlight(payload);
   layoutAsk(payload);
   askState.payload = payload;
@@ -2075,10 +2087,17 @@ function openPane(paneId, opts) {
 
   // Any user/programmatic focus transition on a pane is surfaced to host orchestration.
   el.addEventListener("focusin", () => {
-    if (programmaticFocusPaneId === paneId) return;
-    emitPaneFocus(paneId);
-    if (askCoversLayer(paneId)) releaseAskLayer(paneId);
+    if (programmaticFocusPaneId !== paneId) emitPaneFocus(paneId);
   });
+
+  // only a pointer counts as a click: a WebView2 focus restore and a host refocus also fire focusin
+  el.addEventListener(
+    "pointerdown",
+    () => {
+      if (askCoversLayer(paneId)) releaseAskLayer(paneId);
+    },
+    true,
+  );
 
   // The pushed kitty flags live on the engine's core service; 0 means nothing is pushed.
   const kittyFlags = () => term._core?.coreService?.kittyKeyboard?.flags ?? 0;
