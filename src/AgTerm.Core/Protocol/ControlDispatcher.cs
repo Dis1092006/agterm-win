@@ -59,6 +59,8 @@ public sealed class ControlDispatcher
                 return DispatchPickCommand(request);
             case Command.AskOpen or Command.AskResult or Command.AskCancel:
                 return DispatchAskCommand(request);
+            case Command.SessionHudOpen or Command.SessionHudUpdate or Command.SessionHudClose:
+                return DispatchHudCommand(request);
             case Command.DebugAppearance:
                 // UI-test-only seam handled host-side (out of the parity surface on Windows).
                 return null;
@@ -227,6 +229,83 @@ public sealed class ControlDispatcher
                 return "ask button hotkeys must be unique";
         }
         return null;
+    }
+
+    /// <summary>Port of upstream ControlDispatcher+Hud: host-free validation in upstream's order.
+    /// Slot occupancy, pane identity and sizing need the store and stay with the host.</summary>
+    private ControlResponse DispatchHudCommand(ControlRequest request)
+    {
+        if (request.Cmd == Command.SessionHudClose)
+            return _actions.CloseHud(request.Target, request.Args?.Window);
+        var args = request.Args;
+        var cmd = request.Cmd.ToWire();
+        OverlayPane? pane = null;
+        if (args?.Pane is { } rawPane && (pane = OverlayPanes.FromControlName(rawPane)) is null)
+            return Err("--pane must be left or right");
+        // blank joins absent: Wrap drops whitespace-only text, so the panel would paint an empty
+        // frame while tree reported a live HUD
+        if (args?.Message is not { } message || string.IsNullOrWhiteSpace(message))
+            return Err($"{cmd} requires a message");
+        var markdown = args.Markdown == true;
+        var messageRefused = markdown ? HudText.HasMarkdownControlCharacters(message) : HudText.HasControlCharacters(message);
+        if (messageRefused || HudText.HasControlCharacters(args.Detail ?? ""))
+            return Err(HudErrors.TextControlCharacters);
+        var cap = markdown ? HudSpec.MaxMarkdownLength : HudSpec.MaxTextLength;
+        if (HudLayout.TextLength(message) > cap)
+            return Err($"hud message too long (max {cap} characters)");
+        if (HudLayout.TextLength(args.Detail ?? "") > HudSpec.MaxTextLength)
+            return Err($"hud detail too long (max {HudSpec.MaxTextLength} characters)");
+        if (args.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
+            return Err($"invalid color: {color} (#rrggbb)");
+        if (args.TextColor is { } textColor && !WatermarkConfig.IsValidColorHex(textColor))
+            return Err($"invalid text color: {textColor} (#rrggbb)");
+        if (args.FontSize is { } fontSize)
+        {
+            if (request.Cmd != Command.SessionHudOpen)
+                return Err("session.hud.update: --font-size is fixed at open; reopen the hud to change it");
+            if (!HudSpec.IsValidFontSize(fontSize))
+                return Err("session.hud.open: --font-size must be 6...72 points");
+        }
+        if (args.SizePercent is { } percent && (percent < 1 || percent > 100))
+            return Err($"{cmd}: --size-percent must be 1...100");
+        // refused rather than clamped, so a caller who asked for a duration nothing can schedule is told
+        if (args.HideAfter is { } hideAfter && !HudSpec.IsValidHideAfter(hideAfter))
+            return Err($"{cmd}: --hide-after must be 0...86400 seconds");
+        var position = HudPositions.Default;
+        if (args.Position is { } rawPosition)
+        {
+            if (HudPositions.Parse(rawPosition) is not { } parsedPosition)
+                return Err($"invalid position: {rawPosition} ({HudPositions.AcceptedNamesList})");
+            position = parsedPosition;
+        }
+        HudSpinner? spinner = null;
+        // none is tree's spelling of a static panel, so a caller echoing tree back must not be refused
+        if (args.Spinner is { } rawSpinner && rawSpinner != HudSpinners.NoneName)
+        {
+            if (HudSpinners.FromWire(rawSpinner) is not { } parsedSpinner)
+                return Err($"invalid spinner: {rawSpinner} ({HudSpinners.AcceptedNamesList})");
+            spinner = parsedSpinner;
+        }
+        // stage 1 draws plain rows only; last, so every other error string is already final
+        if (markdown)
+            return Err($"{cmd}: --markdown is not supported yet");
+        var spec = new HudSpec(
+            message,
+            Detail: args.Detail,
+            Spinner: spinner,
+            BackgroundColor: args.Color,
+            TextColor: args.TextColor,
+            SizePercent: args.SizePercent,
+            Position: position,
+            HideAfter: args.HideAfter,
+            Markdown: markdown,
+            FontSize: args.FontSize,
+            Sticky: args.Sticky == true,
+            Frame: args.Frame ?? true);
+        var placement = new ControlHudPlacement(pane, args.PaneId);
+        return request.Cmd == Command.SessionHudOpen
+            ? _actions.OpenHud(request.Target, args.Window, spec, placement)
+            : _actions.UpdateHud(request.Target, args.Window, spec, placement);
     }
 
     private ControlResponse DispatchEventsRead(ControlRequest request)

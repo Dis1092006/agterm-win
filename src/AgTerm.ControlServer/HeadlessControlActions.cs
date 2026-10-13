@@ -1851,6 +1851,16 @@ public sealed class HeadlessControlActions : IControlActions
             Pick.CancelAsk(ask.Id);
     }
 
+    // MARK: - hud
+
+    public ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
+        Err("hud is not available yet");
+
+    public ControlResponse UpdateHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
+        Err(HudErrors.NoHud);
+
+    public ControlResponse CloseHud(string? target, string? window) => Err(HudErrors.NoHud);
+
     // MARK: - window commands
     //
     // The headless host owns exactly ONE virtual window (never on screen). Arms that only need the

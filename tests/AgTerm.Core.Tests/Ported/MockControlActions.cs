@@ -102,6 +102,9 @@ public sealed class MockControlActions : IControlActions
         public sealed record AskOpen(PendingAsk Ask, string? Target, string? Window, ControlAskPlacement Placement, bool Follow) : Call;
         public sealed record AskResult(string Target, string? Window) : Call;
         public sealed record AskCancel(string Target, string? Window) : Call;
+        public sealed record HudOpen(string? Target, string? Window, HudSpec Spec, ControlHudPlacement Placement) : Call;
+        public sealed record HudUpdate(string? Target, string? Window, HudSpec Spec, ControlHudPlacement Placement) : Call;
+        public sealed record HudClose(string? Target, string? Window) : Call;
     }
 
     public List<Call> Calls { get; } = new();
@@ -153,6 +156,9 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextAskOpenResponse = new() { Ok = true };
     public ControlResponse NextAskResultResponse = new() { Ok = true };
     public ControlResponse NextAskCancelResponse = new() { Ok = true };
+    public ControlResponse NextHudOpenResponse = new() { Ok = true };
+    public ControlResponse NextHudUpdateResponse = new() { Ok = true };
+    public ControlResponse NextHudCloseResponse = new() { Ok = true };
     public ControlResponse NextSessionRestoreResponse = new() { Ok = true };
 
     public ControlResponse ControlTree(string? window)
@@ -574,5 +580,23 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.AskCancel(target, window));
         return NextAskCancelResponse;
+    }
+
+    public ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement)
+    {
+        Calls.Add(new Call.HudOpen(target, window, spec, placement));
+        return NextHudOpenResponse;
+    }
+
+    public ControlResponse UpdateHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement)
+    {
+        Calls.Add(new Call.HudUpdate(target, window, spec, placement));
+        return NextHudUpdateResponse;
+    }
+
+    public ControlResponse CloseHud(string? target, string? window)
+    {
+        Calls.Add(new Call.HudClose(target, window));
+        return NextHudCloseResponse;
     }
 }

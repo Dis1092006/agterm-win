@@ -86,6 +86,9 @@ public interface IControlActions
     ControlResponse OpenAsk(PendingAsk ask, string? target, string? window, ControlAskPlacement placement, bool follow);
     ControlResponse AskResult(string target, string? window);
     ControlResponse CancelAsk(string target, string? window);
+    ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement);
+    ControlResponse UpdateHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement);
+    ControlResponse CloseHud(string? target, string? window);
 }
 
 public sealed record ControlSessionTypeOptions(string Text, bool Select, string? Pane);
@@ -93,6 +96,10 @@ public sealed record ControlSessionTypeOptions(string Text, bool Select, string?
 /// <summary>The pane selectors of ask.open, resolved by the host against the target session:
 /// PaneId is a live pane token that overrides Pane.</summary>
 public sealed record ControlAskPlacement(OverlayPane? Pane = null, string? PaneId = null);
+
+/// <summary>The pane selectors of session.hud.open and update, resolved by the host against the
+/// target session: PaneId is a live pane token that overrides Pane.</summary>
+public sealed record ControlHudPlacement(OverlayPane? Pane = null, string? PaneId = null);
 
 public sealed record ControlSessionOverlayOpenOptions(
     string Command, string? Cwd, bool Wait, int? SizePercent, string? BackgroundColor,
