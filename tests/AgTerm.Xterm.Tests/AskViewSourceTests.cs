@@ -38,6 +38,19 @@ public sealed class AskViewSourceTests
             source);
     }
 
+    // manual check 16a/16d: an overlay opened from the control plane focused the WebView2 of a
+    // background window, WinUI then reported the window active, and the user's Alt+Tab never moved
+    // the keyboard into Chromium
+    [Fact]
+    public void A_terminal_focus_in_a_background_window_waits_for_the_activation()
+    {
+        var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
+        Assert.Matches(new Regex(
+            @"if \(_windowIsActive\)\s*TerminalView\.Focus\(FocusState\.Programmatic\);\s*else\s*_restoreFocusWhenActivated = true;"),
+            source);
+        Assert.Single(Regex.Matches(source, @"TerminalView\.Focus\("));
+    }
+
     [Fact]
     public void The_window_escapes_only_the_ask_it_still_holds()
     {

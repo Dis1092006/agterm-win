@@ -1020,7 +1020,13 @@ public sealed partial class MainWindow : Window
                 AskOverlay.FocusPanel();
             return;
         }
-        TerminalView.Focus(FocusState.Programmatic);
+        // Focusing the WebView2 of a background window makes WinUI report the window active
+        // without giving Chromium the keyboard, so the user's next activation is not seen as one
+        // and keys never reach the page. The page focus below still runs, for the activation to restore.
+        if (_windowIsActive)
+            TerminalView.Focus(FocusState.Programmatic);
+        else
+            _restoreFocusWhenActivated = true;
         if (_surfaces.TryGetValue(paneId, out var surface))
         {
             ObserveTaskFault(
