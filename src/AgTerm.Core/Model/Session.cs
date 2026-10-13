@@ -239,6 +239,34 @@ public sealed class Session
     /// <summary>The covered pane's current role; null for a session-wide question.</summary>
     public OverlayPane? AskTargetPane => AskPaneIdentity is { } identity ? PaneRole(identity) : null;
 
+    /// <summary>The session's HUD, a passive message panel in the session-wide slot. Its own state
+    /// rather than OverlayActive: a HUD runs no process, and OverlayActive makes the live host reserve
+    /// a terminal surface. AppStore owns every change. Never persisted.</summary>
+    public HudSpec? Hud { get; internal set; }
+
+    /// <summary>The anchor pane's identity; null places the HUD over the whole session.</summary>
+    public Guid? HudPaneIdentity { get; internal set; }
+
+    /// <summary>The size the HUD took, measured or forced; null while no HUD is up.</summary>
+    public HudPanelSize? HudPanelSize { get; internal set; }
+
+    /// <summary>The width session.overlay.resize forced; it holds through re-measures until the next
+    /// open or update.</summary>
+    public int? HudForcedWidthPercent { get; internal set; }
+
+    /// <summary>Moves on every open, update and close, so a stale auto-hide and a redraw can tell the
+    /// HUD they were made for from the one in the slot now.</summary>
+    public int HudRevision { get; internal set; }
+
+    public bool HudActive => Hud is not null;
+
+    /// <summary>The anchor pane's current role; null for a session-wide HUD.</summary>
+    public OverlayPane? HudTargetPane => HudPaneIdentity is { } identity ? PaneRole(identity) : null;
+
+    /// <summary>The font the HUD measures and draws at, fixed at open as upstream, so a later session
+    /// zoom does not resize the panel; null until some font is known. AppStore owns every change.</summary>
+    public double? HudFontSize { get; internal set; }
+
     /// <summary>
     /// The sidebar label: a non-blank CustomName wins; otherwise the non-blank terminal title of the
     /// focused pane; otherwise the basename of the focused pane's cwd. Both name sources are trimmed,

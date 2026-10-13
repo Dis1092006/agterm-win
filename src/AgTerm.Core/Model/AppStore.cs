@@ -288,6 +288,7 @@ public sealed partial class AppStore
                     SplitFocused = session.HasSplit ? session.SplitFocused : null,
                     Overlay = session.OverlayActive,
                     OverlaySizePercent = session.OverlayActive ? session.OverlaySizePercent : null,
+                    Hud = HudNode(session),
                     Ask = session.AskPending is { } ask
                         ? new ControlSessionAsk
                         {
@@ -549,6 +550,7 @@ public sealed partial class AppStore
         var workspace = Workspaces[location.WorkspaceIndex];
         var removed = workspace.Sessions[location.SessionIndex];
         CancelPendingAsk(removed);
+        CloseHudOf(removed);
         workspace.Sessions.RemoveAt(location.SessionIndex);
         EmitSessionClosed(removed, workspace.Id);
         RecordRecentClosedSession(removed, workspace.Id, workspace.Name,
@@ -587,7 +589,11 @@ public sealed partial class AppStore
         var index = Workspaces.FindIndex(w => w.Id == workspaceId);
         if (index < 0) return;
         var workspace = Workspaces[index];
-        foreach (var session in workspace.Sessions) CancelPendingAsk(session);
+        foreach (var session in workspace.Sessions)
+        {
+            CancelPendingAsk(session);
+            CloseHudOf(session);
+        }
         var removingActive = SelectedSessionId is { } active
             && workspace.Sessions.Any(s => s.Id == active);
         RecordRecentClosedWorkspace(workspace, removingActive ? SelectedSessionId : null);

@@ -110,6 +110,8 @@ public sealed partial class AppStore
         if (SessionWithId(sessionId) is not { } session) return;
         if (session.AskPaneIdentity is { } anchored && anchored == session.SplitPaneIdentity)
             CancelPendingAsk(session);
+        if (session.HudPaneIdentity is { } hudAnchor && hudAnchor == session.SplitPaneIdentity)
+            CloseHudOf(session);
         session.ForgetSplitPaneIdentity();
         session.IsSplit = false;
         session.HasSplit = false;
@@ -157,6 +159,7 @@ public sealed partial class AppStore
         session.Surface = survivor;
         session.SplitSurface = null;
         if (session.AskPaneIdentity == session.PaneIdentity) CancelPendingAsk(session);
+        if (session.HudPaneIdentity == session.PaneIdentity) CloseHudOf(session);
         session.PromoteSplitPaneIdentity();
         session.IsSplit = false;
         session.HasSplit = false;
@@ -237,7 +240,10 @@ public sealed partial class AppStore
     public bool OpenOverlay(Guid sessionId, string command, string? cwd = null,
                             bool wait = false, int? sizePercent = null, string? backgroundColor = null)
     {
-        if (SessionWithId(sessionId) is not { } session || session.OverlayActive) return false;
+        if (SessionWithId(sessionId) is not { } session) return false;
+        // a HUD is a message about work in flight, so it yields the slot to a program
+        if (session.HudActive) CloseHudOf(session);
+        if (session.OverlayActive) return false;
         session.OverlayCommand = command;
         session.OverlayCwd = cwd;
         session.OverlayWait = wait;
