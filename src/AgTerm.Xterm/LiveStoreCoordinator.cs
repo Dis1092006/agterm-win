@@ -31,7 +31,8 @@ public sealed record LiveSelectionSnapshot(
     IReadOnlyList<TerminalDashboardCell>? DashboardCells = null,
     string? DashboardHighlighted = null,
     double? DashboardFontSize = null,
-    TerminalAskPlacement? TerminalAsk = null)
+    TerminalAskPlacement? TerminalAsk = null,
+    TerminalHudPlacement? Hud = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -146,6 +147,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     private readonly Action _onSidebarVisibilityChanged;
     private readonly Action _onSelectionChanged;
     private readonly Action _onAsksChanged;
+    private readonly Action _onHudChanged;
     private int _disposed;
     private long _sidebarGeneration;
     private long _selectionNotificationGeneration;
@@ -196,6 +198,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
         _onSidebarVisibilityChanged = OnSidebarInvalidated;
         _onSelectionChanged = OnSelectionChanged;
         _onAsksChanged = OnAsksChanged;
+        _onHudChanged = OnHudChanged;
 
         _host.RunLocked(() =>
         {
@@ -203,6 +206,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             _host.Store.SidebarVisibilityChanged += _onSidebarVisibilityChanged;
             _host.Store.SelectionChanged += _onSelectionChanged;
             _host.Store.AsksChanged += _onAsksChanged;
+            _host.Store.HudChanged += _onHudChanged;
         });
     }
 
@@ -302,6 +306,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             _host.Store.SidebarVisibilityChanged -= _onSidebarVisibilityChanged;
             _host.Store.SelectionChanged -= _onSelectionChanged;
             _host.Store.AsksChanged -= _onAsksChanged;
+            _host.Store.HudChanged -= _onHudChanged;
         });
     }
 
@@ -329,6 +334,13 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
     }
 
     private void OnAsksChanged()
+    {
+        if (Volatile.Read(ref _disposed) != 0)
+            return;
+        PublishSelectionSnapshot(CaptureSelectionSnapshot());
+    }
+
+    private void OnHudChanged()
     {
         if (Volatile.Read(ref _disposed) != 0)
             return;
@@ -372,6 +384,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             ? _host.Actions.Dashboard.AppliedFontSize
             : null;
         var terminalAsk = TerminalAskVisibility.For(
+            _host.Store, _host.Actions.Zoom.Target is not null, _host.Actions.Dashboard.IsOpen, QuickTerminalShown());
+        var hud = TerminalHudVisibility.For(
             _host.Store, _host.Actions.Zoom.Target is not null, _host.Actions.Dashboard.IsOpen, QuickTerminalShown());
         if (selectedSessionId is not { } id)
         {
@@ -420,7 +434,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             dashboardCells,
             dashboardHighlighted,
             dashboardFontSize,
-            TerminalAsk: terminalAsk);
+            TerminalAsk: terminalAsk,
+            Hud: hud);
     }
 
     // the same test ToTerminalLayout uses to draw the quick layer: a quick terminal that failed to

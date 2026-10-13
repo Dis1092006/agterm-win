@@ -459,6 +459,45 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task Opening_a_hud_republishes_the_selection_snapshot_with_it()
+    {
+        using var coordinator = BuildCoordinator();
+        var published = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.SelectionSnapshotChanged += snapshot =>
+        {
+            if (snapshot.Hud is not null) published.TrySetResult(snapshot);
+        };
+        var spec = new HudSpec("building");
+
+        _host.RunLocked(() => _host.Store.OpenHud(_host.Store.SelectedSessionId!.Value, spec, null));
+
+        var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(spec, snapshot.Hud!.Spec);
+        Assert.Equal(snapshot.SessionId, snapshot.Hud.SessionId);
+    }
+
+    [Fact]
+    public async Task Closing_a_hud_republishes_the_selection_snapshot_without_it()
+    {
+        using var coordinator = BuildCoordinator();
+        Guid id = default;
+        _host.RunLocked(() =>
+        {
+            id = _host.Store.SelectedSessionId!.Value;
+            _host.Store.OpenHud(id, new HudSpec("building"), null);
+        });
+        // subscribed after the open, so the only snapshot delivered is the one the close publishes
+        var published = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.SelectionSnapshotChanged += snapshot => published.TrySetResult(snapshot);
+
+        _host.RunLocked(() => _host.Store.CloseHud(id));
+
+        var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(id, snapshot.SessionId);
+        Assert.Null(snapshot.Hud);
+    }
+
+    [Fact]
     public async Task Selection_snapshot_refreshes_after_sidebar_invalidation()
     {
         using var coordinator = BuildCoordinator();

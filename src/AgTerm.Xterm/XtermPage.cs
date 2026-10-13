@@ -23,6 +23,12 @@ public sealed class XtermPage
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
+    // the page reads an absent value as null, so every key of the HUD payload is always written
+    private static readonly JsonSerializerOptions HudScriptLiteral = new(XtermTerminal.ScriptLiteral)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+    };
+
     private readonly IWebViewScriptHost _host;
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Dictionary<string, XtermTerminal> _terminals = new();
@@ -102,6 +108,30 @@ public sealed class XtermPage
         return _host.ExecuteScriptAsync($"agterm.applyAsk({payload})");
     }
 
+    public Task ApplyHudAsync(TerminalHudView? view)
+    {
+        if (view is null)
+            return _host.ExecuteScriptAsync("agterm.applyHud(null)");
+        var payload = JsonSerializer.Serialize(new
+        {
+            paneId = view.PaneId,
+            rows = view.Rows.Select(row => new { text = row.Text, dim = row.Dim }),
+            widthPercent = view.WidthPercent,
+            heightPoints = view.HeightPoints,
+            heightPercent = view.HeightPercent,
+            position = view.Position,
+            sticky = view.Sticky,
+            frame = view.Frame,
+            background = view.Background,
+            foreground = view.Foreground,
+            fontSize = view.FontSize,
+            spinnerFrames = view.SpinnerFrames,
+            spinnerInterval = view.SpinnerInterval,
+            revision = view.Revision,
+        }, HudScriptLiteral);
+        return _host.ExecuteScriptAsync($"agterm.applyHud({payload})");
+    }
+
     public Task ApplySearchAsync(
         string paneId,
         string needle,
@@ -166,6 +196,11 @@ public sealed class XtermPage
 
     /// <summary>The question took the page focus (its id) or lost it (null).</summary>
     public event Action<string?>? AskFocusChanged;
+
+    /// <summary>The page measured the cell and the pane rectangles of the session it shows: a pane
+    /// token of the shown layout, the metrics with the left and right rects of a shown split, and
+    /// the rect of a single shown pane, whose role only the caller can tell from the token.</summary>
+    public event Action<string, Core.Model.HudSessionMetrics, Core.Model.HudRect?>? HudMetricsReceived;
 
     public event Action<string>? DashboardHighlighted;
 
@@ -333,6 +368,38 @@ public sealed class XtermPage
         _ => null,
     };
 
+    private static (Core.Model.HudSessionMetrics Metrics, Core.Model.HudRect? SinglePane)? HudMetricsFrom(BridgeMessage msg)
+    {
+        if (!IsPositive(msg.FontSize) || !IsPositive(msg.CellWidth) || !IsPositive(msg.CellHeight)
+            || RectFrom(msg.Session) is not { } session
+            || !TryOptionalRect(msg.Left, out var left) || !TryOptionalRect(msg.Right, out var right)
+            || !TryOptionalRect(msg.Pane, out var pane))
+            return null;
+        // the page shows either a split or one pane, so a message with both shapes has no single reading
+        if (pane is not null && (left is not null || right is not null))
+            return null;
+        return (new Core.Model.HudSessionMetrics(msg.FontSize!.Value, msg.CellWidth!.Value, msg.CellHeight!.Value,
+            session, left, right), pane);
+    }
+
+    // a zero cell would size every panel from its padding alone, and a zero probe font scales the cell to nothing
+    private static bool IsPositive(double? value) => value is { } v && double.IsFinite(v) && v > 0;
+
+    // zero is allowed: the store reads a zero extent as "not measured"
+    private static bool IsExtent(double? value) => value is { } v && double.IsFinite(v) && v >= 0;
+
+    private static Core.Model.HudRect? RectFrom(HudRectMessage? rect) =>
+        rect is not null && IsExtent(rect.Width) && IsExtent(rect.Height)
+            ? new Core.Model.HudRect(rect.Width!.Value, rect.Height!.Value)
+            : null;
+
+    // an absent rect is a pane the page does not show; a present one without both sizes is malformed
+    private static bool TryOptionalRect(HudRectMessage? rect, out Core.Model.HudRect? value)
+    {
+        value = RectFrom(rect);
+        return rect is null || value is not null;
+    }
+
     private void OnMessage(string json)
     {
         BridgeMessage? msg;
@@ -394,6 +461,13 @@ public sealed class XtermPage
         if (msg?.Type == "askFocus")
         {
             AskFocusChanged?.Invoke(msg.AskId);
+            return;
+        }
+        if (msg?.Type == "hudMetrics")
+        {
+            // no _terminals check: the window maps the token to a session and drops one it does not know
+            if (msg.PaneId is { Length: > 0 } hudPaneId && HudMetricsFrom(msg) is { } measured)
+                HudMetricsReceived?.Invoke(hudPaneId, measured.Metrics, measured.SinglePane);
             return;
         }
         if (msg?.Type == "pasteRequested")
@@ -506,4 +580,18 @@ internal sealed record BridgeMessage
     [JsonPropertyName("letter")] public string? Letter { get; init; }
     [JsonPropertyName("index")] public int? Index { get; init; }
     [JsonPropertyName("controlRef")] public string? ControlRef { get; init; }
+    [JsonPropertyName("fontSize")] public double? FontSize { get; init; }
+    [JsonPropertyName("cellWidth")] public double? CellWidth { get; init; }
+    [JsonPropertyName("cellHeight")] public double? CellHeight { get; init; }
+    [JsonPropertyName("session")] public HudRectMessage? Session { get; init; }
+    [JsonPropertyName("left")] public HudRectMessage? Left { get; init; }
+    [JsonPropertyName("right")] public HudRectMessage? Right { get; init; }
+    [JsonPropertyName("pane")] public HudRectMessage? Pane { get; init; }
+}
+
+/// <summary>A width and height in CSS pixels from the page's hudMetrics message.</summary>
+internal sealed record HudRectMessage
+{
+    [JsonPropertyName("width")] public double? Width { get; init; }
+    [JsonPropertyName("height")] public double? Height { get; init; }
 }
