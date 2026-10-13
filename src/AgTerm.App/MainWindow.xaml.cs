@@ -80,7 +80,7 @@ public sealed partial class MainWindow : Window
     private string? _shownPickId;
     private string? _shownAskId;
     private bool _windowIsActive;
-    private bool _restoreFocusWhenActivated;
+    private readonly DeferredTerminalFocus _terminalFocus = new();
     private WindowPaletteMode? _openPaletteMode;
 
     private sealed record StartupState(
@@ -384,11 +384,7 @@ public sealed partial class MainWindow : Window
             PaletteOverlay.FocusQuery();
         if (AskOverlay.IsOpen)
             AskOverlay.FocusPanel();
-        if (_restoreFocusWhenActivated && !PaletteOverlay.IsOpen && !AskOverlay.IsOpen)
-        {
-            _restoreFocusWhenActivated = false;
-            FocusActiveTerminal();
-        }
+        _terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen, FocusActiveTerminal);
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -1020,13 +1016,7 @@ public sealed partial class MainWindow : Window
                 AskOverlay.FocusPanel();
             return;
         }
-        // Focusing the WebView2 of a background window makes WinUI report the window active
-        // without giving Chromium the keyboard, so the user's next activation is not seen as one
-        // and keys never reach the page. The page focus below still runs, for the activation to restore.
-        if (_windowIsActive)
-            TerminalView.Focus(FocusState.Programmatic);
-        else
-            _restoreFocusWhenActivated = true;
+        _terminalFocus.Request(_windowIsActive, () => TerminalView.Focus(FocusState.Programmatic));
         if (_surfaces.TryGetValue(paneId, out var surface))
         {
             ObserveTaskFault(
@@ -1116,7 +1106,7 @@ public sealed partial class MainWindow : Window
         await _paletteAutoFollow.AcquireAsync(() =>
             host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
         _shownPickId = pending.Id;
-        _restoreFocusWhenActivated = false;
+        _terminalFocus.Cancel();
         PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending), takeFocus: _windowIsActive);
     }
 
@@ -1163,7 +1153,7 @@ public sealed partial class MainWindow : Window
         await _paletteAutoFollow.AcquireAsync(() =>
             host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
         _shownAskId = pending.Id;
-        _restoreFocusWhenActivated = false;
+        _terminalFocus.Cancel();
         AskOverlay.Open(pending, _rendererSettings.FontSize, takeFocus: _windowIsActive);
         await UpdateAskAnchorAsync();
     }
@@ -1273,10 +1263,7 @@ public sealed partial class MainWindow : Window
     private void RestoreFocusAfterPick()
     {
         // a picker answered in a background window must not pull focus away from the user's foreground app
-        if (_windowIsActive)
-            FocusActiveTerminal();
-        else
-            _restoreFocusWhenActivated = true;
+        _terminalFocus.Request(_windowIsActive, FocusActiveTerminal);
     }
 
     private bool IsCloseSessionChord(VirtualKey key) =>

@@ -38,17 +38,17 @@ public sealed class AskViewSourceTests
             source);
     }
 
-    // manual check 16a/16d: an overlay opened from the control plane focused the WebView2 of a
-    // background window, WinUI then reported the window active, and the user's Alt+Tab never moved
-    // the keyboard into Chromium
+    // manual check 16a/16d: a WebView2 focused in a background window never got the keyboard back
+    // on Alt+Tab; DeferredTerminalFocusTests covers the rule, this pins that no call bypasses it
     [Fact]
-    public void A_terminal_focus_in_a_background_window_waits_for_the_activation()
+    public void The_only_terminal_focus_goes_through_the_activation_deferral()
     {
         var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
-        Assert.Matches(new Regex(
-            @"if \(_windowIsActive\)\s*TerminalView\.Focus\(FocusState\.Programmatic\);\s*else\s*_restoreFocusWhenActivated = true;"),
-            source);
-        Assert.Single(Regex.Matches(source, @"TerminalView\.Focus\("));
+        const string deferral = "_terminalFocus.Request(_windowIsActive, () => ";
+        var call = Assert.Single(Regex.Matches(source, @"TerminalView\.Focus\("));
+        Assert.True(
+            call.Index >= deferral.Length && source.Substring(call.Index - deferral.Length, deferral.Length) == deferral,
+            "the terminal focus must go through the activation deferral");
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public sealed class AskViewSourceTests
         Assert.Contains("AskOverlay.CancelChord = IsCloseSessionChord;", source, StringComparison.Ordinal);
         Assert.Contains("AskAnchorGeometry.Pane(", source, StringComparison.Ordinal);
         Assert.Contains("if (AskOverlay.IsOpen) return;", source, StringComparison.Ordinal);
-        Assert.Contains("_restoreFocusWhenActivated && !PaletteOverlay.IsOpen && !AskOverlay.IsOpen", source, StringComparison.Ordinal);
+        Assert.Contains("_terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen, FocusActiveTerminal);", source, StringComparison.Ordinal);
     }
 
     [Theory]
