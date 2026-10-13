@@ -586,5 +586,5 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The reason in `cannot read --file <path>: <reason>` is the .NET exception message.
   - `agtermctl session hud --file` drops a leading UTF-8 BOM before it sends the message. Windows PowerShell 5.1 and Notepad write one, and the server would count it as part of the text.
   - The `--markdown` help says a link opens on a Ctrl+click, where upstream says command-click.
-  - Ctrl+W closes the session, and a HUD goes down only with that soft close: a HUD with `--hide-after` closes, one without stays and comes back on undo. Upstream's Command-W takes the session's overlay slot down first and leaves the session open.
+  - Alt+W closes the session, and a HUD goes down only with that soft close: a HUD with `--hide-after` closes, one without stays and comes back on undo. Upstream's Command-W takes the session's overlay slot down first and leaves the session open.
   - Until the markdown stage lands, `markdown: true` is refused with `session.hud.open: --markdown is not supported yet` or `session.hud.update: --markdown is not supported yet`. `agtermctl` already sends `--markdown`.
