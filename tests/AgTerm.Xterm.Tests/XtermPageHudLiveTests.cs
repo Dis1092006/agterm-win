@@ -627,4 +627,56 @@ public class XtermPageHudLiveTests
             """);
         Assert.Equal("true", restarted);
     }
+
+    // the revision is counted per session and one page serves every session of its window, so a
+    // matching revision from another session must not keep a timer that writes the wrong frames
+    [Fact]
+    public async Task An_equal_revision_from_another_panel_does_not_keep_the_old_spinner()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("main"));
+        var spinning = Hud(spinnerFrames: new[] { "a", "b", "c" }, spinnerInterval: 0.05);
+        var otherFrames = Hud(spinnerFrames: new[] { "x", "y" }, spinnerInterval: 0.05);
+        var otherInterval = Hud(spinnerFrames: new[] { "a", "b", "c" }, spinnerInterval: 0.2);
+        var otherPane = Hud(paneId: "main", spinnerFrames: new[] { "a", "b", "c" }, spinnerInterval: 0.05);
+        var staticPanel = Hud();
+
+        var state = await EvalAsync(view, $$"""
+            (() => {
+                const glyph = () => {
+                    const el = document.querySelector('.hud-spinner');
+                    return el ? el.textContent : null;
+                };
+                const out = {};
+                agterm.applyHud({{spinning}});
+                let before = hudSpinnerTimer;
+                agterm.applyHud({{staticPanel}});
+                out.staticStopped = before !== null && hudSpinnerTimer === null && glyph() === null;
+                agterm.applyHud({{spinning}});
+                out.staticToSpinnerStarted = hudSpinnerTimer !== null && glyph() === 'a';
+                before = hudSpinnerTimer;
+                agterm.applyHud({{otherFrames}});
+                out.framesRestarted = hudSpinnerTimer !== null && hudSpinnerTimer !== before && glyph() === 'x';
+                before = hudSpinnerTimer;
+                agterm.applyHud({{otherInterval}});
+                out.intervalRestarted = hudSpinnerTimer !== null && hudSpinnerTimer !== before && glyph() === 'a';
+                before = hudSpinnerTimer;
+                agterm.applyHud({{otherPane}});
+                out.paneRestarted = hudSpinnerTimer !== null && hudSpinnerTimer !== before && glyph() === 'a';
+                agterm.applyHud({{otherFrames}});
+                return out;
+            })()
+            """);
+        await Task.Delay(300);
+        var glyphs = await EvalAsync(view, "(() => document.querySelector('.hud-spinner').textContent)()");
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("staticStopped").GetBoolean(), state);
+        Assert.True(root.GetProperty("staticToSpinnerStarted").GetBoolean(), state);
+        Assert.True(root.GetProperty("framesRestarted").GetBoolean(), state);
+        Assert.True(root.GetProperty("intervalRestarted").GetBoolean(), state);
+        Assert.True(root.GetProperty("paneRestarted").GetBoolean(), state);
+        Assert.Contains(JsonSerializer.Deserialize<string>(glyphs), new[] { "x", "y" });
+    }
 }

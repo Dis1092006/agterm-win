@@ -1971,6 +1971,25 @@ function removeHud() {
   hudState = null;
 }
 
+function sameHudSpinnerFrames(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right)) return left === right;
+  return left.length === right.length && left.every((frame, index) => frame === right[index]);
+}
+
+// The revision is counted per session and this page serves every session of its window, so an
+// equal revision alone can come from another session's panel. The timer is kept only when it
+// would write the same frames at the same pace into the same host.
+function keepsHudSpinner(payload) {
+  if (hudState === null) return false;
+  const shown = hudState.payload;
+  return (
+    hudState.revision === payload.revision &&
+    (shown.paneId ?? null) === (payload.paneId ?? null) &&
+    shown.spinnerInterval === payload.spinnerInterval &&
+    sameHudSpinnerFrames(shown.spinnerFrames, payload.spinnerFrames)
+  );
+}
+
 function applyHud(payload) {
   if (!payload) {
     removeHud();
@@ -1983,7 +2002,7 @@ function applyHud(payload) {
   }
   // a re-measure of the same panel keeps the spinner turning; an open or an update brings a new
   // revision and restarts it with that revision's frames
-  const samePanel = hudState !== null && hudState.revision === payload.revision;
+  const samePanel = keepsHudSpinner(payload);
   if (!samePanel) stopHudSpinner();
   if (!hudLayerEl) {
     hudLayerEl = document.createElement("div");
