@@ -2,12 +2,14 @@ using AgTerm.Core.Protocol;
 
 namespace AgTerm.Core.Model;
 
-// The HUD slot (port of the HUD half of upstream AppStore+Panes.swift). A HUD shares the session-wide
-// slot rule with a program overlay but runs no process, so it never sets OverlayActive: the live host
-// reserves a terminal surface for that flag.
+// The HUD slot (port of the HUD half of upstream AppStore+Panes.swift and of the auto-hide in
+// ControlServer+Hud.swift). A HUD shares the session-wide slot rule with a program overlay but runs no
+// process, so it never sets OverlayActive: the live host reserves a terminal surface for that flag.
 
 public sealed partial class AppStore
 {
+    private readonly Dictionary<Guid, IDisposable> _hudAutoHides = new();
+
     /// <summary>Raised under the host's model lock after a HUD opens, changes size or closes, so the
     /// window redraws it.</summary>
     public event Action? HudChanged;
@@ -23,16 +25,18 @@ public sealed partial class AppStore
         session.OverlayExitCode = null;
         session.Hud = spec;
         session.HudPaneIdentity = paneIdentity;
-        session.HudFontSize = spec.FontSize ?? session.FontSize;
+        session.HudFontSize = spec.FontSize ?? session.FontSize ?? session.HudMetrics?.FontSize;
         session.HudForcedWidthPercent = null;
         session.HudPanelSize = MeasureHud(session);
         session.HudRevision++;
+        ArmHudAutoHide(session);
         HudChanged?.Invoke();
         return true;
     }
 
     /// <summary>Replaces a live HUD in place. The background color and the font size stay the open's;
-    /// every other field, the pane scope included, is the update's. False with no HUD up.</summary>
+    /// every other field, the pane scope and the auto-hide included, is the update's. False with no
+    /// HUD up.</summary>
     public bool UpdateHud(Guid sessionId, HudSpec spec, Guid? paneIdentity)
     {
         ArgumentNullException.ThrowIfNull(spec);
@@ -42,6 +46,7 @@ public sealed partial class AppStore
         session.HudForcedWidthPercent = null;
         session.HudPanelSize = MeasureHud(session);
         session.HudRevision++;
+        ArmHudAutoHide(session);
         HudChanged?.Invoke();
         return true;
     }
@@ -56,12 +61,34 @@ public sealed partial class AppStore
 
     /// <summary>session.overlay.resize against a HUD: the width becomes a forced width that holds
     /// through re-measures until the next open or update. The height is measured again; the revision
-    /// stays.</summary>
+    /// and the auto-hide stay.</summary>
     public bool ResizeHud(Guid sessionId, int sizePercent)
     {
         if (SessionWithId(sessionId) is not { } session || session.Hud is not { } spec) return false;
         session.HudForcedWidthPercent = HudLayout.ClampSizePercent(sizePercent, spec);
         session.HudPanelSize = MeasureHud(session);
+        HudChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>Stores what the page measured for the session and measures a live HUD again, so the HUD
+    /// follows a window or divider resize with no command. The spec, the scope, the forced width and
+    /// the auto-hide stay. True when the HUD's size changed.</summary>
+    public bool SetHudMetrics(Guid sessionId, HudSessionMetrics metrics)
+    {
+        ArgumentNullException.ThrowIfNull(metrics);
+        if (SessionWithId(sessionId) is not { } session) return false;
+        // a pane the page does not lay out now (a hidden split) keeps its last rect, so a HUD anchored
+        // there keeps its size until the pane is shown again
+        session.HudMetrics = session.HudMetrics is { } previous
+            ? metrics with { Left = metrics.Left ?? previous.Left, Right = metrics.Right ?? previous.Right }
+            : metrics;
+        if (!session.HudActive) return false;
+        // a HUD opened before any font was known takes the first one the page measured, and keeps it
+        session.HudFontSize ??= metrics.FontSize;
+        var size = MeasureHud(session);
+        if (size == session.HudPanelSize) return false;
+        session.HudPanelSize = size;
         HudChanged?.Invoke();
         return true;
     }
@@ -78,6 +105,7 @@ public sealed partial class AppStore
     internal void CloseHudOf(Session session)
     {
         if (!session.HudActive) return;
+        CancelHudAutoHide(session.Id);
         session.Hud = null;
         session.HudPaneIdentity = null;
         session.HudPanelSize = null;
@@ -95,14 +123,67 @@ public sealed partial class AppStore
         if (session.Hud is { EffectiveHideAfter: > 0.0 }) CloseHudOf(session);
     }
 
+    private void ArmHudAutoHide(Session session)
+    {
+        CancelHudAutoHide(session.Id);
+        var seconds = Math.Min(session.Hud?.EffectiveHideAfter ?? 0, HudSpec.MaxHideAfter);
+        // written as a negation so a NaN that slipped past the dispatcher arms nothing
+        if (!(seconds > 0)) return;
+        var sessionId = session.Id;
+        var revision = session.HudRevision;
+        var schedule = HudAutoHideScheduler ?? ScheduleOnHostLock;
+        _hudAutoHides[sessionId] = schedule(TimeSpan.FromSeconds(seconds), () => ExpireHud(sessionId, revision));
+    }
+
+    private void CancelHudAutoHide(Guid sessionId)
+    {
+        if (_hudAutoHides.Remove(sessionId, out var timer)) timer.Dispose();
+    }
+
+    private void ExpireHud(Guid sessionId, int revision)
+    {
+        // an expiry that was already on its way when an update, a replace or a close moved the
+        // revision belongs to a HUD that is gone
+        if (SessionWithId(sessionId) is not { } session || session.HudRevision != revision) return;
+        CloseHudOf(session);
+    }
+
+    private IDisposable ScheduleOnHostLock(TimeSpan delay, Action action)
+    {
+        var cancellation = new CancellationTokenSource();
+        _ = Task.Delay(delay, cancellation.Token).ContinueWith(
+            t =>
+            {
+                if (t.IsCanceled) return;
+                if (PendingCloseFinalizationScheduler is { } schedule)
+                    schedule(action);
+                else
+                    action();
+            },
+            CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        return new CancelOnDispose(cancellation);
+    }
+
+    private sealed class CancelOnDispose(CancellationTokenSource cancellation) : IDisposable
+    {
+        public void Dispose()
+        {
+            cancellation.Cancel();
+            cancellation.Dispose();
+        }
+    }
+
     private static HudPanelSize MeasureHud(Session session)
     {
         var spec = session.Hud!;
         var sized = session.HudForcedWidthPercent is { } forced ? spec with { SizePercent = forced } : spec;
-        return HudLayout.PanelSize(sized, HudPaneMetrics(session, spec));
+        return HudLayout.PanelSize(sized, HudPaneMetrics(session));
     }
 
-    private static PaneMetrics HudPaneMetrics(Session session, HudSpec spec) => PaneMetrics.Unmeasured;
+    private static PaneMetrics HudPaneMetrics(Session session) =>
+        session.HudMetrics is { } metrics
+            ? metrics.For(session.HudTargetPane, session.HudFontSize ?? metrics.FontSize)
+            : PaneMetrics.Unmeasured;
 
     private static ControlHudNode? HudNode(Session session)
     {

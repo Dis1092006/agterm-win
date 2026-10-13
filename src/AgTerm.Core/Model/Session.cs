@@ -267,6 +267,10 @@ public sealed class Session
     /// zoom does not resize the panel; null until some font is known. AppStore owns every change.</summary>
     public double? HudFontSize { get; internal set; }
 
+    /// <summary>The last metrics the page reported for this session, kept with no HUD up so the next
+    /// open measures at once. Never persisted.</summary>
+    public HudSessionMetrics? HudMetrics { get; internal set; }
+
     /// <summary>
     /// The sidebar label: a non-blank CustomName wins; otherwise the non-blank terminal title of the
     /// focused pane; otherwise the basename of the focused pane's cwd. Both name sources are trimmed,

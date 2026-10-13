@@ -91,6 +91,11 @@ public sealed partial class AppStore
 
     public Action<Action>? PendingCloseFinalizationScheduler { get; set; }
 
+    /// <summary>Arms a HUD auto-hide: run the action after the delay; disposing the result cancels it.
+    /// Null uses Task.Delay and runs the action through PendingCloseFinalizationScheduler, so the expiry
+    /// lands on the host's model lock. Tests set it to fire timers by hand.</summary>
+    public Func<TimeSpan, Action, IDisposable>? HudAutoHideScheduler { get; set; }
+
     private readonly PersistenceStore _persistence;
     internal readonly RecentClosedStore? RecentClosedStore;
     internal Action? RecentClosedDidChange;
