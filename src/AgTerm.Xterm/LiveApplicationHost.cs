@@ -311,6 +311,7 @@ public sealed class LiveApplicationHost : IDisposable
         {
             await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
             window.RunLocked(window.Store.CancelAllAsks);
+            window.RunLocked(window.Store.CloseAllHuds);
             EmitWindowLifecycleEvents(
                 windowId,
                 window.CaptureLifecycleSessions(),
@@ -345,7 +346,12 @@ public sealed class LiveApplicationHost : IDisposable
 
         // Unregister closes each controller as well as cancelling it, so a pick.open already in flight fails.
         foreach (var windowId in windowIds) _picks.Unregister(windowId);
-        foreach (var window in windows) window.RunLocked(window.Store.CancelAllAsks);
+        foreach (var window in windows)
+        {
+            window.RunLocked(window.Store.CancelAllAsks);
+            // a closed window's store is never shown again; a live auto-hide must not fire into it
+            window.RunLocked(window.Store.CloseAllHuds);
+        }
         _server.Stop();
         foreach (var attachment in attachments) attachment.Dispose();
         foreach (var window in windows) window.Save();
@@ -795,6 +801,7 @@ public sealed class LiveApplicationHost : IDisposable
 
         await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
         window.RunLocked(window.Store.CancelAllAsks);
+        window.RunLocked(window.Store.CloseAllHuds);
         if (attachment is not null)
             await attachment.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
         window.CancelPendingSave();

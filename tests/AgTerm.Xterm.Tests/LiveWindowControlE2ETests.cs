@@ -1166,6 +1166,57 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     }
 
     [Fact]
+    public async Task Closing_the_window_takes_its_huds_down_and_cancels_their_timers()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var window = application.GetOpenWindow(firstId);
+        var timer = new HudTimerSpy();
+        window.RunLocked(() => window.Store.HudAutoHideScheduler = (_, _) => timer);
+        var opened = client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionHudOpen,
+            Args = new ControlArgs { Message = "deploying", HideAfter = 30, Window = firstId.ToString("D") },
+        });
+        Assert.True(opened.Ok, opened.Error);
+        var session = window.Store.SessionWithId(Guid.Parse(opened.Result!.Id!))!;
+
+        await application.CloseWindowAsync(firstId);
+
+        Assert.False(session.HudActive);
+        Assert.True(timer.Disposed);
+    }
+
+    [Fact]
+    public void Disposing_the_application_takes_every_hud_down()
+    {
+        var firstId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
+        var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var opened = client.Send(new ControlRequest { Cmd = Command.SessionHudOpen, Args = new ControlArgs { Message = "working" } });
+        Assert.True(opened.Ok, opened.Error);
+        var session = application.GetOpenWindow(firstId).Store.SessionWithId(Guid.Parse(opened.Result!.Id!))!;
+
+        application.Dispose();
+
+        Assert.False(session.HudActive);
+    }
+
+    private sealed class HudTimerSpy : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    [Fact]
     public void Ask_open_with_follow_takes_frontmost()
     {
         var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();

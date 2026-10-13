@@ -1452,9 +1452,10 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolveSession(target, window, (store, id) =>
         {
-            if (!store.CloseOverlay(id))
-                return Err("no overlay");
-            return OkId(id);
+            // the courtesy path for the whole slot, so it takes a HUD down too
+            if (store.CloseHud(id) || store.CloseOverlay(id))
+                return OkId(id);
+            return Err("no overlay");
         });
     }
 
@@ -1462,6 +1463,13 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolveSession(target, window, (store, id) =>
         {
+            if (store.SessionWithId(id) is { HudActive: true })
+            {
+                // a HUD must never cover the session it is a message about
+                if (sizePercent is not { } percent) return Err(HudErrors.FullResize);
+                store.ResizeHud(id, percent);
+                return OkId(id);
+            }
             if (!store.ResizeOverlay(id, sizePercent))
                 return Err("no overlay");
             return OkId(id);
@@ -1476,6 +1484,9 @@ public sealed class HeadlessControlActions : IControlActions
                 return Err("no such session");
             if (session.OverlayActive)
                 return Err(OverlayResultError.StillRunning);
+            // the slot holds a message, not a program that could report a status
+            if (session.HudActive)
+                return Err(HudErrors.NoOverlayResult);
             if (session.OverlayExitCode is not { } code)
                 return Err(OverlayResultError.NoResult);
             return new ControlResponse
@@ -1484,6 +1495,33 @@ public sealed class HeadlessControlActions : IControlActions
             };
         });
     }
+
+    // MARK: - hud
+
+    public ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
+        ResolveSession(target, window, (store, id) =>
+        {
+            if (store.SessionWithId(id) is not { } session) return Err("no such session");
+            if (!PanePlacement.TryResolve(placement.Pane, placement.PaneId, session, requireVisible: true,
+                    HudErrors.InvalidPane, out var resolved, out var error))
+                return Err(error!);
+            return store.OpenHud(id, spec, resolved.Identity) ? OkId(id) : Err("overlay already open");
+        });
+
+    public ControlResponse UpdateHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
+        ResolveSession(target, window, (store, id) =>
+        {
+            if (store.SessionWithId(id) is not { } session || !session.HudActive) return Err(HudErrors.NoHud);
+            // a hidden pane keeps its HUD, so an update may still address it
+            if (!PanePlacement.TryResolve(placement.Pane, placement.PaneId, session, requireVisible: false,
+                    HudErrors.InvalidPane, out var resolved, out var error))
+                return Err(error!);
+            store.UpdateHud(id, spec, resolved.Identity);
+            return OkId(id);
+        });
+
+    public ControlResponse CloseHud(string? target, string? window) =>
+        ResolveSession(target, window, (store, id) => store.CloseHud(id) ? OkId(id) : Err(HudErrors.NoHud));
 
     // MARK: - background
 
@@ -1850,18 +1888,6 @@ public sealed class HeadlessControlActions : IControlActions
         if (Pick.PendingAsk is { Anchor: { } anchor } ask && !AskAnchors.IsShown(_store, anchor))
             Pick.CancelAsk(ask.Id);
     }
-
-    // MARK: - hud
-
-    // placeholder until Task 6: the headless host has no HUD store yet, so open refuses and update
-    // and close answer as if no HUD is open. Task 6 replaces all three.
-    public ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
-        Err("hud is not available yet");
-
-    public ControlResponse UpdateHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
-        Err(HudErrors.NoHud);
-
-    public ControlResponse CloseHud(string? target, string? window) => Err(HudErrors.NoHud);
 
     // MARK: - window commands
     //
