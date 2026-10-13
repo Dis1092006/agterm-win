@@ -61,6 +61,7 @@ public sealed partial class MainWindow : Window
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
     private string? _focusedAskId; // UI-thread confined
+    private TerminalHudPlacement? _presentedHud; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private WindowCommandRouter? _commandRouter; // UI-thread confined
@@ -459,6 +460,7 @@ public sealed partial class MainWindow : Window
         page.DashboardClosed += OnPageDashboardClosed;
         page.AskIntentReceived += OnPageAskIntentReceived;
         page.AskFocusChanged += OnPageAskFocusChanged;
+        page.HudMetricsReceived += OnPageHudMetricsReceived;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
@@ -548,6 +550,7 @@ public sealed partial class MainWindow : Window
                 SubmitLayout();
                 SubmitSearchPresentation(previousSelection, snapshot);
                 PresentTerminalAsk(snapshot.TerminalAsk);
+                PresentHud(snapshot.Hud);
             });
         };
 
@@ -1258,6 +1261,33 @@ public sealed partial class MainWindow : Window
             return false;
         ObserveTaskFault(HandleTerminalAskIntentAsync(askId, new AskIntent.Cancel()), "Terminal ask dismissal failed");
         return true;
+    }
+
+    private void PresentHud(TerminalHudPlacement? placement)
+    {
+        // the store republishes the snapshot for search, focus and layout changes that leave the panel as it is
+        if (placement == _presentedHud)
+            return;
+        _presentedHud = placement;
+        var view = placement is { } shown ? TerminalHudViews.From(shown) : null;
+        ObserveTaskFault(ApplyHudAsync(view), "Apply hud failed");
+    }
+
+    private async Task ApplyHudAsync(TerminalHudView? view)
+    {
+        var page = await _pageTask;
+        await page.ApplyHudAsync(view);
+    }
+
+    private void OnPageHudMetricsReceived(string paneId, HudSessionMetrics metrics, HudRect? singlePane) =>
+        ObserveTaskFault(ApplyHudMetricsAsync(paneId, metrics, singlePane), "Hud metrics update failed");
+
+    private async Task ApplyHudMetricsAsync(string paneId, HudSessionMetrics metrics, HudRect? singlePane)
+    {
+        // the page measures on its first layout, which can come before the host is attached, and it
+        // does not post the same values again
+        var host = await _hostReady.Task;
+        await host.ApplyHudMetricsAsync(paneId, metrics, singlePane);
     }
 
     private void RestoreFocusAfterPick()

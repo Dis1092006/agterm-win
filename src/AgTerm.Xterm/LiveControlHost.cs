@@ -496,6 +496,25 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         return changed;
     }
 
+    public async Task<bool> ApplyHudMetricsAsync(
+        string paneId,
+        HudSessionMetrics metrics,
+        HudRect? singlePane,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(metrics);
+        if (string.IsNullOrEmpty(paneId))
+        {
+            return false;
+        }
+
+        var changed = false;
+        await StoreCoordinator.MutateAsync(
+            store => changed = HudMetricsTarget.Apply(store, paneId, metrics, singlePane),
+            cancellationToken).ConfigureAwait(false);
+        return changed;
+    }
+
     /// <summary>A surface realized after this host's own bootstrap (i.e. any control- or UI-driven
     /// show). The app uses it to mount the pane's view; fired on the realizing (dispatch) thread.</summary>
     public event Action<SurfaceOpenRequest, XtermPaneSurface>? SurfaceRealized;

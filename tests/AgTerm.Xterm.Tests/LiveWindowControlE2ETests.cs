@@ -1124,6 +1124,42 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     }
 
     [Fact]
+    public void Hud_commands_with_a_session_target_route_to_the_owning_window()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var session = FirstSessionId(client, firstId);
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowSelect, Target = secondId.ToString("D") }).Ok);
+        ControlHudNode? Hud() =>
+            client.Send(new ControlRequest { Cmd = Command.Tree, Args = new ControlArgs { Window = firstId.ToString("D") } })
+                .Result!.Tree!.Workspaces.SelectMany(w => w.Sessions).Single(s => s.Id == session).Hud;
+
+        var opened = client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionHudOpen, Target = session, Args = new ControlArgs { Message = "building" },
+        });
+        Assert.True(opened.Ok, opened.Error);
+        Assert.Equal(session, opened.Result!.Id);
+        Assert.Equal("building", Hud()?.Message);
+
+        var updated = client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionHudUpdate, Target = session, Args = new ControlArgs { Message = "done" },
+        });
+        Assert.True(updated.Ok, updated.Error);
+        Assert.Equal("done", Hud()?.Message);
+
+        var closed = client.Send(new ControlRequest { Cmd = Command.SessionHudClose, Target = session });
+        Assert.True(closed.Ok, closed.Error);
+        Assert.Null(Hud());
+        Assert.Equal(secondId, application.ActiveWindowId);
+    }
+
+    [Fact]
     public async Task Closing_the_window_cancels_its_asks_and_keeps_the_results_readable()
     {
         var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
