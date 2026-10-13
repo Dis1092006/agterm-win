@@ -21,6 +21,23 @@ internal static class SessionCommands
             throw new CliValidationException("--pane must be left, right, or scratch");
     }
 
+    /// <summary>The overlay and the HUD share one accepted range for --size-percent. 1...100 is the
+    /// input both document; the narrower HUD bound is a clamp the app applies, not a rejection, so a
+    /// HUD's 5 must pass here.</summary>
+    internal static void ValidateSizePercent(int? sizePercent)
+    {
+        if (sizePercent is < 1 or > 100)
+            throw new CliValidationException("--size-percent must be between 1 and 100");
+    }
+
+    /// <summary>The two pane roles only, unlike ValidatePaneArgument: a panel cannot be anchored to
+    /// the scratch, and accepting it would send `scratch` to the socket instead of failing here.</summary>
+    internal static void ValidateOverlayPane(string? pane)
+    {
+        if (pane is not null && OverlayPanes.FromControlName(pane) is null)
+            throw new CliValidationException("--pane must be left or right");
+    }
+
     public static System.CommandLine.Command Build(CommandBindings bindings)
     {
         var session = new System.CommandLine.Command("session", "Session commands.");
@@ -48,6 +65,7 @@ internal static class SessionCommands
         session.Subcommands.Add(BuildSearch(bindings));
         session.Subcommands.Add(BuildBackground(bindings));
         session.Subcommands.Add(BuildOverlay(bindings));
+        session.Subcommands.Add(HudCommands.Build(bindings));
         return session;
     }
 
@@ -1510,8 +1528,7 @@ internal static class SessionCommands
                     throw new CliValidationException("--block cannot be combined with --wait");
                 if (BackgroundColor is { } backgroundColor && !WatermarkConfig.IsValidColorHex(backgroundColor))
                     throw new CliValidationException("background-color must be a #rrggbb hex value");
-                if (SizePercent is { } sizePercent && sizePercent is < 1 or > 100)
-                    throw new CliValidationException("--size-percent must be between 1 and 100");
+                ValidateSizePercent(SizePercent);
             }
 
             public ControlRequest MakeRequest() => new()
@@ -1601,8 +1618,7 @@ internal static class SessionCommands
                     throw new CliValidationException("--full cannot be combined with --size-percent");
                 if (!Full && SizePercent is null)
                     throw new CliValidationException("provide --size-percent PERCENT or --full");
-                if (SizePercent is { } sizePercent && sizePercent is < 1 or > 100)
-                    throw new CliValidationException("--size-percent must be between 1 and 100");
+                ValidateSizePercent(SizePercent);
             }
 
             public ControlRequest MakeRequest() => new()
