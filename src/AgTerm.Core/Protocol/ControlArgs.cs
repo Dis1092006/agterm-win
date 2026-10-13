@@ -62,9 +62,14 @@ public sealed record ControlArgs
     public string? Path { get; init; }
 
     /// <summary>#rrggbb color: watermark text tint / solid background / overlay background /
-    /// per-call status glyph tint.</summary>
+    /// per-call status glyph tint / HUD panel background (session.hud.open; update validates and
+    /// ignores it).</summary>
     [JsonPropertyName("color")]
     public string? Color { get; init; }
+
+    /// <summary>session.hud.open/update text color (#rrggbb); null = the terminal foreground.</summary>
+    [JsonPropertyName("textColor")]
+    public string? TextColor { get; init; }
 
     /// <summary>Per-call glyph silhouette for session.status
     /// (circle|square|triangle|diamond|capsule|star).</summary>
@@ -79,7 +84,8 @@ public sealed record ControlArgs
     [JsonPropertyName("fit")]
     public string? Fit { get; init; }
 
-    /// <summary>Watermark position (center + 8 anchors); null = center.</summary>
+    /// <summary>Watermark position (center + 8 anchors); null = center. Also the
+    /// session.hud.open/update anchor, which also takes top and bottom.</summary>
     [JsonPropertyName("position")]
     public string? Position { get; init; }
 
@@ -88,7 +94,7 @@ public sealed record ControlArgs
     public bool? Repeats { get; init; }
 
     /// <summary>Pane selector: session.focus left|right|other; session.text/type/status/restore
-    /// pane addressing.</summary>
+    /// pane addressing; the ask and session.hud anchor pane.</summary>
     [JsonPropertyName("pane")]
     public string? Pane { get; init; }
 
@@ -159,7 +165,8 @@ public sealed record ControlArgs
     [JsonPropertyName("wait")]
     public bool? Wait { get; init; }
 
-    /// <summary>Floating overlay size (1..100 percent) for session.overlay.open/resize.</summary>
+    /// <summary>Floating overlay size (1..100 percent) for session.overlay.open/resize; the HUD
+    /// width override for session.hud.open/update.</summary>
     [JsonPropertyName("sizePercent")]
     public int? SizePercent { get; init; }
 
@@ -172,9 +179,34 @@ public sealed record ControlArgs
     [JsonPropertyName("follow")]
     public bool? Follow { get; init; }
 
-    /// <summary>ask.open text under the title.</summary>
+    /// <summary>ask.open text under the title; the headline for session.hud.open/update.</summary>
     [JsonPropertyName("message")]
     public string? Message { get; init; }
+
+    /// <summary>session.hud.open/update dim block under the message.</summary>
+    [JsonPropertyName("detail")]
+    public string? Detail { get; init; }
+
+    /// <summary>session.hud.open/update spinner style (bar|braille|circle|blocks|dot), or none for a
+    /// static panel; null = static.</summary>
+    [JsonPropertyName("spinner")]
+    public string? Spinner { get; init; }
+
+    /// <summary>session.hud.open/update auto-hide in seconds (0...86400); null or 0 = the panel stays.</summary>
+    [JsonPropertyName("hideAfter")]
+    public double? HideAfter { get; init; }
+
+    /// <summary>session.hud.open/update: render the message as markdown; null = plain.</summary>
+    [JsonPropertyName("markdown")]
+    public bool? Markdown { get; init; }
+
+    /// <summary>session.hud.open/update: flush against the edge or corner position names; null = false.</summary>
+    [JsonPropertyName("sticky")]
+    public bool? Sticky { get; init; }
+
+    /// <summary>session.hud.open/update: false drops the border, rounding and blank rows; null = true.</summary>
+    [JsonPropertyName("frame")]
+    public bool? Frame { get; init; }
 
     /// <summary>pick.open choices. An empty array is sent as [] (an itemless prompt with allowCustom).</summary>
     [JsonPropertyName("items")]
@@ -273,7 +305,7 @@ public sealed record ControlArgs
     public bool? Close { get; init; }
 
     /// <summary>Absolute dashboard cell font size in points; must be positive. Mutually exclusive
-    /// with autoSize.</summary>
+    /// with autoSize. Also the HUD panel's point size for session.hud.open (6...72).</summary>
     [JsonPropertyName("fontSize")]
     public double? FontSize { get; init; }
 

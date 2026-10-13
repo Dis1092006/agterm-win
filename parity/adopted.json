@@ -6,7 +6,10 @@
     { "wire": "pick.cancel", "upstream": "6b6323ed" },
     { "wire": "ask.open", "upstream": "32ec288d" },
     { "wire": "ask.result", "upstream": "32ec288d" },
-    { "wire": "ask.cancel", "upstream": "32ec288d" }
+    { "wire": "ask.cancel", "upstream": "32ec288d" },
+    { "wire": "session.hud.open", "upstream": "d0bec154" },
+    { "wire": "session.hud.update", "upstream": "d0bec154" },
+    { "wire": "session.hud.close", "upstream": "d0bec154" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -19,7 +22,14 @@
     { "name": "defaultButton", "upstream": "32ec288d" },
     { "name": "style", "upstream": "32ec288d" },
     { "name": "align", "upstream": "32ec288d" },
-    { "name": "destructiveButton", "upstream": "32ec288d" }
+    { "name": "destructiveButton", "upstream": "32ec288d" },
+    { "name": "textColor", "upstream": "1923906e" },
+    { "name": "detail", "upstream": "d0bec154" },
+    { "name": "spinner", "upstream": "d0bec154" },
+    { "name": "hideAfter", "upstream": "9247b96f" },
+    { "name": "markdown", "upstream": "8e710a6e" },
+    { "name": "sticky", "upstream": "3ac149e6" },
+    { "name": "frame", "upstream": "3ac149e6" }
   ],
   "result": [
     { "name": "pick", "upstream": "6b6323ed" },
@@ -31,6 +41,7 @@
     { "name": "askPending", "upstream": "32ec288d" }
   ],
   "sessionNode": [
-    { "name": "ask", "upstream": "1b765e69" }
+    { "name": "ask", "upstream": "1b765e69" },
+    { "name": "hud", "upstream": "d0bec154" }
   ]
 }

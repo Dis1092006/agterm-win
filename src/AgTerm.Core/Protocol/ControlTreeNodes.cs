@@ -62,6 +62,10 @@ public sealed record ControlSessionNode
     [JsonPropertyName("overlaySizePercent")]
     public int? OverlaySizePercent { get; init; }
 
+    /// <summary>The message panel in the session's overlay slot; overlay reads false beside it.</summary>
+    [JsonPropertyName("hud")]
+    public ControlHudNode? Hud { get; init; }
+
     /// <summary>The pending terminal question; GUI questions are reported at the tree's top level.</summary>
     [JsonPropertyName("ask")]
     public ControlSessionAsk? Ask { get; init; }
