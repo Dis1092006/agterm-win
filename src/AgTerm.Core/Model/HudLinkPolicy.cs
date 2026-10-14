@@ -46,7 +46,7 @@ public static class HudLinkPolicy
             var slash = rest.IndexOf('/', 2);
             if (slash < 0)
                 return null;
-            var host = rest[2..slash].TrimEnd('.');
+            var host = WithoutTrailingDot(rest[2..slash]);
             if (host.Length > 0 && !host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
                 return null;
             rest = rest[slash..];
@@ -58,4 +58,7 @@ public static class HudLinkPolicy
             return null;
         return path;
     }
+
+    // one dot only, as upstream normalizedHost: "file://./x" names an empty host, "file://../x" does not
+    private static string WithoutTrailingDot(string host) => host.EndsWith('.') ? host[..^1] : host;
 }

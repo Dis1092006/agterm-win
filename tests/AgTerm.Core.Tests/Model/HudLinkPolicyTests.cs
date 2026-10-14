@@ -19,6 +19,8 @@ public class HudLinkPolicyTests
     [InlineData("file://localhost/tmp/x.md")]
     [InlineData("file://LOCALHOST/tmp/x.md")]
     [InlineData("file://localhost./tmp/x.md")]
+    // upstream normalizedHost drops one trailing dot, so "." is an empty host
+    [InlineData("file://./x")]
     [InlineData("FILE:///tmp/x.md")]
     [InlineData("file:///tmp/../tmp/x.md")]
     [InlineData("file:///tmp/a%20b.md")]
@@ -47,6 +49,9 @@ public class HudLinkPolicyTests
     [InlineData("file://localhost/%2Fserver/share")]
     [InlineData("file:///%5C%5Cserver%5Cshare")]
     [InlineData("file:///tmp/a%00b")]
+    [InlineData("file://.../x")]
+    [InlineData("file://../x")]
+    [InlineData("file://localhost../x")]
     public void AnythingElseIsAPlainLabel(string url) => Assert.Null(HudLinkPolicy.Target(url));
 
     [Fact]

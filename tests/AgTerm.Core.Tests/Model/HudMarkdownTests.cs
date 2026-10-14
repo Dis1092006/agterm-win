@@ -1,4 +1,7 @@
+using System.Runtime.ExceptionServices;
 using AgTerm.Core.Model;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 namespace AgTerm.Core.Tests.Model;
 
@@ -193,8 +196,8 @@ public class HudMarkdownTests
         Assert.Equal(new[] { "<!-- note -->" }, Plain("<!-- note -->"));
     }
 
-    // upstream drops the quote bar and the item indent in front of a raw HTML block, because Foundation
-    // gives the block no context; Markdig nests it, and the port keeps the prefix, see PLATFORM-NOTES
+    // upstream expects ["<div>", "</div>"]; Markdig parses the HTML block as a child of the quote or the
+    // list item, so the port keeps the bar and the item prefix (ruling 11), see PLATFORM-NOTES
     [Fact]
     public void ARawHtmlBlockInsideAQuoteOrAListKeepsItsPrefix()
     {
@@ -256,6 +259,13 @@ public class HudMarkdownTests
     public void AClippedLinkLeavesTheEllipsisOutsideIt() =>
         Assert.Equal(new[] { Run("abc", Underline, "http://x"), Run("…") },
             HudMarkdown.Clipped(new[] { Run("abcdef", Underline, "http://x") }, 4));
+
+    [Fact]
+    public void AnUnmatchedBracketStaysLiteralInItsPlace()
+    {
+        Assert.Equal(new[] { Run("[a "), Run("b", Bold), Run(" c") }, Styled("[a **b** c")[0]);
+        Assert.Equal(new[] { Run("![x "), Run("y", Italic), Run(" z") }, Styled("![x *y* z")[0]);
+    }
 
     [Fact]
     public void StrongInsideEmphasisCarriesBoth() =>
@@ -398,5 +408,97 @@ public class HudMarkdownTests
 
         Assert.Equal(new[] { "a", "**b** c" }, lines.Select(line => Text(line.Runs)));
         Assert.All(lines, line => Assert.Equal(HudMarkdownLineKind.Text, line.Kind));
+    }
+
+    // an inline with a null tag parses fine and throws only inside the walk
+    [Fact]
+    public void AWalkFailureLeavesEachSourceLineAPlainRow()
+    {
+        var lines = HudMarkdown.Lines("a\n**b**", _ => DocumentWithInline(new HtmlInline(null!)));
+
+        Assert.Equal(new[] { "a", "**b**" }, lines.Select(line => Text(line.Runs)));
+    }
+
+    // Markdig keeps each unmatched "[" or "![" as a container holding the rest of the paragraph, so the
+    // nesting grows with the source; a stack overflow cannot be caught and would take the app down.
+    [Theory]
+    [InlineData("[", 4096)]
+    [InlineData("![", 2048)]
+    public void DeeplyNestedInlinesLayOutOnAOneMegabyteStack(string unit, int count)
+    {
+        var source = string.Concat(Enumerable.Repeat(unit, count));
+
+        var (lines, visible) = OnOneMegabyteStack(() => (HudMarkdown.Lines(source), HudMarkdown.RendersVisibleText(source)));
+
+        Assert.NotEmpty(lines);
+        Assert.True(visible);
+    }
+
+    // Markdig takes at most 128 nested container blocks: 127 quotes, or 63 list levels of a list and an item
+    [Theory]
+    [InlineData(">", 127)]
+    [InlineData("- ", 63)]
+    public void TheDeepestBlockNestingMarkdigTakesLaysOutOnAOneMegabyteStack(string unit, int count)
+    {
+        var source = string.Concat(Enumerable.Repeat(unit, count)) + "x";
+
+        var (lines, visible) = OnOneMegabyteStack(() => (HudMarkdown.Lines(source), HudMarkdown.RendersVisibleText(source)));
+
+        Assert.Equal(2 * count, HudLayout.CellCount(Assert.Single(lines).Lead));
+        Assert.True(visible);
+    }
+
+    // past its cap Markdig throws "too deeply nested", which is a parser failure like any other
+    [Theory]
+    [InlineData(">", 4095)]
+    [InlineData("- ", 2047)]
+    public void ABlockNestingMarkdigRefusesIsItsPlainSource(string unit, int count)
+    {
+        var source = string.Concat(Enumerable.Repeat(unit, count)) + "x";
+
+        var lines = OnOneMegabyteStack(() => HudMarkdown.Lines(source));
+
+        var line = Assert.Single(lines);
+        Assert.Equal("", line.Lead);
+        Assert.Equal(source, Text(line.Runs));
+    }
+
+    [Fact]
+    public void DeeplyNestedBracketsStayLiteral()
+    {
+        var source = new string('[', 4096);
+
+        var lines = OnOneMegabyteStack(() => HudMarkdown.Lines(source));
+
+        Assert.Equal(source, Text(Assert.Single(lines).Runs));
+    }
+
+    private static MarkdownDocument DocumentWithInline(Inline inline)
+    {
+        var document = new MarkdownDocument();
+        document.Add(new ParagraphBlock { Inline = new ContainerInline().AppendChild(inline) });
+        return document;
+    }
+
+    // the app's threads have a 1 MB stack; a test thread may have more, which would hide an overflow
+    private static T OnOneMegabyteStack<T>(Func<T> work)
+    {
+        T result = default!;
+        ExceptionDispatchInfo? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                result = work();
+            }
+            catch (Exception exception)
+            {
+                failure = ExceptionDispatchInfo.Capture(exception);
+            }
+        }, 1024 * 1024);
+        thread.Start();
+        thread.Join();
+        failure?.Throw();
+        return result;
     }
 }

@@ -67,23 +67,24 @@ public static class HudMarkdown
     internal static IReadOnlyList<HudMarkdownLine> Lines(string source, Func<string, MarkdownDocument> parse)
     {
         var text = source.Normalize(NormalizationForm.FormC);
-        MarkdownDocument document;
         try
         {
-            document = parse(text);
+            var walker = new Walker();
+            walker.Walk(parse(text));
+            return walker.Lines;
         }
         catch (Exception)
         {
-            // upstream falls back the same way when its parser gives up; the panel must still show the text
-            return text.Split('\n')
-                .Select(line => new HudMarkdownLine("", "", new[] { new HudMarkdownRun(Sanitized(line), HudMarkdownStyle.None) }))
-                .ToList();
+            // upstream falls back the same way when its parser gives up; Markdig also throws on block nesting
+            // past its cap, and the panel must still show the text
+            return PlainLines(text);
         }
-
-        var walker = new Walker();
-        walker.Walk(document, Array.Empty<ContainerBlock>());
-        return walker.Lines;
     }
+
+    private static IReadOnlyList<HudMarkdownLine> PlainLines(string text) =>
+        text.Split('\n')
+            .Select(line => new HudMarkdownLine("", "", new[] { new HudMarkdownRun(Sanitized(line), HudMarkdownStyle.None) }))
+            .ToList();
 
     /// <summary>Whether the source lays out to at least one non-space cell at 60 columns. The renderer's
     /// own glyphs count (markers, bars, borders, U+FFFD), so the check runs on rows, not on the page.</summary>
@@ -146,12 +147,25 @@ public static class HudMarkdown
         private readonly HashSet<ListItemBlock> _seenItems = new();
         private HashSet<ListBlock>? _lastLists;
 
-        public void Walk(ContainerBlock container, IReadOnlyList<ContainerBlock> ancestors)
+        /// <summary>Visits the blocks in document order. The walk keeps its own stack of open containers:
+        /// Markdig caps block nesting at 128 today, but a stack overflow cannot be caught, so the walk does
+        /// not lean on that cap.</summary>
+        public void Walk(MarkdownDocument document)
         {
-            var path = ancestors.Append(container).ToArray();
-            foreach (var block in container)
+            var path = new List<ContainerBlock> { document };
+            var nextChild = new List<int> { 0 };
+            while (path.Count > 0)
             {
-                switch (block)
+                var container = path[^1];
+                var index = nextChild[^1];
+                if (index == container.Count)
+                {
+                    path.RemoveAt(path.Count - 1);
+                    nextChild.RemoveAt(nextChild.Count - 1);
+                    continue;
+                }
+                nextChild[^1] = index + 1;
+                switch (container[index])
                 {
                     case LinkReferenceDefinitionGroup:
                         break;
@@ -159,7 +173,8 @@ public static class HudMarkdown
                         Emit(TableLines(table, path), path);
                         break;
                     case ContainerBlock child:
-                        Walk(child, path);
+                        path.Add(child);
+                        nextChild.Add(0);
                         break;
                     case LeafBlock leaf:
                         Emit(LeafLines(leaf, path), path);
@@ -282,9 +297,7 @@ public static class HudMarkdown
         /// A link is its label, underlined only when a click can open it.</summary>
         private static IReadOnlyList<IReadOnlyList<HudMarkdownRun>> InlineRows(ContainerInline? inline, HudMarkdownStyle baseStyle)
         {
-            var segments = new List<Segment>();
-            if (inline is not null)
-                Collect(inline, HudMarkdownStyle.None, null, segments);
+            var segments = inline is null ? new List<Segment>() : Segments(inline);
             var rows = new List<List<HudMarkdownRun>> { new() };
             Segment? previous = null;
             foreach (var segment in segments)
@@ -310,7 +323,22 @@ public static class HudMarkdown
             return rows;
         }
 
-        private static void Collect(Inline inline, HudMarkdownStyle emphasis, string? url, List<Segment> into)
+        private readonly record struct PendingInline(Inline Inline, HudMarkdownStyle Emphasis, string? Url);
+
+        /// <summary>The leaves of inline in document order. Markdig keeps each unmatched "[" or "![" as a
+        /// container holding the rest of the paragraph, so the nesting grows with the source; the walk keeps
+        /// its own stack, because a stack overflow cannot be caught.</summary>
+        private static List<Segment> Segments(ContainerInline inline)
+        {
+            var segments = new List<Segment>();
+            var pending = new Stack<PendingInline>();
+            PushChildren(inline, HudMarkdownStyle.None, null, pending);
+            while (pending.TryPop(out var next))
+                Collect(next.Inline, next.Emphasis, next.Url, segments, pending);
+            return segments;
+        }
+
+        private static void Collect(Inline inline, HudMarkdownStyle emphasis, string? url, List<Segment> into, Stack<PendingInline> pending)
         {
             switch (inline)
             {
@@ -334,28 +362,29 @@ public static class HudMarkdown
                     break;
                 case LinkInline { IsImage: true } image:
                     // an image is its alt text, linked only when a link holds it
-                    CollectChildren(image, emphasis, url, into);
+                    PushChildren(image, emphasis, url, pending);
                     break;
                 case LinkInline link:
-                    CollectChildren(link, emphasis, link.Url ?? "", into);
+                    PushChildren(link, emphasis, link.Url ?? "", pending);
                     break;
                 case EmphasisInline emphasisInline:
-                    CollectChildren(emphasisInline, emphasis | EmphasisStyle(emphasisInline), url, into);
+                    PushChildren(emphasisInline, emphasis | EmphasisStyle(emphasisInline), url, pending);
                     break;
                 case DelimiterInline delimiter:
                     into.Add(new Segment(delimiter.ToLiteral(), emphasis, url, SegmentKind.Text));
-                    CollectChildren(delimiter, emphasis, url, into);
+                    PushChildren(delimiter, emphasis, url, pending);
                     break;
                 case ContainerInline container:
-                    CollectChildren(container, emphasis, url, into);
+                    PushChildren(container, emphasis, url, pending);
                     break;
             }
         }
 
-        private static void CollectChildren(ContainerInline container, HudMarkdownStyle emphasis, string? url, List<Segment> into)
+        // last child first, so the first child pops next and the output keeps document order
+        private static void PushChildren(ContainerInline container, HudMarkdownStyle emphasis, string? url, Stack<PendingInline> pending)
         {
-            foreach (var child in container)
-                Collect(child, emphasis, url, into);
+            for (var child = container.LastChild; child is not null; child = child.PreviousSibling)
+                pending.Push(new PendingInline(child, emphasis, url));
         }
 
         private static HudMarkdownStyle EmphasisStyle(EmphasisInline emphasis) =>
