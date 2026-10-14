@@ -51,8 +51,10 @@ public static class HudLinkPolicy
     public static string ExplorerSelectArguments(string path)
     {
         var trimmed = path.TrimEnd('\\');
-        return trimmed.EndsWith(':') ? $"/select,{trimmed}\\" : $"/select,\"{trimmed}\"";
+        return IsDriveName(trimmed) ?$"/select,{trimmed}\\" : $"/select,\"{trimmed}\"";
     }
+
+    private static bool IsDriveName(string path) => path.Length == 2 && char.IsAsciiLetter(path[0]) && path[1] == ':';
 
     /// <summary>file:///C:/x carries the drive after the first slash. A path with no drive stays rooted,
     /// and GetFullPath puts it on the current drive without touching the disk.</summary>
@@ -65,8 +67,11 @@ public static class HudLinkPolicy
         if (path.Length == 2)
             path += "/";
         var full = Path.GetFullPath(path.Replace('/', '\\'));
-        // Explorer takes the path inside quotes on its command line
-        return full.StartsWith(@"\\", StringComparison.Ordinal) || full.Contains('"') ? null : full;
+        // Explorer takes the path inside quotes on its command line. A colon after the drive names an
+        // NTFS stream, never a path to reveal.
+        return full.StartsWith(@"\\", StringComparison.Ordinal) || full.Contains('"') || full.IndexOf(':', 2) >= 0
+            ? null
+            : full;
     }
 
     private static bool IsPrintableAscii(string url) => url.All(c => c is >= '\u0021' and <= '\u007E');

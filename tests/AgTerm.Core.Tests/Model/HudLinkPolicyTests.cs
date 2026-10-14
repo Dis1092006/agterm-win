@@ -92,6 +92,10 @@ public class HudLinkPolicyTests
     [InlineData("file:///C:/a%22b")]
     [InlineData("file:///C:x")]
     [InlineData("file:///C:..")]
+    // a colon after the drive names an NTFS stream, never a path to reveal
+    [InlineData("file:///C:/a%20b/c:")]
+    [InlineData("file:///C:/a,C:/Windows/System32/calc.exe,x:")]
+    [InlineData("file:///C:/x:stream")]
     public void AnythingElseDoesNothing(string url) => Assert.Null(HudLinkPolicy.ActionFor(url));
 
     // Windows argument splitting reads a backslash right before a closing quote as an escaped quote,
@@ -102,6 +106,9 @@ public class HudLinkPolicyTests
     [InlineData(@"C:\", @"/select,C:\")]
     [InlineData(@"C:\my dir\", @"/select,""C:\my dir""")]
     [InlineData(@"C:\logs\", @"/select,""C:\logs""")]
+    [InlineData(@"C:\a b\c", @"/select,""C:\a b\c""")]
+    [InlineData(@"C:\a,C:\Windows\System32\calc.exe,x", @"/select,""C:\a,C:\Windows\System32\calc.exe,x""")]
+    [InlineData(@"C:\a b\c:", @"/select,""C:\a b\c:""")]
     public void ExplorerSelectsTheRevealedPathWithNoBackslashBeforeTheClosingQuote(string path, string arguments) =>
         Assert.Equal(arguments, HudLinkPolicy.ExplorerSelectArguments(path));
 
