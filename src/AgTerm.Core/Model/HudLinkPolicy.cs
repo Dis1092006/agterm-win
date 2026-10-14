@@ -50,6 +50,9 @@ public static class HudLinkPolicy
     private static string? WindowsPath(string urlPath)
     {
         var path = urlPath.Length >= 3 && char.IsAsciiLetter(urlPath[1]) && urlPath[2] == ':' ? urlPath[1..] : urlPath;
+        // C:x is relative to the app's working directory on C:, and spec 5.4 reveals only an absolute path
+        if (path != urlPath && path.Length > 2 && path[2] != '/')
+            return null;
         if (path.Length == 2)
             path += "/";
         var full = Path.GetFullPath(path.Replace('/', '\\'));

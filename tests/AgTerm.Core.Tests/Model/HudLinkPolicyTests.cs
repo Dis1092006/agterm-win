@@ -90,5 +90,7 @@ public class HudLinkPolicyTests
     [InlineData("javascript:alert(1)")]
     [InlineData("file://otherhost/tmp/x.md")]
     [InlineData("file:///C:/a%22b")]
+    [InlineData("file:///C:x")]
+    [InlineData("file:///C:..")]
     public void AnythingElseDoesNothing(string url) => Assert.Null(HudLinkPolicy.ActionFor(url));
 }
