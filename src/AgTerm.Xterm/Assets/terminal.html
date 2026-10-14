@@ -209,6 +209,41 @@
       .hud-dim {
         opacity: 0.5;
       }
+      /* markdown rows are one left-aligned block, and the block is centered in the panel; the layer
+         is a column flex box, so the block centers itself and takes its widest row's width */
+      .hud-block {
+        flex: none;
+        align-self: center;
+        text-align: left;
+        white-space: pre;
+      }
+      .hud-block > .hud-row {
+        justify-content: flex-start;
+      }
+      .hud-run-bold {
+        font-weight: bold;
+      }
+      .hud-run-italic {
+        font-style: italic;
+      }
+      .hud-run-underline {
+        text-decoration-line: underline;
+      }
+      .hud-run-strike {
+        text-decoration-line: line-through;
+      }
+      .hud-run-underline.hud-run-strike {
+        text-decoration-line: underline line-through;
+      }
+      /* the same dimming as a plain detail row (.hud-dim) */
+      .hud-run-dim {
+        opacity: 0.5;
+      }
+      /* Ctrl held over a HUD link; xterm sets its own cursor on the screen element */
+      html.hud-link-hover,
+      html.hud-link-hover * {
+        cursor: pointer !important;
+      }
       .hud-probe {
         position: absolute;
         left: -10000px;

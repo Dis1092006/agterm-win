@@ -195,4 +195,34 @@ public class TerminalHudVisibilityTests
         store.CloseHud(session.Id);
         Assert.Null(Shown(store));
     }
+
+    // the panel's own font size measures it, as AppStore does when it sizes the HUD
+    [Fact]
+    public void APlacementCarriesThePaneMetricsAtTheHudsFontSize()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
+        session.Surface = new SpySurface("left-token");
+        store.SelectSession(session.Id);
+        var metrics = new HudSessionMetrics(14, 8, 18, new HudRect(1000, 800), new HudRect(1000, 800), null);
+        store.SetHudMetrics(session.Id, metrics);
+        store.OpenHud(session.Id, new HudSpec("**hi**", Markdown: true, FontSize: 28), null);
+
+        var placement = TerminalHudVisibility.For(store, false, false, false)!;
+
+        Assert.Equal(metrics.For(null, 28), placement.Metrics);
+        Assert.Equal(16, placement.Metrics!.CellWidth);
+    }
+
+    [Fact]
+    public void APlacementOfAnUnmeasuredSessionHasNoMetrics()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
+        session.Surface = new SpySurface("left-token");
+        store.SelectSession(session.Id);
+        store.OpenHud(session.Id, new HudSpec("hi"), null);
+
+        Assert.Null(TerminalHudVisibility.For(store, false, false, false)!.Metrics);
+    }
 }

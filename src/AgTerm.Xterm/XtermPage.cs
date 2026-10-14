@@ -115,13 +115,14 @@ public sealed class XtermPage
         var payload = JsonSerializer.Serialize(new
         {
             paneId = view.PaneId,
-            rows = view.Rows.Select(row => new { text = row.Text, dim = row.Dim }),
+            rows = view.Rows.Select(HudRowLiteral),
             widthPercent = view.WidthPercent,
             heightPoints = view.HeightPoints,
             heightPercent = view.HeightPercent,
             position = view.Position,
             sticky = view.Sticky,
             frame = view.Frame,
+            markdown = view.Markdown,
             background = view.Background,
             foreground = view.Foreground,
             fontSize = view.FontSize,
@@ -131,6 +132,15 @@ public sealed class XtermPage
         }, HudScriptLiteral);
         return _host.ExecuteScriptAsync($"agterm.applyHud({payload})");
     }
+
+    // the page tells a markdown row by its runs, so a plain row keeps the {text, dim} shape
+    private static object HudRowLiteral(TerminalHudRow row) => row.Runs is null
+        ? new { text = row.Text, dim = row.Dim }
+        : new { text = row.Text, dim = row.Dim, runs = row.Runs.Select(HudRunLiteral) };
+
+    private static object HudRunLiteral(TerminalHudRun run) => run.Link is null
+        ? new { text = run.Text, bold = run.Bold, italic = run.Italic, strike = run.Strike, dim = run.Dim, underline = run.Underline }
+        : new { text = run.Text, bold = run.Bold, italic = run.Italic, strike = run.Strike, dim = run.Dim, underline = run.Underline, link = run.Link };
 
     public Task ApplySearchAsync(
         string paneId,
@@ -196,6 +206,9 @@ public sealed class XtermPage
 
     /// <summary>The question took the page focus (its id) or lost it (null).</summary>
     public event Action<string?>? AskFocusChanged;
+
+    /// <summary>A Ctrl+click on a HUD link: the URL under the pointer, not yet checked.</summary>
+    public event Action<string>? HudLinkRequested;
 
     /// <summary>The page measured the cell and the pane rectangles of the session it shows: a pane
     /// token of the shown layout, the metrics with the left and right rects of a shown split, and
@@ -463,6 +476,12 @@ public sealed class XtermPage
             AskFocusChanged?.Invoke(msg.AskId);
             return;
         }
+        if (msg?.Type == "hudLink")
+        {
+            if (msg.Url is { Length: > 0 } url)
+                HudLinkRequested?.Invoke(url);
+            return;
+        }
         if (msg?.Type == "hudMetrics")
         {
             // no _terminals check: the window maps the token to a session and drops one it does not know
@@ -562,6 +581,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("rows")] public int? Rows { get; init; }
     [JsonPropertyName("title")] public string? Title { get; init; }
     [JsonPropertyName("uri")] public string? Uri { get; init; }
+    [JsonPropertyName("url")] public string? Url { get; init; }
     [JsonPropertyName("ctrl")] public bool? Ctrl { get; init; }
     [JsonPropertyName("alt")] public bool? Alt { get; init; }
     [JsonPropertyName("shift")] public bool? Shift { get; init; }

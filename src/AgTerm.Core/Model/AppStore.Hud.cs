@@ -74,11 +74,13 @@ public sealed partial class AppStore
 
     /// <summary>Stores what the page measured for the session and measures a live HUD again, so the HUD
     /// follows a window or divider resize with no command. The spec, the scope, the forced width and
-    /// the auto-hide stay. True when the HUD's size changed.</summary>
+    /// the auto-hide stay. True when the HUD's size changed; a markdown HUD whose grid changed is
+    /// redrawn either way, so its rows are fitted to the new grid.</summary>
     public bool SetHudMetrics(Guid sessionId, HudSessionMetrics metrics)
     {
         ArgumentNullException.ThrowIfNull(metrics);
         if (SessionWithId(sessionId) is not { } session) return false;
+        var gridBefore = MarkdownGrid(session);
         // a pane the page does not lay out now (a hidden split) keeps its last rect, so a HUD anchored
         // there keeps its size until the pane is shown again
         session.HudMetrics = session.HudMetrics is { } previous
@@ -88,10 +90,22 @@ public sealed partial class AppStore
         // a HUD opened before any font was known takes the first one the page measured, and keeps it
         session.HudFontSize ??= HudSessionMetrics.UsableFontSize(metrics.FontSize);
         var size = MeasureHud(session);
-        if (size == session.HudPanelSize) return false;
+        var sizeChanged = size != session.HudPanelSize;
         session.HudPanelSize = size;
-        HudChanged?.Invoke();
-        return true;
+        // the page never posts equal metrics twice, so a redraw for a new grid cannot loop
+        if (sizeChanged || MarkdownGrid(session) != gridBefore)
+            HudChanged?.Invoke();
+        return sizeChanged;
+    }
+
+    /// <summary>A markdown body is fitted to the panel grid, which a resize can change while the percent
+    /// sizes stay the same; upstream rewrites the body on every re-measure.</summary>
+    private static (int Columns, int Rows)? MarkdownGrid(Session session)
+    {
+        if (session.Hud is not { Markdown: true } hud || session.HudPanelSize is not { } size)
+            return null;
+        var effective = session.HudForcedWidthPercent is { } forced ? size with { WidthPercent = forced } : size;
+        return HudLayout.PaintGrid(hud, effective, HudPaneMetrics(session));
     }
 
     /// <summary>Window close and application exit.</summary>

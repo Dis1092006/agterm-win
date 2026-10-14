@@ -93,4 +93,20 @@ public class HudLinkPolicyTests
     [InlineData("file:///C:x")]
     [InlineData("file:///C:..")]
     public void AnythingElseDoesNothing(string url) => Assert.Null(HudLinkPolicy.ActionFor(url));
+
+    // Windows argument splitting reads a backslash right before a closing quote as an escaped quote,
+    // so "C:\" would swallow the quote; a path with no space needs no quotes at all
+    [Theory]
+    [InlineData(@"C:\Users\me\a b.txt", @"/select,""C:\Users\me\a b.txt""")]
+    [InlineData(@"D:\logs\build.log", @"/select,""D:\logs\build.log""")]
+    [InlineData(@"C:\", @"/select,C:\")]
+    [InlineData(@"C:\my dir\", @"/select,""C:\my dir""")]
+    [InlineData(@"C:\logs\", @"/select,""C:\logs""")]
+    public void ExplorerSelectsTheRevealedPathWithNoBackslashBeforeTheClosingQuote(string path, string arguments) =>
+        Assert.Equal(arguments, HudLinkPolicy.ExplorerSelectArguments(path));
+
+    [Fact]
+    public void ADriveRootLinkSelectsTheDriveInExplorer() =>
+        Assert.Equal(@"/select,C:\",
+            HudLinkPolicy.ExplorerSelectArguments(((HudLinkAction.Reveal)HudLinkPolicy.ActionFor("file:///C:")!).Path));
 }

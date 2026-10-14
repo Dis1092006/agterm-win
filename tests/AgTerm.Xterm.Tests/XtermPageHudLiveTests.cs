@@ -679,4 +679,255 @@ public class XtermPageHudLiveTests
         Assert.True(root.GetProperty("paneRestarted").GetBoolean(), state);
         Assert.Contains(JsonSerializer.Deserialize<string>(glyphs), new[] { "x", "y" });
     }
+
+    private const string MarkdownPayload = """
+        {"paneId":null,"rows":[
+          {"text":"see the PR now","dim":false,"runs":[
+            {"text":"see ","bold":false,"italic":false,"strike":false,"dim":false,"underline":false},
+            {"text":"the PR","bold":false,"italic":false,"strike":false,"dim":false,"underline":true,"link":"https://example.com/pr/7"},
+            {"text":" now","bold":false,"italic":false,"strike":false,"dim":false,"underline":false}]},
+          {"text":"<b>x</b> done","dim":false,"runs":[
+            {"text":"<b>x</b>","bold":true,"italic":false,"strike":false,"dim":false,"underline":false},
+            {"text":" done","bold":false,"italic":true,"strike":true,"dim":true,"underline":false}]}],
+         "widthPercent":60,"heightPoints":120,"heightPercent":20,"position":"center","sticky":false,"frame":true,"markdown":true,
+         "background":null,"foreground":null,"fontSize":null,"spinnerFrames":[],"spinnerInterval":0,"revision":1}
+        """;
+
+    // finds the link span's center and presses there the way a mouse would: the panel has
+    // pointer-events none, so the event goes to whatever is under it
+    private const string PressHelpers = """
+        const center = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+        const fire = (type, x, y, init) => {
+            const target = document.elementFromPoint(x, y);
+            const ev = new PointerEvent(type, Object.assign({ bubbles: true, cancelable: true, composed: true,
+                clientX: x, clientY: y, button: 0, buttons: 1, pointerType: 'mouse', isPrimary: true }, init || {}));
+            return { target, canceled: !target.dispatchEvent(ev) };
+        };
+        const click = (x, y, init) => {
+            const target = document.elementFromPoint(x, y);
+            return !target.dispatchEvent(new MouseEvent('click', Object.assign({ bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 }, init || {})));
+        };
+        """;
+
+    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootMarkdownHudAsync()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("main"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "main", "Shell")));
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($"agterm.applyHud({MarkdownPayload})"));
+        return (page, view);
+    }
+
+    [Fact]
+    public async Task Markdown_rows_are_text_only_spans_in_one_left_aligned_block()
+    {
+        var (_, view) = await BootMarkdownHudAsync();
+
+        var state = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync("""
+            (() => {
+                const layer = document.querySelector('.hud-layer');
+                const panel = layer; // Task 9's layer is the panel: its border, padding and background
+                const block = layer.querySelector('.hud-block');
+                const rows = Array.from(block.querySelectorAll('.hud-row'));
+                const link = layer.querySelector('.hud-link');
+                const bold = rows[1].querySelector('.hud-run-bold');
+                const styled = rows[1].querySelector('.hud-run-italic');
+                const p = panel.getBoundingClientRect(), b = block.getBoundingClientRect();
+                return {
+                    parsedHtml: layer.querySelector('b') !== null,
+                    rowCount: rows.length,
+                    texts: rows.map(r => r.textContent),
+                    link: link ? link.textContent : null,
+                    target: link ? link.dataset.link : null,
+                    boldWeight: parseInt(getComputedStyle(bold).fontWeight, 10),
+                    italic: getComputedStyle(styled).fontStyle,
+                    strike: getComputedStyle(styled).textDecorationLine,
+                    sameLeft: Math.abs(rows[0].getBoundingClientRect().left - rows[1].getBoundingClientRect().left) < 0.5,
+                    centered: Math.abs((b.left + b.right) / 2 - (p.left + p.right) / 2) < 2,
+                };
+            })()
+            """));
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.False(root.GetProperty("parsedHtml").GetBoolean());
+        Assert.Equal(2, root.GetProperty("rowCount").GetInt32());
+        Assert.Equal(new[] { "see the PR now", "<b>x</b> done" }, root.GetProperty("texts").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal("the PR", root.GetProperty("link").GetString());
+        Assert.Equal("https://example.com/pr/7", root.GetProperty("target").GetString());
+        Assert.True(root.GetProperty("boldWeight").GetInt32() >= 600);
+        Assert.Equal("italic", root.GetProperty("italic").GetString());
+        Assert.Contains("line-through", root.GetProperty("strike").GetString());
+        Assert.True(root.GetProperty("sameLeft").GetBoolean());
+        Assert.True(root.GetProperty("centered").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Ctrl_click_on_a_link_posts_hudLink_and_is_consumed()
+    {
+        var (page, view) = await BootMarkdownHudAsync();
+        var linked = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.HudLinkRequested += url => linked.TrySetResult(url);
+
+        var state = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                {{PressHelpers}}
+                const { x, y } = center(document.querySelector('.hud-link'));
+                const down = fire('pointerdown', x, y, { ctrlKey: true });
+                const up = fire('pointerup', x, y, { ctrlKey: true, buttons: 0 });
+                return {
+                    underHud: document.querySelector('.hud-layer').contains(down.target),
+                    down: down.canceled, up: up.canceled, click: click(x, y, { ctrlKey: true }),
+                };
+            })()
+            """));
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.False(root.GetProperty("underHud").GetBoolean());
+        Assert.True(root.GetProperty("down").GetBoolean());
+        Assert.True(root.GetProperty("up").GetBoolean());
+        Assert.True(root.GetProperty("click").GetBoolean());
+        Assert.Equal("https://example.com/pr/7", await linked.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task Ctrl_click_off_a_link_inside_the_panel_is_consumed_and_posts_nothing()
+    {
+        var (page, view) = await BootMarkdownHudAsync();
+        var raised = false;
+        page.HudLinkRequested += _ => raised = true;
+
+        var canceled = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                {{PressHelpers}}
+                const r = document.querySelector('.hud-layer').getBoundingClientRect();
+                return fire('pointerdown', r.left + 3, r.top + 3, { ctrlKey: true }).canceled;
+            })()
+            """));
+        await Task.Delay(300);
+
+        Assert.Equal("true", canceled);
+        Assert.False(raised);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{ ctrlKey: true, shiftKey: true }")]
+    [InlineData("{ ctrlKey: true, altKey: true }")]
+    [InlineData("{ ctrlKey: true, button: 2, buttons: 2 }")]
+    public async Task Any_other_press_on_the_panel_goes_through(string init)
+    {
+        var (page, view) = await BootMarkdownHudAsync();
+        var raised = false;
+        page.HudLinkRequested += _ => raised = true;
+
+        var state = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                {{PressHelpers}}
+                const { x, y } = center(document.querySelector('.hud-link'));
+                const target = document.elementFromPoint(x, y);
+                let reached = false;
+                target.addEventListener('pointerdown', () => { reached = true; }, { once: true });
+                const press = fire('pointerdown', x, y, {{init}});
+                return { reached, canceled: press.canceled };
+            })()
+            """));
+        await Task.Delay(300);
+
+        using var json = JsonDocument.Parse(state);
+        Assert.True(json.RootElement.GetProperty("reached").GetBoolean());
+        Assert.False(json.RootElement.GetProperty("canceled").GetBoolean());
+        Assert.False(raised);
+    }
+
+    [Fact]
+    public async Task Ctrl_click_on_a_question_above_the_hud_is_left_to_the_question()
+    {
+        var (page, view) = await BootMarkdownHudAsync();
+        var raised = false;
+        page.HudLinkRequested += _ => raised = true;
+
+        var reached = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                {{PressHelpers}}
+                const { x, y } = center(document.querySelector('.hud-link'));
+                agterm.applyAsk({"askId":"S","paneId":null,"coveredPaneIds":["main"],"title":"Continue?","message":null,
+                    "buttons":[{"runs":[{"text":"OK","underline":false}],"destructive":false}],"highlighted":0,"align":"center","width":null});
+                const layer = document.querySelector('.ask-layer');
+                let reached = false;
+                layer.addEventListener('pointerdown', () => { reached = true; });
+                fire('pointerdown', x, y, { ctrlKey: true });
+                return reached;
+            })()
+            """));
+        await Task.Delay(300);
+
+        Assert.Equal("true", reached);
+        Assert.False(raised);
+    }
+
+    [Fact]
+    public async Task Ctrl_click_on_the_search_bar_over_the_hud_is_left_to_the_search_bar()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("main"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "main", "Shell")));
+        var raised = false;
+        page.HudLinkRequested += _ => raised = true;
+
+        var reached = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                {{PressHelpers}}
+                const payload = {{MarkdownPayload}};
+                payload.position = 'top-right';
+                payload.sticky = true;
+                payload.widthPercent = 100;
+                agterm.applyHud(payload);
+                agterm.openSearch('main', '', '', false);
+                const bar = document.getElementById('search-bar');
+                const { x, y } = center(bar);
+                let reached = false;
+                bar.addEventListener('pointerdown', () => { reached = true; });
+                const inPanel = (() => { const r = document.querySelector('.hud-layer').getBoundingClientRect();
+                    return x >= r.left && x < r.right && y >= r.top && y < r.bottom; })();
+                fire('pointerdown', x, y, { ctrlKey: true });
+                return inPanel && reached;
+            })()
+            """));
+        await Task.Delay(300);
+
+        Assert.Equal("true", reached);
+        Assert.False(raised);
+    }
+
+    [Fact]
+    public async Task The_cursor_is_a_pointer_while_ctrl_is_held_over_a_link()
+    {
+        var (_, view) = await BootMarkdownHudAsync();
+
+        var state = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                {{PressHelpers}}
+                const { x, y } = center(document.querySelector('.hud-link'));
+                const hover = () => document.documentElement.classList.contains('hud-link-hover');
+                fire('pointermove', x, y, { buttons: 0 });
+                const plain = hover();
+                fire('pointermove', x, y, { ctrlKey: true, buttons: 0 });
+                const held = hover();
+                document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Control', bubbles: true }));
+                const released = hover();
+                fire('pointermove', x, y, { ctrlKey: true, buttons: 0 });
+                agterm.applyHud(null);
+                return { plain, held, released, removed: hover() };
+            })()
+            """));
+
+        using var json = JsonDocument.Parse(state);
+        var root = json.RootElement;
+        Assert.False(root.GetProperty("plain").GetBoolean());
+        Assert.True(root.GetProperty("held").GetBoolean());
+        Assert.False(root.GetProperty("released").GetBoolean());
+        Assert.False(root.GetProperty("removed").GetBoolean());
+    }
 }

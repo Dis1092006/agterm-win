@@ -45,6 +45,15 @@ public static class HudLinkPolicy
         return WindowsPath(LocalFilePath(target)!) is { } path ? new HudLinkAction.Reveal(path) : null;
     }
 
+    /// <summary>The Explorer command line that selects a revealed path. Windows argument splitting reads
+    /// a backslash right before a closing quote as an escaped quote, so a quoted path never ends in one:
+    /// a folder drops its trailing backslash, and a drive root, which holds no space, goes unquoted.</summary>
+    public static string ExplorerSelectArguments(string path)
+    {
+        var trimmed = path.TrimEnd('\\');
+        return trimmed.EndsWith(':') ? $"/select,{trimmed}\\" : $"/select,\"{trimmed}\"";
+    }
+
     /// <summary>file:///C:/x carries the drive after the first slash. A path with no drive stays rooted,
     /// and GetFullPath puts it on the current drive without touching the disk.</summary>
     private static string? WindowsPath(string urlPath)

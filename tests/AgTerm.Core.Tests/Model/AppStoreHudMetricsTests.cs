@@ -252,4 +252,38 @@ public class AppStoreHudMetricsTests
 
         Assert.False(store.SetHudMetrics(Guid.NewGuid(), Metrics()));
     }
+
+    private static HudSessionMetrics SessionWide(double width) =>
+        new(14, 8, 18, new HudRect(width, 800), null, null);
+
+    // upstream rewrites a markdown body on every re-measure (WindowContentView+Detail.swift:358-367)
+    [Fact]
+    public void ANewGridRedrawsAMarkdownHudWhoseSizeStaysTheSame()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
+        store.SetHudMetrics(session.Id, SessionWide(1000));
+        store.OpenHud(session.Id, new HudSpec("**ok**", SizePercent: 50, Markdown: true), null);
+        var raised = 0;
+        store.HudChanged += () => raised++;
+
+        var sizeChanged = store.SetHudMetrics(session.Id, SessionWide(1200));
+
+        Assert.False(sizeChanged);
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public void ANewGridLeavesAPlainHudAlone()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
+        store.SetHudMetrics(session.Id, SessionWide(1000));
+        store.OpenHud(session.Id, new HudSpec("ok", SizePercent: 50), null);
+        var raised = 0;
+        store.HudChanged += () => raised++;
+
+        Assert.False(store.SetHudMetrics(session.Id, SessionWide(1200)));
+        Assert.Equal(0, raised);
+    }
 }

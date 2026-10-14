@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
@@ -460,6 +461,7 @@ public sealed partial class MainWindow : Window
         page.DashboardClosed += OnPageDashboardClosed;
         page.AskIntentReceived += OnPageAskIntentReceived;
         page.AskFocusChanged += OnPageAskFocusChanged;
+        page.HudLinkRequested += OnPageHudLinkRequested;
         page.HudMetricsReceived += OnPageHudMetricsReceived;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
@@ -1238,6 +1240,28 @@ public sealed partial class MainWindow : Window
 
     private void OnPageAskFocusChanged(string? askId) =>
         DispatcherQueue.TryEnqueue(() => _focusedAskId = askId);
+
+    private void OnPageHudLinkRequested(string url) =>
+        ObserveTaskFault(Task.Run(() => OpenHudLink(url)), "Open hud link failed");
+
+    /// <summary>The page reports only the URL under the pointer and runs program-controlled text, so
+    /// the policy decides again here. A file link is shown in Explorer the way the sidebar reveals a
+    /// directory; it is never opened, since opening a file can run it.</summary>
+    private static void OpenHudLink(string url)
+    {
+        switch (HudLinkPolicy.ActionFor(url))
+        {
+            case HudLinkAction.Open open:
+                Process.Start(new ProcessStartInfo(open.Url) { UseShellExecute = true })?.Dispose();
+                break;
+            case HudLinkAction.Reveal reveal:
+                Process.Start(new ProcessStartInfo("explorer.exe", HudLinkPolicy.ExplorerSelectArguments(reveal.Path))
+                {
+                    UseShellExecute = false,
+                })?.Dispose();
+                break;
+        }
+    }
 
     private async Task HandleTerminalAskIntentAsync(string askId, AskIntent intent)
     {

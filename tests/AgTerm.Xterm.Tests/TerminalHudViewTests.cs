@@ -119,4 +119,62 @@ public sealed class TerminalHudViewTests
         Assert.Equal(frames.Select(frame => frame.ToString()), view.SpinnerFrames);
         Assert.Equal(interval, view.SpinnerInterval);
     }
+
+    private static TerminalHudRun Plain(string text) => new(text, false, false, false, false, false, null);
+
+    private static TerminalHudPlacement Markdown(HudSpec spec, PaneMetrics? metrics) =>
+        new(Guid.NewGuid(), spec, HudLayout.PanelSize(spec, metrics ?? PaneMetrics.Unmeasured), null, null, 1, null, metrics);
+
+    [Fact]
+    public void AMarkdownHudCarriesRowsOfRunsFittedToItsGrid()
+    {
+        var view = TerminalHudViews.From(Markdown(new HudSpec("see [the PR](https://example.com/pr/7) now", Markdown: true),
+            new PaneMetrics(8, 18, 400, 800)));
+
+        Assert.True(view.Markdown);
+        var row = Assert.Single(view.Rows);
+        Assert.Equal("see the PR now", row.Text);
+        Assert.False(row.Dim);
+        Assert.Equal(new[]
+        {
+            Plain("see "),
+            new TerminalHudRun("the PR", false, false, false, false, true, "https://example.com/pr/7"),
+            Plain(" now"),
+        }, row.Runs);
+    }
+
+    [Fact]
+    public void MarkdownRowsAfterTheFirstHangUnderTheSpinner()
+    {
+        var view = TerminalHudViews.From(Markdown(new HudSpec("- a\n- bb", Spinner: HudSpinner.Bar, Markdown: true),
+            new PaneMetrics(8, 18, 400, 800)));
+
+        Assert.Equal(new[] { "• a", "  • bb" }, view.Rows.Select(row => row.Text));
+        Assert.Equal(Plain("  "), view.Rows[1].Runs![0]);
+    }
+
+    [Fact]
+    public void AMarkdownDetailIsADimRunAfterABlankRow()
+    {
+        var view = TerminalHudViews.From(Markdown(new HudSpec("**x**", Detail: "d", Markdown: true), null));
+
+        Assert.Equal(new[] { "x", "", "d" }, view.Rows.Select(row => row.Text));
+        Assert.Equal(new TerminalHudRun("x", true, false, false, false, false, null), view.Rows[0].Runs![0]);
+        Assert.Empty(view.Rows[1].Runs!);
+        Assert.Equal(new TerminalHudRun("d", false, false, false, true, false, null), view.Rows[2].Runs![0]);
+    }
+
+    [Fact]
+    public void APlainHudHasNoRuns()
+    {
+        var view = TerminalHudViews.From(new TerminalHudPlacement(Guid.NewGuid(), new HudSpec("building"),
+            new HudPanelSize(80, 10), null, null, 1, null));
+
+        Assert.False(view.Markdown);
+        Assert.All(view.Rows, row => Assert.Null(row.Runs));
+    }
+
+    [Fact]
+    public void RowsWithEqualRunsAreEqual() =>
+        Assert.Equal(new TerminalHudRow("a", false, new[] { Plain("a") }), new TerminalHudRow("a", false, new[] { Plain("a") }));
 }

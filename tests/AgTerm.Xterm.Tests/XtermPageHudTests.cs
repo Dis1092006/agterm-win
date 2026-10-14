@@ -30,7 +30,7 @@ public sealed class XtermPageHudTests
         await page.ApplyHudAsync(SessionWide("|", "/", "-", "\\"));
 
         Assert.Equal(
-            """agterm.applyHud({"paneId":null,"rows":[{"text":"building","dim":false},{"text":"","dim":false},{"text":"3 of 12 repos","dim":true}],"widthPercent":80,"heightPoints":null,"heightPercent":10,"position":"center","sticky":false,"frame":true,"background":null,"foreground":null,"fontSize":null,"spinnerFrames":["|","/","-","\\"],"spinnerInterval":0.1,"revision":1})""",
+            """agterm.applyHud({"paneId":null,"rows":[{"text":"building","dim":false},{"text":"","dim":false},{"text":"3 of 12 repos","dim":true}],"widthPercent":80,"heightPoints":null,"heightPercent":10,"position":"center","sticky":false,"frame":true,"markdown":false,"background":null,"foreground":null,"fontSize":null,"spinnerFrames":["|","/","-","\\"],"spinnerInterval":0.1,"revision":1})""",
             Assert.Single(_host.Scripts, item => item.Contains("agterm.applyHud")));
     }
 
@@ -43,7 +43,7 @@ public sealed class XtermPageHudTests
             35, 132.5, 12, "top-center", true, false, "#2a1a3a", "#e0e0e0", 18, Array.Empty<string>(), 0, 7));
 
         Assert.Equal(
-            """agterm.applyHud({"paneId":"right-token","rows":[{"text":"a \"quoted\" <tag>","dim":false}],"widthPercent":35,"heightPoints":132.5,"heightPercent":12,"position":"top-center","sticky":true,"frame":false,"background":"#2a1a3a","foreground":"#e0e0e0","fontSize":18,"spinnerFrames":[],"spinnerInterval":0,"revision":7})""",
+            """agterm.applyHud({"paneId":"right-token","rows":[{"text":"a \"quoted\" <tag>","dim":false}],"widthPercent":35,"heightPoints":132.5,"heightPercent":12,"position":"top-center","sticky":true,"frame":false,"markdown":false,"background":"#2a1a3a","foreground":"#e0e0e0","fontSize":18,"spinnerFrames":[],"spinnerInterval":0,"revision":7})""",
             Assert.Single(_host.Scripts, item => item.Contains("agterm.applyHud")));
     }
 
@@ -142,4 +142,68 @@ public sealed class XtermPageHudTests
     [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200,"height":800},"right":{"width":596,"height":800}}""")]
     [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":"8.5","cellHeight":17,"session":{"width":1200,"height":800}}""")]
     public async Task Malformed_hud_metrics_are_dropped(string json) => Assert.Empty(await RaisedAsync(json));
+
+    [Fact]
+    public async Task AMarkdownPayloadCarriesRowsOfRuns()
+    {
+        var page = await InitializedAsync();
+
+        await page.ApplyHudAsync(new TerminalHudView(null,
+            new[]
+            {
+                new TerminalHudRow("see the PR", false, new[]
+                {
+                    new TerminalHudRun("see ", false, false, false, false, false, null),
+                    new TerminalHudRun("the PR", true, false, false, false, true, "https://x"),
+                }),
+            },
+            50, 48, 10, "center", false, true, null, null, null, Array.Empty<string>(), 0, 3, Markdown: true));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyHud"));
+        Assert.Contains(
+            """{"text":"see the PR","dim":false,"runs":[{"text":"see ","bold":false,"italic":false,"strike":false,"dim":false,"underline":false},{"text":"the PR","bold":true,"italic":false,"strike":false,"dim":false,"underline":true,"link":"https://x"}]}""",
+            script);
+        Assert.Contains("\"frame\":true,\"markdown\":true,", script);
+    }
+
+    [Fact]
+    public async Task APlainPayloadHasNoRuns()
+    {
+        var page = await InitializedAsync();
+
+        await page.ApplyHudAsync(new TerminalHudView(null, new[] { new TerminalHudRow("x", false) },
+            50, 48, 10, "center", false, true, null, null, null, Array.Empty<string>(), 0, 3));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyHud"));
+        Assert.Contains("""{"text":"x","dim":false}""", script);
+        Assert.DoesNotContain("\"runs\"", script);
+        Assert.Contains("\"frame\":true,\"markdown\":false,", script);
+    }
+
+    [Fact]
+    public async Task AHudLinkReachesTheHost()
+    {
+        var page = await InitializedAsync();
+        var urls = new List<string>();
+        page.HudLinkRequested += urls.Add;
+
+        _host.RaiseMessage("""{"type":"hudLink","url":"https://example.com/pr/7"}""");
+
+        Assert.Equal(new[] { "https://example.com/pr/7" }, urls);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"hudLink"}""")]
+    [InlineData("""{"type":"hudLink","url":""}""")]
+    [InlineData("""{"type":"hudLink","url":7}""")]
+    public async Task AMalformedHudLinkIsDropped(string json)
+    {
+        var page = await InitializedAsync();
+        var raised = false;
+        page.HudLinkRequested += _ => raised = true;
+
+        _host.RaiseMessage(json);
+
+        Assert.False(raised);
+    }
 }

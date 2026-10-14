@@ -1941,9 +1941,12 @@ function renderHud() {
     `${HUD_PADDING_HEIGHT_PX + frameRows * cell.height}px ` +
     `${HUD_PADDING_WIDTH_PX + HUD_FRAME_COLUMNS * cell.width}px`;
   const glyph = hudSpinnerGlyph();
-  hudLayerEl.replaceChildren(
-    ...payload.rows.map((row, index) => buildHudRow(row, index === 0 ? glyph : null, cell)),
-  );
+  if (payload.markdown === true)
+    hudLayerEl.replaceChildren(buildHudMarkdownBlock(payload.rows, glyph, cell));
+  else
+    hudLayerEl.replaceChildren(
+      ...payload.rows.map((row, index) => buildHudRow(row, index === 0 ? glyph : null, cell)),
+    );
   layoutHud();
 }
 
@@ -1969,6 +1972,7 @@ function removeHud() {
   if (hudLayerEl) hudLayerEl.remove();
   hudLayerEl = null;
   hudState = null;
+  setHudLinkHover(false);
 }
 
 function sameHudSpinnerFrames(left, right) {
@@ -2015,6 +2019,157 @@ function applyHud(payload) {
   reportHudMetrics();
   return true;
 }
+
+// Markdown HUD rows (spec 5.3). The host lays the rows out; the page only turns runs into spans.
+const HUD_RUN_CLASSES = [
+  ["bold", "hud-run-bold"],
+  ["italic", "hud-run-italic"],
+  ["strike", "hud-run-strike"],
+  ["dim", "hud-run-dim"],
+  ["underline", "hud-run-underline"],
+];
+
+function buildHudRun(run) {
+  const span = document.createElement("span");
+  span.className = [
+    "hud-run",
+    ...HUD_RUN_CLASSES.filter(([key]) => run[key] === true).map(([, name]) => name),
+  ].join(" ");
+  if (typeof run.link === "string") {
+    span.classList.add("hud-link");
+    span.dataset.link = run.link;
+  }
+  span.textContent = run.text;
+  return span;
+}
+
+// The host indents every row after the first by the spinner gutter, so only the first row gets the
+// glyph and its space, as buildHudRow does for a plain row. The space is a span of its own: a row is
+// a flex box, which drops a text node that holds only white space.
+function buildHudMarkdownBlock(rows, glyph, cell) {
+  const block = document.createElement("div");
+  block.className = "hud-block";
+  rows.forEach((row, index) => {
+    const line = document.createElement("div");
+    line.className = "hud-row";
+    line.style.height = `${cell.height}px`;
+    line.style.lineHeight = `${cell.height}px`;
+    if (index === 0 && glyph !== null) {
+      const spinner = document.createElement("span");
+      spinner.className = "hud-spinner";
+      spinner.textContent = glyph;
+      const gap = document.createElement("span");
+      gap.textContent = " ";
+      line.append(spinner, gap);
+    }
+    for (const run of Array.isArray(row.runs) ? row.runs : []) line.appendChild(buildHudRun(run));
+    block.appendChild(line);
+  });
+  return block;
+}
+
+// Ctrl+click stands in for upstream's command-click (HudLinkClick.swift). The panel keeps
+// pointer-events: none, so hit testing never finds it: the panel and its links are found by rectangle.
+// As upstream, the press is consumed with its release anywhere over the panel, link or not.
+let hudPressState = null; // "down" until the release, then "up" until the click that follows it
+let hudPointer = null; // the last pointer position, for the cursor when only Ctrl changes
+
+function insideRect(rect, x, y) {
+  return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
+}
+
+// the layer is the panel itself, so its rectangle is the panel's
+function hudPanelContains(x, y) {
+  return hudLayerEl !== null && insideRect(hudLayerEl.getBoundingClientRect(), x, y);
+}
+
+function hudLinkAt(x, y) {
+  if (!hudLayerEl) return null;
+  for (const span of hudLayerEl.querySelectorAll(".hud-link")) {
+    for (const rect of span.getClientRects()) if (insideRect(rect, x, y)) return span.dataset.link;
+  }
+  return null;
+}
+
+function isHudLinkChord(ev) {
+  return ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey;
+}
+
+// a question drawn above the HUD and the search bar keep their own clicks
+function hudOwnsPointAt(target, x, y) {
+  return (
+    target instanceof Element &&
+    target.closest(".ask-layer, #search-bar") === null &&
+    hudPanelContains(x, y)
+  );
+}
+
+function consumeHudEvent(ev) {
+  ev.preventDefault();
+  ev.stopPropagation();
+}
+
+function onHudPointerDown(ev) {
+  hudPressState = null;
+  if (ev.button !== 0 || !isHudLinkChord(ev) || !hudOwnsPointAt(ev.target, ev.clientX, ev.clientY)) return;
+  consumeHudEvent(ev);
+  hudPressState = "down";
+  const url = hudLinkAt(ev.clientX, ev.clientY);
+  if (url) post({ type: "hudLink", url });
+}
+
+function onHudPointerUp(ev) {
+  if (hudPressState !== "down") return;
+  consumeHudEvent(ev);
+  hudPressState = "up";
+}
+
+function onHudClick(ev) {
+  if (hudPressState !== "up") return;
+  consumeHudEvent(ev);
+  hudPressState = null;
+}
+
+function setHudLinkHover(on) {
+  document.documentElement.classList.toggle("hud-link-hover", on);
+}
+
+function updateHudLinkHover(chordHeld) {
+  if (!chordHeld || !hudLayerEl || hudPointer === null) {
+    setHudLinkHover(false);
+    return;
+  }
+  const { x, y } = hudPointer;
+  setHudLinkHover(hudOwnsPointAt(document.elementFromPoint(x, y), x, y) && hudLinkAt(x, y) !== null);
+}
+
+document.addEventListener("pointerdown", onHudPointerDown, true);
+document.addEventListener("pointerup", onHudPointerUp, true);
+document.addEventListener("pointercancel", () => { hudPressState = null; }, true);
+document.addEventListener("click", onHudClick, true);
+document.addEventListener(
+  "pointermove",
+  (ev) => {
+    hudPointer = { x: ev.clientX, y: ev.clientY };
+    updateHudLinkHover(isHudLinkChord(ev));
+  },
+  { capture: true, passive: true },
+);
+document.addEventListener(
+  "keydown",
+  (ev) => {
+    if (ev.key === "Control") updateHudLinkHover(isHudLinkChord(ev));
+  },
+  true,
+);
+document.addEventListener(
+  "keyup",
+  (ev) => {
+    if (ev.key === "Control") updateHudLinkHover(false);
+  },
+  true,
+);
+window.addEventListener("blur", () => setHudLinkHover(false));
 
 function samePhysicalChord(left, right) {
   return (
