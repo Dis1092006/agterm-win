@@ -50,14 +50,13 @@ public class ControlHudTests : ControlApiTestCase
     }
 
     [Fact]
-    public void TheDispatcherRefusesAMissingMessageAndStageOneMarkdown()
+    public void TheDispatcherRefusesAMissingMessageAndCarriesMarkdown()
     {
         var noMessage = SendCommand("""{"cmd":"session.hud.open","target":"active"}""");
         Assert.Equal("session.hud.open requires a message", noMessage["error"]?.GetValue<string>());
 
-        var markdown = SendCommand("""{"cmd":"session.hud.open","target":"active","args":{"message":"**ok**","markdown":true}}""");
-        Assert.Equal("session.hud.open: --markdown is not supported yet", markdown["error"]?.GetValue<string>());
-        Assert.Null(ActiveSessionNode()["hud"]);
+        SendOk("""{"cmd":"session.hud.open","target":"active","args":{"message":"**ok**","markdown":true}}""");
+        Assert.True(ActiveSessionNode()["hud"]!["markdown"]!.GetValue<bool>());
     }
 
     [Fact]

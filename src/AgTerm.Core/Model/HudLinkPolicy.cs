@@ -1,5 +1,18 @@
 namespace AgTerm.Core.Model;
 
+/// <summary>What a click on a HUD link does on Windows: open the URL with the system handler, or
+/// select a local file in Explorer.</summary>
+public abstract record HudLinkAction
+{
+    private HudLinkAction()
+    {
+    }
+
+    public sealed record Open(string Url) : HudLinkAction;
+
+    public sealed record Reveal(string Path) : HudLinkAction;
+}
+
 /// <summary>Port of upstream LinkPolicy.disposition plus HudMarkdown.linkTarget (ed831ab) as spec 5.4
 /// states it. A HUD shows program-controlled text, so a link may name any scheme; only web and mail
 /// schemes and a file on this machine are clickable. A URL must be printable ASCII as written, the
@@ -19,6 +32,29 @@ public static class HudLinkPolicy
         if (OpenedSchemes.Contains(scheme))
             return Uri.TryCreate(url, UriKind.Absolute, out _) ? url : null;
         return scheme.Equals("file", StringComparison.OrdinalIgnoreCase) && LocalFilePath(url) is not null ? url : null;
+    }
+
+    /// <summary>The click's action, or null for a plain label. A file link is revealed, never opened:
+    /// opening a file can run it.</summary>
+    public static HudLinkAction? ActionFor(string url)
+    {
+        if (Target(url) is not { } target)
+            return null;
+        if (!target.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+            return new HudLinkAction.Open(target);
+        return WindowsPath(LocalFilePath(target)!) is { } path ? new HudLinkAction.Reveal(path) : null;
+    }
+
+    /// <summary>file:///C:/x carries the drive after the first slash. A path with no drive stays rooted,
+    /// and GetFullPath puts it on the current drive without touching the disk.</summary>
+    private static string? WindowsPath(string urlPath)
+    {
+        var path = urlPath.Length >= 3 && char.IsAsciiLetter(urlPath[1]) && urlPath[2] == ':' ? urlPath[1..] : urlPath;
+        if (path.Length == 2)
+            path += "/";
+        var full = Path.GetFullPath(path.Replace('/', '\\'));
+        // Explorer takes the path inside quotes on its command line
+        return full.StartsWith(@"\\", StringComparison.Ordinal) || full.Contains('"') ? null : full;
     }
 
     private static bool IsPrintableAscii(string url) => url.All(c => c is >= '\u0021' and <= '\u007E');

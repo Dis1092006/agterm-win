@@ -253,6 +253,9 @@ public sealed class ControlDispatcher
         var cap = markdown ? HudSpec.MaxMarkdownLength : HudSpec.MaxTextLength;
         if (HudLayout.TextLength(message) > cap)
             return Err($"hud message too long (max {cap} characters)");
+        // spec 1.2 rule 5: a markdown source that lays out to nothing is no message (upstream ControlDispatcher+Hud.swift)
+        if (markdown && !HudMarkdown.RendersVisibleText(message))
+            return Err($"{cmd} requires a message");
         if (HudLayout.TextLength(args.Detail ?? "") > HudSpec.MaxTextLength)
             return Err($"hud detail too long (max {HudSpec.MaxTextLength} characters)");
         if (args.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
@@ -286,9 +289,6 @@ public sealed class ControlDispatcher
                 return Err($"invalid spinner: {rawSpinner} ({HudSpinners.AcceptedNamesList})");
             spinner = parsedSpinner;
         }
-        // stage 1 draws plain rows only; last, so every other error string is already final
-        if (markdown)
-            return Err($"{cmd}: --markdown is not supported yet");
         var spec = new HudSpec(
             message,
             Detail: args.Detail,

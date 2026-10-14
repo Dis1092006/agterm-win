@@ -5,9 +5,7 @@ using AgTerm.Core.Tests.TestSupport;
 
 namespace AgTerm.Core.Tests.Ported;
 
-// Ported from agtermCore ControlDispatcherHudTests.swift (upstream ed831ab): every case the
-// markdown renderer does not decide. Markdown cases upstream accepts end on the stage 1 refusal
-// here; Task 13 turns them back into accepts.
+// Ported from agtermCore ControlDispatcherHudTests.swift (upstream ed831ab).
 public class ControlDispatcherHudTests
 {
     private const string PositionNames =
@@ -151,25 +149,65 @@ public class ControlDispatcherHudTests
             await Open(new ControlArgs { Message = "ok", Detail = new string('d', HudSpec.MaxTextLength + 1), Markdown = true }));
     }
 
-    [Theory]
-    [InlineData(Command.SessionHudOpen, "session.hud.open: --markdown is not supported yet")]
-    [InlineData(Command.SessionHudUpdate, "session.hud.update: --markdown is not supported yet")]
-    public async Task MarkdownAcceptsNewlinesAndTabsUpToTheStageOneRefusal(Command cmd, string error) =>
-        AssertRejected(error, await Post(cmd, new ControlArgs { Message = "# Tasks\n\n- build\n\t- test", Markdown = true }));
+    [Fact]
+    public async Task AWhitespaceAndNewlineOnlyMarkdownMessageIsNoMessage() =>
+        AssertRejected("session.hud.open requires a message", await Open(new ControlArgs { Message = " \n\t\n ", Markdown = true }));
+
+    // Ported markdown cases of agtermCore ControlDispatcherHudTests.swift (upstream ed831ab) that the
+    // stage 1 refusal answered, and the ones that need the renderer.
+    [Fact]
+    public async Task MarkdownAcceptsNewlinesAndTabsAndCarriesTheModeToTheHost()
+    {
+        var spec = SentSpec(await Open(new ControlArgs { Message = "# Tasks\n\n- build\n\t- test", Markdown = true }));
+
+        Assert.True(spec.Markdown);
+        Assert.Equal("# Tasks\n\n- build\n\t- test", spec.Message);
+    }
 
     [Fact]
     public async Task MarkdownCapsTheMessageAtItsOwnLength()
     {
         var atCap = new string('m', HudSpec.MaxMarkdownLength);
-        AssertRejected("session.hud.open: --markdown is not supported yet",
-            await Open(new ControlArgs { Message = atCap, Markdown = true }));
+
+        Assert.Equal(atCap, SentSpec(await Open(new ControlArgs { Message = atCap, Markdown = true })).Message);
         AssertRejected("hud message too long (max 4096 characters)",
             await Open(new ControlArgs { Message = atCap + "m", Markdown = true }));
     }
 
+    // upstream: a source that rendered nothing passed the blank check and opened an empty panel tree reported as live
+    [Theory]
+    [InlineData("[x]: /y")]
+    [InlineData("&#32;")]
+    [InlineData("- ")]
+    public async Task MarkdownThatRendersNothingIsNoMessage(string message)
+    {
+        AssertRejected("session.hud.open requires a message", await Open(new ControlArgs { Message = message, Markdown = true }));
+        AssertRejected("session.hud.update requires a message", await Update(new ControlArgs { Message = message, Markdown = true }));
+    }
+
+    [Theory]
+    [InlineData("<!-- note -->\n\n[ref]: http://a")]
+    [InlineData("---")]
+    public async Task MarkdownThatPaintsOnlyLiteralHtmlOrARuleIsAMessage(string message) =>
+        Assert.True(SentSpec(await Open(new ControlArgs { Message = message, Markdown = true })).Markdown);
+
     [Fact]
-    public async Task AWhitespaceAndNewlineOnlyMarkdownMessageIsNoMessage() =>
-        AssertRejected("session.hud.open requires a message", await Open(new ControlArgs { Message = " \n\t\n ", Markdown = true }));
+    public async Task ATooLongMessageIsRefusedBeforeItsRenderingIsChecked() =>
+        AssertRejected("hud message too long (max 4096 characters)",
+            await Open(new ControlArgs { Message = string.Concat(Enumerable.Repeat("&#32;", 820)), Markdown = true }));
+
+    [Fact]
+    public async Task AnInvisibleMessageIsRefusedBeforeATooLongDetail() =>
+        AssertRejected("session.hud.open requires a message",
+            await Open(new ControlArgs { Message = "[x]: /y", Detail = new string('d', HudSpec.MaxTextLength + 1), Markdown = true }));
+
+    [Fact]
+    public async Task APlainMessageIsNeverParsedAsMarkdown() =>
+        Assert.Equal("[x]: /y", SentSpec(await Open(new ControlArgs { Message = "[x]: /y" })).Message);
+
+    [Fact]
+    public async Task AMarkdownUpdateReachesTheHost() =>
+        Assert.True(SentSpec(await Update(new ControlArgs { Message = "**done**", Markdown = true })).Markdown);
 
     [Fact]
     public async Task MarkdownFalseIsAPlainMessage() =>

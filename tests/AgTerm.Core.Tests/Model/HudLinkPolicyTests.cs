@@ -66,4 +66,29 @@ public class HudLinkPolicyTests
     [Fact]
     public void MacAutoMountRootsAreOrdinaryPathsHere() =>
         Assert.Equal("file:///net/server/share", HudLinkPolicy.Target("file:///net/server/share"));
+
+    [Theory]
+    [InlineData("https://example.com/a")]
+    [InlineData("mailto:someone@example.com")]
+    public void AWebOrMailLinkOpensWithTheSystemHandler(string url) =>
+        Assert.Equal(new HudLinkAction.Open(url), HudLinkPolicy.ActionFor(url));
+
+    [Theory]
+    [InlineData("file:///C:/Users/me/a%20b.txt", @"C:\Users\me\a b.txt")]
+    [InlineData("file://localhost/C:/tmp/../tmp/x.md", @"C:\tmp\x.md")]
+    [InlineData("file:///C:", @"C:\")]
+    [InlineData("FILE:///D:/logs/build.log", @"D:\logs\build.log")]
+    public void ALocalFileLinkIsRevealedAtItsWindowsPath(string url, string path) =>
+        Assert.Equal(new HudLinkAction.Reveal(path), HudLinkPolicy.ActionFor(url));
+
+    // a path with no drive is rooted on the current drive, as Windows reads \tmp\x.md
+    [Fact]
+    public void APathWithNoDriveIsRootedOnTheCurrentDrive() =>
+        Assert.Equal(new HudLinkAction.Reveal(Path.GetFullPath(@"\tmp\x.md")), HudLinkPolicy.ActionFor("file:///tmp/x.md"));
+
+    [Theory]
+    [InlineData("javascript:alert(1)")]
+    [InlineData("file://otherhost/tmp/x.md")]
+    [InlineData("file:///C:/a%22b")]
+    public void AnythingElseDoesNothing(string url) => Assert.Null(HudLinkPolicy.ActionFor(url));
 }
