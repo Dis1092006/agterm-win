@@ -129,15 +129,44 @@ public sealed class ThemePalettePreviewTests
     [Fact]
     public async Task Commit_ends_the_preview_before_it_awaits()
     {
-        var (preview, _, _) = Create();
+        var show = new TaskCompletionSource();
+        var preview = new ThemePalettePreview(new ManualScheduler(), (_, _) => show.Task, () => Task.CompletedTask);
         preview.Begin();
-        var save = new TaskCompletionSource<bool>();
 
-        var commit = preview.CommitAsync("Nord", () => save.Task);
+        var commit = preview.CommitAsync("Nord", () => Task.FromResult(true));
 
         Assert.False(preview.IsActive);
-        save.SetResult(true);
+        show.SetResult();
         await commit;
+    }
+
+    [Fact]
+    public async Task A_show_that_throws_still_saves_and_then_throws()
+    {
+        var failure = new InvalidOperationException("show failed");
+        var preview = new ThemePalettePreview(new ManualScheduler(), (_, _) => throw failure, () => Task.CompletedTask);
+        preview.Begin();
+        var saved = false;
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => preview.CommitAsync("Nord", () => { saved = true; return Task.FromResult(true); }));
+
+        Assert.Same(failure, thrown);
+        Assert.True(saved);
+    }
+
+    [Fact]
+    public async Task A_save_that_throws_shows_the_saved_look_and_then_throws()
+    {
+        var (preview, _, window) = Create();
+        preview.Begin();
+        var failure = new InvalidOperationException("save failed");
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => preview.CommitAsync("Nord", () => throw failure));
+
+        Assert.Same(failure, thrown);
+        Assert.Equal(["Nord", "<saved>"], window.Shown);
     }
 
     [Fact]

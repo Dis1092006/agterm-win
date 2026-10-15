@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace AgTerm.App;
 
 /// <summary>Runs the debounced preview work. The window's scheduler debounces on a timer and runs
@@ -55,15 +57,18 @@ public sealed class ThemePalettePreview
     /// <summary>Enter or click. The accepted row is shown at once because a debounced move may still
     /// be pending, and theme.set raises no theme event when the saved theme does not change. It saves
     /// even without an active preview: an accept must never be dropped. The preview ends before the
-    /// first await, so a palette close that runs right after finds nothing to cancel.</summary>
+    /// first await, so a palette close that runs right after finds nothing to cancel. A show that
+    /// throws still lets the save run, and a save that fails or throws shows the saved look again,
+    /// because the preview has ended and no cancel would restore it later; the exception is rethrown
+    /// after that for the window's fault observer.</summary>
     public async Task CommitAsync(string? themeName, Func<Task<bool>> saveAsync)
     {
         ArgumentNullException.ThrowIfNull(saveAsync);
 
         var generation = End();
-        await _showThemeAsync(themeName, () => _generation == generation);
-        if (!await saveAsync())
-            await _showSavedAsync();
+        var showFailure = await TryShowAsync(themeName, () => _generation == generation);
+        await SaveOrShowSavedAsync(saveAsync);
+        showFailure?.Throw();
     }
 
     public async Task CancelAsync()
@@ -73,6 +78,36 @@ public sealed class ThemePalettePreview
 
         End();
         await _showSavedAsync();
+    }
+
+    private async Task<ExceptionDispatchInfo?> TryShowAsync(string? themeName, Func<bool> isCurrent)
+    {
+        try
+        {
+            await _showThemeAsync(themeName, isCurrent);
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return ExceptionDispatchInfo.Capture(exception);
+        }
+    }
+
+    private async Task SaveOrShowSavedAsync(Func<Task<bool>> saveAsync)
+    {
+        bool saved;
+        try
+        {
+            saved = await saveAsync();
+        }
+        catch
+        {
+            await _showSavedAsync();
+            throw;
+        }
+
+        if (!saved)
+            await _showSavedAsync();
     }
 
     private int End()
