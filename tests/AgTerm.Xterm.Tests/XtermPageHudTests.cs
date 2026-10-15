@@ -70,7 +70,7 @@ public sealed class XtermPageHudTests
         Assert.Contains("agterm.applyHud(null)", _host.Scripts);
     }
 
-    private const string Head = """{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}""";
+    private const string Head = """{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}""";
 
     private async Task<List<(string PaneId, HudSessionMetrics Metrics, HudRect? SinglePane)>> RaisedAsync(string json)
     {
@@ -86,7 +86,7 @@ public sealed class XtermPageHudTests
     {
         var seen = await RaisedAsync(Head + ""","left":{"width":600,"height":800},"right":{"width":596,"height":800}}""");
 
-        Assert.Equal(("left-token", new HudSessionMetrics(14, 8.5, 17, new HudRect(1200, 800), new HudRect(600, 800), new HudRect(596, 800)), (HudRect?)null),
+        Assert.Equal(("left-token", new HudSessionMetrics(14, 8.5, 17, new HudRect(1200, 800), new HudRect(600, 800), new HudRect(596, 800), 13), (HudRect?)null),
             Assert.Single(seen));
     }
 
@@ -94,9 +94,9 @@ public sealed class XtermPageHudTests
     [Fact]
     public async Task Hud_metrics_of_a_single_shown_pane_carry_its_rect_apart()
     {
-        var seen = await RaisedAsync("""{"type":"hudMetrics","paneId":"right-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200,"height":800}}""");
+        var seen = await RaisedAsync("""{"type":"hudMetrics","baseFontSize":13,"paneId":"right-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200,"height":800}}""");
 
-        Assert.Equal(("right-token", new HudSessionMetrics(14, 8.5, 17, new HudRect(1200, 800), null, null), (HudRect?)new HudRect(1200, 800)),
+        Assert.Equal(("right-token", new HudSessionMetrics(14, 8.5, 17, new HudRect(1200, 800), null, null, 13), (HudRect?)new HudRect(1200, 800)),
             Assert.Single(seen));
     }
 
@@ -107,7 +107,7 @@ public sealed class XtermPageHudTests
     {
         var seen = await RaisedAsync(Head + tail);
 
-        Assert.Equal(("left-token", new HudSessionMetrics(14, 8.5, 17, new HudRect(1200, 800), null, null), (HudRect?)null),
+        Assert.Equal(("left-token", new HudSessionMetrics(14, 8.5, 17, new HudRect(1200, 800), null, null, 13), (HudRect?)null),
             Assert.Single(seen));
     }
 
@@ -115,32 +115,37 @@ public sealed class XtermPageHudTests
     [Fact]
     public async Task Hud_metrics_with_zero_rect_sizes_reach_the_host()
     {
-        var seen = await RaisedAsync("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":0,"height":0},"left":{"width":0,"height":0},"right":{"width":0,"height":0}}""");
+        var seen = await RaisedAsync("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":0,"height":0},"left":{"width":0,"height":0},"right":{"width":0,"height":0}}""");
 
-        Assert.Equal(new HudSessionMetrics(14, 8.5, 17, new HudRect(0, 0), new HudRect(0, 0), new HudRect(0, 0)), Assert.Single(seen).Metrics);
+        Assert.Equal(new HudSessionMetrics(14, 8.5, 17, new HudRect(0, 0), new HudRect(0, 0), new HudRect(0, 0), 13), Assert.Single(seen).Metrics);
     }
 
     [Theory]
-    [InlineData("""{"type":"hudMetrics","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","mainPaneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":0,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":-1,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":0,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":0,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":1e999,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1e999,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"left":{"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"right":{"width":596,"height":-1}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200,"height":800},"left":{"width":600,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200,"height":800},"right":{"width":596,"height":800}}""")]
-    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":"8.5","cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"mainPaneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":0,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":-1,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":0,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":0,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":1e999,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1e999,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"left":{"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"right":{"width":596,"height":-1}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200,"height":800},"left":{"width":600,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800},"pane":{"width":1200,"height":800},"right":{"width":596,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":13,"paneId":"left-token","fontSize":14,"cellWidth":"8.5","cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":0,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":-13,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":1e999,"paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
+    [InlineData("""{"type":"hudMetrics","baseFontSize":"13","paneId":"left-token","fontSize":14,"cellWidth":8.5,"cellHeight":17,"session":{"width":1200,"height":800}}""")]
     public async Task Malformed_hud_metrics_are_dropped(string json) => Assert.Empty(await RaisedAsync(json));
 
     [Fact]

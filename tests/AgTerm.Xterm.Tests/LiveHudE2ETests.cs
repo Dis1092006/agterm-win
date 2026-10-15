@@ -304,6 +304,27 @@ public sealed class LiveHudE2ETests : IDisposable
         Assert.Equal("top-center", ActiveSessionNode()["hud"]!["position"]!.GetValue<string>());
     }
 
+    // the page probes the cell at a drawn panel's font and posts nothing when the panel closes, so the
+    // next HUD with no font of its own has to take the renderer font, not the closed panel's
+    [Fact]
+    public async Task A_hud_with_no_font_after_a_closed_hud_with_its_own_is_drawn_at_the_renderer_font()
+    {
+        var page = await ShowSessionAsync();
+        var rendererFont = double.Parse(await EvalAsync(page, "(() => rendererSettings.fontSize)()"),
+            System.Globalization.CultureInfo.InvariantCulture);
+        CtlOk("session", "hud", "building", "--font-size", "30");
+        await WaitForPageAsync(page, "(() => document.querySelector('.hud-layer')?.style.fontSize === '30px')()");
+        await WaitUntilAsync(() => ReadLocked(() => _host.Host.Store.ActiveSession?.HudMetrics?.FontSize == 30));
+        CtlOk("session", "hud", "close");
+        await WaitForPageAsync(page, "(() => document.querySelector('.hud-layer') === null)()");
+
+        CtlOk("session", "hud", "building");
+
+        await WaitForPageAsync(page, HudShown);
+        Assert.Equal(rendererFont, ReadLocked(() => _host.Host.Store.ActiveSession!.HudFontSize));
+        Assert.Equal($"\"{rendererFont}px\"", await EvalAsync(page, "(() => document.querySelector('.hud-layer').style.fontSize)()"));
+    }
+
     [Fact]
     public async Task Closing_the_hud_over_the_pipe_takes_it_off_the_page()
     {

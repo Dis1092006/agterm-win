@@ -7,10 +7,10 @@ public class HudMetricsTargetTests
 {
     private static readonly HudRect Area = new(1000, 600);
 
-    private static HudSessionMetrics Single() => new(14, 8, 17, Area, null, null);
+    private static HudSessionMetrics Single() => new(14, 8, 17, Area, null, null, 14);
 
     private static HudSessionMetrics Split() =>
-        new(14, 8, 17, Area, new HudRect(498, 600), new HudRect(498, 600));
+        new(14, 8, 17, Area, new HudRect(498, 600), new HudRect(498, 600), 14);
 
     private static (AppStore Store, Session Session) SplitSession()
     {

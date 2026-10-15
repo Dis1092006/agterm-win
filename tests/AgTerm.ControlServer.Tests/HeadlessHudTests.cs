@@ -224,7 +224,7 @@ public sealed class HeadlessHudTests : IDisposable
             session.Surface = new FakeSurface { PaneToken = "left-token" };
             session.SplitSurface = new FakeSurface { PaneToken = "right-token" };
             _host.Store.SetHudMetrics(session.Id, new HudSessionMetrics(12, 8, 18,
-                new HudRect(1604, 640), new HudRect(600, 640), new HudRect(1000, 640)));
+                new HudRect(1604, 640), new HudRect(600, 640), new HudRect(1000, 640), 12));
         });
 
         var opened = Send(Hud(Command.SessionHudOpen, id, new string('x', 60), pane: "left", paneId: "right-token"));

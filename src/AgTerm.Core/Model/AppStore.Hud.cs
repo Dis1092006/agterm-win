@@ -26,7 +26,7 @@ public sealed partial class AppStore
         session.Hud = spec;
         session.HudPaneIdentity = paneIdentity;
         session.HudFontSize = spec.FontSize ?? session.FontSize
-            ?? HudSessionMetrics.UsableFontSize(session.HudMetrics?.FontSize);
+            ?? HudSessionMetrics.UsableFontSize(session.HudMetrics?.BaseFontSize);
         session.HudForcedWidthPercent = null;
         session.HudPanelSize = MeasureHud(session);
         session.HudRevision++;
@@ -87,8 +87,8 @@ public sealed partial class AppStore
             ? metrics with { Left = metrics.Left ?? previous.Left, Right = metrics.Right ?? previous.Right }
             : metrics;
         if (!session.HudActive) return false;
-        // a HUD opened before any font was known takes the first one the page measured, and keeps it
-        session.HudFontSize ??= HudSessionMetrics.UsableFontSize(metrics.FontSize);
+        // a HUD opened before any font was known takes the first base font the page reports, and keeps it
+        session.HudFontSize ??= HudSessionMetrics.UsableFontSize(metrics.BaseFontSize);
         var size = MeasureHud(session);
         var sizeChanged = size != session.HudPanelSize;
         session.HudPanelSize = size;

@@ -548,7 +548,8 @@ public class XtermPageHudLiveTests
     }
 
     // the font is fixed at open (upstream): the panel draws at the payload's size whatever the pane's
-    // font does, and with no panel up the probe follows the renderer font
+    // font does, and with no panel up the probe follows the renderer font. The renderer font goes
+    // apart in every message, because the store gives it to the next HUD with no font of its own.
     [Fact]
     public async Task The_panel_is_drawn_and_measured_at_the_payload_font_size()
     {
@@ -560,6 +561,7 @@ public class XtermPageHudLiveTests
         await Task.Delay(300);
         var renderer = metrics.Last().Metrics;
         Assert.Equal(14, renderer.FontSize);
+        Assert.Equal(14, renderer.BaseFontSize);
 
         var rowHeight = await EvalAsync(view, $$"""
             (() => {
@@ -573,6 +575,7 @@ public class XtermPageHudLiveTests
 
         var own = metrics.Last().Metrics;
         Assert.Equal(28, own.FontSize);
+        Assert.Equal(14, own.BaseFontSize);
         Assert.InRange(own.CellWidth, 2 * renderer.CellWidth - 0.5, 2 * renderer.CellWidth + 0.5);
         Assert.Equal(own.CellHeight, double.Parse(rowHeight, CultureInfo.InvariantCulture), 2);
         Assert.Equal(own.CellHeight,
@@ -580,6 +583,7 @@ public class XtermPageHudLiveTests
 
         await EvalAsync(view, "(() => { agterm.applyHud(null); agterm.applyRendererSettings({ fontSize: 20 }); return 1; })()");
         await WaitUntilAsync(() => metrics.Last().Metrics.FontSize == 20);
+        Assert.Equal(20, metrics.Last().Metrics.BaseFontSize);
     }
 
     [Fact]

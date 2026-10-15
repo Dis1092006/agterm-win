@@ -1830,6 +1830,9 @@ function hudMetricsMessage() {
     type: "hudMetrics",
     paneId: shown.firstPaneId,
     fontSize,
+    // the probe font is the drawn panel's, and the page posts nothing when the panel closes, so the
+    // store reads the font of a HUD with none of its own from here
+    baseFontSize: rendererSettings.fontSize,
     cellWidth: cell.width,
     cellHeight: cell.height,
     session: hudRect(container),

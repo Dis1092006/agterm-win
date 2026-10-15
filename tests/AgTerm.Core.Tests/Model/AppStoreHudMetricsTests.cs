@@ -8,9 +8,11 @@ namespace AgTerm.Core.Tests.Model;
 // 8 and 6 px; "working" is a box of 11 columns and 3 rows, 104 x 66 px.
 public class AppStoreHudMetricsTests
 {
-    private static HudSessionMetrics Metrics(double sessionHeight = 640, double fontSize = 12, bool right = true) =>
+    private static HudSessionMetrics Metrics(double sessionHeight = 640, double fontSize = 12, bool right = true,
+                                             double? baseFontSize = null) =>
         new(fontSize, CellWidth: 8, CellHeight: 18, Session: new HudRect(1000, sessionHeight),
-            Left: new HudRect(500, 640), Right: right ? new HudRect(480, 320) : null);
+            Left: new HudRect(500, 640), Right: right ? new HudRect(480, 320) : null,
+            BaseFontSize: baseFontSize ?? fontSize);
 
     private static (AppStore Store, Session Session) NewSession()
     {
@@ -87,7 +89,7 @@ public class AppStoreHudMetricsTests
     }
 
     [Fact]
-    public void TheHudsOwnFontWinsThenTheSessionsThenTheProbes()
+    public void TheHudsOwnFontWinsThenTheSessionsThenTheBaseFont()
     {
         var (store, session) = NewSession();
         store.SetHudMetrics(session.Id, Metrics());
@@ -111,18 +113,85 @@ public class AppStoreHudMetricsTests
         var (store, session) = NewSession();
         session.FontSize = 13;
         // a 6.5 x 13 cell at 13 pt is 10 x 20 at 20 pt, and 13 / 20 scales it back with no rounding
-        store.SetHudMetrics(session.Id, new HudSessionMetrics(13, 6.5, 13, new HudRect(1000, 640), null, null));
+        store.SetHudMetrics(session.Id, new HudSessionMetrics(13, 6.5, 13, new HudRect(1000, 640), null, null, 14));
         store.OpenHud(session.Id, new HudSpec("working"), null);
         var opened = session.HudPanelSize;
         Assert.Equal(new HudPanelSize(10, 8, 51), opened);
 
         session.FontSize = 20;
-        Assert.False(store.SetHudMetrics(session.Id, new HudSessionMetrics(20, 10, 20, new HudRect(1000, 640), null, null)));
+        Assert.False(store.SetHudMetrics(session.Id, new HudSessionMetrics(20, 10, 20, new HudRect(1000, 640), null, null, 14)));
 
         Assert.Equal(13, session.HudFontSize);
         Assert.Equal(opened, session.HudPanelSize);
         store.UpdateHud(session.Id, new HudSpec("working"), null);
         Assert.Equal(opened, session.HudPanelSize);
+    }
+
+    // While a panel is drawn the page probes the cell at the panel's font and posts nothing when it
+    // closes, so the probe font is the last panel's font. A 20 x 45 cell at 30 pt is the 8 x 18 cell
+    // of Metrics() at 12 pt, scaled.
+    private static HudSessionMetrics ProbedUnderA30PointPanel() =>
+        new(30, 20, 45, new HudRect(1000, 640), null, null, BaseFontSize: 13);
+
+    private static readonly HudPanelSize WorkingAt13 =
+        HudLayout.PanelSize(new HudSpec("working"), ProbedUnderA30PointPanel().For(null, 13));
+
+    [Fact]
+    public void AHudWithNoFontAfterAClosedHudWithItsOwnTakesTheBaseFont()
+    {
+        var (store, session) = NewSession();
+        store.OpenHud(session.Id, new HudSpec("working", FontSize: 30), null);
+        store.SetHudMetrics(session.Id, ProbedUnderA30PointPanel());
+        Assert.NotEqual(WorkingAt13, session.HudPanelSize);
+        store.CloseHud(session.Id);
+
+        store.OpenHud(session.Id, new HudSpec("working"), null);
+
+        Assert.Equal(13, session.HudFontSize);
+        Assert.Equal(WorkingAt13, session.HudPanelSize);
+    }
+
+    [Fact]
+    public void AHudWithNoFontReplacingAHudWithItsOwnTakesTheBaseFont()
+    {
+        var (store, session) = NewSession();
+        store.OpenHud(session.Id, new HudSpec("working", FontSize: 30), null);
+        store.SetHudMetrics(session.Id, ProbedUnderA30PointPanel());
+
+        store.OpenHud(session.Id, new HudSpec("working"), null);
+
+        Assert.Equal(13, session.HudFontSize);
+        Assert.Equal(WorkingAt13, session.HudPanelSize);
+    }
+
+    // a session switch lays out the new session while the page still draws the other session's
+    // panel, so the new session's first metrics carry that panel's probe font
+    [Fact]
+    public void AHudOpenedBeforeAnyMetricsTakesTheBaseFontOfMetricsProbedUnderAnotherSessionsPanel()
+    {
+        var (store, other) = NewSession();
+        store.OpenHud(other.Id, new HudSpec("working", FontSize: 30), null);
+        var session = store.AddSession(store.Workspaces[0].Id, "/repo")!;
+        store.OpenHud(session.Id, new HudSpec("working"), null);
+
+        store.SetHudMetrics(session.Id, ProbedUnderA30PointPanel());
+
+        Assert.Equal(13, session.HudFontSize);
+        Assert.Equal(WorkingAt13, session.HudPanelSize);
+    }
+
+    [Fact]
+    public void AHudOpenedAfterMetricsProbedUnderAnotherSessionsPanelTakesTheBaseFont()
+    {
+        var (store, other) = NewSession();
+        store.OpenHud(other.Id, new HudSpec("working", FontSize: 30), null);
+        var session = store.AddSession(store.Workspaces[0].Id, "/repo")!;
+        store.SetHudMetrics(session.Id, ProbedUnderA30PointPanel());
+
+        store.OpenHud(session.Id, new HudSpec("working"), null);
+
+        Assert.Equal(13, session.HudFontSize);
+        Assert.Equal(WorkingAt13, session.HudPanelSize);
     }
 
     [Fact]
@@ -147,12 +216,12 @@ public class AppStoreHudMetricsTests
     [InlineData(-1.0)]
     [InlineData(double.NaN)]
     [InlineData(double.PositiveInfinity)]
-    public void AProbeWithNoUsableFontDoesNotFixTheHudsFont(double probeFont)
+    public void ABaseFontThatIsNotUsableDoesNotFixTheHudsFont(double baseFont)
     {
         var (store, session) = NewSession();
         store.OpenHud(session.Id, new HudSpec("working"), null);
 
-        store.SetHudMetrics(session.Id, Metrics(fontSize: probeFont));
+        store.SetHudMetrics(session.Id, Metrics(baseFontSize: baseFont));
         Assert.Null(session.HudFontSize);
 
         store.SetHudMetrics(session.Id, Metrics());
@@ -163,10 +232,10 @@ public class AppStoreHudMetricsTests
     [Theory]
     [InlineData(0.0)]
     [InlineData(double.NaN)]
-    public void AnOpenOverAStoredProbeWithNoUsableFontLeavesTheFontOpen(double probeFont)
+    public void AnOpenOverAStoredBaseFontThatIsNotUsableLeavesTheFontOpen(double baseFont)
     {
         var (store, session) = NewSession();
-        store.SetHudMetrics(session.Id, Metrics(fontSize: probeFont));
+        store.SetHudMetrics(session.Id, Metrics(baseFontSize: baseFont));
 
         store.OpenHud(session.Id, new HudSpec("working"), null);
         Assert.Null(session.HudFontSize);
@@ -254,7 +323,7 @@ public class AppStoreHudMetricsTests
     }
 
     private static HudSessionMetrics SessionWide(double width) =>
-        new(14, 8, 18, new HudRect(width, 800), null, null);
+        new(14, 8, 18, new HudRect(width, 800), null, null, 14);
 
     // upstream rewrites a markdown body on every re-measure (WindowContentView+Detail.swift:358-367)
     [Fact]

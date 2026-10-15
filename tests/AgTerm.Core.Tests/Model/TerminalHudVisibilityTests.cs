@@ -204,7 +204,7 @@ public class TerminalHudVisibilityTests
         var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
         session.Surface = new SpySurface("left-token");
         store.SelectSession(session.Id);
-        var metrics = new HudSessionMetrics(14, 8, 18, new HudRect(1000, 800), new HudRect(1000, 800), null);
+        var metrics = new HudSessionMetrics(14, 8, 18, new HudRect(1000, 800), new HudRect(1000, 800), null, 14);
         store.SetHudMetrics(session.Id, metrics);
         store.OpenHud(session.Id, new HudSpec("**hi**", Markdown: true, FontSize: 28), null);
 

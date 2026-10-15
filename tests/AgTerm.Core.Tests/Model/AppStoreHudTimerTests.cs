@@ -126,7 +126,7 @@ public class AppStoreHudTimerTests
         store.OpenHud(session.Id, new HudSpec("one", HideAfter: 30), null);
 
         store.ResizeHud(session.Id, 50);
-        store.SetHudMetrics(session.Id, new HudSessionMetrics(12, 8, 18, new HudRect(1000, 640), null, null));
+        store.SetHudMetrics(session.Id, new HudSessionMetrics(12, 8, 18, new HudRect(1000, 640), null, null, 12));
 
         var timer = Assert.Single(_timers);
         Assert.False(timer.Disposed);

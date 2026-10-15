@@ -384,6 +384,7 @@ public sealed class XtermPage
     private static (Core.Model.HudSessionMetrics Metrics, Core.Model.HudRect? SinglePane)? HudMetricsFrom(BridgeMessage msg)
     {
         if (!IsPositive(msg.FontSize) || !IsPositive(msg.CellWidth) || !IsPositive(msg.CellHeight)
+            || !IsPositive(msg.BaseFontSize)
             || RectFrom(msg.Session) is not { } session
             || !TryOptionalRect(msg.Left, out var left) || !TryOptionalRect(msg.Right, out var right)
             || !TryOptionalRect(msg.Pane, out var pane))
@@ -392,7 +393,7 @@ public sealed class XtermPage
         if (pane is not null && (left is not null || right is not null))
             return null;
         return (new Core.Model.HudSessionMetrics(msg.FontSize!.Value, msg.CellWidth!.Value, msg.CellHeight!.Value,
-            session, left, right), pane);
+            session, left, right, msg.BaseFontSize!.Value), pane);
     }
 
     // a zero cell would size every panel from its padding alone, and a zero probe font scales the cell to nothing
@@ -601,6 +602,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("index")] public int? Index { get; init; }
     [JsonPropertyName("controlRef")] public string? ControlRef { get; init; }
     [JsonPropertyName("fontSize")] public double? FontSize { get; init; }
+    [JsonPropertyName("baseFontSize")] public double? BaseFontSize { get; init; }
     [JsonPropertyName("cellWidth")] public double? CellWidth { get; init; }
     [JsonPropertyName("cellHeight")] public double? CellHeight { get; init; }
     [JsonPropertyName("session")] public HudRectMessage? Session { get; init; }
