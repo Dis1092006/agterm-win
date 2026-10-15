@@ -501,6 +501,7 @@ public sealed class WindowPaletteActionsTests
     [InlineData(BuiltinAction.OpenDirectory, true)]
     [InlineData(BuiltinAction.ToggleSearch, false)]
     [InlineData(BuiltinAction.ShowAttention, false)]
+    [InlineData(BuiltinAction.SelectTheme, false)]
     [InlineData(BuiltinAction.FocusLeftPane, false)]
     [InlineData(BuiltinAction.FocusRightPane, false)]
     public void Command_focus_policy_preserves_follow_on_UI_owners(

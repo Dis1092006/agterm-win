@@ -67,6 +67,7 @@ public static class WindowPaletteActions
         BuiltinAction.RenameWorkspace or
         BuiltinAction.ToggleSearch or
         BuiltinAction.ShowAttention or
+        BuiltinAction.SelectTheme or
         BuiltinAction.FocusLeftPane or
         BuiltinAction.FocusRightPane);
 
