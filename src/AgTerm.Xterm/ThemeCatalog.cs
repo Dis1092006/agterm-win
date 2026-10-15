@@ -4,17 +4,6 @@ using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
-public sealed record TerminalTheme(
-    string Name,
-    string ForegroundColor,
-    string BackgroundColor,
-    string CursorColor,
-    string SelectionBackgroundColor,
-    IReadOnlyList<string> AnsiColors)
-{
-    public bool IsDark => ThemeCatalog.IsDark(BackgroundColor);
-}
-
 public sealed record ActiveTerminalTheme(TerminalTheme? Theme, bool UseDarkChrome);
 
 public sealed record LiveThemePresentation(
@@ -70,7 +59,7 @@ public static class LiveThemeSettings
         return new LiveThemePresentation(
             active.Theme,
             active.Theme is null
-                ? ThemeCatalog.IsDark(rendererSettings.BackgroundColor)
+                ? TerminalTheme.IsDarkColor(rendererSettings.BackgroundColor)
                 : active.UseDarkChrome,
             rendererSettings);
     }
@@ -95,7 +84,9 @@ public sealed class ThemeCatalog
             "#ffffff",
             "#303030",
             "#d6d6d6",
+            "#999999",
             "#5b5b5b",
+            "#dfdfff",
             Array.AsReadOnly(
             [
                 "#353535", "#d25252", "#a5c261", "#ffc66d",
@@ -108,7 +99,9 @@ public sealed class ThemeCatalog
             "#0c0c0c",
             "#f5f5f5",
             "#0c0c0c",
+            "#f5f5f5",
             "#0078d480",
+            "#0c0c0c",
             Array.AsReadOnly(
             [
                 "#0c0c0c", "#c50f1f", "#13a10e", "#c19c00",
@@ -121,7 +114,9 @@ public sealed class ThemeCatalog
             "#f8f8f2",
             "#282a36",
             "#f8f8f2",
+            "#282a36",
             "#44475a",
+            "#ffffff",
             Array.AsReadOnly(
             [
                 "#21222c", "#ff5555", "#50fa7b", "#f1fa8c",
@@ -145,20 +140,5 @@ public sealed class ThemeCatalog
         var name = sync && systemDark ? dark : light;
         var theme = name is null ? null : Resolve(name);
         return new ActiveTerminalTheme(theme, theme?.IsDark ?? systemDark);
-    }
-
-    internal static bool IsDark(string color)
-    {
-        if (color.Length != 7 || color[0] != '#')
-            return true;
-        if (!byte.TryParse(color.AsSpan(1, 2), System.Globalization.NumberStyles.HexNumber, null, out var red) ||
-            !byte.TryParse(color.AsSpan(3, 2), System.Globalization.NumberStyles.HexNumber, null, out var green) ||
-            !byte.TryParse(color.AsSpan(5, 2), System.Globalization.NumberStyles.HexNumber, null, out var blue))
-        {
-            return true;
-        }
-
-        var luminance = 0.299 * red / 255.0 + 0.587 * green / 255.0 + 0.114 * blue / 255.0;
-        return luminance < 0.5;
     }
 }
