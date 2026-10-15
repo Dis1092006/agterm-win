@@ -17,7 +17,8 @@ public sealed record WindowPaletteSnapshot(
     WindowPaletteMode Mode,
     string Placeholder,
     IReadOnlyList<PaletteItemViewModel> Items,
-    bool PreserveInputOrderForEmptyQuery = false);
+    bool PreserveInputOrderForEmptyQuery = false,
+    string? InitialSelectionId = null);
 
 public static class WindowPaletteProjection
 {
@@ -34,7 +35,8 @@ public static class WindowPaletteProjection
         Keymap keymap,
         Func<BuiltinAction, WindowCommandState> stateProvider,
         ThemeCatalog? themeCatalog = null,
-        string? currentTheme = null)
+        string? currentTheme = null,
+        bool followsSystemAppearance = false)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(keymap);
@@ -62,7 +64,8 @@ public static class WindowPaletteProjection
             WindowPaletteMode.Themes => new(
                 mode,
                 "Select a theme…",
-                ThemeItems(themeCatalog ?? ThemeCatalog.Default, currentTheme)),
+                ThemeItems(themeCatalog ?? ThemeCatalog.Default, currentTheme, followsSystemAppearance),
+                InitialSelectionId: ThemeItemId(currentTheme)),
             _ => throw new ArgumentOutOfRangeException(nameof(mode)),
         };
     }
@@ -81,6 +84,9 @@ public static class WindowPaletteProjection
                 ? id
                 : null;
     }
+
+    public static string ThemeItemId(string? themeName) =>
+        themeName is null ? "theme:__default__" : $"theme:{themeName}";
 
     public static bool TryParseThemeName(string itemId, out string? name)
     {
@@ -141,17 +147,21 @@ public static class WindowPaletteProjection
 
     private static IReadOnlyList<PaletteItemViewModel> ThemeItems(
         ThemeCatalog catalog,
-        string? currentTheme)
+        string? currentTheme,
+        bool followsSystemAppearance)
     {
-        var items = new List<PaletteItemViewModel>
+        var items = new List<PaletteItemViewModel>();
+        // a pair of light and dark themes needs two named themes (upstream AppActions+Palette.swift)
+        if (!followsSystemAppearance)
         {
-            new(
-                "theme:__default__",
+            items.Add(new(
+                ThemeItemId(null),
                 "Default terminal",
-                badge: currentTheme is null ? "Current" : null),
-        };
+                badge: currentTheme is null ? "Current" : null));
+        }
+
         items.AddRange(catalog.Names.Select(name => new PaletteItemViewModel(
-            $"theme:{name}",
+            ThemeItemId(name),
             name,
             badge: name == currentTheme ? "Current" : null)));
         return items;

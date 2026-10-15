@@ -189,6 +189,52 @@ public sealed class WindowPaletteProjectionTests
         Assert.Null(WindowPaletteProjection.ParseCustomCommandId(sessionId.ToString("D")));
     }
 
+    private static ThemeCatalog SmallCatalog() => ThemeCatalog.FromSources(
+    [
+        ("agterm", ThemeTexts.Valid()),
+        ("Builtin Light", ThemeTexts.Valid("#ffffff")),
+        ("Dracula", ThemeTexts.Valid()),
+    ]);
+
+    [Fact]
+    public void Themes_open_on_the_theme_on_screen()
+    {
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.Themes, TestStores.Scratch(), Keymap.Empty, StateProvider(),
+            SmallCatalog(), currentTheme: "Dracula");
+
+        Assert.Equal("theme:Dracula", snapshot.InitialSelectionId);
+    }
+
+    [Fact]
+    public void Themes_open_on_the_default_row_when_no_theme_is_on_screen()
+    {
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.Themes, TestStores.Scratch(), Keymap.Empty, StateProvider(),
+            SmallCatalog(), currentTheme: null);
+
+        Assert.Equal("theme:__default__", snapshot.InitialSelectionId);
+    }
+
+    [Fact]
+    public void Themes_have_no_default_row_while_following_the_system_appearance()
+    {
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.Themes, TestStores.Scratch(), Keymap.Empty, StateProvider(),
+            SmallCatalog(), currentTheme: "agterm", followsSystemAppearance: true);
+
+        Assert.Equal(["theme:agterm", "theme:Builtin Light", "theme:Dracula"], snapshot.Items.Select(item => item.Id));
+    }
+
+    [Fact]
+    public void Other_palettes_have_no_initial_selection()
+    {
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.Commands, TestStores.Scratch(), Keymap.Empty, StateProvider());
+
+        Assert.Null(snapshot.InitialSelectionId);
+    }
+
     private static Guid ParseSessionId(PaletteItemViewModel item) =>
         WindowPaletteProjection.ParseSessionId(item.Id)!.Value;
 

@@ -1460,6 +1460,7 @@ public sealed partial class MainWindow : Window
             _settings,
             _themeCatalog,
             _systemDark).Theme?.Name;
+        var followsSystemAppearance = LiveThemeSettings.From(_settings).Sync;
         var snapshot = await host.StoreCoordinator.ReadAsync(
             store => host.Host.Actions.Zoom.Target is null
                 ? WindowPaletteProjection.Create(
@@ -1468,7 +1469,8 @@ public sealed partial class MainWindow : Window
                     keymap,
                     action => states[action],
                     _themeCatalog,
-                    currentTheme)
+                    currentTheme,
+                    followsSystemAppearance)
                 : null,
             cancellationToken);
         if (snapshot is null)
@@ -1484,7 +1486,11 @@ public sealed partial class MainWindow : Window
             PaletteOverlay.Open(
                 snapshot.Placeholder,
                 snapshot.Items,
-                snapshot.PreserveInputOrderForEmptyQuery);
+                new PaletteOpenOptions
+                {
+                    PreserveInputOrderForEmptyQuery = snapshot.PreserveInputOrderForEmptyQuery,
+                    InitialSelectionId = snapshot.InitialSelectionId,
+                });
         }
         catch
         {
@@ -1583,7 +1589,7 @@ public sealed partial class MainWindow : Window
             async (themeName, cancellationToken) =>
             {
                 await _applicationHost.SetThemeAsync(
-                    new ControlArgs { Name = themeName },
+                    ThemePaletteSlot.ArgsFor(themeName, LiveThemeSettings.From(_settings), _systemDark),
                     cancellationToken);
             });
 
