@@ -233,4 +233,44 @@ public sealed class ThemePalettePreviewTests
         Assert.Empty(window.Shown);
         Assert.True(preview.IsActive);
     }
+
+    [Fact]
+    public async Task Abandon_drops_the_pending_move_and_shows_nothing()
+    {
+        var (preview, scheduler, window) = Create();
+        preview.Begin();
+        preview.Select("A");
+
+        preview.Abandon();
+        await scheduler.RunPendingAsync();
+
+        Assert.False(preview.IsActive);
+        Assert.Empty(window.Shown);
+    }
+
+    [Fact]
+    public async Task A_show_that_left_the_debounce_before_an_abandon_is_no_longer_current()
+    {
+        var (preview, scheduler, window) = Create();
+        preview.Begin();
+        preview.Select("A");
+        await scheduler.RunPendingAsync();
+        var isCurrent = window.CurrentChecks.Single();
+
+        preview.Abandon();
+
+        Assert.False(isCurrent());
+        Assert.Equal(["A"], window.Shown);
+    }
+
+    [Fact]
+    public void Abandon_when_not_active_does_nothing()
+    {
+        var (preview, _, window) = Create();
+
+        preview.Abandon();
+
+        Assert.False(preview.IsActive);
+        Assert.Empty(window.Shown);
+    }
 }

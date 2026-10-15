@@ -84,7 +84,6 @@ public sealed partial class MainWindow : Window
     private bool _windowIsActive;
     private readonly DeferredTerminalFocus _terminalFocus = new();
     private WindowPaletteMode? _openPaletteMode;
-    private readonly DispatcherThemePreviewScheduler _themePreviewScheduler;
     private readonly ThemePalettePreview _themePreview;
 
     private sealed record StartupState(
@@ -108,10 +107,10 @@ public sealed partial class MainWindow : Window
         if (ThemeCatalogFailureNotice.From(_themeCatalog.Errors) is { } themeFilesFailure)
             ShowFailure(themeFilesFailure);
         _uiSettings.ColorValuesChanged += OnSystemColorValuesChanged;
-        _themePreviewScheduler = new DispatcherThemePreviewScheduler(
+        var themePreviewScheduler = new DispatcherThemePreviewScheduler(
             DispatcherQueue,
             task => ObserveTaskFault(task, "Theme preview failed"));
-        _themePreview = new ThemePalettePreview(_themePreviewScheduler, ShowThemePreviewAsync, ShowSavedThemeAsync);
+        _themePreview = new ThemePalettePreview(themePreviewScheduler, ShowThemePreviewAsync, ShowSavedThemeAsync);
         PaletteOverlay.SelectionChanged += OnPaletteSelectionChanged;
         PaletteOverlay.ItemAccepted += item => ObserveTaskFault(
             HandlePaletteItemAcceptedAsync(item),
@@ -219,7 +218,7 @@ public sealed partial class MainWindow : Window
             Activated -= OnWindowActivated;
             _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
             PaletteOverlay.SelectionChanged -= OnPaletteSelectionChanged;
-            _themePreviewScheduler.Cancel();
+            _themePreview.Abandon();
             _bootstrapCancellation.Cancel();
             _notificationBannerCancellation?.Cancel();
             _notificationBannerCancellation?.Dispose();
@@ -1492,7 +1491,7 @@ public sealed partial class MainWindow : Window
         try
         {
             // opening another palette over the theme palette replaces it without a close
-            await _themePreview.CancelAsync();
+            await CancelThemePreviewAsync();
             _openPaletteMode = mode;
             if (mode == WindowPaletteMode.Themes)
                 _themePreview.Begin();
@@ -1507,6 +1506,7 @@ public sealed partial class MainWindow : Window
         }
         catch
         {
+            _themePreview.Abandon();
             await _paletteAutoFollow.ReleaseAsync(() =>
                 host.StoreCoordinator.MutateAsync(
                     store => store.ResumeAutoFollow(),
@@ -1537,7 +1537,7 @@ public sealed partial class MainWindow : Window
 
     private async Task FinishPaletteCloseAsync(bool restoreFocus = true)
     {
-        await _themePreview.CancelAsync();
+        await CancelThemePreviewAsync();
         if (_host is { } host)
         {
             await _paletteAutoFollow.ReleaseAsync(() =>
@@ -1547,6 +1547,22 @@ public sealed partial class MainWindow : Window
         _openPaletteMode = null;
         if (restoreFocus)
             FocusActiveTerminal();
+    }
+
+    /// <summary>A failed restore of the saved look must not skip the cleanup after it: the
+    /// auto-follow lease release, or showing a pending pick or ask an agent waits on. CancelAsync
+    /// ends the preview before its first await, so the preview is over even when this throws.</summary>
+    private async Task CancelThemePreviewAsync()
+    {
+        try
+        {
+            await _themePreview.CancelAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.TraceError(
+                $"Theme preview restore failed: {ex.GetBaseException().Message}");
+        }
     }
 
     private async Task HandlePaletteCancelledAsync()

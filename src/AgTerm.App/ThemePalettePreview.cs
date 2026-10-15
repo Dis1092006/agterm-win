@@ -80,6 +80,10 @@ public sealed class ThemePalettePreview
         await _showSavedAsync();
     }
 
+    /// <summary>Ends the preview without showing anything. A closed window or a palette that failed
+    /// to open has nothing to restore, and a show that already left the debounce must not land.</summary>
+    public void Abandon() => End();
+
     private async Task<ExceptionDispatchInfo?> TryShowAsync(string? themeName, Func<bool> isCurrent)
     {
         try
