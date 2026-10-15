@@ -103,6 +103,8 @@ public sealed partial class MainWindow : Window
         _notificationPresenter = new WindowsAppNotificationPresenter(
             message => System.Diagnostics.Trace.TraceWarning(message));
         ApplyThemeChrome(initialTheme.UseDarkChrome);
+        if (ThemeCatalogFailureNotice.From(_themeCatalog.Errors) is { } themeFilesFailure)
+            ShowFailure(themeFilesFailure);
         _uiSettings.ColorValuesChanged += OnSystemColorValuesChanged;
         PaletteOverlay.ItemAccepted += item => ObserveTaskFault(
             HandlePaletteItemAcceptedAsync(item),
