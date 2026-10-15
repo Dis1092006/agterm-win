@@ -149,6 +149,82 @@ public sealed class PaletteControllerTests
         Assert.Equal("Build, Current workspace, custom, Ctrl+B", item.AutomationName);
         Assert.Equal(["Build", "Current workspace"], item.SearchKeys);
     }
+
+    private static (PaletteController Controller, List<string?> Seen) OpenThree()
+    {
+        var controller = new PaletteController();
+        var seen = new List<string?>();
+        controller.Open(
+            [Item("a", "Alpha"), Item("b", "Bravo"), Item("c", "Charlie")],
+            new PaletteOpenOptions { InitialSelectionId = "b" });
+        controller.SelectionChanged += item => seen.Add(item?.Id);
+        return (controller, seen);
+    }
+
+    [Fact]
+    public void Open_does_not_report_a_selection_change()
+    {
+        var controller = new PaletteController();
+        var seen = new List<string?>();
+        controller.SelectionChanged += item => seen.Add(item?.Id);
+
+        controller.Open([Item("a", "Alpha")]);
+
+        Assert.Empty(seen);
+    }
+
+    [Fact]
+    public void Moving_and_clicking_report_the_new_row()
+    {
+        var (controller, seen) = OpenThree();
+
+        controller.MoveSelection(1);
+        controller.SelectIndex(0);
+
+        Assert.Equal(["c", "a"], seen);
+    }
+
+    [Fact]
+    public void A_move_that_stays_on_the_same_row_reports_nothing()
+    {
+        var (controller, seen) = OpenThree();
+
+        controller.SelectIndex(1);
+        controller.MoveSelection(5);
+        controller.MoveSelection(1);
+
+        Assert.Equal(["c"], seen);
+    }
+
+    [Fact]
+    public void A_query_that_changes_the_top_row_reports_it()
+    {
+        var (controller, seen) = OpenThree();
+
+        controller.SetQuery("char");
+
+        Assert.Equal(["c"], seen);
+    }
+
+    [Fact]
+    public void A_query_that_matches_nothing_reports_no_row()
+    {
+        var (controller, seen) = OpenThree();
+
+        controller.SetQuery("zzzz");
+
+        Assert.Equal([null], seen);
+    }
+
+    [Fact]
+    public void Close_does_not_report_a_selection_change()
+    {
+        var (controller, seen) = OpenThree();
+
+        controller.Close();
+
+        Assert.Empty(seen);
+    }
 }
 
 public sealed class PaletteLayoutTests

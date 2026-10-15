@@ -18,11 +18,14 @@ public sealed partial class PaletteView : UserControl
         InitializeComponent();
         ResultsList.ItemsSource = _items;
         _controller.Changed += ApplyControllerState;
+        _controller.SelectionChanged += item => SelectionChanged?.Invoke(item);
     }
 
     public event Action<PaletteItemViewModel>? ItemAccepted;
 
     public event Action? Cancelled;
+
+    public event Action<PaletteItemViewModel?>? SelectionChanged;
 
     public bool IsOpen => _controller.IsOpen;
 

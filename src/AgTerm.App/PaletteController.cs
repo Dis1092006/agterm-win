@@ -11,6 +11,10 @@ public sealed class PaletteController
 
     public event Action? Changed;
 
+    /// <summary>The highlighted row changed after open: a move, a click, or a query that re-ranks the
+    /// rows. Open and Close do not raise it: the row Open lands on is already shown.</summary>
+    public event Action<PaletteItemViewModel?>? SelectionChanged;
+
     public bool IsOpen { get; private set; }
 
     public string Query { get; private set; } = string.Empty;
@@ -53,10 +57,12 @@ public sealed class PaletteController
         if (!IsOpen || Query == query)
             return;
 
+        var before = SelectedItem?.Id;
         Query = query;
         SelectedIndex = 0;
         Refilter();
         Changed?.Invoke();
+        ReportSelectionChange(before);
     }
 
     public void MoveSelection(int delta)
@@ -68,8 +74,10 @@ public sealed class PaletteController
         if (next == SelectedIndex)
             return;
 
+        var before = SelectedItem?.Id;
         SelectedIndex = (int)next;
         Changed?.Invoke();
+        ReportSelectionChange(before);
     }
 
     public void SelectIndex(int index)
@@ -79,8 +87,10 @@ public sealed class PaletteController
         if (SelectedIndex == index)
             return;
 
+        var before = SelectedItem?.Id;
         SelectedIndex = index;
         Changed?.Invoke();
+        ReportSelectionChange(before);
     }
 
     public PaletteItemViewModel? AcceptSelected()
@@ -123,6 +133,13 @@ public sealed class PaletteController
         }
 
         return 0;
+    }
+
+    private void ReportSelectionChange(string? before)
+    {
+        var selected = SelectedItem;
+        if (!string.Equals(before, selected?.Id, StringComparison.Ordinal))
+            SelectionChanged?.Invoke(selected);
     }
 
     private void Refilter()
