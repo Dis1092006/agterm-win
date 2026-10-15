@@ -1651,8 +1651,8 @@ public sealed class HeadlessControlActions : IControlActions
             Theme = Theme.Current,
             Themes = themes,
             Sync = Theme.Sync,
-            Light = Theme.Light,
-            Dark = Theme.Dark,
+            Light = Theme.Sync ? Theme.Light : null,
+            Dark = Theme.Sync ? Theme.Dark : null,
         },
     };
 

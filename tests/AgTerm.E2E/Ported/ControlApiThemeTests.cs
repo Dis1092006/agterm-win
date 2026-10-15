@@ -41,6 +41,54 @@ public class ControlApiThemeTests : ControlApiTestCase
         Assert.False(reset["result"]!.AsObject().ContainsKey("dark"));
     }
 
+    // AppActions+Palette.swift: currentLightTheme/currentDarkTheme are nil unless following, and
+    // a nil optional is omitted, so the slots must not ride a plain single-theme answer.
+    [Fact]
+    public void LightAndDarkAreAbsentUnlessFollowingSystemAppearance()
+    {
+        using var host = new HeadlessHost(new HeadlessHostOptions
+        {
+            StateDir = StateDir,
+            ConfigDir = StateDir,
+            PipeName = "agterm-e2e-" + Guid.NewGuid().ToString("N"),
+            AvailableThemes = new[] { "agterm", "Dracula", "Builtin Light" },
+        });
+        host.Start();
+
+        var plain = Send(host, """{"cmd":"theme.set","args":{"name":"agterm"}}""");
+        AssertSingleTheme(plain, "agterm");
+        AssertSingleTheme(Send(host, """{"cmd":"theme.list"}"""), "agterm");
+
+        var following = Send(host, """{"cmd":"theme.set","args":{"dark":"Dracula"}}""");
+        AssertFollowing(following, light: "agterm", dark: "Dracula");
+        AssertFollowing(Send(host, """{"cmd":"theme.list"}"""), light: "agterm", dark: "Dracula");
+
+        var cleared = Send(host, """{"cmd":"theme.set","args":{"dark":"none"}}""");
+        AssertSingleTheme(cleared, "agterm");
+        AssertSingleTheme(Send(host, """{"cmd":"theme.list"}"""), "agterm");
+    }
+
+    private static void AssertSingleTheme(JsonObject response, string theme)
+    {
+        Assert.True(response["ok"]?.GetValue<bool>(), response.ToJsonString());
+        var result = response["result"]!.AsObject();
+        Assert.Equal(theme, result["theme"]?.GetValue<string>());
+        Assert.True(result.ContainsKey("sync"), result.ToJsonString());
+        Assert.False(result["sync"]!.GetValue<bool>());
+        Assert.False(result.ContainsKey("light"), result.ToJsonString());
+        Assert.False(result.ContainsKey("dark"), result.ToJsonString());
+    }
+
+    private static void AssertFollowing(JsonObject response, string light, string dark)
+    {
+        Assert.True(response["ok"]?.GetValue<bool>(), response.ToJsonString());
+        var result = response["result"]!.AsObject();
+        Assert.False(result.ContainsKey("theme"), result.ToJsonString());
+        Assert.True(result["sync"]!.GetValue<bool>());
+        Assert.Equal(light, result["light"]?.GetValue<string>());
+        Assert.Equal(dark, result["dark"]?.GetValue<string>());
+    }
+
     [Fact]
     public void ThemeSyncWithSystemAppearance()
     {
