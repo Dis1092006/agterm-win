@@ -12,6 +12,7 @@ public sealed partial class PaletteView : UserControl
     private readonly ObservableCollection<PaletteItemViewModel> _items = new();
     private readonly ActivationClickFilter _activationClicks = new();
     private bool _syncing;
+    private IReadOnlyList<PaletteItemViewModel>? _shownItems;
 
     public PaletteView()
     {
@@ -109,9 +110,15 @@ public sealed partial class PaletteView : UserControl
             if (QueryBox.Text != _controller.Query)
                 QueryBox.Text = _controller.Query;
 
-            _items.Clear();
-            foreach (var item in _controller.FilteredItems)
-                _items.Add(item);
+            // a selection move keeps the controller's list; rebuilding 600 theme rows on every key
+            // press made holding an arrow key lag and reset the list's scroll
+            if (!ReferenceEquals(_shownItems, _controller.FilteredItems))
+            {
+                _items.Clear();
+                foreach (var item in _controller.FilteredItems)
+                    _items.Add(item);
+                _shownItems = _controller.FilteredItems;
+            }
 
             ResultsList.SelectedIndex = _controller.SelectedItem is null
                 ? -1

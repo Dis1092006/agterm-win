@@ -225,6 +225,62 @@ public sealed class PaletteControllerTests
 
         Assert.Empty(seen);
     }
+
+    [Fact]
+    public void Moving_the_selection_keeps_the_filtered_list_instance()
+    {
+        var (controller, _) = OpenThree();
+        var shown = controller.FilteredItems;
+
+        controller.MoveSelection(1);
+        controller.MoveSelection(-2);
+        controller.SelectIndex(1);
+
+        Assert.Same(shown, controller.FilteredItems);
+    }
+
+    [Fact]
+    public void A_new_query_or_a_new_open_gives_a_new_filtered_list_instance()
+    {
+        var (controller, _) = OpenThree();
+        var opened = controller.FilteredItems;
+
+        controller.SetQuery("a");
+        var queried = controller.FilteredItems;
+        controller.Open([Item("a", "Alpha"), Item("b", "Bravo"), Item("c", "Charlie")]);
+
+        Assert.NotSame(opened, queried);
+        Assert.NotSame(queried, controller.FilteredItems);
+        Assert.NotSame(opened, controller.FilteredItems);
+    }
+
+    [Fact]
+    public void Close_then_open_gives_an_empty_list_then_a_new_list_instance()
+    {
+        var (controller, _) = OpenThree();
+        var opened = controller.FilteredItems;
+
+        controller.Close();
+        var closed = controller.FilteredItems;
+        controller.Open([Item("a", "Alpha")]);
+
+        Assert.Empty(closed);
+        Assert.NotSame(opened, closed);
+        Assert.NotSame(closed, controller.FilteredItems);
+        Assert.Equal(["a"], controller.FilteredItems.Select(item => item.Id));
+    }
+
+    [Fact]
+    public void Opening_with_no_items_gives_a_list_instance_other_than_the_closed_one()
+    {
+        var controller = new PaletteController();
+        var closed = controller.FilteredItems;
+
+        controller.Open([]);
+
+        Assert.Empty(controller.FilteredItems);
+        Assert.NotSame(closed, controller.FilteredItems);
+    }
 }
 
 public sealed class PaletteLayoutTests
