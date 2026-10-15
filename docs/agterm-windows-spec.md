@@ -378,6 +378,7 @@ commandWait?, background?, surfaces?[] }`.
   движка. Неизвестное имя → `unknown theme: X`. Ответ: `result.theme` (одиночная) ЛИБО
   `result.sync/light/dark` (пара).
 - `theme.list` — `result.themes[]` + текущая (`theme` либо `sync/light/dark`).
+  Windows: тема, файл которой не удалось разобрать, показывается в InfoBar ошибок окна и в `theme.list` не попадает.
 - `restore.clear` — очистить захваченные foreground-команды всех открытых сессий (пины
   `session.restore` НЕ трогает — у них свой `clear`).
 
