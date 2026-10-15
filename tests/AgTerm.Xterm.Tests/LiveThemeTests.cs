@@ -778,6 +778,84 @@ public sealed class LiveThemeWebViewTests
         Assert.Equal(19, afterDashboard);
     }
 
+    private static TerminalTheme PageTheme() => new(
+        "page-theme", "#010101", "#020202", "#030303", "#040404", "#050505", "#060606",
+        Enumerable.Range(0, 16).Select(i => $"#1{i:x1}1{i:x1}1{i:x1}").ToArray());
+
+    private async Task<XtermPage> OpenPageAsync(Microsoft.Web.WebView2.WinForms.WebView2 view, string paneId)
+    {
+        var page = await _webView.RunAsync(async _ =>
+        {
+            var result = new XtermPage(new Win32ScriptHost(view.CoreWebView2));
+            await result.InitializeAsync();
+            return result;
+        });
+        _ = await _webView.RunAsync(_ => page.OpenTerminalAsync(paneId));
+        return page;
+    }
+
+    private async Task ApplyAsync(XtermPage page, RendererSettingsSnapshot snapshot) =>
+        await _webView.RunAsync<object?>(async _ =>
+        {
+            await page.ApplyRendererSettingsAsync(snapshot);
+            return null;
+        });
+
+    private async Task<JsonElement> ReadThemeValuesAsync(
+        Microsoft.Web.WebView2.WinForms.WebView2 view,
+        string paneId)
+    {
+        var raw = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                $"(() => {{ const s = agterm.getRendererSettings({JsonSerializer.Serialize(paneId)});" +
+                " return { ansiColors: s.ansiColors, cursorTextColor: s.cursorTextColor," +
+                " selectionForegroundColor: s.selectionForegroundColor }; })()"));
+        return JsonDocument.Parse(raw).RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task Theme_cursor_text_and_selection_text_colors_reach_xterm()
+    {
+        var view = await _webView.CreateWebViewAsync();
+        var page = await OpenPageAsync(view, "text-colors");
+
+        await ApplyAsync(page, RendererSettingsSnapshot.From(new AppSettings(), PageTheme()));
+        var values = await ReadThemeValuesAsync(view, "text-colors");
+
+        Assert.Equal("#040404", values.GetProperty("cursorTextColor").GetString());
+        Assert.Equal("#060606", values.GetProperty("selectionForegroundColor").GetString());
+    }
+
+    [Fact]
+    public async Task Default_terminal_after_a_named_theme_drops_its_palette_and_text_colors()
+    {
+        var view = await _webView.CreateWebViewAsync();
+        var page = await OpenPageAsync(view, "back-to-default");
+
+        await ApplyAsync(page, RendererSettingsSnapshot.From(new AppSettings(), PageTheme()));
+        await ApplyAsync(page, RendererSettingsSnapshot.From(new AppSettings()));
+        var values = await ReadThemeValuesAsync(view, "back-to-default");
+
+        Assert.Equal(JsonValueKind.Null, values.GetProperty("ansiColors").ValueKind);
+        Assert.Equal(JsonValueKind.Null, values.GetProperty("cursorTextColor").ValueKind);
+        Assert.Equal(JsonValueKind.Null, values.GetProperty("selectionForegroundColor").ValueKind);
+    }
+
+    [Fact]
+    public async Task A_partial_payload_keeps_the_theme_colors_it_does_not_name()
+    {
+        var view = await _webView.CreateWebViewAsync();
+        var page = await OpenPageAsync(view, "partial");
+
+        await ApplyAsync(page, RendererSettingsSnapshot.From(new AppSettings(), PageTheme()));
+        _ = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync("agterm.applyRendererSettings({ fontSize: 20 })"));
+        var values = await ReadThemeValuesAsync(view, "partial");
+
+        Assert.Equal("#040404", values.GetProperty("cursorTextColor").GetString());
+        Assert.Equal(16, values.GetProperty("ansiColors").GetArrayLength());
+    }
+
     private async Task<double> ReadFontSizeAsync(
         Microsoft.Web.WebView2.WinForms.WebView2 view,
         string paneId)

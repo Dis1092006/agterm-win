@@ -266,4 +266,28 @@ public class RendererSettingsSnapshotTests
         var b = RendererSettingsSnapshot.From(new AppSettings { MouseScrollMultiplier = 5.0 });
         Assert.NotEqual(a, b);
     }
+
+    // ── Theme text colors ─────────────────────────────────────────────────────
+
+    private static TerminalTheme TextColorTheme() => new(
+        "text-colors", "#010101", "#020202", "#030303", "#040404", "#050505", "#060606",
+        Enumerable.Repeat("#070707", 16).ToArray());
+
+    [Fact]
+    public void From_a_theme_carries_the_cursor_text_and_selection_text_colors()
+    {
+        var s = RendererSettingsSnapshot.From(new AppSettings(), TextColorTheme());
+
+        Assert.Equal("#040404", s.CursorTextColor);
+        Assert.Equal("#060606", s.SelectionForegroundColor);
+    }
+
+    [Fact]
+    public void Without_a_theme_the_text_colors_are_null()
+    {
+        var s = RendererSettingsSnapshot.From(new AppSettings());
+
+        Assert.Null(s.CursorTextColor);
+        Assert.Null(s.SelectionForegroundColor);
+    }
 }

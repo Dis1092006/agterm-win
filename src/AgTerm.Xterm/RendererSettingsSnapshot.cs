@@ -20,6 +20,10 @@ public sealed record RendererSettingsSnapshot(
 {
     public IReadOnlyList<string>? AnsiColors { get; init; }
 
+    public string? CursorTextColor { get; init; }
+
+    public string? SelectionForegroundColor { get; init; }
+
     public bool PreservePaneFontSizes { get; init; }
 
     private const string DefaultFontFamily = "Cascadia Mono, Consolas, monospace";
@@ -73,6 +77,8 @@ public sealed record RendererSettingsSnapshot(
             DefaultScreenReaderMode)
         {
             AnsiColors = theme?.AnsiColors,
+            CursorTextColor = theme?.CursorTextColor,
+            SelectionForegroundColor = theme?.SelectionForegroundColor,
             PreservePaneFontSizes = preservePaneFontSizes,
         };
     }

@@ -279,6 +279,8 @@ const DEFAULT_RENDERER_SETTINGS = Object.freeze({
   backgroundColor: "#0C0C0C",
   cursorColor: "#FFFFFF",
   selectionBackgroundColor: "#FFFFFF40",
+  cursorTextColor: null,
+  selectionForegroundColor: null,
   backgroundOpacity: 1,
   backgroundBlur: 0,
   cursorBlink: true,
@@ -1180,6 +1182,9 @@ function normalizeCursorStyle(value, fallback) {
 }
 
 function normalizeAnsiColors(value, fallback) {
+  // C# sends every key and writes null for "this theme has none"; a key missing from a partial
+  // payload (tests, older callers) keeps the previous value instead
+  if (value === null) return null;
   if (
     !Array.isArray(value) ||
     value.length !== ANSI_THEME_KEYS.length ||
@@ -1189,6 +1194,11 @@ function normalizeAnsiColors(value, fallback) {
   )
     return fallback;
   return value.map((color) => color.trim());
+}
+
+function normalizeOptionalColor(value, fallback) {
+  if (value === null) return null;
+  return normalizeNonEmptyString(value, fallback);
 }
 
 function normalizeRendererSettings(payload, fallback) {
@@ -1211,6 +1221,14 @@ function normalizeRendererSettings(payload, fallback) {
     selectionBackgroundColor: normalizeNonEmptyString(
       source.selectionBackgroundColor,
       fallback.selectionBackgroundColor,
+    ),
+    cursorTextColor: normalizeOptionalColor(
+      source.cursorTextColor,
+      fallback.cursorTextColor,
+    ),
+    selectionForegroundColor: normalizeOptionalColor(
+      source.selectionForegroundColor,
+      fallback.selectionForegroundColor,
     ),
     backgroundOpacity: normalizeFiniteNumber(
       source.backgroundOpacity,
@@ -1283,6 +1301,10 @@ function buildTheme(settings) {
     cursor: settings.cursorColor,
     selectionBackground: settings.selectionBackgroundColor,
   };
+  if (settings.cursorTextColor !== null)
+    theme.cursorAccent = settings.cursorTextColor;
+  if (settings.selectionForegroundColor !== null)
+    theme.selectionForeground = settings.selectionForegroundColor;
   if (settings.ansiColors !== null) {
     ANSI_THEME_KEYS.forEach((key, index) => {
       theme[key] = settings.ansiColors[index];
@@ -1438,6 +1460,8 @@ function getRendererSettings(paneId) {
     cursorColor: theme.cursor || rendererSettings.cursorColor,
     selectionBackgroundColor:
       theme.selectionBackground || rendererSettings.selectionBackgroundColor,
+    cursorTextColor: theme.cursorAccent ?? null,
+    selectionForegroundColor: theme.selectionForeground ?? null,
     backgroundOpacity: rendererSettings.backgroundOpacity,
     backgroundBlur: rendererSettings.backgroundBlur,
     cursorBlink: !!termOptions.cursorBlink,
