@@ -65,6 +65,24 @@ public static class LiveThemeSettings
                 : active.UseDarkChrome,
             rendererSettings);
     }
+
+    /// <summary>The look of one theme over the saved settings, for the palette preview. The theme
+    /// slots are ignored, and per-pane font sizes stay, as an appearance flip keeps them.</summary>
+    public static LiveThemePresentation Preview(
+        AppSettings settings,
+        ThemeCatalog catalog,
+        string? themeName)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(catalog);
+
+        var theme = themeName is null ? null : catalog.Resolve(themeName);
+        var rendererSettings = RendererSettingsSnapshot.From(settings, theme, preservePaneFontSizes: true);
+        return new LiveThemePresentation(
+            theme,
+            theme?.IsDark ?? TerminalTheme.IsDarkColor(rendererSettings.BackgroundColor),
+            rendererSettings);
+    }
 }
 
 public sealed class ThemeCatalog

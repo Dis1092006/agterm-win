@@ -84,6 +84,8 @@ public sealed partial class MainWindow : Window
     private bool _windowIsActive;
     private readonly DeferredTerminalFocus _terminalFocus = new();
     private WindowPaletteMode? _openPaletteMode;
+    private readonly DispatcherThemePreviewScheduler _themePreviewScheduler;
+    private readonly ThemePalettePreview _themePreview;
 
     private sealed record StartupState(
         LiveSelectionSnapshot Selection,
@@ -106,6 +108,11 @@ public sealed partial class MainWindow : Window
         if (ThemeCatalogFailureNotice.From(_themeCatalog.Errors) is { } themeFilesFailure)
             ShowFailure(themeFilesFailure);
         _uiSettings.ColorValuesChanged += OnSystemColorValuesChanged;
+        _themePreviewScheduler = new DispatcherThemePreviewScheduler(
+            DispatcherQueue,
+            task => ObserveTaskFault(task, "Theme preview failed"));
+        _themePreview = new ThemePalettePreview(_themePreviewScheduler, ShowThemePreviewAsync, ShowSavedThemeAsync);
+        PaletteOverlay.SelectionChanged += OnPaletteSelectionChanged;
         PaletteOverlay.ItemAccepted += item => ObserveTaskFault(
             HandlePaletteItemAcceptedAsync(item),
             "Palette item acceptance failed");
@@ -211,6 +218,8 @@ public sealed partial class MainWindow : Window
             _appWindow.Changed -= OnAppWindowChanged;
             Activated -= OnWindowActivated;
             _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
+            PaletteOverlay.SelectionChanged -= OnPaletteSelectionChanged;
+            _themePreviewScheduler.Cancel();
             _bootstrapCancellation.Cancel();
             _notificationBannerCancellation?.Cancel();
             _notificationBannerCancellation?.Dispose();
@@ -1482,7 +1491,11 @@ public sealed partial class MainWindow : Window
                 cancellationToken));
         try
         {
+            // opening another palette over the theme palette replaces it without a close
+            await _themePreview.CancelAsync();
             _openPaletteMode = mode;
+            if (mode == WindowPaletteMode.Themes)
+                _themePreview.Begin();
             PaletteOverlay.Open(
                 snapshot.Placeholder,
                 snapshot.Items,
@@ -1524,6 +1537,7 @@ public sealed partial class MainWindow : Window
 
     private async Task FinishPaletteCloseAsync(bool restoreFocus = true)
     {
+        await _themePreview.CancelAsync();
         if (_host is { } host)
         {
             await _paletteAutoFollow.ReleaseAsync(() =>
@@ -1560,11 +1574,32 @@ public sealed partial class MainWindow : Window
         }
 
         WindowPaletteMode? mode = null;
+        Task? themeCommit = null;
         await _paletteTransitions.RunAsync(async () =>
         {
             mode = _openPaletteMode;
+            if (mode == WindowPaletteMode.Themes &&
+                WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName))
+            {
+                themeCommit = _themePreview.CommitAsync(
+                    themeName,
+                    () => SavePaletteThemeAsync(themeName, CancellationToken.None));
+            }
             await FinishPaletteCloseAsync(restoreFocus: false);
         });
+
+        if (themeCommit is not null)
+        {
+            try
+            {
+                await themeCommit;
+            }
+            finally
+            {
+                FocusActiveTerminal();
+            }
+            return;
+        }
 
         var result = await WindowPaletteAcceptance.AcceptAsync(
             mode ?? (WindowPaletteMode)(-1),
@@ -1586,15 +1621,38 @@ public sealed partial class MainWindow : Window
             (commandId, cancellationToken) => ExecuteCustomCommandAsync(
                 new CustomCommandExecutionRequest(commandId, CustomCommandSource.Palette),
                 cancellationToken),
-            async (themeName, cancellationToken) =>
-            {
-                await _applicationHost.SetThemeAsync(
-                    ThemePaletteSlot.ArgsFor(themeName, LiveThemeSettings.From(_settings), _systemDark),
-                    cancellationToken);
-            });
+            (themeName, cancellationToken) => SavePaletteThemeAsync(themeName, cancellationToken));
 
         if (result.RestoreTerminalFocus)
             FocusActiveTerminal();
+    }
+
+    private async Task<bool> SavePaletteThemeAsync(string? themeName, CancellationToken cancellationToken)
+    {
+        var saved = LiveThemeSettings.From(_settings);
+        ControlArgs args;
+        try
+        {
+            args = ThemePaletteSlot.ArgsFor(themeName, saved, _systemDark);
+        }
+        catch (ArgumentNullException)
+        {
+            // a settings reload can turn following on while the palette is open, after it listed
+            // "Default terminal"; the dark slot cannot hold that row
+            ShowFailure(new LiveFailureNotice(
+                "Theme could not be applied",
+                "Default terminal is not available while following the Windows appearance"));
+            return false;
+        }
+
+        var response = await _applicationHost.SetThemeAsync(args, cancellationToken);
+        if (response.Ok)
+            return true;
+
+        ShowFailure(new LiveFailureNotice(
+            "Theme could not be applied",
+            response.Error ?? "theme.set failed"));
+        return false;
     }
 
     private async Task ExecuteCustomCommandAsync(
@@ -2037,14 +2095,64 @@ public sealed partial class MainWindow : Window
         AppSettings settings,
         LiveThemePresentation presentation)
     {
-        var page = await _pageTask;
-        await page.ApplyRendererSettingsAsync(presentation.RendererSettings);
-
+        await ShowThemePresentationAsync(settings, presentation);
         _settings = settings;
         _rendererSettings = presentation.RendererSettings;
+    }
+
+    /// <summary>Changes only what the window shows. The palette preview calls this directly, so the
+    /// window's saved settings stay what a cancel shows again.</summary>
+    private async Task ShowThemePresentationAsync(
+        AppSettings settings,
+        LiveThemePresentation presentation)
+    {
+        var page = await _pageTask;
+        await page.ApplyRendererSettingsAsync(presentation.RendererSettings);
         Sidebar.ApplySettings(settings);
         ApplyComposition(presentation.RendererSettings);
         ApplyThemeChrome(presentation.UseDarkChrome);
+    }
+
+    private async Task ShowThemePreviewAsync(string? themeName, Func<bool> isCurrent)
+    {
+        await _themeApplyGate.WaitAsync();
+        try
+        {
+            if (!isCurrent())
+                return;
+            await ShowThemePresentationAsync(
+                _settings,
+                LiveThemeSettings.Preview(_settings, _themeCatalog, themeName));
+        }
+        finally
+        {
+            _themeApplyGate.Release();
+        }
+    }
+
+    private async Task ShowSavedThemeAsync()
+    {
+        await _themeApplyGate.WaitAsync();
+        try
+        {
+            await ShowThemePresentationAsync(
+                _settings,
+                LiveThemeSettings.Resolve(_settings, _themeCatalog, _systemDark, preservePaneFontSizes: true));
+        }
+        finally
+        {
+            _themeApplyGate.Release();
+        }
+    }
+
+    private void OnPaletteSelectionChanged(PaletteItemViewModel? item)
+    {
+        if (_openPaletteMode == WindowPaletteMode.Themes &&
+            item is not null &&
+            WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName))
+        {
+            _themePreview.Select(themeName);
+        }
     }
 
     private void OnSystemColorValuesChanged(UISettings sender, object args)

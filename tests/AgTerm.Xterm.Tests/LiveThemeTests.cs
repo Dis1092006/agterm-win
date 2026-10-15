@@ -282,6 +282,44 @@ public sealed class LiveThemeTests
         Assert.Contains("Theme settings save failed", method, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Preview_shows_the_named_theme_over_the_saved_settings_and_ignores_the_slots()
+    {
+        var settings = new AppSettings
+        {
+            Theme = "agterm",
+            DarkTheme = "Builtin Light",
+            FollowSystemAppearance = true,
+            FontSize = 17,
+        };
+
+        var preview = LiveThemeSettings.Preview(settings, ThemeCatalog.Default, "Dracula");
+
+        Assert.Equal("Dracula", preview.Theme?.Name);
+        Assert.True(preview.UseDarkChrome);
+        Assert.Equal("#282a36", preview.RendererSettings.BackgroundColor);
+        Assert.Equal(17, preview.RendererSettings.FontSize);
+        Assert.True(preview.RendererSettings.PreservePaneFontSizes);
+    }
+
+    [Fact]
+    public void Preview_of_the_default_row_shows_the_default_terminal()
+    {
+        var preview = LiveThemeSettings.Preview(new AppSettings { Theme = "Dracula" }, ThemeCatalog.Default, null);
+
+        Assert.Null(preview.Theme);
+        Assert.Equal("#0C0C0C", preview.RendererSettings.BackgroundColor);
+        Assert.True(preview.UseDarkChrome);
+    }
+
+    [Fact]
+    public void Preview_of_a_light_theme_asks_for_light_chrome()
+    {
+        var preview = LiveThemeSettings.Preview(new AppSettings(), ThemeCatalog.Default, "Builtin Light");
+
+        Assert.False(preview.UseDarkChrome);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -864,5 +902,33 @@ public sealed class LiveThemeWebViewTests
             await view.CoreWebView2.ExecuteScriptAsync(
                 $"agterm.getRendererSettings({JsonSerializer.Serialize(paneId)}).fontSize"));
         return JsonSerializer.Deserialize<double>(raw);
+    }
+
+    [Fact]
+    public async Task A_preview_recolors_the_panes_and_the_saved_look_puts_the_colors_back()
+    {
+        var view = await _webView.CreateWebViewAsync();
+        var page = await OpenPageAsync(view, "preview");
+        var saved = new AppSettings { Theme = "agterm" };
+
+        await ApplyAsync(page, LiveThemeSettings.Resolve(saved, ThemeCatalog.Default, systemDark: true).RendererSettings);
+        await ApplyAsync(page, LiveThemeSettings.Preview(saved, ThemeCatalog.Default, "Dracula").RendererSettings);
+        var during = await ReadBackgroundAsync(view, "preview");
+        await ApplyAsync(page, LiveThemeSettings.Resolve(
+            saved, ThemeCatalog.Default, systemDark: true, preservePaneFontSizes: true).RendererSettings);
+        var after = await ReadBackgroundAsync(view, "preview");
+
+        Assert.Equal("#282a36", during);
+        Assert.Equal("#303030", after);
+    }
+
+    private async Task<string> ReadBackgroundAsync(
+        Microsoft.Web.WebView2.WinForms.WebView2 view,
+        string paneId)
+    {
+        var raw = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync(
+                $"agterm.getRendererSettings({JsonSerializer.Serialize(paneId)}).backgroundColor"));
+        return JsonSerializer.Deserialize<string>(raw)!;
     }
 }
