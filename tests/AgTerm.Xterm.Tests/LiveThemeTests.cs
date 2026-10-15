@@ -19,6 +19,8 @@ public sealed class LiveThemeTests
         Assert.Equal("#303030", theme.BackgroundColor);
         Assert.Equal("#d6d6d6", theme.CursorColor);
         Assert.Equal("#5b5b5b", theme.SelectionBackgroundColor);
+        Assert.Equal("#999999", theme.CursorTextColor);
+        Assert.Equal("#dfdfff", theme.SelectionForegroundColor);
         Assert.Equal(
             [
                 "#353535", "#d25252", "#a5c261", "#ffc66d",
@@ -56,8 +58,6 @@ public sealed class LiveThemeTests
     [Fact]
     public void Catalog_resolves_light_dark_sync_and_chrome_appearance()
     {
-        Assert.Equal(["agterm", "Builtin Light", "Dracula"], ThemeCatalog.Default.Names);
-
         var light = ThemeCatalog.Default.ResolveActive(
             light: "Builtin Light",
             dark: "agterm",

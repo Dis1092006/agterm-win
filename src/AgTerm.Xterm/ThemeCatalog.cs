@@ -11,6 +11,8 @@ public sealed record LiveThemePresentation(
     bool UseDarkChrome,
     RendererSettingsSnapshot RendererSettings);
 
+public sealed record ThemeCatalogError(string Theme, int Line, string Message);
+
 public static class LiveThemeSettings
 {
     public static HeadlessThemeSnapshot From(AppSettings settings)
@@ -67,66 +69,45 @@ public static class LiveThemeSettings
 
 public sealed class ThemeCatalog
 {
+    private const string ResourcePrefix = "themes/";
+
+    private static readonly Lazy<ThemeCatalog> Embedded = new(() => FromSources(EmbeddedSources()));
+
     private readonly IReadOnlyDictionary<string, TerminalTheme> _themes;
 
-    private ThemeCatalog(IEnumerable<TerminalTheme> themes)
+    private ThemeCatalog(
+        Dictionary<string, TerminalTheme> themes,
+        List<ThemeCatalogError> errors)
     {
-        _themes = new ReadOnlyDictionary<string, TerminalTheme>(
-            themes.ToDictionary(theme => theme.Name, StringComparer.Ordinal));
-        Names = Array.AsReadOnly(
-            _themes.Keys.Order(StringComparer.OrdinalIgnoreCase).ToArray());
+        _themes = new ReadOnlyDictionary<string, TerminalTheme>(themes);
+        Names = Array.AsReadOnly(themes.Keys.Order(StringComparer.OrdinalIgnoreCase).ToArray());
+        Errors = errors.AsReadOnly();
     }
 
-    public static ThemeCatalog Default { get; } = new(
-    [
-        new TerminalTheme(
-            "agterm",
-            "#ffffff",
-            "#303030",
-            "#d6d6d6",
-            "#999999",
-            "#5b5b5b",
-            "#dfdfff",
-            Array.AsReadOnly(
-            [
-                "#353535", "#d25252", "#a5c261", "#ffc66d",
-                "#2774c7", "#d197d9", "#bed6ff", "#eeeeec",
-                "#6a6a6a", "#c96363", "#c2e075", "#e1e48b",
-                "#8ab7d9", "#efb5f7", "#dcf4ff", "#ffffff",
-            ])),
-        new TerminalTheme(
-            "Builtin Light",
-            "#0c0c0c",
-            "#f5f5f5",
-            "#0c0c0c",
-            "#f5f5f5",
-            "#0078d480",
-            "#0c0c0c",
-            Array.AsReadOnly(
-            [
-                "#0c0c0c", "#c50f1f", "#13a10e", "#c19c00",
-                "#0037da", "#881798", "#3a96dd", "#cccccc",
-                "#767676", "#e74856", "#16c60c", "#f9f1a5",
-                "#3b78ff", "#b4009e", "#61d6d6", "#f2f2f2",
-            ])),
-        new TerminalTheme(
-            "Dracula",
-            "#f8f8f2",
-            "#282a36",
-            "#f8f8f2",
-            "#282a36",
-            "#44475a",
-            "#ffffff",
-            Array.AsReadOnly(
-            [
-                "#21222c", "#ff5555", "#50fa7b", "#f1fa8c",
-                "#bd93f9", "#ff79c6", "#8be9fd", "#f8f8f2",
-                "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5",
-                "#d6acff", "#ff92df", "#a4ffff", "#ffffff",
-            ]))
-    ]);
+    /// <summary>Upstream's theme pack, embedded in this assembly and parsed once on first access.</summary>
+    public static ThemeCatalog Default => Embedded.Value;
 
     public IReadOnlyList<string> Names { get; }
+
+    public IReadOnlyList<ThemeCatalogError> Errors { get; }
+
+    public static ThemeCatalog FromSources(IEnumerable<(string Name, string Text)> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+
+        var themes = new Dictionary<string, TerminalTheme>(StringComparer.Ordinal);
+        var errors = new List<ThemeCatalogError>();
+        foreach (var (name, text) in sources)
+        {
+            var result = GhosttyThemeParser.Parse(name, text);
+            if (result.Theme is { } theme)
+                themes[name] = theme;
+            else
+                errors.AddRange(result.Errors.Select(error => new ThemeCatalogError(name, error.Line, error.Message)));
+        }
+
+        return new ThemeCatalog(themes, errors);
+    }
 
     public TerminalTheme? Resolve(string name) =>
         _themes.TryGetValue(name, out var theme) ? theme : null;
@@ -140,5 +121,20 @@ public sealed class ThemeCatalog
         var name = sync && systemDark ? dark : light;
         var theme = name is null ? null : Resolve(name);
         return new ActiveTerminalTheme(theme, theme?.IsDark ?? systemDark);
+    }
+
+    private static IEnumerable<(string Name, string Text)> EmbeddedSources()
+    {
+        var assembly = typeof(ThemeCatalog).Assembly;
+        foreach (var resource in assembly.GetManifestResourceNames())
+        {
+            if (!resource.StartsWith(ResourcePrefix, StringComparison.Ordinal))
+                continue;
+
+            using var stream = assembly.GetManifestResourceStream(resource)
+                ?? throw new InvalidOperationException($"theme resource {resource} could not be opened");
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+            yield return (resource[ResourcePrefix.Length..], reader.ReadToEnd());
+        }
     }
 }

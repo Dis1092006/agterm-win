@@ -7,3 +7,6 @@
 src/AgTerm.Xterm/Integration/*.bash text eol=lf
 src/AgTerm.Xterm/Integration/*.ps1  text eol=lf
 src/AgTerm.Xterm/Integration/*.cmd  text eol=lf
+# upstream's theme files, byte for byte: a CRLF rewrite on checkout would make the next pack
+# update a diff of every line
+src/AgTerm.Xterm/Themes/** -text

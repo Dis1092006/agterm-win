@@ -117,7 +117,12 @@ public sealed class WindowPaletteProjectionTests
             TestStores.Scratch(),
             Keymap.Empty,
             StateProvider(),
-            ThemeCatalog.Default,
+            ThemeCatalog.FromSources(
+            [
+                ("agterm", ThemeTexts.Valid()),
+                ("Builtin Light", ThemeTexts.Valid("#ffffff")),
+                ("Dracula", ThemeTexts.Valid()),
+            ]),
             currentTheme: "agterm");
 
         Assert.Equal("Select a theme…", snapshot.Placeholder);

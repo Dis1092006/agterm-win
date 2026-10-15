@@ -39,4 +39,15 @@
           ExcludeFromSingleFile="true" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- upstream's theme files ship inside the assembly, so a directory publish, a single-file
+         publish and a test run all carry the same catalog, and no run-time state has a missing
+         theme folder. %(Extension) keeps a dotted name such as Hopscotch.256 whole. The SDK's
+         default None glob also matches these extension-less files; removing them keeps one
+         item per file. -->
+    <None Remove="Themes\**" />
+    <EmbeddedResource Include="Themes\ghostty\*;Themes\agterm"
+                      LogicalName="themes/%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>
