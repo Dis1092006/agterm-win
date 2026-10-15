@@ -51,7 +51,7 @@ public static class HudLinkPolicy
     public static string ExplorerSelectArguments(string path)
     {
         var trimmed = path.TrimEnd('\\');
-        return IsDriveName(trimmed) ?$"/select,{trimmed}\\" : $"/select,\"{trimmed}\"";
+        return IsDriveName(trimmed) ? $"/select,{trimmed}\\" : $"/select,\"{trimmed}\"";
     }
 
     private static bool IsDriveName(string path) => path.Length == 2 && char.IsAsciiLetter(path[0]) && path[1] == ':';
