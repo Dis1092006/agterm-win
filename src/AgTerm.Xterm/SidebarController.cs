@@ -460,7 +460,7 @@ public sealed class SidebarController : IDisposable
             return;
         }
 
-        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = false });
+        Process.Start(WindowsExplorer.StartInfo($"\"{path}\""));
     }
 
     /// <summary>Projects AppStore into immutable/materialized sidebar view state.</summary>

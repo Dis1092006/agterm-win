@@ -1255,10 +1255,7 @@ public sealed partial class MainWindow : Window
                 Process.Start(new ProcessStartInfo(open.Url) { UseShellExecute = true })?.Dispose();
                 break;
             case HudLinkAction.Reveal reveal:
-                Process.Start(new ProcessStartInfo("explorer.exe", HudLinkPolicy.ExplorerSelectArguments(reveal.Path))
-                {
-                    UseShellExecute = false,
-                })?.Dispose();
+                Process.Start(WindowsExplorer.StartInfo(HudLinkPolicy.ExplorerSelectArguments(reveal.Path)))?.Dispose();
                 break;
         }
     }
