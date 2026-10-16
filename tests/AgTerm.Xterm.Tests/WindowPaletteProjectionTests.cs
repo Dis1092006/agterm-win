@@ -227,6 +227,49 @@ public sealed class WindowPaletteProjectionTests
     }
 
     [Fact]
+    public void Workspace_themes_list_the_global_theme_first_and_keep_that_order()
+    {
+        var snapshot = WindowPaletteProjection.WorkspaceThemes(SmallCatalog(), "servers", currentTheme: "Dracula");
+
+        Assert.Equal(WindowPaletteMode.WorkspaceTheme, snapshot.Mode);
+        Assert.Equal("Select a theme for servers…", snapshot.Placeholder);
+        Assert.True(snapshot.PreserveInputOrderForEmptyQuery);
+        Assert.Equal(
+            ["theme:__default__", "theme:agterm", "theme:Builtin Light", "theme:Dracula"],
+            snapshot.Items.Select(item => item.Id));
+        Assert.Equal("Use global theme", snapshot.Items[0].Title);
+    }
+
+    [Fact]
+    public void Workspace_themes_open_on_the_workspace_theme()
+    {
+        var snapshot = WindowPaletteProjection.WorkspaceThemes(SmallCatalog(), "servers", currentTheme: "Dracula");
+
+        Assert.Equal("theme:Dracula", snapshot.InitialSelectionId);
+        Assert.Equal("Current", snapshot.Items.Single(item => item.Id == "theme:Dracula").Badge);
+        Assert.Null(snapshot.Items[0].Badge);
+    }
+
+    [Fact]
+    public void Workspace_themes_open_on_the_global_row_without_a_workspace_theme()
+    {
+        var snapshot = WindowPaletteProjection.WorkspaceThemes(SmallCatalog(), "servers", currentTheme: null);
+
+        Assert.Equal("theme:__default__", snapshot.InitialSelectionId);
+        Assert.Equal("Current", snapshot.Items[0].Badge);
+    }
+
+    [Fact]
+    public void A_stored_theme_the_catalog_lacks_opens_on_the_global_row_which_is_what_shows()
+    {
+        var snapshot = WindowPaletteProjection.WorkspaceThemes(SmallCatalog(), "servers", currentTheme: "Gone");
+
+        Assert.Equal("theme:__default__", snapshot.InitialSelectionId);
+        Assert.Equal("Current", snapshot.Items[0].Badge);
+        Assert.DoesNotContain(snapshot.Items, item => item.Id == "theme:Gone");
+    }
+
+    [Fact]
     public void Other_palettes_have_no_initial_selection()
     {
         var snapshot = WindowPaletteProjection.Create(

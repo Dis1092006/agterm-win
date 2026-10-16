@@ -11,6 +11,7 @@ public enum WindowPaletteMode
     CustomCommands,
     Attention,
     Themes,
+    WorkspaceTheme,
 }
 
 public sealed record WindowPaletteSnapshot(
@@ -106,6 +107,31 @@ public static class WindowPaletteProjection
 
         name = null;
         return false;
+    }
+
+    /// <summary>The workspace row's Theme… palette. The current row is the one on screen, so a
+    /// stored name the catalog lacks opens on the global row, which is what that workspace shows.</summary>
+    public static WindowPaletteSnapshot WorkspaceThemes(
+        ThemeCatalog catalog,
+        string workspaceName,
+        string? currentTheme)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        var shown = currentTheme is not null && catalog.Resolve(currentTheme) is not null ? currentTheme : null;
+        var items = new List<PaletteItemViewModel>
+        {
+            new(ThemeItemId(null), "Use global theme", badge: shown is null ? "Current" : null),
+        };
+        items.AddRange(catalog.Names.Select(name => new PaletteItemViewModel(
+            ThemeItemId(name),
+            name,
+            badge: name == shown ? "Current" : null)));
+        return new(
+            WindowPaletteMode.WorkspaceTheme,
+            $"Select a theme for {workspaceName}…",
+            items,
+            PreserveInputOrderForEmptyQuery: true,
+            InitialSelectionId: ThemeItemId(shown));
     }
 
     private static IReadOnlyList<PaletteItemViewModel> SessionItems(
