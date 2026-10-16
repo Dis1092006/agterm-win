@@ -79,7 +79,7 @@ public sealed partial class SidebarView : UserControl
     public void Apply(SidebarSnapshot snapshot)
     {
         _snapshot = snapshot;
-        _rowThemes?.Observe(snapshot.Rows);
+        _rowThemes?.Observe(snapshot.Generation);
         if (_shapeKey != snapshot.ShapeKey)
         {
             _shapeKey = snapshot.ShapeKey;
@@ -184,7 +184,8 @@ public sealed partial class SidebarView : UserControl
 
     public void WorkspaceThemeSaved(Guid workspaceId, string? themeName)
     {
-        _rowThemes?.Saved(workspaceId, themeName);
+        // the save already changed the store, so a snapshot requested now shows it
+        _rowThemes?.Saved(workspaceId, themeName, _controller?.RequestSnapshot() ?? 0);
         RecolorRows();
     }
 

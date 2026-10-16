@@ -25,7 +25,8 @@ public sealed class SidebarThemeColorsSourceTests
         var view = Source("SidebarView.xaml.cs");
         var window = Source("MainWindow.xaml.cs");
 
-        Assert.Contains("_rowThemes?.Observe(snapshot.Rows)", view, StringComparison.Ordinal);
+        Assert.Contains("_rowThemes?.Observe(snapshot.Generation)", view, StringComparison.Ordinal);
+        Assert.Contains("_rowThemes?.Saved(workspaceId, themeName, _controller?.RequestSnapshot() ?? 0)", view, StringComparison.Ordinal);
         Assert.Contains("_settings.ShowSidebarThemeColors()", view, StringComparison.Ordinal);
         Assert.Contains("IsListSelected = RowsList.SelectedItems.Contains(", view, StringComparison.Ordinal);
         Assert.Contains("public void PreviewWorkspaceTheme(Guid workspaceId, string? themeName)", view, StringComparison.Ordinal);

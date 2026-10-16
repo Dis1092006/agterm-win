@@ -77,61 +77,42 @@ public sealed class SidebarRowThemesTests
     }
 
     [Fact]
-    public void A_saved_pick_stays_while_the_rows_still_show_the_old_theme()
+    public void A_saved_pick_stays_until_a_snapshot_requested_after_the_save()
     {
         var themes = Themes();
-        themes.Observe([Row(Ws1, "Solarized")]);
+        themes.Observe(generation: 3);
         themes.Preview(Ws1, "Gruvbox Light");
-        themes.Saved(Ws1, "Gruvbox Light");
+        themes.Saved(Ws1, "Gruvbox Light", untilGeneration: 5);
 
         var stale = Row(Ws1, "Solarized");
-        themes.Observe([stale]);
+        themes.Observe(generation: 4);
         Assert.Equal(GruvboxColors, themes.ColorsFor(stale, enabled: true));
 
-        var confirming = Row(Ws1, "Gruvbox Light");
-        themes.Observe([confirming]);
-        Assert.Equal(GruvboxColors, themes.ColorsFor(confirming, enabled: true));
-
-        var cleared = Row(Ws1, null);
-        themes.Observe([cleared]);
-        Assert.Null(themes.ColorsFor(cleared, enabled: true));
+        themes.Observe(generation: 5);
+        Assert.Equal(SolarizedColors, themes.ColorsFor(stale, enabled: true));
     }
 
     [Fact]
-    public void A_saved_pick_gives_way_to_a_third_theme()
+    public void A_snapshot_after_the_save_wins_even_when_it_shows_the_old_theme_again()
     {
         var themes = Themes();
-        themes.Observe([Row(Ws1, "Solarized")]);
-        themes.Saved(Ws1, "Gruvbox Light");
+        themes.Observe(generation: 3);
+        themes.Saved(Ws1, "Gruvbox Light", untilGeneration: 5);
 
-        var third = Row(Ws1, "Nord");
-        themes.Observe([third]);
+        var setBack = Row(Ws1, "Solarized");
+        themes.Observe(generation: 7);
 
-        Assert.Equal(NordColors, themes.ColorsFor(third, enabled: true));
+        Assert.Equal(SolarizedColors, themes.ColorsFor(setBack, enabled: true));
     }
 
     [Fact]
-    public void A_saved_pick_gives_way_when_its_workspace_has_no_rows()
+    public void A_saved_pick_an_observed_snapshot_already_covers_is_not_held()
     {
         var themes = Themes();
-        themes.Observe([Row(Ws1, "Solarized")]);
-        themes.Saved(Ws1, "Gruvbox Light");
+        themes.Observe(generation: 5);
 
-        themes.Observe([Row(Ws2, null)]);
+        themes.Saved(Ws1, "Gruvbox Light", untilGeneration: 5);
 
         Assert.Equal(SolarizedColors, themes.ColorsFor(Row(Ws1, "Solarized"), enabled: true));
-    }
-
-    [Fact]
-    public void A_saved_pick_the_rows_already_show_is_not_held()
-    {
-        var themes = Themes();
-        themes.Observe([Row(Ws1, "Gruvbox Light")]);
-        themes.Saved(Ws1, "Gruvbox Light");
-
-        var later = Row(Ws1, "Solarized");
-        themes.Observe([later]);
-
-        Assert.Equal(SolarizedColors, themes.ColorsFor(later, enabled: true));
     }
 }

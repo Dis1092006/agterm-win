@@ -38,6 +38,10 @@ public sealed record SidebarSnapshot
     public string? FocusedWorkspaceName { get; init; }
     public int FlaggedCount { get; init; }
     public PendingCloseSummary? PendingClose { get; init; }
+
+    /// <summary>The broadcast generation this snapshot was captured for; later captures have larger
+    /// ones.</summary>
+    public long Generation { get; init; }
 }
 
 /// <summary>
@@ -107,6 +111,11 @@ public sealed class SidebarController : IDisposable
             _coordinator.SidebarInvalidated -= OnSidebarInvalidated;
         }
     }
+
+    /// <summary>Starts a fresh capture and returns its generation. A store change that finished before
+    /// this call shows in that snapshot or in a later one, because only the latest generation reaches
+    /// the view.</summary>
+    public long RequestSnapshot() => RequestBroadcast();
 
     // MARK: - gestures (all mutations route through ILiveStoreCoordinator)
 
@@ -464,7 +473,7 @@ public sealed class SidebarController : IDisposable
     }
 
     /// <summary>Projects AppStore into immutable/materialized sidebar view state.</summary>
-    private static SidebarSnapshot Capture(AppStore store)
+    private static SidebarSnapshot Capture(AppStore store, long generation)
     {
         var surfaceStatuses = new Dictionary<Guid, SidebarSurfaceStatus>();
         foreach (var workspace in store.Workspaces)
@@ -482,6 +491,7 @@ public sealed class SidebarController : IDisposable
 
         return new SidebarSnapshot
         {
+            Generation = generation,
             Rows = SidebarProjection.Project(store),
             ShapeKey = SidebarProjection.ShapeKey(store),
             Workspaces = store.Workspaces
@@ -509,11 +519,11 @@ public sealed class SidebarController : IDisposable
     /// Request a new snapshot generation. If multiple reads overlap, only the latest generation
     /// may reach the UI; late completions are dropped.
     /// </summary>
-    private void RequestBroadcast()
+    private long RequestBroadcast()
     {
         if (Volatile.Read(ref _started) == 0 || Volatile.Read(ref _disposed) != 0)
         {
-            return;
+            return Volatile.Read(ref _latestRequestedGeneration);
         }
 
         var generation = Interlocked.Increment(ref _latestRequestedGeneration);
@@ -521,18 +531,18 @@ public sealed class SidebarController : IDisposable
         Task<SidebarSnapshot> readTask;
         try
         {
-            readTask = _coordinator.ReadAsync(Capture);
+            readTask = _coordinator.ReadAsync(store => Capture(store, generation));
         }
         catch (Exception ex)
         {
             LogException("SidebarController snapshot read start failed", ex);
-            return;
+            return generation;
         }
 
         if (readTask.IsCompleted)
         {
             CompleteBroadcast(readTask, generation);
-            return;
+            return generation;
         }
 
         _ = readTask.ContinueWith(
@@ -545,6 +555,7 @@ public sealed class SidebarController : IDisposable
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
+        return generation;
     }
 
     private void CompleteBroadcast(Task<SidebarSnapshot> task, long generation)

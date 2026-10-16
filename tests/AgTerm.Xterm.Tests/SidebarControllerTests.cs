@@ -79,6 +79,19 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void A_requested_snapshot_carries_the_generation_the_request_returned()
+    {
+        var bootstrap = Latest.Generation;
+
+        var requested = _controller.RequestSnapshot();
+
+        Assert.True(requested > bootstrap);
+        Assert.Equal(requested, Latest.Generation);
+        Mutate(store => store.AddWorkspace("w2"));
+        Assert.True(Latest.Generation > requested);
+    }
+
+    [Fact]
     public void Controller_gestures_mutate_the_store_like_the_socket_would()
     {
         Guid w2 = default, background = default;

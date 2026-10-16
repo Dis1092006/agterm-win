@@ -9,13 +9,13 @@ public sealed record SidebarRowColors(string Background, string Foreground);
 /// Turns sidebar rows into the colors of the theme they show. A Windows-only extension
 /// (PLATFORM-NOTES "Windows-only extensions"). It also carries the workspace theme palette's
 /// preview for one workspace, and a pick the palette just saved: the save answer can reach the
-/// window before the sidebar snapshot that has the new theme, so the pick is held until the rows
-/// show it, or until they show that something else changed it. Used on the UI thread only.
+/// window before the sidebar snapshot that has the new theme, so the pick is held until a snapshot
+/// requested after the save arrives. Used on the UI thread only.
 /// </summary>
 public sealed class SidebarRowThemes
 {
     private readonly Func<string, TerminalTheme?> _resolve;
-    private IReadOnlyList<SidebarRow> _rows = [];
+    private long _observedGeneration;
     private Override? _override;
 
     public SidebarRowThemes(Func<string, TerminalTheme?> resolve)
@@ -38,34 +38,25 @@ public sealed class SidebarRowThemes
     }
 
     public void Preview(Guid workspaceId, string? themeName) =>
-        _override = new Override(workspaceId, themeName, StaleName: null, Held: false);
+        _override = new Override(workspaceId, themeName, HeldUntil: null);
 
     public void EndPreview() => _override = null;
 
-    public void Saved(Guid workspaceId, string? themeName)
-    {
-        var (found, shownName) = ThemeShown(_rows, workspaceId);
-        _override = found && shownName == themeName
+    /// <summary>Holds the saved pick until the snapshot of <paramref name="untilGeneration"/> or a
+    /// later one, which the caller requested after the save finished. Snapshot names alone cannot
+    /// tell a stale snapshot from a later change back to the old theme.</summary>
+    public void Saved(Guid workspaceId, string? themeName, long untilGeneration) =>
+        _override = _observedGeneration >= untilGeneration
             ? null
-            : new Override(workspaceId, themeName, StaleName: shownName, Held: true);
-    }
+            : new Override(workspaceId, themeName, HeldUntil: untilGeneration);
 
-    public void Observe(IReadOnlyList<SidebarRow> rows)
+    /// <summary>Called with the generation of every snapshot the view applies.</summary>
+    public void Observe(long generation)
     {
-        ArgumentNullException.ThrowIfNull(rows);
-        _rows = rows;
-        if (_override is not { Held: true } held)
-            return;
-        var (found, shownName) = ThemeShown(rows, held.WorkspaceId);
-        // a stale snapshot still shows the theme from before the save; anything else ends the hold
-        if (!found || shownName != held.StaleName)
+        _observedGeneration = Math.Max(_observedGeneration, generation);
+        if (_override is { HeldUntil: { } until } && _observedGeneration >= until)
             _override = null;
     }
 
-    private static (bool Found, string? ThemeName) ThemeShown(IReadOnlyList<SidebarRow> rows, Guid workspaceId) =>
-        rows.FirstOrDefault(r => r.WorkspaceId == workspaceId) is { } row
-            ? (true, row.ThemeName)
-            : (false, null);
-
-    private sealed record Override(Guid WorkspaceId, string? ThemeName, string? StaleName, bool Held);
+    private sealed record Override(Guid WorkspaceId, string? ThemeName, long? HeldUntil);
 }
