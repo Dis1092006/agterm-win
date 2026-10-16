@@ -125,4 +125,22 @@ public class PaneThemeAssignmentTests
 
         Assert.NotEqual(before, PaneThemeAssignment.For(_store));
     }
+
+    [Fact]
+    public void A_table_with_one_workspace_theme_replaced_changes_only_that_workspace()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        var table = new PaneThemeTable(
+            new Dictionary<string, PaneThemeEntry> { ["p1"] = new(a, "Nord"), ["p2"] = new(b, null) },
+            new HashSet<Guid> { a, b },
+            new PaneThemeEntry(b, null));
+
+        var replaced = table.WithWorkspaceTheme(b, "Dracula");
+
+        Assert.Equal(new PaneThemeEntry(a, "Nord"), replaced.Panes["p1"]);
+        Assert.Equal(new PaneThemeEntry(b, "Dracula"), replaced.Panes["p2"]);
+        Assert.Equal(new PaneThemeEntry(b, "Dracula"), replaced.Selected);
+        Assert.Equal(table.WorkspaceIds, replaced.WorkspaceIds);
+    }
 }

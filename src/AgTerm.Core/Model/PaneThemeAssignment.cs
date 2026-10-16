@@ -38,6 +38,19 @@ public sealed class PaneThemeTable : IEquatable<PaneThemeTable>
     /// <summary>The selected session's workspace; null when nothing is selected.</summary>
     public PaneThemeEntry? Selected { get; }
 
+    /// <summary>This table with one workspace's theme replaced. The window shows a saved pick with
+    /// it until the store's next table arrives.</summary>
+    public PaneThemeTable WithWorkspaceTheme(Guid workspaceId, string? themeName)
+    {
+        PaneThemeEntry Replaced(PaneThemeEntry entry) =>
+            entry.WorkspaceId == workspaceId ? entry with { ThemeName = themeName } : entry;
+
+        return new PaneThemeTable(
+            Panes.ToDictionary(pane => pane.Key, pane => Replaced(pane.Value), StringComparer.Ordinal),
+            WorkspaceIds,
+            Selected is { } selected ? Replaced(selected) : null);
+    }
+
     public bool Equals(PaneThemeTable? other) =>
         other is not null
         && Equals(Selected, other.Selected)

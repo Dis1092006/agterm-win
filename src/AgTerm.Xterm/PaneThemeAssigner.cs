@@ -25,6 +25,9 @@ public sealed class PaneThemeAssigner
     private PaneThemeTable _table = PaneThemeTable.Empty;
     private bool _globalBackground = true;
     private string? _sentBackground;
+    // the workspace theme palette's row on screen; it wins over the table for that workspace, so a
+    // session moved in during the preview shows it too
+    private PaneThemeEntry? _preview;
 
     public PaneThemeAssigner(Func<string, TerminalTheme?> resolve)
     {
@@ -53,6 +56,30 @@ public sealed class PaneThemeAssigner
     }
 
     public void Closed(string paneToken) => _sent.Remove(paneToken);
+
+    public bool HasWorkspace(Guid workspaceId) => _table.WorkspaceIds.Contains(workspaceId);
+
+    public PaneThemeChanges Preview(Guid workspaceId, string? themeName)
+    {
+        _preview = new PaneThemeEntry(workspaceId, themeName);
+        return Changes();
+    }
+
+    public PaneThemeChanges EndPreview()
+    {
+        _preview = null;
+        return Changes();
+    }
+
+    /// <summary>A pick that workspace.theme accepted. ThemePalettePreview shows nothing after a
+    /// successful save, so the preview ends here, and the table takes the saved theme until the
+    /// store's own table, which carries it too, arrives.</summary>
+    public PaneThemeChanges Saved(Guid workspaceId, string? themeName)
+    {
+        _preview = null;
+        _table = _table.WithWorkspaceTheme(workspaceId, themeName);
+        return Changes();
+    }
 
     /// <summary>The dashboard and an empty layout belong to no single session, and a zoomed quick
     /// terminal shows the global theme, so the area around them takes the global background.</summary>
@@ -86,5 +113,6 @@ public sealed class PaneThemeAssigner
         return new PaneThemeChanges(panes, backgroundChanged, background);
     }
 
-    private static string? ThemeName(PaneThemeEntry entry) => entry.ThemeName;
+    private string? ThemeName(PaneThemeEntry entry) =>
+        _preview is { } preview && preview.WorkspaceId == entry.WorkspaceId ? preview.ThemeName : entry.ThemeName;
 }

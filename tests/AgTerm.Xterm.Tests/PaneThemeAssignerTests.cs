@@ -133,4 +133,76 @@ public sealed class PaneThemeAssignerTests
         Assert.False(PaneThemeAssigner.UsesGlobalBackground(
             new LiveSelectionSnapshot(session, "s", "w", MainPaneId: "p1", QuickPaneId: "q", QuickVisible: true)));
     }
+
+    [Fact]
+    public void A_preview_changes_only_the_previewed_workspace_and_its_end_restores_it()
+    {
+        var table = Table(null, ("p1", new(A, "Nord")), ("p2", new(B, null)));
+        _assigner.Update(table, globalBackground: true);
+
+        var preview = _assigner.Preview(B, "Dracula");
+        var ended = _assigner.EndPreview();
+
+        Assert.Equal(new Dictionary<string, TerminalTheme?> { ["p2"] = Catalog.Resolve("Dracula") }, preview.Panes);
+        Assert.Equal(new Dictionary<string, TerminalTheme?> { ["p2"] = null }, ended.Panes);
+    }
+
+    [Fact]
+    public void Previewing_the_global_row_shows_the_global_theme_on_a_themed_workspace()
+    {
+        _assigner.Update(Table(null, ("p1", new(A, "Nord"))), globalBackground: true);
+
+        var preview = _assigner.Preview(A, null);
+
+        Assert.Equal(new Dictionary<string, TerminalTheme?> { ["p1"] = null }, preview.Panes);
+    }
+
+    [Fact]
+    public void A_session_moved_into_the_previewed_workspace_shows_the_preview()
+    {
+        _assigner.Update(Table(null, ("p1", new(A, "Nord")), ("p2", new(B, null))), globalBackground: true);
+        _assigner.Preview(B, "Dracula");
+
+        var moved = _assigner.Update(Table(null, ("p1", new(B, null)), ("p2", new(B, null))), globalBackground: true);
+
+        Assert.Equal(new Dictionary<string, TerminalTheme?> { ["p1"] = Catalog.Resolve("Dracula") }, moved.Panes);
+    }
+
+    [Fact]
+    public void The_background_shows_the_preview_when_the_selected_session_is_in_that_workspace()
+    {
+        _assigner.Update(Table(new(B, null), ("p2", new(B, null))), globalBackground: false);
+
+        var preview = _assigner.Preview(B, "Nord");
+
+        Assert.True(preview.BackgroundChanged);
+        Assert.Equal("#2e3440", preview.Background);
+    }
+
+    [Fact]
+    public void A_saved_pick_leaves_no_preview_behind()
+    {
+        _assigner.Update(Table(null, ("p2", new(B, null))), globalBackground: true);
+        _assigner.Preview(B, "Dracula");
+
+        Assert.True(_assigner.Saved(B, "Dracula").IsEmpty);
+        Assert.True(_assigner.Update(Table(null, ("p2", new(B, "Dracula"))), globalBackground: true).IsEmpty);
+
+        // a later agtermctl workspace theme must show; a preview left behind would hide it
+        var later = _assigner.Update(Table(null, ("p2", new(B, "Nord"))), globalBackground: true);
+        Assert.Equal(new Dictionary<string, TerminalTheme?> { ["p2"] = Catalog.Resolve("Nord") }, later.Panes);
+    }
+
+    [Fact]
+    public void A_workspace_is_known_until_a_table_drops_it()
+    {
+        _assigner.Update(Table(null), globalBackground: true);
+        Assert.True(_assigner.HasWorkspace(B));
+
+        _assigner.Update(
+            new PaneThemeTable(new Dictionary<string, PaneThemeEntry>(), new HashSet<Guid> { A }, null),
+            globalBackground: true);
+
+        Assert.False(_assigner.HasWorkspace(B));
+    }
 }
