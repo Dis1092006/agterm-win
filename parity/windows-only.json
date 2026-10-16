@@ -8,5 +8,8 @@
   ],
   "workspaceSnapshot": [
     { "name": "theme", "reason": "Persists the workspace's own terminal theme." }
+  ],
+  "settings": [
+    { "name": "sidebarThemeColors", "reason": "Turns off the theme colors on the sidebar rows of workspaces with their own theme." }
   ]
 }

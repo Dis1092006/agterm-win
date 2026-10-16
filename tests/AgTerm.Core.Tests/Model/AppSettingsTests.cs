@@ -63,6 +63,31 @@ public class AppSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Save_writes_sidebar_theme_colors_only_when_set()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { SidebarThemeColors = false });
+        Assert.Contains("\"sidebarThemeColors\":false", File.ReadAllText(FilePath));
+
+        store.Save(new AppSettings());
+        Assert.DoesNotContain("sidebarThemeColors", File.ReadAllText(FilePath));
+    }
+
+    [Fact]
+    public void Sidebar_theme_colors_are_on_unless_turned_off()
+    {
+        Assert.True(new AppSettings().ShowSidebarThemeColors());
+        Assert.True(new AppSettings { SidebarThemeColors = true }.ShowSidebarThemeColors());
+        Assert.False(new AppSettings { SidebarThemeColors = false }.ShowSidebarThemeColors());
+    }
+
+    [Fact]
+    public void Settings_that_differ_only_in_sidebar_theme_colors_are_not_equal()
+    {
+        Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeColors = false });
+    }
+
+    [Fact]
     public void Round_trip_preserves_every_field_kind()
     {
         var store = new SettingsStore(_dir);
@@ -105,6 +130,7 @@ public class AppSettingsTests : IDisposable
             SidebarFontSize = 15,
             HiddenInterfaceElements = new[] { "flaggedView", "someFutureElement" },
             AutoHideSidebarInactiveWindows = true,
+            SidebarThemeColors = false,
         };
         store.Save(settings);
         Assert.Equal(settings, new SettingsStore(_dir).Load());

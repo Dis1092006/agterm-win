@@ -9,11 +9,12 @@ namespace AgTerm.Core.Tests.Protocol;
 public class WindowsOnlySurfaceTests
 {
     [Fact]
-    public void The_list_names_the_workspace_theme_command_and_fields()
+    public void The_list_names_the_workspace_theme_and_the_sidebar_colors_setting()
     {
         Assert.Equal(["workspace.theme"], ParitySurface.WindowsOnly("commands"));
         Assert.Equal(["theme"], ParitySurface.WindowsOnly("workspaceNode"));
         Assert.Equal(["theme"], ParitySurface.WindowsOnly("workspaceSnapshot"));
+        Assert.Equal(["sidebarThemeColors"], ParitySurface.WindowsOnly("settings"));
     }
 
     [Theory]
@@ -30,6 +31,14 @@ public class WindowsOnlySurfaceTests
     {
         Assert.All(ParitySurface.WindowsOnly("workspaceSnapshot"),
             name => Assert.DoesNotContain(name, ParitySurface.UpstreamPersistence("workspaceSnapshot")));
+    }
+
+    [Fact]
+    public void No_windows_only_setting_exists_upstream()
+    {
+        Assert.NotEmpty(ParitySurface.UpstreamSettings());
+        Assert.All(ParitySurface.WindowsOnly("settings"),
+            name => Assert.DoesNotContain(name, ParitySurface.UpstreamSettings()));
     }
 
     [Fact]

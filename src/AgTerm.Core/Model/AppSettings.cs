@@ -70,6 +70,8 @@ public sealed record AppSettings
     [JsonPropertyName("sidebarFontSize")] public double? SidebarFontSize { get; init; }
     [JsonPropertyName("hiddenInterfaceElements")] public IReadOnlyList<string>? HiddenInterfaceElements { get; init; }
     [JsonPropertyName("autoHideSidebarInactiveWindows")] public bool? AutoHideSidebarInactiveWindows { get; init; }
+    // Windows-only (parity/windows-only.json): absent means on
+    [JsonPropertyName("sidebarThemeColors")] public bool? SidebarThemeColors { get; init; }
 
     /// <summary>Records compare by value; a list property needs an explicit sequence comparison.</summary>
     public bool Equals(AppSettings? other) =>
@@ -92,16 +94,20 @@ public sealed record AppSettings
          other.BlockedStatusSoundName, other.RightClickPaste) &&
         (NewSessionDirectory, NewSessionCustomDirectory, ConfirmCloseSession, CloseGraceUndoEnabled,
          AutoFollowAttention, AutoFollowStayOnActive, SidebarFontSize,
-         AutoHideSidebarInactiveWindows) ==
+         AutoHideSidebarInactiveWindows, SidebarThemeColors) ==
         (other.NewSessionDirectory, other.NewSessionCustomDirectory, other.ConfirmCloseSession,
          other.CloseGraceUndoEnabled, other.AutoFollowAttention, other.AutoFollowStayOnActive,
-         other.SidebarFontSize, other.AutoHideSidebarInactiveWindows) &&
+         other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors) &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&
               HiddenInterfaceElements.SequenceEqual(other.HiddenInterfaceElements));
 
     public override int GetHashCode() => HashCode.Combine(FontFamily, FontSize, Theme, SidebarFontSize);
+
+    /// <summary>Whether sidebar rows of a workspace with its own theme show that theme's colors. A
+    /// method, not a property, so it is never written to settings.json.</summary>
+    public bool ShowSidebarThemeColors() => SidebarThemeColors != false;
 
     /// <summary>The SwiftUI-overlay opacity for an inactive-pane mute strength: clamped to 0…10,
     /// scaled by 0.08 (0 → 0, 5 → 0.4 — the historical default, 10 → 0.8).</summary>

@@ -31,6 +31,10 @@ public static class ParitySurface
         Load("docs/upstream/surface-v0.36.0.json").GetProperty("persistence").GetProperty(section)
             .EnumerateArray().Select(e => e.GetProperty("name").GetString()!).ToList();
 
+    public static IReadOnlyList<string> UpstreamSettings() =>
+        Load("docs/upstream/surface-v0.36.0.json").GetProperty("settings")
+            .EnumerateArray().Select(e => e.GetProperty("name").GetString()!).ToList();
+
     /// <summary>Names parity/windows-only.json adds to a section; empty when the file has no such
     /// section.</summary>
     public static IReadOnlyList<string> WindowsOnly(string section) =>
