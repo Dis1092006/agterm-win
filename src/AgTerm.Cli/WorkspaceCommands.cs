@@ -21,6 +21,7 @@ internal static class WorkspaceCommands
         workspace.Subcommands.Add(BuildFocus(bindings));
         workspace.Subcommands.Add(BuildCollapse(bindings));
         workspace.Subcommands.Add(BuildExpand(bindings));
+        workspace.Subcommands.Add(BuildTheme(bindings));
         return workspace;
     }
 
@@ -289,6 +290,45 @@ internal static class WorkspaceCommands
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Expand
         {
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    // Windows-only (parity/windows-only.json): upstream has no theme per workspace.
+    internal sealed class Theme : IRequestCommand
+    {
+        public string? Name { get; init; }
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.WorkspaceTheme,
+            Target = Target.Target,
+            Args = Client.WithWindow(new ControlArgs { Name = Name }),
+        };
+    }
+
+    private static System.CommandLine.Command BuildTheme(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("theme",
+            "Set a workspace's own terminal theme, or clear it without a name (Windows only).");
+        var name = new Argument<string?>("name")
+        {
+            Description = "Theme name from `agtermctl theme list`; omit it to show the global theme again.",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(name);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Theme
+        {
+            Name = result.GetValue(name),
             Target = target.Read(result),
             Client = options.Read(result),
         });

@@ -114,4 +114,19 @@ public class WorkspaceThemeE2ETests : ControlApiTestCase
 
         Assert.Equal("Nord", Workspace(second, "workspace 1")["theme"]!.GetValue<string>());
     }
+
+    [Fact]
+    public void Agtermctl_prints_what_workspace_rename_prints_and_reports_an_unknown_theme()
+    {
+        // the fixture host lists no themes: a clear succeeds, any name is unknown
+        var renamed = RunCtl("workspace", "rename", "renamed");
+        var cleared = RunCtl("workspace", "theme");
+        var refused = RunCtl("workspace", "theme", "Nord");
+
+        Assert.Equal(0, renamed.Exit);
+        Assert.Equal(0, cleared.Exit);
+        Assert.Equal(renamed.Out, cleared.Out);
+        Assert.NotEqual(0, refused.Exit);
+        Assert.Contains("unknown theme: Nord", refused.Error);
+    }
 }
