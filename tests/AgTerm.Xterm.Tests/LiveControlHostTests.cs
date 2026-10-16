@@ -230,6 +230,53 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
+    public void A_new_surface_request_carries_the_theme_of_its_workspace()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-workspace-theme-").FullName;
+        var captured = new List<SurfaceOpenRequest>();
+        try
+        {
+            var host = new LiveControlHost(new LiveControlHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-workspace-theme-" + Guid.NewGuid().ToString("N"),
+                DefaultShell = Cmd,
+                AvailableThemes = ["Nord"],
+                OpenSurface = (request, _) =>
+                {
+                    lock (captured) captured.Add(request);
+                    return Task.FromResult<IHeadlessSurface>(new FakeSurface());
+                },
+            });
+            using (host)
+            {
+                host.Start();
+                var client = new ControlPipeClient(host.PipeName);
+                Ok(client.Send(new ControlRequest
+                {
+                    Cmd = Command.WorkspaceTheme, Args = new ControlArgs { Name = "Nord" },
+                }));
+                Ok(client.Send(new ControlRequest { Cmd = Command.SessionNew, Args = new ControlArgs { Cwd = stateDir } }));
+                // the new session realizes through OpenSurface; wait for its request before the host stops
+                Assert.True(SpinWait.SpinUntil(
+                    () => { lock (captured) return captured.Count >= 2; },
+                    TimeSpan.FromSeconds(10)));
+            }
+
+            lock (captured)
+            {
+                Assert.Null(captured[0].Options.ThemeName);
+                Assert.Equal("Nord", captured[^1].Options.ThemeName);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public void Config_reload_invokes_live_host_callback_and_preserves_wire_count()
     {
         var stateDir = Directory.CreateTempSubdirectory("agterm-cfgreload-").FullName;

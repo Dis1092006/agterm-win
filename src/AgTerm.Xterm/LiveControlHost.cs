@@ -1210,6 +1210,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 InitialInput = initialInput,
                 BaseFontSize = baseFontSize,
                 ReadClipboard = _options.ReadClipboard,
+                ThemeName = sessionId is { } owner ? PaneThemeAssignment.ForSession(Store, owner) : null,
             });
     }
 

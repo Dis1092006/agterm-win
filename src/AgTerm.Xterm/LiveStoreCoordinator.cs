@@ -32,7 +32,8 @@ public sealed record LiveSelectionSnapshot(
     string? DashboardHighlighted = null,
     double? DashboardFontSize = null,
     TerminalAskPlacement? TerminalAsk = null,
-    TerminalHudPlacement? Hud = null)
+    TerminalHudPlacement? Hud = null,
+    PaneThemeTable? PaneThemes = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -399,7 +400,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
                 DashboardOpen: _host.Actions.Dashboard.IsOpen,
                 DashboardCells: dashboardCells,
                 DashboardHighlighted: dashboardHighlighted,
-                DashboardFontSize: dashboardFontSize);
+                DashboardFontSize: dashboardFontSize,
+                PaneThemes: PaneThemeAssignment.For(_host.Store));
         }
 
         var selectedSession = _host.Store.SessionWithId(id);
@@ -435,7 +437,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             dashboardHighlighted,
             dashboardFontSize,
             TerminalAsk: terminalAsk,
-            Hud: hud);
+            Hud: hud,
+            PaneThemes: PaneThemeAssignment.For(_host.Store));
     }
 
     // the same test ToTerminalLayout uses to draw the quick layer: a quick terminal that failed to

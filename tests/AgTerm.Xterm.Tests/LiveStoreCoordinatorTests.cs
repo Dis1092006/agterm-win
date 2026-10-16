@@ -441,6 +441,41 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task A_workspace_theme_republishes_the_selection_snapshot_with_the_pane_themes()
+    {
+        using var coordinator = BuildCoordinator();
+        var published = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        coordinator.SelectionSnapshotChanged += snapshot =>
+        {
+            if (snapshot.PaneThemes?.Selected?.ThemeName == "Nord") published.TrySetResult(snapshot);
+        };
+        Guid workspaceId = default;
+
+        _host.RunLocked(() =>
+        {
+            workspaceId = _host.Store.WorkspaceForSession(_host.Store.SelectedSessionId!.Value)!.Id;
+            _host.Store.SetWorkspaceTheme(workspaceId, "Nord");
+        });
+
+        var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(workspaceId, snapshot.PaneThemes!.Selected!.WorkspaceId);
+    }
+
+    [Fact]
+    public void Snapshots_with_equal_pane_theme_tables_are_equal()
+    {
+        var workspace = Guid.NewGuid();
+        PaneThemeTable Table() => new(
+            new Dictionary<string, PaneThemeEntry> { ["p1"] = new(workspace, "Nord") },
+            new HashSet<Guid> { workspace },
+            new PaneThemeEntry(workspace, "Nord"));
+
+        Assert.Equal(
+            new LiveSelectionSnapshot(null, null, PaneThemes: Table()),
+            new LiveSelectionSnapshot(null, null, PaneThemes: Table()));
+    }
+
+    [Fact]
     public async Task Opening_a_terminal_ask_republishes_the_selection_snapshot_with_it()
     {
         using var coordinator = BuildCoordinator();
