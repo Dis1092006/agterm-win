@@ -130,4 +130,62 @@ public class SidebarProjectionTests : IDisposable
         _store.SetSidebarMode(SidebarMode.Flagged);
         Assert.NotEqual(collapsed, SidebarProjection.ShapeKey(_store));
     }
+
+    [Fact]
+    public void Workspace_and_session_rows_carry_the_workspace_and_its_theme()
+    {
+        var (w1, w2, a, _, c) = Seed();
+        _store.SetWorkspaceTheme(w1.Id, "Ubuntu");
+
+        var rows = SidebarProjection.Project(_store);
+
+        var w1Row = rows.Single(r => r.Id == w1.Id);
+        Assert.Equal((w1.Id, "Ubuntu"), (w1Row.WorkspaceId, w1Row.ThemeName));
+        var aRow = rows.Single(r => r.Id == a.Id);
+        Assert.Equal((w1.Id, "Ubuntu"), (aRow.WorkspaceId, aRow.ThemeName));
+        var cRow = rows.Single(r => r.Id == c.Id);
+        Assert.Equal((w2.Id, (string?)null), (cRow.WorkspaceId, cRow.ThemeName));
+    }
+
+    [Fact]
+    public void Flagged_rows_carry_the_theme_of_their_own_workspace()
+    {
+        var (w1, w2, a, _, c) = Seed();
+        _store.SetFlag(true, a.Id);
+        _store.SetFlag(true, c.Id);
+        _store.SetWorkspaceTheme(w2.Id, "Nord");
+        _store.SetSidebarMode(SidebarMode.Flagged);
+
+        var rows = SidebarProjection.Project(_store);
+
+        var aRow = rows.Single(r => r.Id == a.Id);
+        Assert.Equal((w1.Id, (string?)null), (aRow.WorkspaceId, aRow.ThemeName));
+        var cRow = rows.Single(r => r.Id == c.Id);
+        Assert.Equal((w2.Id, "Nord"), (cRow.WorkspaceId, cRow.ThemeName));
+    }
+
+    [Fact]
+    public void A_moved_session_takes_the_theme_of_its_new_workspace()
+    {
+        var (_, w2, a, _, _) = Seed();
+        _store.SetWorkspaceTheme(w2.Id, "Nord");
+
+        _store.MoveSession(a.Id, w2.Id);
+
+        var aRow = SidebarProjection.Project(_store).Single(r => r.Id == a.Id);
+        Assert.Equal((w2.Id, "Nord"), (aRow.WorkspaceId, aRow.ThemeName));
+    }
+
+    [Fact]
+    public void A_theme_change_changes_the_rows_but_not_the_shape_key()
+    {
+        var (w1, _, _, _, _) = Seed();
+        var rowsBefore = SidebarProjection.Project(_store);
+        var keyBefore = SidebarProjection.ShapeKey(_store);
+
+        _store.SetWorkspaceTheme(w1.Id, "Ubuntu");
+
+        Assert.False(rowsBefore.SequenceEqual(SidebarProjection.Project(_store)));
+        Assert.Equal(keyBefore, SidebarProjection.ShapeKey(_store));
+    }
 }

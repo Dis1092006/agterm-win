@@ -28,6 +28,10 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
 
     // both (session count / workspace roll-up)
     public int Unseen { get; init; }
+
+    // both: a session row carries the workspace it lives in, and the theme it shows
+    public Guid WorkspaceId { get; init; }
+    public string? ThemeName { get; init; }
 }
 
 /// <summary>
@@ -47,7 +51,7 @@ public static class SidebarProjection
             foreach (var session in store.FlaggedSessions)
             {
                 var workspace = store.WorkspaceForSession(session.Id);
-                rows.Add(SessionRow(store, session,
+                rows.Add(SessionRow(store, workspace, session,
                     label: $"{session.DisplayName} : {workspace?.Name ?? ""}"));
             }
             return rows;
@@ -62,10 +66,12 @@ public static class SidebarProjection
                 Focused = store.FocusedWorkspaceId == workspace.Id,
                 ActiveWorkspace = current == workspace.Id,
                 Unseen = workspace.UnseenCount,
+                WorkspaceId = workspace.Id,
+                ThemeName = workspace.ThemeName,
             });
             if (!workspace.IsExpanded) continue;
             foreach (var session in workspace.Sessions)
-                rows.Add(SessionRow(store, session, session.DisplayName));
+                rows.Add(SessionRow(store, workspace, session, session.DisplayName));
         }
         return rows;
     }
@@ -85,13 +91,18 @@ public static class SidebarProjection
         return key.ToString();
     }
 
-    private static SidebarRow SessionRow(AppStore store, Session session, string label) =>
+    private static SidebarRow SessionRow(AppStore store, Workspace? workspace, Session session, string label) =>
         new(SidebarRowKind.Session, session.Id, label)
         {
+            WorkspaceId = workspace?.Id ?? Guid.Empty,
+            ThemeName = SessionThemeName(workspace, session),
             Selected = store.SelectedSessionId == session.Id,
             Flagged = session.Flagged,
             HasSplit = session.HasSplit,
             Indicator = session.AgentIndicator,
             Unseen = session.UnseenCount,
         };
+
+    // stage 3 (a theme per session) changes only this: the session's own theme first
+    private static string? SessionThemeName(Workspace? workspace, Session session) => workspace?.ThemeName;
 }

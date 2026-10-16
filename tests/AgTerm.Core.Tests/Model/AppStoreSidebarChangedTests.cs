@@ -95,4 +95,14 @@ public class AppStoreSidebarChangedTests : IDisposable
 
         Assert.DoesNotContain(_ring, e => e.Kind == ControlEventKind.TreeChanged);
     }
+
+    [Fact]
+    public void Setting_a_workspace_theme_raises_the_event_and_an_unchanged_theme_does_not()
+    {
+        var workspace = _store.AddWorkspace("work");
+
+        Assert.Equal(1, Raised(() => _store.SetWorkspaceTheme(workspace.Id, "Nord")));
+        Assert.Equal(0, Raised(() => _store.SetWorkspaceTheme(workspace.Id, "Nord")));
+        Assert.Equal(1, Raised(() => _store.SetWorkspaceTheme(workspace.Id, null)));
+    }
 }
