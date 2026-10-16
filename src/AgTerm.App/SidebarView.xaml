@@ -39,16 +39,17 @@
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SidebarRowViewModel">
                     <Grid Height="{x:Bind RowHeight, Mode=OneWay}">
-                    <!-- the colored layer of a themed row: inset as the list item's own rounded
-                         selection backplate, and opaque, so the selected and hover backgrounds
-                         under it never show. The content sits on top at the container's old
-                         8 px padding, so a default row is laid out as before -->
+                    <!-- the colored layer of a themed row: opaque, so the selected and hover
+                         backgrounds under it never show. The owner found the item's 4 px corner
+                         radius and a 4 px gap between colored rows too large. The content sits
+                         on top at the container's old 8 px padding, so a default row is laid out
+                         as before -->
                     <Border Background="{x:Bind RowBackground, Mode=OneWay}"
                             BackgroundSizing="OuterBorderEdge"
                             BorderBrush="{x:Bind RowFrame, Mode=OneWay}"
                             BorderThickness="1"
-                            CornerRadius="{ThemeResource ListViewItemCornerRadius}"
-                            Margin="4,2,4,2" />
+                            CornerRadius="2"
+                            Margin="4,1,4,1" />
                     <Grid ColumnSpacing="6" Margin="8,0,8,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16" />

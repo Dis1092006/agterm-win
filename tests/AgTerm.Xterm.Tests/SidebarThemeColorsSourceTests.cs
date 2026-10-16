@@ -5,16 +5,17 @@ namespace AgTerm.Xterm.Tests;
 public sealed class SidebarThemeColorsSourceTests
 {
     [Fact]
-    public void Row_template_draws_the_theme_colors_on_a_layer_inset_like_the_selection_backplate()
+    public void Row_template_draws_the_theme_colors_on_an_inset_layer_with_a_2px_gap_and_small_corners()
     {
         var xaml = Source("SidebarView.xaml");
 
         Assert.Contains("<Setter Property=\"Padding\" Value=\"0\" />", xaml, StringComparison.Ordinal);
         Assert.Contains("Background=\"{x:Bind RowBackground, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("BorderBrush=\"{x:Bind RowFrame, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("CornerRadius=\"{ThemeResource ListViewItemCornerRadius}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("CornerRadius=\"2\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("CornerRadius=\"{ThemeResource ListViewItemCornerRadius}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<Grid Height=\"{x:Bind RowHeight, Mode=OneWay}\">", xaml, StringComparison.Ordinal);
-        Assert.Contains("Margin=\"4,2,4,2\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"4,1,4,1\"", xaml, StringComparison.Ordinal);
         Assert.Contains("BackgroundSizing=\"OuterBorderEdge\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<Grid ColumnSpacing=\"6\" Margin=\"8,0,8,0\">", xaml, StringComparison.Ordinal);
         Assert.True(Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"") >= 4,
