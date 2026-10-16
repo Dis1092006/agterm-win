@@ -85,6 +85,9 @@ public sealed partial class MainWindow : Window
     private readonly DeferredTerminalFocus _terminalFocus = new();
     private WindowPaletteMode? _openPaletteMode;
     private readonly ThemePalettePreview _themePreview;
+    private readonly PaneThemeAssigner _paneThemes;
+    // the selected workspace's theme background; null while the global theme's background applies
+    private string? _terminalBackground;
 
     private sealed record StartupState(
         LiveSelectionSnapshot Selection,
@@ -99,6 +102,7 @@ public sealed partial class MainWindow : Window
         _systemDark = IsSystemAppearanceDark();
         var initialTheme = LiveThemeSettings.Resolve(_settings, _themeCatalog, _systemDark);
         _rendererSettings = initialTheme.RendererSettings;
+        _paneThemes = new PaneThemeAssigner(_themeCatalog.Resolve);
 
         InitializeComponent();
         _notificationPresenter = new WindowsAppNotificationPresenter(
@@ -552,6 +556,7 @@ public sealed partial class MainWindow : Window
 
                 var previousSelection = _selection;
                 _selection = snapshot;
+                PresentPaneThemes(snapshot);
                 // a split toggle or a divider drag moves the pane a question is anchored to
                 ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
                 _selectedSessionId = snapshot.SessionId;
@@ -627,7 +632,8 @@ public sealed partial class MainWindow : Window
                 selectedSession?.SearchTotal,
                 selectedSession?.SearchSelected,
                 host.Host.Actions.Quick.Surface?.PaneToken,
-                host.Host.Actions.Quick.Visible);
+                host.Host.Actions.Quick.Visible,
+                PaneThemes: PaneThemeAssignment.For(store));
 
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
@@ -650,6 +656,7 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             _selection = startup.Selection;
+            PresentPaneThemes(startup.Selection);
             _selectedSessionId = startup.Selection.SessionId;
             SetTerminalCompositionOnly(
                 startup.Selection.QuickVisible && !string.IsNullOrWhiteSpace(startup.Selection.QuickPaneId)
@@ -1741,7 +1748,11 @@ public sealed partial class MainWindow : Window
                 var page = await _pageTask;
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var surface = await XtermPaneSurface.OpenAsync(page, request.Options, cancellationToken);
+                var surface = await XtermPaneSurface.OpenAsync(
+                    page,
+                    request.Options,
+                    cancellationToken,
+                    _paneThemes.Resolve(request.Options.ThemeName));
 
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -1751,6 +1762,8 @@ public sealed partial class MainWindow : Window
                 }
 
                 done.TrySetResult(surface);
+                if (surface.PaneToken is { Length: > 0 } openedToken)
+                    SendPaneThemeChanges(_paneThemes.Opened(openedToken, request.Options.ThemeName));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -1838,6 +1851,7 @@ public sealed partial class MainWindow : Window
             if (_surfaces.TryGetValue(paneToken, out var current) && ReferenceEquals(current, surface))
             {
                 _surfaces.Remove(paneToken);
+                _paneThemes.Closed(paneToken);
             }
         });
     }
@@ -2284,7 +2298,7 @@ public sealed partial class MainWindow : Window
         var translucent = snapshot.BackgroundOpacity < 1.0;
         TerminalView.DefaultBackgroundColor = translucent
             ? Color.FromArgb(0x00, 0x00, 0x00, 0x00)
-            : ParseHexColor(snapshot.BackgroundColor, Color.FromArgb(0xFF, 0x0C, 0x0C, 0x0C));
+            : ParseHexColor(_terminalBackground ?? snapshot.BackgroundColor, Color.FromArgb(0xFF, 0x0C, 0x0C, 0x0C));
 
         if (!translucent)
         {
@@ -2302,6 +2316,32 @@ public sealed partial class MainWindow : Window
         {
             SystemBackdrop = null;
         }
+    }
+
+    private void PresentPaneThemes(LiveSelectionSnapshot selection) =>
+        SendPaneThemeChanges(_paneThemes.Update(
+            selection.PaneThemes ?? PaneThemeTable.Empty,
+            PaneThemeAssigner.UsesGlobalBackground(selection)));
+
+    private void SendPaneThemeChanges(PaneThemeChanges changes)
+    {
+        if (changes.IsEmpty)
+            return;
+        if (changes.BackgroundChanged)
+        {
+            _terminalBackground = changes.Background;
+            ApplyComposition(_rendererSettings);
+        }
+        ObserveTaskFault(SendPaneThemeChangesAsync(changes), "Pane theme apply failed");
+    }
+
+    private async Task SendPaneThemeChangesAsync(PaneThemeChanges changes)
+    {
+        var page = await _pageTask;
+        if (changes.Panes.Count > 0)
+            await page.ApplyPaneThemesAsync(changes.Panes);
+        if (changes.BackgroundChanged)
+            await page.SetTerminalBackgroundAsync(changes.Background);
     }
 
     private static Color ParseHexColor(string hex, Color fallback)
