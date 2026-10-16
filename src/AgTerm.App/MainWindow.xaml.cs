@@ -1053,6 +1053,9 @@ public sealed partial class MainWindow : Window
                 AskOverlay.FocusPanel();
             return;
         }
+        // the palette is modal for the keyboard; its close returns focus to the accepted pane
+        if (PaletteOverlay.IsOpen)
+            return;
         _terminalFocus.Request(_windowIsActive, () => TerminalView.Focus(FocusState.Programmatic));
         if (_surfaces.TryGetValue(paneId, out var surface))
         {

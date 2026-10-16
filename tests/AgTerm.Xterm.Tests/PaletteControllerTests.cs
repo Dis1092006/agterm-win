@@ -374,6 +374,18 @@ public sealed class PaletteViewSourceTests
         Assert.True(reset >= 0 || resetCrlf >= 0, "the flag must be cleared right before the pick opens.");
     }
 
+    // manual check (workspace theme step 8): a layout accepted after the palette opened moved the
+    // keyboard to the WebView, so Esc and typing reached the terminal instead of the palette
+    [Fact]
+    public void MainWindow_moves_no_terminal_focus_while_a_palette_is_open()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        Assert.Matches(
+            @"private void FocusTerminal\(string paneId\)\s*\{\s*if \(AskOverlay\.IsOpen\)\s*\{[^}]*\}\s*(//[^\r\n]*\s*)*if \(PaletteOverlay\.IsOpen\)\s*return;\s*_terminalFocus\.Request\(",
+            source);
+    }
+
     [Fact]
     public void MainWindow_answers_the_pick_before_awaiting_the_palette_close()
     {
