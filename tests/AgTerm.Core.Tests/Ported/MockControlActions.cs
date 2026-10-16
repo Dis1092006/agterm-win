@@ -32,6 +32,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record WorkspaceNew(string? Window, string? Name, bool Collapsed) : Call;
         public sealed record WorkspaceSelect(string? Target, string? Window) : Call;
         public sealed record WorkspaceRename(string? Target, string? Window, string Name) : Call;
+        public sealed record WorkspaceTheme(string? Target, string? Window, string? ThemeName) : Call;
         public sealed record WorkspaceDelete(string? Target, string? Window) : Call;
         public sealed record SessionMove(string? Target, string? Window, ControlSessionMove Move) : Call;
         public sealed record SessionMoveBatch(IReadOnlyList<string> Targets, string? Window, ControlSessionMove Move) : Call
@@ -236,6 +237,12 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse RenameWorkspace(string? target, string? window, string name)
     {
         Calls.Add(new Call.WorkspaceRename(target, window, name));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetWorkspaceTheme(string? target, string? window, string? themeName)
+    {
+        Calls.Add(new Call.WorkspaceTheme(target, window, themeName));
         return new ControlResponse { Ok = true };
     }
 

@@ -1206,7 +1206,8 @@ public sealed class LiveApplicationHost : IDisposable
         or Command.WorkspaceMove
         or Command.WorkspaceFocus
         or Command.WorkspaceCollapse
-        or Command.WorkspaceExpand;
+        or Command.WorkspaceExpand
+        or Command.WorkspaceTheme;
 
     private void ResetSessionFontSizes(CancellationToken cancellationToken)
     {

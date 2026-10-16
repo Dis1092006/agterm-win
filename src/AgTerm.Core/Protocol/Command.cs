@@ -5,7 +5,7 @@ namespace AgTerm.Core.Protocol;
 
 /// <summary>
 /// A control command name, the <c>cmd</c> field of a <see cref="ControlRequest"/>. Wire strings are
-/// the ones the CLI and the control server agree on (parity pin: agterm 7df70fe, 66 commands, plus parity/adopted.json). An
+/// the ones the CLI and the control server agree on (parity pin: agterm 7df70fe, 66 commands, plus parity/adopted.json and the Windows-only parity/windows-only.json). An
 /// unknown string fails to decode, which the server turns into an "unknown command" error rather
 /// than a crash.
 /// </summary>
@@ -86,6 +86,8 @@ public enum Command
     AskOpen,
     AskResult,
     AskCancel,
+    /// <summary>Windows-only (parity/windows-only.json): sets or clears a workspace's own theme.</summary>
+    WorkspaceTheme,
     /// <summary>
     /// UI-TEST-ONLY upstream (XCUITest appearance flip). Kept in the enum so the wire string decodes,
     /// but NOT implemented in the Windows port — recorded as an intentional skip in the parity manifest.
@@ -172,6 +174,7 @@ public static class CommandWire
         (Command.AskOpen, "ask.open"),
         (Command.AskResult, "ask.result"),
         (Command.AskCancel, "ask.cancel"),
+        (Command.WorkspaceTheme, "workspace.theme"),
         (Command.DebugAppearance, "debug.appearance"),
     };
 

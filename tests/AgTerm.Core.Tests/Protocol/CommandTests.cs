@@ -6,12 +6,17 @@ namespace AgTerm.Core.Tests.Protocol;
 
 public class CommandTests
 {
-    [Fact]
-    public void AllWireStringsFromPinAndAdoptedRoundTrip()
-    {
-        var wires = ParitySurface.Pin("commands").Concat(ParitySurface.Adopted("commands")).ToList();
+    private static IEnumerable<string> PortCommands() =>
+        ParitySurface.Pin("commands")
+            .Concat(ParitySurface.Adopted("commands"))
+            .Concat(ParitySurface.WindowsOnly("commands"));
 
-        Assert.Equal(75, wires.Count);
+    [Fact]
+    public void AllWireStringsFromPinAdoptedAndWindowsOnlyRoundTrip()
+    {
+        var wires = PortCommands().ToList();
+
+        Assert.Equal(76, wires.Count);
         foreach (var wire in wires)
         {
             var cmd = JsonSerializer.Deserialize<Command>($"\"{wire}\"", ControlJson.Options);
@@ -20,10 +25,9 @@ public class CommandTests
     }
 
     [Fact]
-    public void EnumCoversExactlyPinPlusAdoptedCommands()
+    public void EnumCoversExactlyPinPlusAdoptedPlusWindowsOnlyCommands()
     {
-        var expected = ParitySurface.Pin("commands").Concat(ParitySurface.Adopted("commands"))
-            .OrderBy(w => w, StringComparer.Ordinal).ToList();
+        var expected = PortCommands().OrderBy(w => w, StringComparer.Ordinal).ToList();
         var enumWires = Enum.GetValues<Command>()
             .Select(c => JsonSerializer.Deserialize<string>(JsonSerializer.Serialize(c, ControlJson.Options))!)
             .OrderBy(w => w, StringComparer.Ordinal).ToList();

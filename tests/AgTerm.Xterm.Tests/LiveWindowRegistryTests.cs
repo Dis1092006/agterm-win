@@ -462,6 +462,33 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Workspace_theme_by_id_routes_to_the_window_that_owns_the_workspace()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var secondWorkspaceId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, SnapshotWithWorkspace("alpha", Guid.NewGuid()));
+        WriteWindowSnapshot(secondId, SnapshotWithWorkspace("beta", secondWorkspaceId));
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication();
+        application.Start();
+        application.GetOpenWindow(secondId).Store.SetWorkspaceTheme(secondWorkspaceId, "Nord");
+
+        // the window hosts here list no themes, so only a clear can succeed: the routing is what
+        // this test pins
+        var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest
+        {
+            Cmd = Command.WorkspaceTheme,
+            Target = secondWorkspaceId.ToString("D"),
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Null(Assert.Single(application.GetOpenWindow(secondId).Store.Workspaces).ThemeName);
+    }
+
+    [Fact]
     public void Workspace_prefix_ambiguity_is_computed_across_all_open_windows()
     {
         var firstId = Guid.NewGuid();

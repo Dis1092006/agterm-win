@@ -546,6 +546,20 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
+    /// <summary>workspace.theme (Windows-only). The name is checked against the same list
+    /// theme.set uses, after the target resolves, so a missing workspace reports first.</summary>
+    public ControlResponse SetWorkspaceTheme(string? target, string? window, string? themeName)
+    {
+        var name = Trimmed(themeName);
+        return ResolveWorkspace(target, window, (store, id) =>
+        {
+            if (name is not null && !_availableThemes.Contains(name))
+                return Err($"unknown theme: {name}");
+            store.SetWorkspaceTheme(id, name);
+            return OkId(id);
+        });
+    }
+
     public ControlResponse DeleteWorkspace(string? target, string? window)
     {
         return ResolveWorkspace(target, window, (store, id) =>

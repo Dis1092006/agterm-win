@@ -40,7 +40,7 @@ public sealed class ControlDispatcher
                 return await DispatchSessionSurfaceCommand(request);
             case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
                 or Command.WorkspaceDelete or Command.WorkspaceMove or Command.WorkspaceFocus
-                or Command.WorkspaceCollapse or Command.WorkspaceExpand:
+                or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme:
                 return DispatchWorkspaceCommand(request);
             case Command.Quick or Command.FontInc or Command.FontDec or Command.FontReset
                 or Command.KeymapReload or Command.ConfigReload or Command.Notify
@@ -576,6 +576,8 @@ public sealed class ControlDispatcher
                     return Err("workspace.rename requires a name");
                 return _actions.RenameWorkspace(request.Target, request.Args?.Window, name);
             }
+            case Command.WorkspaceTheme:
+                return _actions.SetWorkspaceTheme(request.Target, request.Args?.Window, request.Args?.Name);
             case Command.WorkspaceDelete:
                 return _actions.DeleteWorkspace(request.Target, request.Args?.Window);
             case Command.WorkspaceMove:

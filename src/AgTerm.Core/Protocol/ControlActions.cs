@@ -28,6 +28,10 @@ public interface IControlActions
     ControlResponse MoveWorkspace(string? target, string? window, ReorderDirection direction);
     ControlResponse FocusWorkspace(string? target, string? window, string? mode);
     ControlResponse SetWorkspaceExpansion(string? target, string? window, bool expanded);
+    /// <summary>Set or clear a workspace's own terminal theme (the Windows-only workspace.theme); a
+    /// null name clears it. The host resolves the target like RenameWorkspace and checks the name
+    /// against its theme list.</summary>
+    ControlResponse SetWorkspaceTheme(string? target, string? window, string? themeName);
     ControlResponse SetSessionFlag(string? target, string? window, string? mode);
     ControlResponse MarkSessionSeen(string? target, string? window);
     ControlResponse SetSessionStatus(string? target, string? window, ControlSessionStatusUpdate update);
