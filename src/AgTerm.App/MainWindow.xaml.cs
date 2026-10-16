@@ -85,6 +85,9 @@ public sealed partial class MainWindow : Window
     private readonly DeferredTerminalFocus _terminalFocus = new();
     private WindowPaletteMode? _openPaletteMode;
     private readonly ThemePalettePreview _themePreview;
+    private readonly ThemePalettePreview _workspaceThemePreview;
+    // the workspace the theme palette is open for; null unless the palette is in WorkspaceTheme mode
+    private Guid? _workspaceThemeTarget;
     private readonly PaneThemeAssigner _paneThemes;
     // the selected workspace's theme background; null while the global theme's background applies
     private string? _terminalBackground;
@@ -115,6 +118,14 @@ public sealed partial class MainWindow : Window
             DispatcherQueue,
             task => ObserveTaskFault(task, "Theme preview failed"));
         _themePreview = new ThemePalettePreview(themePreviewScheduler, ShowThemePreviewAsync, ShowSavedThemeAsync);
+        // its own debounce, so one palette's cancel never drops the other's pending show
+        var workspaceThemePreviewScheduler = new DispatcherThemePreviewScheduler(
+            DispatcherQueue,
+            task => ObserveTaskFault(task, "Workspace theme preview failed"));
+        _workspaceThemePreview = new ThemePalettePreview(
+            workspaceThemePreviewScheduler,
+            ShowWorkspaceThemePreviewAsync,
+            ShowSavedWorkspaceThemesAsync);
         PaletteOverlay.SelectionChanged += OnPaletteSelectionChanged;
         PaletteOverlay.ItemAccepted += item => ObserveTaskFault(
             HandlePaletteItemAcceptedAsync(item),
@@ -223,6 +234,7 @@ public sealed partial class MainWindow : Window
             _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
             PaletteOverlay.SelectionChanged -= OnPaletteSelectionChanged;
             _themePreview.Abandon();
+            _workspaceThemePreview.Abandon();
             _bootstrapCancellation.Cancel();
             _notificationBannerCancellation?.Cancel();
             _notificationBannerCancellation?.Dispose();
@@ -833,6 +845,9 @@ public sealed partial class MainWindow : Window
         {
             Sidebar.Attach(sidebar, _settings, this);
             Sidebar.RowActivated += FocusActiveTerminal;
+            Sidebar.WorkspaceThemeRequested += workspaceId => ObserveTaskFault(
+                _paletteTransitions.RunAsync(() => OpenWorkspaceThemePaletteAsync(workspaceId)),
+                "Workspace theme palette failed to open");
             sidebar.SnapshotChanged += ApplyChrome;
             sidebar.Start();
         });
@@ -1491,17 +1506,26 @@ public sealed partial class MainWindow : Window
         if (snapshot is null)
             return;
 
+        await PresentPaletteAsync(host, snapshot, workspaceThemeTarget: null, cancellationToken);
+    }
+
+    private async Task PresentPaletteAsync(
+        LiveControlHost host,
+        WindowPaletteSnapshot snapshot,
+        Guid? workspaceThemeTarget,
+        CancellationToken cancellationToken)
+    {
         await _paletteAutoFollow.AcquireAsync(() =>
             host.StoreCoordinator.MutateAsync(
                 store => store.SuppressAutoFollow(),
                 cancellationToken));
         try
         {
-            // opening another palette over the theme palette replaces it without a close
+            // opening another palette over a theme palette replaces it without a close
             await CancelThemePreviewAsync();
-            _openPaletteMode = mode;
-            if (mode == WindowPaletteMode.Themes)
-                _themePreview.Begin();
+            _openPaletteMode = snapshot.Mode;
+            _workspaceThemeTarget = workspaceThemeTarget;
+            ThemePreviewFor(snapshot.Mode)?.Begin();
             PaletteOverlay.Open(
                 snapshot.Placeholder,
                 snapshot.Items,
@@ -1514,12 +1538,43 @@ public sealed partial class MainWindow : Window
         catch
         {
             _themePreview.Abandon();
+            _workspaceThemePreview.Abandon();
             await _paletteAutoFollow.ReleaseAsync(() =>
                 host.StoreCoordinator.MutateAsync(
                     store => store.ResumeAutoFollow(),
                     CancellationToken.None));
             throw;
         }
+    }
+
+    /// <summary>The workspace's session goes on screen first, so the preview is visible; a
+    /// workspace without sessions opens with nothing to preview, and a pick still saves.</summary>
+    private async Task OpenWorkspaceThemePaletteAsync(Guid workspaceId)
+    {
+        var host = await _hostReady.Task;
+        if (host.Host.Actions.Pick.ModalPending)
+            return;
+        var snapshot = await host.StoreCoordinator.ReadAsync(store =>
+            host.Host.Actions.Zoom.Target is null && store.Workspaces.Find(w => w.Id == workspaceId) is { } workspace
+                ? WindowPaletteProjection.WorkspaceThemes(_themeCatalog, workspace.Name, workspace.ThemeName)
+                : null);
+        if (snapshot is null)
+            return;
+
+        await host.StoreCoordinator.MutateAsync(store =>
+        {
+            if (WorkspaceThemeTarget.SessionToSelect(store, workspaceId) is { } sessionId)
+                WindowPaletteActions.SelectSession(store, sessionId);
+        });
+        await PresentPaletteAsync(host, snapshot, workspaceId, CancellationToken.None);
+    }
+
+    private async Task CloseWorkspaceThemePaletteAsync()
+    {
+        if (_openPaletteMode != WindowPaletteMode.WorkspaceTheme)
+            return;
+        PaletteOverlay.Close();
+        await FinishPaletteCloseAsync();
     }
 
     private Task ToggleWindowPaletteAsync(WindowPaletteMode mode) =>
@@ -1552,23 +1607,27 @@ public sealed partial class MainWindow : Window
         }
 
         _openPaletteMode = null;
+        _workspaceThemeTarget = null;
         if (restoreFocus)
             FocusActiveTerminal();
     }
 
     /// <summary>A failed restore of the saved look must not skip the cleanup after it: the
     /// auto-follow lease release, or showing a pending pick or ask an agent waits on. CancelAsync
-    /// ends the preview before its first await, so the preview is over even when this throws.</summary>
+    /// ends a preview before its first await, so the preview is over even when this throws.</summary>
     private async Task CancelThemePreviewAsync()
     {
-        try
+        foreach (var preview in new[] { _themePreview, _workspaceThemePreview })
         {
-            await _themePreview.CancelAsync();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Trace.TraceError(
-                $"Theme preview restore failed: {ex.GetBaseException().Message}");
+            try
+            {
+                await preview.CancelAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError(
+                    $"Theme preview restore failed: {ex.GetBaseException().Message}");
+            }
         }
     }
 
@@ -1601,12 +1660,11 @@ public sealed partial class MainWindow : Window
         await _paletteTransitions.RunAsync(async () =>
         {
             mode = _openPaletteMode;
-            if (mode == WindowPaletteMode.Themes &&
-                WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName))
+            if (ThemePreviewFor(mode) is { } preview &&
+                WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName) &&
+                ThemeSaveFor(mode, themeName) is { } save)
             {
-                themeCommit = _themePreview.CommitAsync(
-                    themeName,
-                    () => SavePaletteThemeAsync(themeName, CancellationToken.None));
+                themeCommit = preview.CommitAsync(themeName, save);
             }
             await FinishPaletteCloseAsync(restoreFocus: false);
         });
@@ -2175,13 +2233,56 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private Task ShowWorkspaceThemePreviewAsync(string? themeName, Func<bool> isCurrent)
+    {
+        if (isCurrent() && _workspaceThemeTarget is { } workspaceId)
+            SendPaneThemeChanges(_paneThemes.Preview(workspaceId, themeName));
+        return Task.CompletedTask;
+    }
+
+    private Task ShowSavedWorkspaceThemesAsync()
+    {
+        SendPaneThemeChanges(_paneThemes.EndPreview());
+        return Task.CompletedTask;
+    }
+
+    private async Task<bool> SaveWorkspaceThemeAsync(Guid workspaceId, string? themeName)
+    {
+        var response = await _applicationHost.SetWorkspaceThemeAsync(_windowId, workspaceId, themeName);
+        if (response.Ok)
+        {
+            SendPaneThemeChanges(_paneThemes.Saved(workspaceId, themeName));
+            return true;
+        }
+
+        ShowFailure(new LiveFailureNotice(
+            "Theme could not be applied",
+            response.Error ?? "workspace.theme failed"));
+        return false;
+    }
+
+    private ThemePalettePreview? ThemePreviewFor(WindowPaletteMode? mode) => mode switch
+    {
+        WindowPaletteMode.Themes => _themePreview,
+        WindowPaletteMode.WorkspaceTheme => _workspaceThemePreview,
+        _ => null,
+    };
+
+    private Func<Task<bool>>? ThemeSaveFor(WindowPaletteMode? mode, string? themeName) => mode switch
+    {
+        WindowPaletteMode.Themes => () => SavePaletteThemeAsync(themeName, CancellationToken.None),
+        WindowPaletteMode.WorkspaceTheme when _workspaceThemeTarget is { } workspaceId =>
+            () => SaveWorkspaceThemeAsync(workspaceId, themeName),
+        _ => null,
+    };
+
     private void OnPaletteSelectionChanged(PaletteItemViewModel? item)
     {
-        if (_openPaletteMode == WindowPaletteMode.Themes &&
+        if (ThemePreviewFor(_openPaletteMode) is { } preview &&
             item is not null &&
             WindowPaletteProjection.TryParseThemeName(item.Id, out var themeName))
         {
-            _themePreview.Select(themeName);
+            preview.Select(themeName);
         }
     }
 
@@ -2318,10 +2419,20 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void PresentPaneThemes(LiveSelectionSnapshot selection) =>
+    private void PresentPaneThemes(LiveSelectionSnapshot selection)
+    {
         SendPaneThemeChanges(_paneThemes.Update(
             selection.PaneThemes ?? PaneThemeTable.Empty,
             PaneThemeAssigner.UsesGlobalBackground(selection)));
+        if (_openPaletteMode == WindowPaletteMode.WorkspaceTheme &&
+            _workspaceThemeTarget is { } workspaceId &&
+            !_paneThemes.HasWorkspace(workspaceId))
+        {
+            ObserveTaskFault(
+                _paletteTransitions.RunAsync(CloseWorkspaceThemePaletteAsync),
+                "Workspace theme palette close failed");
+        }
+    }
 
     private void SendPaneThemeChanges(PaneThemeChanges changes)
     {

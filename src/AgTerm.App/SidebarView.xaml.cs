@@ -45,6 +45,10 @@ public sealed partial class SidebarView : UserControl
     /// terminal after the select lands.</summary>
     public event Action? RowActivated;
 
+    /// <summary>The workspace row's Theme… item. MainWindow opens the theme palette for that
+    /// workspace.</summary>
+    public event Action<Guid>? WorkspaceThemeRequested;
+
     public void Attach(SidebarController controller, AppSettings settings, Window ownerWindow)
     {
         _controller = controller;
@@ -466,6 +470,7 @@ public sealed partial class SidebarView : UserControl
     {
         var flyout = new MenuFlyout();
         flyout.Items.Add(Item("Rename", () => BeginRename(row)));
+        flyout.Items.Add(Item("Theme…", () => WorkspaceThemeRequested?.Invoke(row.Id)));
         flyout.Items.Add(Item("New Session", () => _controller?.NewSession(row.Id)));
         flyout.Items.Add(Item("Open Directory…", () => _ = OpenDirectoryIntoAsync(row.Id)));
         var focused = _snapshot?.FocusedWorkspaceId == row.Id;
