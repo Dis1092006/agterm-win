@@ -116,6 +116,12 @@ public sealed class XtermPage
         return _host.ExecuteScriptAsync($"agterm.applyPaneThemes({payload})");
     }
 
+    /// <summary>Sets the terminal-area background (the page, the split gap, an empty layout) to
+    /// the selected session's workspace theme; null returns it to the global theme's.</summary>
+    public Task SetTerminalBackgroundAsync(string? color) =>
+        _host.ExecuteScriptAsync(
+            $"agterm.setTerminalBackground({JsonSerializer.Serialize(color, XtermTerminal.ScriptLiteral)})");
+
     public Task ApplyAskAsync(TerminalAskView? view)
     {
         if (view is null)

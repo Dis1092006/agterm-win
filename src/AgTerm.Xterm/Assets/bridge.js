@@ -24,6 +24,8 @@
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
 //     agterm.applyPaneThemes({paneId: theme|null}): a pane's own colors (a workspace theme); null
 //       returns the pane to the page settings, and panes not named keep their assignment.
+//     agterm.setTerminalBackground(color|null): the page, split gap and empty layout background
+//       (the selected session's workspace theme); null returns to the page settings' background.
 //     agterm.getRendererCapabilities(paneId).
 //     agterm.applyHud(payload|null): the session.hud panel, drawn as the host sized it.
 //     layout schema:
@@ -326,6 +328,8 @@ const PANE_THEME_KEYS = Object.freeze([
   "selectionForegroundColor",
   "ansiColors",
 ]);
+
+let terminalBackgroundColor = null;
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -1426,9 +1430,25 @@ function getWebglAddonConstructor() {
 
 function applyPageBackground(settings) {
   const background =
-    settings.backgroundOpacity < 1 ? "transparent" : settings.backgroundColor;
+    settings.backgroundOpacity < 1
+      ? "transparent"
+      : terminalBackgroundColor ?? settings.backgroundColor;
   document.documentElement.style.background = background;
   document.body.style.background = background;
+}
+
+function setTerminalBackground(color) {
+  terminalBackgroundColor =
+    typeof color === "string" && color.trim().length > 0 ? color.trim() : null;
+  applyPageBackground(rendererSettings);
+  return true;
+}
+
+// a question or a HUD without a pane covers the whole session; the focused pane carries the
+// session's theme
+function colorsForPane(paneId) {
+  const id = paneId ?? visibleFocusedPaneId();
+  return paneSettings(id ? panes.get(id) : null, rendererSettings);
 }
 
 function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
@@ -1691,8 +1711,9 @@ function buildAskLayer(payload) {
     if (payload.paneId) emitPaneFocus(payload.paneId);
   });
 
-  const fg = rendererSettings.foregroundColor;
-  const bg = rendererSettings.backgroundColor;
+  const colors = colorsForPane(payload.paneId);
+  const fg = colors.foregroundColor;
+  const bg = colors.backgroundColor;
   const fontSize = askFontSize(payload.paneId);
   const cell = Math.max(8, fontSize * 0.6);
 
@@ -1750,8 +1771,9 @@ function buildAskLayer(payload) {
 
 function applyAskHighlight(payload) {
   if (!askLayerEl) return;
-  const fg = rendererSettings.foregroundColor;
-  const bg = rendererSettings.backgroundColor;
+  const colors = colorsForPane(payload.paneId);
+  const fg = colors.foregroundColor;
+  const bg = colors.backgroundColor;
   askLayerEl.querySelectorAll(".ask-button").forEach((button, index) => {
     const on = index === payload.highlighted;
     button.classList.toggle("ask-highlighted", on);
@@ -2000,8 +2022,9 @@ function renderHud() {
   const style = hudLayerEl.style;
   style.fontFamily = rendererSettings.fontFamily;
   style.fontSize = `${fontSize}px`;
-  style.background = hudColor(payload.background, rendererSettings.backgroundColor);
-  style.color = hudColor(payload.foreground, rendererSettings.foregroundColor);
+  const colors = colorsForPane(payload.paneId ?? null);
+  style.background = hudColor(payload.background, colors.backgroundColor);
+  style.color = hudColor(payload.foreground, colors.foregroundColor);
   style.border = payload.frame ? HUD_BORDER : "0";
   style.borderRadius = payload.frame ? `${HUD_CORNER_RADIUS_PX}px` : "0";
   style.padding =
@@ -2863,6 +2886,7 @@ window.agterm = {
   getSearchState,
   applyRendererSettings,
   applyPaneThemes,
+  setTerminalBackground,
   getRendererSettings,
   getRendererCapabilities,
   applyLayout,

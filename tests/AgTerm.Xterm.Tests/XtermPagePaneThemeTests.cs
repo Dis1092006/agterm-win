@@ -68,6 +68,18 @@ public sealed class XtermPagePaneThemeTests
 
         Assert.Contains("agterm.openPane(\"p1\", {})", _host.Scripts[^1]);
     }
+
+    [Fact]
+    public async Task The_terminal_background_serializes_a_color_or_null()
+    {
+        var page = await InitializedAsync();
+
+        await page.SetTerminalBackgroundAsync("#2e3440");
+        await page.SetTerminalBackgroundAsync(null);
+
+        Assert.Contains("agterm.setTerminalBackground(\"#2e3440\")", _host.Scripts);
+        Assert.Contains("agterm.setTerminalBackground(null)", _host.Scripts);
+    }
 }
 
 /// <summary>Live WebView2 coverage for themes assigned per pane.</summary>
@@ -204,5 +216,92 @@ public sealed class XtermPagePaneThemeLiveTests
         {
             surface.Teardown();
         }
+    }
+
+    private Task<string> BodyBackgroundAsync(Microsoft.Web.WebView2.WinForms.WebView2 view) =>
+        EvalAsync(view, "getComputedStyle(document.body).backgroundColor + '|' + getComputedStyle(document.documentElement).backgroundColor");
+
+    [Fact]
+    public async Task The_terminal_background_follows_the_call_and_survives_global_settings()
+    {
+        var (page, view) = await BootPageAsync();
+        await ApplyGlobalAsync(page);
+
+        await _webView.RunAsync(_ => page.SetTerminalBackgroundAsync("#2e3440"));
+        Assert.Equal("\"rgb(46, 52, 64)|rgb(46, 52, 64)\"", await BodyBackgroundAsync(view));
+
+        await ApplyGlobalAsync(page, fontSize: 18);
+        Assert.Equal("\"rgb(46, 52, 64)|rgb(46, 52, 64)\"", await BodyBackgroundAsync(view));
+
+        await _webView.RunAsync(_ => page.SetTerminalBackgroundAsync(null));
+        Assert.Equal("\"rgb(16, 16, 16)|rgb(16, 16, 16)\"", await BodyBackgroundAsync(view));
+    }
+
+    [Fact]
+    public async Task A_translucent_window_keeps_the_page_transparent_under_a_theme_background()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.ApplyRendererSettingsAsync(
+            RendererSettingsSnapshot.From(new AppSettings { BackgroundOpacity = 0.5 }, TestPaneThemes.Global)));
+
+        await _webView.RunAsync(_ => page.SetTerminalBackgroundAsync("#2e3440"));
+
+        Assert.Equal("\"rgba(0, 0, 0, 0)|rgba(0, 0, 0, 0)\"", await BodyBackgroundAsync(view));
+    }
+
+    private const string HudOnPane = """
+        {"paneId":"pt-hud","rows":[{"text":"building","dim":false}],"widthPercent":30,"heightPoints":80,
+         "heightPercent":12,"position":"center","sticky":false,"frame":true,"background":null,"foreground":null,
+         "fontSize":null,"spinnerFrames":[],"spinnerInterval":0,"revision":1}
+        """;
+
+    [Fact]
+    public async Task A_hud_takes_its_default_colors_from_its_pane_theme()
+    {
+        var (page, view) = await BootPageAsync();
+        await ApplyGlobalAsync(page);
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("pt-hud"));
+        await AssignAsync(page, "pt-hud", TestPaneThemes.Nord);
+
+        await EvalAsync(view, $"agterm.applyHud({HudOnPane})");
+
+        Assert.Equal("\"rgb(46, 52, 64)\"",
+            await EvalAsync(view, "getComputedStyle(document.querySelector('.hud-layer')).backgroundColor"));
+    }
+
+    [Fact]
+    public async Task A_session_hud_takes_the_theme_of_the_focused_pane()
+    {
+        var (page, view) = await BootPageAsync();
+        await ApplyGlobalAsync(page);
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("pt-session"));
+        await AssignAsync(page, "pt-session", TestPaneThemes.Nord);
+        Assert.True(await _webView.RunAsync(_ => page.ApplyLayoutAsync(
+            new TerminalLayout.Single(1, "pt-session", "shell"))));
+
+        await EvalAsync(view, $"agterm.applyHud({HudOnPane.Replace("\"pt-hud\"", "null")})");
+
+        Assert.Equal("\"rgb(46, 52, 64)\"",
+            await EvalAsync(view, "getComputedStyle(document.querySelector('.hud-layer')).backgroundColor"));
+    }
+
+    [Fact]
+    public async Task A_terminal_question_takes_its_colors_from_its_pane_theme()
+    {
+        var (page, view) = await BootPageAsync();
+        await ApplyGlobalAsync(page);
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("pt-ask"));
+        await AssignAsync(page, "pt-ask", TestPaneThemes.Nord);
+        Assert.True(await _webView.RunAsync(_ => page.ApplyLayoutAsync(
+            new TerminalLayout.Single(1, "pt-ask", "shell"))));
+
+        await EvalAsync(view, """
+            agterm.applyAsk({"askId":"ASK","paneId":"pt-ask","coveredPaneIds":["pt-ask"],"title":"Continue?",
+              "message":null,"buttons":[{"runs":[{"text":"OK","underline":false}],"destructive":false}],
+              "highlighted":0,"align":"right","width":null})
+            """);
+
+        Assert.Equal("\"rgb(46, 52, 64)\"",
+            await EvalAsync(view, "getComputedStyle(document.querySelector('.ask-panel')).backgroundColor"));
     }
 }
