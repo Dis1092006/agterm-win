@@ -88,6 +88,20 @@ public class WorkspaceThemeTests : IDisposable
     }
 
     [Fact]
+    public void The_tree_reports_the_stored_theme_and_omits_it_for_a_workspace_without_one()
+    {
+        var themed = _store.AddWorkspace("themed");
+        _ = _store.AddWorkspace("plain");
+        // tree reports the setting, not what is on screen: a name no catalog has stays visible
+        _store.SetWorkspaceTheme(themed.Id, "Not In Any Catalog");
+
+        var nodes = _store.ControlTree().Workspaces;
+
+        Assert.Equal("Not In Any Catalog", nodes.Single(n => n.Name == "themed").Theme);
+        Assert.Null(nodes.Single(n => n.Name == "plain").Theme);
+    }
+
+    [Fact]
     public void Renaming_a_workspace_keeps_its_theme()
     {
         var workspace = _store.AddWorkspace("w");

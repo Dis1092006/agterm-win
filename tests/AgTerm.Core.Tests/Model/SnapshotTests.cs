@@ -51,6 +51,20 @@ public class SnapshotTests
     }
 
     [Fact]
+    public void WorkspaceSnapshotFieldNamesMatchParitySurfacePlusWindowsOnlyInOrder()
+    {
+        var workspace = new WorkspaceSnapshot
+        {
+            Id = WorkspaceId, Name = "w", Sessions = Array.Empty<SessionSnapshot>(),
+            Collapsed = true, Theme = "Nord",
+        };
+        using var doc = JsonDocument.Parse(ControlJson.Serialize(workspace));
+        Assert.Equal(
+            SurfaceFieldNames("workspaceSnapshot").Concat(ParitySurface.WindowsOnly("workspaceSnapshot")).ToList(),
+            doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
+    }
+
+    [Fact]
     public void UuidsSerializeUppercaseLikeSwiftFoundation()
     {
         var json = ControlJson.Serialize(new Snapshot

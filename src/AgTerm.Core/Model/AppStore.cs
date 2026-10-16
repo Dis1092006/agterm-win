@@ -332,6 +332,7 @@ public sealed partial class AppStore
                 Focused = workspace.Id == FocusedWorkspaceId ? true : null,
                 Collapsed = workspace.IsExpanded ? null : true,
                 Sessions = sessions,
+                Theme = workspace.ThemeName,
             };
         }).ToArray();
         return new ControlTree

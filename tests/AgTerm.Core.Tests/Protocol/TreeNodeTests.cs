@@ -58,14 +58,26 @@ public class TreeNodeTests
     }
 
     [Fact]
-    public void WorkspaceNodeFieldNamesMatchParitySurfaceInOrder()
+    public void WorkspaceNodeFieldNamesMatchParitySurfacePlusWindowsOnlyInOrder()
     {
         var node = new ControlWorkspaceNode
         {
             Id = "i", Name = "n", Active = true, Focused = true, Collapsed = true,
-            Sessions = new[] { FullSessionNode() },
+            Sessions = new[] { FullSessionNode() }, Theme = "Nord",
         };
-        Assert.Equal(SurfaceFieldNames("workspaceNode"), PropertyNames(ControlJson.Serialize(node)));
+        Assert.Equal(
+            SurfaceFieldNames("workspaceNode").Concat(ParitySurface.WindowsOnly("workspaceNode")).ToList(),
+            PropertyNames(ControlJson.Serialize(node)));
+    }
+
+    [Fact]
+    public void WorkspaceNodeOmitsAThemeItDoesNotHave()
+    {
+        var node = new ControlWorkspaceNode
+        {
+            Id = "i", Name = "n", Active = true, Sessions = Array.Empty<ControlSessionNode>(),
+        };
+        Assert.DoesNotContain("theme", PropertyNames(ControlJson.Serialize(node)));
     }
 
     [Fact]

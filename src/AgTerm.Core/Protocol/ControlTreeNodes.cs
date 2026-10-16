@@ -160,6 +160,12 @@ public sealed record ControlWorkspaceNode
 
     [JsonPropertyName("sessions")]
     public required ControlSessionNode[] Sessions { get; init; }
+
+    /// <summary>The workspace's own terminal theme as stored, also when the theme catalog lacks
+    /// it; null when it has none. Windows-only (parity/windows-only.json); written last so the
+    /// upstream fields keep upstream order.</summary>
+    [JsonPropertyName("theme")]
+    public string? Theme { get; init; }
 }
 
 /// <summary>The whole workspace tree, the payload of a tree response.</summary>

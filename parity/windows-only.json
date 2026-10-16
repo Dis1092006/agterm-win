@@ -1,0 +1,12 @@
+{
+  "comment": "Commands and fields the Windows port adds that upstream does not have. Parity tests check: port = parity/surface.json + parity/adopted.json + this file, and no entry here exists in docs/upstream/surface-v0.36.0.json. Described in docs/PLATFORM-NOTES.md, section Windows-only extensions.",
+  "commands": [
+    { "wire": "workspace.theme", "reason": "Sets or clears a workspace's own terminal theme." }
+  ],
+  "workspaceNode": [
+    { "name": "theme", "reason": "Reports the workspace's own terminal theme in tree." }
+  ],
+  "workspaceSnapshot": [
+    { "name": "theme", "reason": "Persists the workspace's own terminal theme." }
+  ]
+}
