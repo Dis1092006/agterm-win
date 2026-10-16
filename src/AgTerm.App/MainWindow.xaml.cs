@@ -1569,10 +1569,15 @@ public sealed partial class MainWindow : Window
         await PresentPaletteAsync(host, snapshot, workspaceId, CancellationToken.None);
     }
 
-    private async Task CloseWorkspaceThemePaletteAsync()
+    private async Task CloseWorkspaceThemePaletteAsync(Guid workspaceId)
     {
-        if (_openPaletteMode != WindowPaletteMode.WorkspaceTheme)
+        // the close was queued for this workspace; by now a palette for another one may be open
+        if (_openPaletteMode != WindowPaletteMode.WorkspaceTheme ||
+            _workspaceThemeTarget != workspaceId ||
+            _paneThemes.HasWorkspace(workspaceId))
+        {
             return;
+        }
         PaletteOverlay.Close();
         await FinishPaletteCloseAsync();
     }
@@ -2248,10 +2253,11 @@ public sealed partial class MainWindow : Window
 
     private async Task<bool> SaveWorkspaceThemeAsync(Guid workspaceId, string? themeName)
     {
+        var tableVersion = _paneThemes.TableVersion;
         var response = await _applicationHost.SetWorkspaceThemeAsync(_windowId, workspaceId, themeName);
         if (response.Ok)
         {
-            SendPaneThemeChanges(_paneThemes.Saved(workspaceId, themeName));
+            SendPaneThemeChanges(_paneThemes.Saved(workspaceId, themeName, tableVersion));
             return true;
         }
 
@@ -2429,7 +2435,7 @@ public sealed partial class MainWindow : Window
             !_paneThemes.HasWorkspace(workspaceId))
         {
             ObserveTaskFault(
-                _paletteTransitions.RunAsync(CloseWorkspaceThemePaletteAsync),
+                _paletteTransitions.RunAsync(() => CloseWorkspaceThemePaletteAsync(workspaceId)),
                 "Workspace theme palette close failed");
         }
     }

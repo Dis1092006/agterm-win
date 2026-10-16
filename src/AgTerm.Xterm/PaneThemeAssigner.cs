@@ -38,10 +38,13 @@ public sealed class PaneThemeAssigner
     /// <summary>A name the catalog lacks resolves to null, the global theme.</summary>
     public TerminalTheme? Resolve(string? themeName) => themeName is null ? null : _resolve(themeName);
 
+    public long TableVersion { get; private set; }
+
     public PaneThemeChanges Update(PaneThemeTable table, bool globalBackground)
     {
         ArgumentNullException.ThrowIfNull(table);
         _table = table;
+        TableVersion++;
         _globalBackground = globalBackground;
         return Changes();
     }
@@ -72,12 +75,16 @@ public sealed class PaneThemeAssigner
     }
 
     /// <summary>A pick that workspace.theme accepted. ThemePalettePreview shows nothing after a
-    /// successful save, so the preview ends here, and the table takes the saved theme until the
-    /// store's own table, which carries it too, arrives.</summary>
-    public PaneThemeChanges Saved(Guid workspaceId, string? themeName)
+    /// successful save, so the preview ends here. If no table arrived since the save started
+    /// (<paramref name="sinceTableVersion"/> is still current), the store's table that carries the
+    /// save is still on its way, so the table takes the saved theme until it comes. If one arrived,
+    /// it may come from a later command for the same workspace, and patching the pick over it
+    /// would show a theme the store no longer holds.</summary>
+    public PaneThemeChanges Saved(Guid workspaceId, string? themeName, long sinceTableVersion)
     {
         _preview = null;
-        _table = _table.WithWorkspaceTheme(workspaceId, themeName);
+        if (TableVersion == sinceTableVersion)
+            _table = _table.WithWorkspaceTheme(workspaceId, themeName);
         return Changes();
     }
 

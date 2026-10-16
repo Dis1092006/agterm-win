@@ -184,13 +184,29 @@ public sealed class PaneThemeAssignerTests
     {
         _assigner.Update(Table(null, ("p2", new(B, null))), globalBackground: true);
         _assigner.Preview(B, "Dracula");
+        var version = _assigner.TableVersion;
 
-        Assert.True(_assigner.Saved(B, "Dracula").IsEmpty);
+        Assert.True(_assigner.Saved(B, "Dracula", version).IsEmpty);
         Assert.True(_assigner.Update(Table(null, ("p2", new(B, "Dracula"))), globalBackground: true).IsEmpty);
 
         // a later agtermctl workspace theme must show; a preview left behind would hide it
         var later = _assigner.Update(Table(null, ("p2", new(B, "Nord"))), globalBackground: true);
         Assert.Equal(new Dictionary<string, TerminalTheme?> { ["p2"] = Catalog.Resolve("Nord") }, later.Panes);
+    }
+
+    [Fact]
+    public void A_table_that_arrived_during_the_save_wins_over_the_saved_pick()
+    {
+        _assigner.Update(Table(null, ("p2", new(B, null))), globalBackground: true);
+        _assigner.Preview(B, "Dracula");
+        var version = _assigner.TableVersion;
+
+        // another command set the workspace theme before the save response came back
+        _assigner.Update(Table(null, ("p2", new(B, "Nord"))), globalBackground: true);
+        var saved = _assigner.Saved(B, "Dracula", version);
+
+        Assert.Equal(new Dictionary<string, TerminalTheme?> { ["p2"] = Catalog.Resolve("Nord") }, saved.Panes);
+        Assert.True(_assigner.Update(Table(null, ("p2", new(B, "Nord"))), globalBackground: true).IsEmpty);
     }
 
     [Fact]

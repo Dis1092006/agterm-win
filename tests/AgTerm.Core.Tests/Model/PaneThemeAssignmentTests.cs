@@ -127,6 +127,34 @@ public class PaneThemeAssignmentTests
     }
 
     [Fact]
+    public void Removing_a_workspace_without_sessions_makes_the_tables_differ()
+    {
+        var kept = _store.AddWorkspace("kept");
+        Realized(_store.AddSession(kept.Id, "C:\\")!, "main");
+        var empty = _store.AddWorkspace("empty");
+        var before = PaneThemeAssignment.For(_store);
+
+        _store.RemoveWorkspace(empty.Id);
+
+        Assert.NotEqual(before, PaneThemeAssignment.For(_store));
+    }
+
+    [Fact]
+    public void A_selection_change_makes_the_tables_differ()
+    {
+        var first = _store.AddWorkspace("first");
+        var firstSession = _store.AddSession(first.Id, "C:\\")!;
+        var second = _store.AddWorkspace("second");
+        var secondSession = _store.AddSession(second.Id, "C:\\")!;
+        _store.SelectSession(firstSession.Id);
+        var before = PaneThemeAssignment.For(_store);
+
+        _store.SelectSession(secondSession.Id);
+
+        Assert.NotEqual(before, PaneThemeAssignment.For(_store));
+    }
+
+    [Fact]
     public void A_table_with_one_workspace_theme_replaced_changes_only_that_workspace()
     {
         var a = Guid.NewGuid();
