@@ -260,6 +260,7 @@ commandWait?, background?, surfaces?[] }`.
 - `workspace.collapse` / `workspace.expand` — свернуть/развернуть ОДИН воркспейс в дереве сайдбара
   (per-workspace пара, в отличие от общего `sidebar.expand`/`collapse`). Учитывают `--window`.
   Read-back: `collapsed` на узле.
+- Windows: `workspace.theme` — target + `args.name` (пустое или отсутствующее имя сбрасывает): своя тема терминала у workspace. Расширения только для Windows, у upstream нет: команда, поле `theme` у узла workspace в `tree` и у workspace в снимке окна (`parity/windows-only.json`).
 
 ### Session (27)
 - `session.new` — создать. Назначение (взаимоисключающе): `args.workspace` (id/prefix/`active`) ИЛИ

@@ -593,3 +593,15 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Markdown is parsed with Markdig (CommonMark, pipe tables and strikethrough), not Foundation `AttributedString(markdown:)`. A raw HTML block inside a quote or a list item keeps the quote bar and the item indent; upstream draws it with neither, because Foundation gives an HTML block no block context.
   - Markdig refuses block nesting deeper than 128 containers (about 127 nested quotes or 63 list levels) and inline nesting past about 12000 unmatched brackets. Past those limits upstream lays the message out; the port shows it as plain rows.
   - A `file://` link with a colon after the drive (an NTFS stream such as `C:/x:stream`) or a drive-relative path (`C:x`) is drawn as a link and does nothing on Ctrl+click.
+
+## Windows-only extensions
+
+Commands and fields that upstream does not have. `parity/windows-only.json` lists them for the parity tests, and a test checks that none of them exists in `docs/upstream/surface-v0.36.0.json`. None of them changes an upstream command, field or error string.
+
+- A theme per workspace: the command `workspace.theme`, the field `theme` of the workspace node in `tree`, and the field `theme` of the workspace in the window snapshot. Design: `docs/superpowers/specs/2026-10-15-workspace-theme-design.md`.
+  - `workspace.theme` selects the workspace as `workspace.rename` does and answers the same `{"id":...}`. `args.name` sets the theme; a missing or blank name clears it. A name not in `theme.list` gives `unknown theme: X`, the string `theme.set` uses.
+  - `agtermctl workspace theme [NAME] [--target W] [--window ...]`; without `NAME` it clears the theme.
+  - The panes of the workspace's sessions (main, split, scratch, overlay) show its theme. Only the colors come from it; font, opacity and cursor stay global. An overlay `--background-color` still wins. The quick terminal and the panes of workspaces without a theme show the global theme.
+  - The terminal-area background follows the selected session's workspace. The dashboard, an empty layout and a zoomed quick terminal use the global theme. The title bar and the sidebar always follow the global theme.
+  - `tree` reports the stored name even when the theme catalog does not have it; such a workspace shows the global theme.
+  - The snapshot reads `theme` leniently: a value that is not a string, or a blank string, reads as no theme, and the rest of the snapshot loads.
