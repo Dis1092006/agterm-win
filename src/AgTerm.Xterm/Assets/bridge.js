@@ -14,7 +14,7 @@
 //                                              {type:'dashboardHighlight'|'dashboardActivate', controlRef}
 //                                              {type:'dashboardClose'}
 //                                              {type:'hudMetrics', paneId, fontSize, cellWidth, cellHeight, session:{width,height}, left?, right?, pane?}
-//   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize}) → {cols,rows},
+//   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize, theme}) → {cols,rows},
 //     agterm.showPane(paneId), agterm.closePane(paneId), agterm.applyLayout(layout), and the per-pane reads/writes:
 //     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
 //     each takes paneId first; every call on an unknown paneId returns null. Page-global:
@@ -22,6 +22,8 @@
 //       zoomPassthroughSingles,dashboardToggleSingles}) — atomic hotkey table.
 //     agterm.setChords([{ctrl,alt,shift,key}]) — compatibility built-in-only hotkey table.
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
+//     agterm.applyPaneThemes({paneId: theme|null}): a pane's own colors (a workspace theme); null
+//       returns the pane to the page settings, and panes not named keep their assignment.
 //     agterm.getRendererCapabilities(paneId).
 //     agterm.applyHud(payload|null): the session.hud panel, drawn as the host sized it.
 //     layout schema:
@@ -313,6 +315,17 @@ const ANSI_THEME_KEYS = Object.freeze([
 ]);
 
 let rendererSettings = { ...DEFAULT_RENDERER_SETTINGS };
+
+// the renderer settings a pane's own theme replaces; font, opacity, cursor and scroll stay global
+const PANE_THEME_KEYS = Object.freeze([
+  "foregroundColor",
+  "backgroundColor",
+  "cursorColor",
+  "cursorTextColor",
+  "selectionBackgroundColor",
+  "selectionForegroundColor",
+  "ansiColors",
+]);
 
 function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -1272,6 +1285,16 @@ function normalizeRendererSettings(payload, fallback) {
   };
 }
 
+function normalizePaneTheme(theme) {
+  if (theme === null || typeof theme !== "object") return null;
+  const normalized = normalizeRendererSettings(theme, rendererSettings);
+  return Object.fromEntries(PANE_THEME_KEYS.map((key) => [key, normalized[key]]));
+}
+
+function paneSettings(pane, settings) {
+  return pane && pane.themeOverride ? { ...settings, ...pane.themeOverride } : settings;
+}
+
 function parseHexRgb(color) {
   if (typeof color !== "string") return null;
   const m = /^#([0-9a-fA-F]{6})$/.exec(color.trim());
@@ -1409,7 +1432,7 @@ function applyPageBackground(settings) {
 }
 
 function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
-  const opts = buildTerminalOptions(settings, fontSizeOverride);
+  const opts = buildTerminalOptions(paneSettings(pane, settings), fontSizeOverride);
   if (pane.overlayBackgroundColor !== null)
     opts.theme.background = pane.overlayBackgroundColor;
   pane.term.options.allowTransparency = true;
@@ -1423,18 +1446,20 @@ function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
   pane.term.options.theme = opts.theme;
 }
 
+function paneFontSize(paneId, pane) {
+  return visibleLayout?.type === "dashboard" &&
+    visibleLayout.paneIds.includes(paneId) &&
+    visibleLayout.fontSize !== null
+    ? visibleLayout.fontSize
+    : pane.sessionFontSize;
+}
+
 function applyRendererSettings(settings) {
   rendererSettings = normalizeRendererSettings(settings, rendererSettings);
   for (const [paneId, pane] of panes) {
     if (!rendererSettings.preservePaneFontSizes)
       pane.sessionFontSize = rendererSettings.fontSize;
-    const dashboardFontSize =
-      visibleLayout?.type === "dashboard" &&
-      visibleLayout.paneIds.includes(paneId) &&
-      visibleLayout.fontSize !== null
-        ? visibleLayout.fontSize
-        : pane.sessionFontSize;
-    applyRendererSettingsToPane(pane, rendererSettings, dashboardFontSize);
+    applyRendererSettingsToPane(pane, rendererSettings, paneFontSize(paneId, pane));
   }
   applyPageBackground(rendererSettings);
   if (hudState) renderHud();
@@ -1442,24 +1467,39 @@ function applyRendererSettings(settings) {
   return panes.size;
 }
 
+function applyPaneThemes(assignments) {
+  if (!assignments || typeof assignments !== "object") return 0;
+  let applied = 0;
+  for (const [paneId, theme] of Object.entries(assignments)) {
+    const pane = panes.get(paneId);
+    if (!pane) continue;
+    pane.themeOverride = normalizePaneTheme(theme);
+    applyRendererSettingsToPane(pane, rendererSettings, paneFontSize(paneId, pane));
+    applied++;
+  }
+  if (hudState) renderHud();
+  return applied;
+}
+
 function getRendererSettings(paneId) {
   const pane = panes.get(paneId);
   if (!pane) return null;
   const termOptions = pane.term.options;
   const theme = termOptions.theme || {};
+  const effective = paneSettings(pane, rendererSettings);
   return {
     fontFamily: termOptions.fontFamily,
     fontSize: termOptions.fontSize,
-    foregroundColor: theme.foreground || rendererSettings.foregroundColor,
+    foregroundColor: theme.foreground || effective.foregroundColor,
     backgroundColor:
       theme.background ||
       effectiveThemeBackground(
-        rendererSettings.backgroundColor,
+        effective.backgroundColor,
         rendererSettings.backgroundOpacity,
       ),
-    cursorColor: theme.cursor || rendererSettings.cursorColor,
+    cursorColor: theme.cursor || effective.cursorColor,
     selectionBackgroundColor:
-      theme.selectionBackground || rendererSettings.selectionBackgroundColor,
+      theme.selectionBackground || effective.selectionBackgroundColor,
     cursorTextColor: theme.cursorAccent ?? null,
     selectionForegroundColor: theme.selectionForeground ?? null,
     backgroundOpacity: rendererSettings.backgroundOpacity,
@@ -1471,7 +1511,7 @@ function getRendererSettings(paneId) {
     rightClickPaste: rendererSettings.rightClickPaste,
     screenReaderMode: !!termOptions.screenReaderMode,
     ansiColors:
-      rendererSettings.ansiColors === null
+      effective.ansiColors === null
         ? null
         : ANSI_THEME_KEYS.map((key) => theme[key]),
   };
@@ -2383,9 +2423,11 @@ function openPane(paneId, opts) {
   container.appendChild(el);
   hudGeometryObserver.observe(el);
 
+  // a pane of a themed workspace opens in that theme, so it never shows the global one first
+  const themeOverride = normalizePaneTheme(opts && opts.theme ? opts.theme : null);
   const term = new Terminal(
     buildTerminalOptions(
-      rendererSettings,
+      paneSettings({ themeOverride }, rendererSettings),
       opts && typeof opts.fontSize === "number" ? opts.fontSize : null,
     ),
   );
@@ -2403,6 +2445,7 @@ function openPane(paneId, opts) {
     serializeAddon,
     sessionFontSize: term.options.fontSize,
     overlayBackgroundColor: null,
+    themeOverride,
     lastSearch: { index: -1, count: 0 },
     appliedSearch: { needle: "", selected: null },
     el,
@@ -2819,6 +2862,7 @@ window.agterm = {
   hideSearch,
   getSearchState,
   applyRendererSettings,
+  applyPaneThemes,
   getRendererSettings,
   getRendererCapabilities,
   applyLayout,

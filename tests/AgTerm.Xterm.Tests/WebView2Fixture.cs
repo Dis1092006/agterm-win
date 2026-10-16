@@ -105,6 +105,14 @@ public sealed class WebView2Fixture : IDisposable
         return await done.Task;
     }
 
+    /// <summary>Run work that has no result on the WebView2 UI thread.</summary>
+    public Task RunAsync(Func<WebView2, Task> work) =>
+        RunAsync(async view =>
+        {
+            await work(view);
+            return true;
+        });
+
     public void Dispose()
     {
         try

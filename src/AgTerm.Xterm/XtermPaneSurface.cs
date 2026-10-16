@@ -23,6 +23,10 @@ public sealed class XtermSurfaceOptions
 
     /// <summary>System clipboard reader for session.paste; null = paste is a no-op.</summary>
     public Func<string?>? ReadClipboard { get; init; }
+
+    /// <summary>The theme of the pane's workspace, or null for the global theme. The host fills it
+    /// when it captures the request; the window turns it into colors.</summary>
+    public string? ThemeName { get; init; }
 }
 
 /// <summary>
@@ -79,7 +83,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
     public static async Task<XtermPaneSurface> OpenAsync(
         XtermPage page,
         XtermSurfaceOptions options,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TerminalTheme? theme = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -94,6 +99,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
                 Cwd = options.Cwd,
                 ExtraEnvironment = TerminalIdentity.PaneEnvironment(token),
                 RemoveEnvironment = TerminalIdentity.RemovedVariables,
+                Theme = theme,
             }, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();

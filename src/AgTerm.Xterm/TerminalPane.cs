@@ -1,3 +1,4 @@
+using AgTerm.Core.Model;
 using AgTerm.Terminal;
 
 namespace AgTerm.Xterm;
@@ -15,6 +16,9 @@ public sealed record TerminalPaneOptions
 
     /// <summary>Inherited variables to drop from the child (see TerminalIdentity).</summary>
     public IReadOnlyList<string>? RemoveEnvironment { get; init; }
+
+    /// <summary>The pane's own theme (its workspace's), or null for the global theme.</summary>
+    public TerminalTheme? Theme { get; init; }
 }
 
 /// <summary>
@@ -89,7 +93,7 @@ public sealed class TerminalPane : IDisposable
 
         try
         {
-            terminal = await page.OpenTerminalAsync(paneId);
+            terminal = await page.OpenTerminalAsync(paneId, theme: options.Theme);
 
             cancellationToken.ThrowIfCancellationRequested();
 

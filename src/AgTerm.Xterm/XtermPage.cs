@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
@@ -29,6 +31,13 @@ public sealed class XtermPage
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
+    // a null theme is the page's "use the global theme", so nulls are written, not dropped
+    private static readonly JsonSerializerOptions PaneThemeScriptLiteral = new(XtermTerminal.ScriptLiteral)
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+    };
+
     private readonly IWebViewScriptHost _host;
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Dictionary<string, XtermTerminal> _terminals = new();
@@ -49,18 +58,25 @@ public sealed class XtermPage
     }
 
     /// <summary>Creates the pane in the page (agterm.openPane) and returns its handle at the fitted
-    /// grid. The page shows the first opened pane automatically.</summary>
-    public async Task<XtermTerminal> OpenTerminalAsync(string paneId, double? fontSize = null)
+    /// grid. The page shows the first opened pane automatically. A theme opens the pane in it.</summary>
+    public async Task<XtermTerminal> OpenTerminalAsync(string paneId, double? fontSize = null, TerminalTheme? theme = null)
     {
-        var opts = fontSize is { } px
-            ? $"{{\"fontSize\":{px.ToString(System.Globalization.CultureInfo.InvariantCulture)}}}"
-            : "{}";
         var result = await _host.ExecuteScriptAsync(
-            $"agterm.openPane({PaneLiteral(paneId)}, {opts})").ConfigureAwait(false);
+            $"agterm.openPane({PaneLiteral(paneId)}, {OpenOptions(fontSize, theme)})").ConfigureAwait(false);
         var grid = JsonSerializer.Deserialize<GridDto>(result);
         var terminal = new XtermTerminal(this, paneId, grid?.Cols ?? 0, grid?.Rows ?? 0);
         _terminals[paneId] = terminal;
         return terminal;
+    }
+
+    private static string OpenOptions(double? fontSize, TerminalTheme? theme)
+    {
+        var members = new List<string>();
+        if (fontSize is { } px)
+            members.Add($"\"fontSize\":{px.ToString(CultureInfo.InvariantCulture)}");
+        if (theme is not null)
+            members.Add($"\"theme\":{JsonSerializer.Serialize(PaneThemePayload.From(theme), PaneThemeScriptLiteral)}");
+        return "{" + string.Join(",", members) + "}";
     }
 
     /// <summary>Show one pane, hide the rest; the page refits the shown pane and posts its resize.</summary>
@@ -83,6 +99,21 @@ public sealed class XtermPage
 
         var payload = JsonSerializer.Serialize(settings, RendererSettingsScriptLiteral);
         return _host.ExecuteScriptAsync($"agterm.applyRendererSettings({payload})");
+    }
+
+    /// <summary>Gives panes their own theme; null returns a pane to the global theme. The page
+    /// takes only the colors from it, keeps the assignment through later renderer settings, and
+    /// ignores an unknown pane id. Panes not named keep their assignment.</summary>
+    public Task ApplyPaneThemesAsync(IReadOnlyDictionary<string, TerminalTheme?> themes)
+    {
+        ArgumentNullException.ThrowIfNull(themes);
+        var payload = JsonSerializer.Serialize(
+            themes.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value is null ? null : PaneThemePayload.From(pair.Value),
+                StringComparer.Ordinal),
+            PaneThemeScriptLiteral);
+        return _host.ExecuteScriptAsync($"agterm.applyPaneThemes({payload})");
     }
 
     public Task ApplyAskAsync(TerminalAskView? view)
@@ -616,4 +647,25 @@ internal sealed record HudRectMessage
 {
     [JsonPropertyName("width")] public double? Width { get; init; }
     [JsonPropertyName("height")] public double? Height { get; init; }
+}
+
+/// <summary>A TerminalTheme under the renderer settings' key names, which the page spreads over
+/// its global settings for one pane.</summary>
+internal sealed record PaneThemePayload(
+    string ForegroundColor,
+    string BackgroundColor,
+    string CursorColor,
+    string CursorTextColor,
+    string SelectionBackgroundColor,
+    string SelectionForegroundColor,
+    IReadOnlyList<string> AnsiColors)
+{
+    public static PaneThemePayload From(TerminalTheme theme) => new(
+        theme.ForegroundColor,
+        theme.BackgroundColor,
+        theme.CursorColor,
+        theme.CursorTextColor,
+        theme.SelectionBackgroundColor,
+        theme.SelectionForegroundColor,
+        theme.AnsiColors);
 }
