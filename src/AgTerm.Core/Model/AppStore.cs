@@ -1026,6 +1026,7 @@ public sealed partial class AppStore
             // only a collapsed workspace writes the flag; an expanded one omits it (null) so an
             // all-expanded tree serializes identically to a legacy snapshot.
             Collapsed = workspace.IsExpanded ? null : true,
+            Theme = workspace.ThemeName,
         }).ToArray();
         return new Snapshot
         {
@@ -1069,7 +1070,10 @@ public sealed partial class AppStore
             }
             // absent/null collapsed → expanded (back-compat with snapshots written before the field existed).
             restored.Add(new Workspace(workspaceSnapshot.Id, workspaceSnapshot.Name, sessions,
-                isExpanded: !(workspaceSnapshot.Collapsed ?? false)));
+                isExpanded: !(workspaceSnapshot.Collapsed ?? false))
+            {
+                ThemeName = workspaceSnapshot.Theme,
+            });
         }
         Workspaces = restored;
         // clamp on restore (not just null-default) so a corrupt or hand-edited snapshot can't drive
@@ -1234,5 +1238,8 @@ public sealed partial class AppStore
     internal Workspace WorkspaceFrom(WorkspaceSnapshot snapshot) =>
         new(snapshot.Id, snapshot.Name,
             snapshot.Sessions.Select(s => SessionFrom(s)).ToList(),
-            isExpanded: !(snapshot.Collapsed ?? false));
+            isExpanded: !(snapshot.Collapsed ?? false))
+        {
+            ThemeName = snapshot.Theme,
+        };
 }

@@ -397,9 +397,9 @@ public sealed partial class AppStore
     }
 
     /// <summary>A workspace to stand in for one a restore needs but the tree no longer holds. Prefer
-    /// the newest description of it: a pending close of that same workspace carries its live name
-    /// and expansion state, and once those finalize an Open Recent snapshot still does. name is the
-    /// caller's older copy, used only when neither describes the workspace.</summary>
+    /// the newest description of it: a pending close of that same workspace carries its live name,
+    /// expansion state and theme, and once those finalize an Open Recent snapshot still does. name
+    /// is the caller's older copy, used only when neither describes the workspace.</summary>
     internal Workspace RebuiltWorkspaceShell(Guid id, string name)
     {
         for (var i = PendingCloseOrder.Count - 1; i >= 0; i--)
@@ -408,14 +408,20 @@ public sealed partial class AppStore
                 || record is not PendingCloseRecord.Workspace pending
                 || pending.Close.Workspace.Id != id) continue;
             return new Workspace(id, pending.Close.Workspace.Name,
-                isExpanded: pending.Close.Workspace.IsExpanded);
+                isExpanded: pending.Close.Workspace.IsExpanded)
+            {
+                ThemeName = pending.Close.Workspace.ThemeName,
+            };
         }
         var snapshot = RecentClosedStore?.Load()
             .Select(item => item.Workspace)
             .FirstOrDefault(w => w?.Snapshot.Id == id)?.Snapshot;
         if (snapshot is not null)
         {
-            return new Workspace(id, snapshot.Name, isExpanded: !(snapshot.Collapsed ?? false));
+            return new Workspace(id, snapshot.Name, isExpanded: !(snapshot.Collapsed ?? false))
+            {
+                ThemeName = snapshot.Theme,
+            };
         }
         return new Workspace(id, name);
     }

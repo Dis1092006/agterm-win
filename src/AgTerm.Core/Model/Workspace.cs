@@ -29,6 +29,11 @@ public sealed class Workspace
     /// freshly created workspace opens; persisted per workspace.</summary>
     public bool IsExpanded { get; set; }
 
+    /// <summary>The workspace's own terminal theme, or null for the global theme. Windows-only:
+    /// upstream has no theme per workspace. A name the catalog lacks is kept, so a theme that
+    /// comes back with a later theme pack works again.</summary>
+    public string? ThemeName { get; set; }
+
     /// <summary>Total unseen-notification count across this workspace's sessions, for the badge on a
     /// collapsed workspace row.</summary>
     public int UnseenCount => Sessions.Sum(s => s.UnseenCount);
@@ -42,5 +47,6 @@ public sealed class Workspace
         Name = Name,
         Sessions = Sessions.Select(s => s.ToSnapshot()).ToArray(),
         Collapsed = IsExpanded ? null : true,
+        Theme = ThemeName,
     };
 }

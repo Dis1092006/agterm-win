@@ -85,6 +85,13 @@ public sealed record WorkspaceSnapshot
     /// an expanded one omits it, so an all-expanded tree serializes identically to a legacy snapshot.</summary>
     [JsonPropertyName("collapsed")]
     public bool? Collapsed { get; init; }
+
+    /// <summary>The workspace's own terminal theme (Windows-only). LOSSY decode: a value that is
+    /// not a string, or a blank one, reads as null, because a strict failure here would make the
+    /// loader discard every workspace over one cosmetic field.</summary>
+    [JsonPropertyName("theme")]
+    [JsonConverter(typeof(LossyThemeNameConverter))]
+    public string? Theme { get; init; }
 }
 
 /// <summary>
@@ -175,6 +182,30 @@ public sealed class LossyWatermarkConverter : JsonConverter<BackgroundWatermark?
 
     public override void Write(Utf8JsonWriter writer, BackgroundWatermark? value, JsonSerializerOptions options)
         => JsonSerializer.Serialize(writer, value, options);
+}
+
+/// <summary>Decodes a theme name LOSSILY (see WorkspaceSnapshot.Theme). Encoding writes the
+/// string.</summary>
+public sealed class LossyThemeNameConverter : JsonConverter<string?>
+{
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        // Consume the whole value regardless of its kind so the outer object keeps parsing.
+        using var doc = JsonDocument.ParseValue(ref reader);
+        return doc.RootElement.ValueKind == JsonValueKind.String
+            && doc.RootElement.GetString() is { } name
+            && !string.IsNullOrWhiteSpace(name)
+                ? name
+                : null;
+    }
+
+    public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+    {
+        if (value is null)
+            writer.WriteNullValue();
+        else
+            writer.WriteStringValue(value);
+    }
 }
 
 /// <summary>Decodes a UUID list LOSSILY (see Snapshot.SessionRecency): a malformed uuid or a wrong
