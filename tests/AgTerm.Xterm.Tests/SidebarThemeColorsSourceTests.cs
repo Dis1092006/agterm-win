@@ -5,7 +5,7 @@ namespace AgTerm.Xterm.Tests;
 public sealed class SidebarThemeColorsSourceTests
 {
     [Fact]
-    public void Row_template_draws_the_theme_colors_inside_an_opaque_border()
+    public void Row_template_draws_the_theme_colors_on_a_layer_inset_like_the_selection_backplate()
     {
         var xaml = Source("SidebarView.xaml");
 
@@ -13,7 +13,10 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("Background=\"{x:Bind RowBackground, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("BorderBrush=\"{x:Bind RowFrame, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("CornerRadius=\"{ThemeResource ListViewItemCornerRadius}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Padding=\"7,0,7,0\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Grid Height=\"{x:Bind RowHeight, Mode=OneWay}\">", xaml, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"4,2,4,2\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("BackgroundSizing=\"OuterBorderEdge\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Grid ColumnSpacing=\"6\" Margin=\"8,0,8,0\">", xaml, StringComparison.Ordinal);
         Assert.True(Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"") >= 4,
             "label, chevron, session icon and focus icon take the theme foreground");
         Assert.DoesNotContain("Stroke=\"{ThemeResource TextFillColorSecondaryBrush}\"", xaml, StringComparison.Ordinal);

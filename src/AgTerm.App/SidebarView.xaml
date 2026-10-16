@@ -38,16 +38,18 @@
             </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:SidebarRowViewModel">
-                    <!-- opaque on a colored row, so the container's selected and hover backgrounds
-                         stay under it. The container's 8 px padding moved here for that, less the
-                         1 px frame that is always there so selection never shifts the content -->
+                    <Grid Height="{x:Bind RowHeight, Mode=OneWay}">
+                    <!-- the colored layer of a themed row: inset as the list item's own rounded
+                         selection backplate, and opaque, so the selected and hover backgrounds
+                         under it never show. The content sits on top at the container's old
+                         8 px padding, so a default row is laid out as before -->
                     <Border Background="{x:Bind RowBackground, Mode=OneWay}"
+                            BackgroundSizing="OuterBorderEdge"
                             BorderBrush="{x:Bind RowFrame, Mode=OneWay}"
                             BorderThickness="1"
                             CornerRadius="{ThemeResource ListViewItemCornerRadius}"
-                            Padding="7,0,7,0"
-                            Height="{x:Bind RowHeight, Mode=OneWay}">
-                    <Grid ColumnSpacing="6">
+                            Margin="4,2,4,2" />
+                    <Grid ColumnSpacing="6" Margin="8,0,8,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
@@ -158,7 +160,7 @@
                                        VerticalAlignment="Center" />
                         </Border>
                     </Grid>
-                    </Border>
+                    </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
