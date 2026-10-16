@@ -2338,10 +2338,14 @@ public sealed partial class MainWindow : Window
     private async Task SendPaneThemeChangesAsync(PaneThemeChanges changes)
     {
         var page = await _pageTask;
+        // the page applies scripts in the order they are issued, so issue both before awaiting
+        // either: an await between them lets a later call's background land before this one's
+        var pending = new List<Task>(2);
         if (changes.Panes.Count > 0)
-            await page.ApplyPaneThemesAsync(changes.Panes);
+            pending.Add(page.ApplyPaneThemesAsync(changes.Panes));
         if (changes.BackgroundChanged)
-            await page.SetTerminalBackgroundAsync(changes.Background);
+            pending.Add(page.SetTerminalBackgroundAsync(changes.Background));
+        await Task.WhenAll(pending);
     }
 
     private static Color ParseHexColor(string hex, Color fallback)
