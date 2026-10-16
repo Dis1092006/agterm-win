@@ -489,6 +489,33 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public async Task SetWorkspaceThemeAsync_sends_workspace_theme_to_the_named_window()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var firstWorkspaceId = Guid.NewGuid();
+        var secondWorkspaceId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, ThemedSnapshot("alpha", firstWorkspaceId));
+        WriteWindowSnapshot(secondId, ThemedSnapshot("beta", secondWorkspaceId));
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication();
+        application.Start();
+
+        var cleared = await application.SetWorkspaceThemeAsync(secondId, secondWorkspaceId, themeName: null);
+        // these window hosts list no themes, so any name is unknown
+        var refused = await application.SetWorkspaceThemeAsync(secondId, secondWorkspaceId, "Dracula");
+
+        Assert.True(cleared.Ok, cleared.Error);
+        Assert.Equal(secondWorkspaceId.ToString("D").ToUpperInvariant(), cleared.Result!.Id);
+        Assert.Null(Assert.Single(application.GetOpenWindow(secondId).Store.Workspaces).ThemeName);
+        Assert.Equal("Nord", Assert.Single(application.GetOpenWindow(firstId).Store.Workspaces).ThemeName);
+        Assert.False(refused.Ok);
+        Assert.Equal("unknown theme: Dracula", refused.Error);
+    }
+
+    [Fact]
     public void Workspace_prefix_ambiguity_is_computed_across_all_open_windows()
     {
         var firstId = Guid.NewGuid();
@@ -977,6 +1004,21 @@ public sealed class LiveWindowRegistryTests : IDisposable
                     Id = workspaceId,
                     Name = workspaceName,
                     Sessions = Array.Empty<SessionSnapshot>(),
+                },
+            ],
+        };
+
+    private static Snapshot ThemedSnapshot(string workspaceName, Guid workspaceId) =>
+        new()
+        {
+            Workspaces =
+            [
+                new WorkspaceSnapshot
+                {
+                    Id = workspaceId,
+                    Name = workspaceName,
+                    Sessions = Array.Empty<SessionSnapshot>(),
+                    Theme = "Nord",
                 },
             ],
         };

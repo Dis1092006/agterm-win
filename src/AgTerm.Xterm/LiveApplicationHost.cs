@@ -193,6 +193,23 @@ public sealed class LiveApplicationHost : IDisposable
             ?? new ControlResponse { Ok = false, Error = "no such window: active" };
     }
 
+    /// <summary>Sends workspace.theme to one window, the way its sidebar's theme palette saves, so
+    /// the palette gets the same answer and errors agtermctl would.</summary>
+    public async Task<ControlResponse> SetWorkspaceThemeAsync(
+        Guid windowId,
+        Guid workspaceId,
+        string? themeName,
+        CancellationToken cancellationToken = default) =>
+        await DispatchAsync(
+            new ControlRequest
+            {
+                Cmd = Command.WorkspaceTheme,
+                Target = workspaceId.ToString("D"),
+                Args = new ControlArgs { Name = themeName, Window = windowId.ToString("D") },
+            },
+            cancellationToken).ConfigureAwait(false)
+        ?? new ControlResponse { Ok = false, Error = "no such window: active" };
+
     public Task<ControlResponse> CreateWindowAsync(
         string? name = null,
         CancellationToken cancellationToken = default) =>
