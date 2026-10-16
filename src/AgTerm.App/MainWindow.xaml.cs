@@ -843,7 +843,7 @@ public sealed partial class MainWindow : Window
 
         DispatcherQueue.TryEnqueue(() =>
         {
-            Sidebar.Attach(sidebar, _settings, this);
+            Sidebar.Attach(sidebar, _settings, this, _themeCatalog);
             Sidebar.RowActivated += FocusActiveTerminal;
             Sidebar.WorkspaceThemeRequested += workspaceId => ObserveTaskFault(
                 _paletteTransitions.RunAsync(() => OpenWorkspaceThemePaletteAsync(workspaceId)),

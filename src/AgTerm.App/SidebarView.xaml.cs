@@ -25,6 +25,7 @@ public sealed partial class SidebarView : UserControl
 {
     private readonly ObservableCollection<SidebarRowViewModel> _items = new();
     private SidebarController? _controller;
+    private SidebarRowThemes? _rowThemes;
     private Window? _ownerWindow;
     private AppSettings _settings = new();
     private SidebarSnapshot? _snapshot;
@@ -49,9 +50,10 @@ public sealed partial class SidebarView : UserControl
     /// workspace.</summary>
     public event Action<Guid>? WorkspaceThemeRequested;
 
-    public void Attach(SidebarController controller, AppSettings settings, Window ownerWindow)
+    public void Attach(SidebarController controller, AppSettings settings, Window ownerWindow, ThemeCatalog themeCatalog)
     {
         _controller = controller;
+        _rowThemes = new SidebarRowThemes(themeCatalog.Resolve);
         _ownerWindow = ownerWindow;
         ApplySettings(settings);
         controller.SnapshotChanged += Apply;
@@ -66,7 +68,7 @@ public sealed partial class SidebarView : UserControl
             var status = _snapshot is { } snapshot
                 ? SurfaceStatusOf(snapshot, row)
                 : SidebarSurfaceStatus.Ready;
-            _items[i].Update(row, _settings, status);
+            _items[i].Update(row, _settings, status, ColorsOf(row));
         }
 
         RefreshRealizedRowAutomationNames();
@@ -77,18 +79,20 @@ public sealed partial class SidebarView : UserControl
     public void Apply(SidebarSnapshot snapshot)
     {
         _snapshot = snapshot;
+        _rowThemes?.Observe(snapshot.Rows);
         if (_shapeKey != snapshot.ShapeKey)
         {
             _shapeKey = snapshot.ShapeKey;
             CancelRename();
             _items.Clear();
             foreach (var row in snapshot.Rows)
-                _items.Add(new SidebarRowViewModel(row, _settings, SurfaceStatusOf(snapshot, row)));
+                _items.Add(new SidebarRowViewModel(row, _settings, SurfaceStatusOf(snapshot, row), ColorsOf(row)));
         }
         else
         {
             for (var i = 0; i < snapshot.Rows.Count; i++)
-                _items[i].Update(snapshot.Rows[i], _settings, SurfaceStatusOf(snapshot, snapshot.Rows[i]));
+                _items[i].Update(snapshot.Rows[i], _settings, SurfaceStatusOf(snapshot, snapshot.Rows[i]),
+                    ColorsOf(snapshot.Rows[i]));
         }
 
         RefreshRealizedRowAutomationNames();
@@ -160,12 +164,53 @@ public sealed partial class SidebarView : UserControl
         {
             _syncingSelection = false;
         }
+
+        RefreshListSelection();
+    }
+
+    /// <summary>The workspace theme palette's preview, shown on that workspace's rows in this window
+    /// only, like the preview on its panes.</summary>
+    public void PreviewWorkspaceTheme(Guid workspaceId, string? themeName)
+    {
+        _rowThemes?.Preview(workspaceId, themeName);
+        RecolorRows();
+    }
+
+    public void EndWorkspaceThemePreview()
+    {
+        _rowThemes?.EndPreview();
+        RecolorRows();
+    }
+
+    public void WorkspaceThemeSaved(Guid workspaceId, string? themeName)
+    {
+        _rowThemes?.Saved(workspaceId, themeName);
+        RecolorRows();
+    }
+
+    private SidebarRowColors? ColorsOf(SidebarRow row) =>
+        _rowThemes?.ColorsFor(row, _settings.ShowSidebarThemeColors());
+
+    private void RecolorRows()
+    {
+        foreach (var item in _items)
+        {
+            var status = _snapshot is { } snapshot ? SurfaceStatusOf(snapshot, item.Row) : SidebarSurfaceStatus.Ready;
+            item.Update(item.Row, _settings, status, ColorsOf(item.Row));
+        }
+    }
+
+    private void RefreshListSelection()
+    {
+        foreach (var item in _items)
+            item.IsListSelected = RowsList.SelectedItems.Contains(item);
     }
 
     // MARK: - selection / activation
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        RefreshListSelection();
         if (_syncingSelection || _controller is null) return;
         // workspace rows are not selectable — strip them (they still get their tap toggle)
         foreach (var added in e.AddedItems.OfType<SidebarRowViewModel>().Where(i => i.IsWorkspace).ToList())

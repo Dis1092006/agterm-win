@@ -19,15 +19,18 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     private SidebarRow _row;
     private AppSettings _settings;
     private SidebarSurfaceStatus _surfaceStatus;
+    private SidebarRowColors? _colors;
 
     public SidebarRowViewModel(
         SidebarRow row,
         AppSettings settings,
-        SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready)
+        SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
+        SidebarRowColors? colors = null)
     {
         _row = row;
         _settings = settings;
         _surfaceStatus = surfaceStatus;
+        _colors = colors;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -69,9 +72,34 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public double LabelOpacity => IsWorkspace && !_row.ActiveWorkspace ? 0.75 : 1.0;
 
-    public FontWeight LabelWeight => IsWorkspace
-        ? Microsoft.UI.Text.FontWeights.SemiBold
+    public FontWeight LabelWeight =>
+        IsWorkspace ? Microsoft.UI.Text.FontWeights.SemiBold
+        : IsColoredSelection ? Microsoft.UI.Text.FontWeights.Bold
         : Microsoft.UI.Text.FontWeights.Normal;
+
+    /// <summary>Whether the list shows this row as selected. The view sets it from the list's own
+    /// selection, which also covers extended selection.</summary>
+    public bool IsListSelected
+    {
+        get => field;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            Raise(nameof(IsListSelected), nameof(RowFrame), nameof(LabelWeight));
+        }
+    }
+
+    // a colored row shows selection without changing color: bold label and a theme-foreground frame
+    private bool IsColoredSelection => _colors is not null && IsListSelected;
+
+    public Brush? RowBackground => _colors is { } colors ? BrushFrom(colors.Background) : null;
+
+    public Brush RowFrame => IsColoredSelection
+        ? BrushFrom(_colors!.Foreground)
+        : new SolidColorBrush(Colors.Transparent);
+
+    public Brush? RowForeground => _colors is { } colors ? BrushFrom(colors.Foreground) : null;
 
     public Visibility FocusPillVisibility =>
         IsWorkspace && _row.Focused ? Visibility.Visible : Visibility.Collapsed;
@@ -83,7 +111,9 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         : "M0.5,2.5 H15.5 V12.5 H0.5 Z";
 
     public Brush IconFill => _row.Flagged
-        ? new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF))
+        ? _colors is { } colors
+            ? BrushFrom(colors.Foreground, alpha: 0x60)
+            : new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF))
         : new SolidColorBrush(Colors.Transparent);
 
     // agent-status glyph (idle → hidden; shape/color resolved per-call → settings → defaults)
@@ -95,17 +125,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public StatusShape GlyphShape =>
         _row.Indicator.Shape ?? _settings.EffectiveStatusShape(_row.Indicator.Status) ?? StatusShape.Circle;
 
-    public Brush GlyphFill
-    {
-        get
-        {
-            var hex = _settings.EffectiveStatusColorHex(_row.Indicator.Status, _row.Indicator.Color);
-            return new SolidColorBrush(Color.FromArgb(0xFF,
-                Convert.ToByte(hex.Substring(1, 2), 16),
-                Convert.ToByte(hex.Substring(3, 2), 16),
-                Convert.ToByte(hex.Substring(5, 2), 16)));
-        }
-    }
+    public Brush GlyphFill =>
+        BrushFrom(_settings.EffectiveStatusColorHex(_row.Indicator.Status, _row.Indicator.Color));
 
     public string GlyphData => GlyphShape switch
     {
@@ -166,14 +187,16 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public void Update(
         SidebarRow row,
         AppSettings settings,
-        SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready)
+        SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
+        SidebarRowColors? colors = null)
     {
         var settingsChanged = !ReferenceEquals(_settings, settings);
         var surfaceStatusChanged = _surfaceStatus != surfaceStatus;
-        if (_row == row && !settingsChanged && !surfaceStatusChanged) return;
+        if (_row == row && !settingsChanged && !surfaceStatusChanged && _colors == colors) return;
         _row = row;
         _settings = settings;
         _surfaceStatus = surfaceStatus;
+        _colors = colors;
         Raise(nameof(Label), nameof(Chevron), nameof(LabelOpacity), nameof(LabelWeight),
               nameof(FontSize), nameof(RowHeight),
               nameof(FocusPillVisibility), nameof(IconData), nameof(IconFill),
@@ -183,8 +206,16 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
               nameof(SurfaceAutomationName), nameof(AgentAutomationName),
               nameof(UnseenAutomationName), nameof(FocusedWorkspaceAutomationName),
               nameof(IsSurfacePending), nameof(IsSurfaceFailed),
-              nameof(PendingVisibility), nameof(FailedVisibility));
+              nameof(PendingVisibility), nameof(FailedVisibility),
+              nameof(RowBackground), nameof(RowFrame), nameof(RowForeground));
     }
+
+    /// <summary>A brush from a "#rrggbb" color, as settings and theme files write them.</summary>
+    private static SolidColorBrush BrushFrom(string hex, byte alpha = 0xFF) =>
+        new(Color.FromArgb(alpha,
+            Convert.ToByte(hex.Substring(1, 2), 16),
+            Convert.ToByte(hex.Substring(3, 2), 16),
+            Convert.ToByte(hex.Substring(5, 2), 16)));
 
     private void Raise(params string[] names)
     {
