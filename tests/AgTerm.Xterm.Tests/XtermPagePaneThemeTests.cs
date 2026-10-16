@@ -304,4 +304,67 @@ public sealed class XtermPagePaneThemeLiveTests
         Assert.Equal("\"rgb(46, 52, 64)\"",
             await EvalAsync(view, "getComputedStyle(document.querySelector('.ask-panel')).backgroundColor"));
     }
+
+    private Task<string> PaneBackgroundAsync(Microsoft.Web.WebView2.WinForms.WebView2 view, string paneId) =>
+        EvalAsync(view, $"getComputedStyle(document.querySelector('[data-pane-id=\"{paneId}\"]')).backgroundColor");
+
+    [Fact]
+    public async Task A_floating_layer_fills_its_element_with_its_own_theme_background()
+    {
+        var (page, view) = await BootPageAsync();
+        await ApplyGlobalAsync(page);
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("lb-base"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("lb-quick"));
+        await AssignAsync(page, "lb-base", TestPaneThemes.Nord);
+
+        Assert.True(await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            1,
+            new TerminalLayout.Single(1, "lb-base", "shell"),
+            new TerminalLayer("lb-quick", sizePercent: 90)))));
+
+        // the global theme (#101010), not the Nord session under the layer
+        Assert.Equal("\"rgb(16, 16, 16)\"", await PaneBackgroundAsync(view, "lb-quick"));
+
+        await AssignAsync(page, "lb-quick", TestPaneThemes.Nord);
+        Assert.Equal("\"rgb(46, 52, 64)\"", await PaneBackgroundAsync(view, "lb-quick"));
+
+        Assert.True(await _webView.RunAsync(_ => page.ApplyLayoutAsync(
+            new TerminalLayout.Single(2, "lb-base", "shell"))));
+        Assert.Equal("\"rgba(0, 0, 0, 0)\"", await PaneBackgroundAsync(view, "lb-quick"));
+    }
+
+    [Fact]
+    public async Task A_floating_layer_follows_the_global_settings_while_shown()
+    {
+        var (page, view) = await BootPageAsync();
+        await ApplyGlobalAsync(page);
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("lg-base"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("lg-quick"));
+        Assert.True(await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            1,
+            new TerminalLayout.Single(1, "lg-base", "shell"),
+            new TerminalLayer("lg-quick", sizePercent: 90)))));
+
+        await _webView.RunAsync(_ => page.ApplyRendererSettingsAsync(
+            RendererSettingsSnapshot.From(new AppSettings(), TestPaneThemes.Nord)));
+
+        Assert.Equal("\"rgb(46, 52, 64)\"", await PaneBackgroundAsync(view, "lg-quick"));
+    }
+
+    [Fact]
+    public async Task An_overlay_color_still_fills_the_layer_element()
+    {
+        var (page, view) = await BootPageAsync();
+        await ApplyGlobalAsync(page);
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("lo-base"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("lo-layer"));
+        await AssignAsync(page, "lo-layer", TestPaneThemes.Nord);
+
+        Assert.True(await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Layered(
+            1,
+            new TerminalLayout.Single(1, "lo-base", "shell"),
+            new TerminalLayer("lo-layer", sizePercent: 60, backgroundColor: "#123456")))));
+
+        Assert.Equal("\"rgb(18, 52, 86)\"", await PaneBackgroundAsync(view, "lo-layer"));
+    }
 }

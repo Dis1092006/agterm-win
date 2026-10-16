@@ -712,8 +712,6 @@ function applyLayeredPresentation(validLayered, shouldFocusLayer) {
     layerPane.el.style.boxShadow = "0 16px 48px rgba(0, 0, 0, 0.45)";
   }
 
-  if (validLayered.backgroundColor !== null)
-    layerPane.el.style.background = validLayered.backgroundColor;
   layerPane.overlayBackgroundColor = validLayered.backgroundColor;
   applyRendererSettingsToPane(layerPane, rendererSettings);
 
@@ -1455,6 +1453,9 @@ function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
   const opts = buildTerminalOptions(paneSettings(pane, settings), fontSizeOverride);
   if (pane.overlayBackgroundColor !== null)
     opts.theme.background = pane.overlayBackgroundColor;
+  // xterm fills only whole rows; the strip below the last row must not show the pane under the layer
+  if (pane.el.classList.contains("overlay-layer-pane"))
+    pane.el.style.background = opts.theme.background;
   pane.term.options.allowTransparency = true;
   pane.term.options.cursorBlink = opts.cursorBlink;
   pane.term.options.cursorStyle = opts.cursorStyle;
