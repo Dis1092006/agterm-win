@@ -34,6 +34,29 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("Sidebar.Attach(sidebar, _settings, this, _themeCatalog)", window, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Workspace_palette_preview_cancel_and_save_reach_the_sidebar()
+    {
+        var window = Source("MainWindow.xaml.cs");
+
+        Assert.Contains("Sidebar.PreviewWorkspaceTheme(workspaceId, themeName)",
+            MethodBody(window, "private Task ShowWorkspaceThemePreviewAsync("), StringComparison.Ordinal);
+        Assert.Contains("Sidebar.EndWorkspaceThemePreview()",
+            MethodBody(window, "private Task ShowSavedWorkspaceThemesAsync()"), StringComparison.Ordinal);
+        var save = MethodBody(window, "private async Task<bool> SaveWorkspaceThemeAsync(");
+        var okBranch = save[save.IndexOf("if (response.Ok)", StringComparison.Ordinal)..save.IndexOf("return true;", StringComparison.Ordinal)];
+        Assert.Contains("Sidebar.WorkspaceThemeSaved(workspaceId, themeName)", okBranch, StringComparison.Ordinal);
+    }
+
+    // from the signature to the first line that closes a member at class indentation
+    private static string MethodBody(string source, string signature)
+    {
+        var start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"{signature} not found");
+        var end = source.IndexOf("\n    }", start, StringComparison.Ordinal);
+        return source[start..end];
+    }
+
     private static int Count(string text, string value)
     {
         var count = 0;

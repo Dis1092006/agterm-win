@@ -2244,13 +2244,18 @@ public sealed partial class MainWindow : Window
     private Task ShowWorkspaceThemePreviewAsync(string? themeName, Func<bool> isCurrent)
     {
         if (isCurrent() && _workspaceThemeTarget is { } workspaceId)
+        {
             SendPaneThemeChanges(_paneThemes.Preview(workspaceId, themeName));
+            Sidebar.PreviewWorkspaceTheme(workspaceId, themeName);
+        }
+
         return Task.CompletedTask;
     }
 
     private Task ShowSavedWorkspaceThemesAsync()
     {
         SendPaneThemeChanges(_paneThemes.EndPreview());
+        Sidebar.EndWorkspaceThemePreview();
         return Task.CompletedTask;
     }
 
@@ -2261,6 +2266,7 @@ public sealed partial class MainWindow : Window
         if (response.Ok)
         {
             SendPaneThemeChanges(_paneThemes.Saved(workspaceId, themeName, tableVersion));
+            Sidebar.WorkspaceThemeSaved(workspaceId, themeName);
             return true;
         }
 
