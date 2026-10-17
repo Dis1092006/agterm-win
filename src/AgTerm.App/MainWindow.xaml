@@ -6,7 +6,9 @@
     Title="agterm-win">
     <Grid x:Name="RootGrid"
           Background="Transparent"
-          KeyDown="OnRootKeyDown">
+          KeyDown="OnRootKeyDown"
+          PreviewKeyDown="OnRootPreviewKeyDown"
+          PreviewKeyUp="OnRootPreviewKeyUp">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -67,7 +69,7 @@
                             Style="{StaticResource TitleBarActionButtonStyle}"
                             AutomationProperties.Name="Recent sessions"
                             AutomationProperties.AutomationId="recent-sessions-button"
-                            ToolTipService.ToolTip="Recent sessions">
+                            ToolTipService.ToolTip="Recent sessions (Ctrl+Tab)">
                         <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE81C;" FontSize="14" />
                         <Button.Flyout>
                             <MenuFlyout x:Name="RecentSessionsFlyout"
@@ -209,6 +211,9 @@
         <local:AskView x:Name="AskOverlay"
                        Grid.RowSpan="2"
                        Canvas.ZIndex="100" />
+        <local:SessionSwitcherView x:Name="SwitcherOverlay"
+                                   Grid.Row="1"
+                                   Canvas.ZIndex="90" />
 
         <InfoBar x:Name="NotificationBanner"
                  Grid.Row="1"

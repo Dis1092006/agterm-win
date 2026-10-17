@@ -72,6 +72,27 @@ public sealed class TitleBarStateTests : IDisposable
         Assert.Equal(new[] { inside.Id }, TitleBarState.Project(_store).RecentSessions.Select(r => r.Id));
     }
 
+    // upstream SessionSwitcher.begin: the MRU order inside the visible set, the current session first
+    [Fact]
+    public void Switcher_sessions_start_with_the_current_one()
+    {
+        var first = Add(@"C:\first");
+        var second = Add(@"C:\second");
+        var third = Add(@"C:\c");
+
+        Assert.Equal(new[] { third.Id, second.Id, first.Id },
+            TitleBarState.Project(_store).SwitcherSessions.Select(s => s.Id));
+    }
+
+    [Fact]
+    public void Switcher_sessions_are_capped_like_the_recent_list()
+    {
+        for (var i = 0; i < 12; i++)
+            Add($@"C:\s{i}");
+
+        Assert.Equal(TitleBarState.MaxRecentSessions, TitleBarState.Project(_store).SwitcherSessions.Count);
+    }
+
     [Fact]
     public void Scratch_follows_the_active_session()
     {

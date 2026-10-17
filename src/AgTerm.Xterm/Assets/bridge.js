@@ -11,6 +11,8 @@
 //                                              {type:'chord', paneId, generation, ctrl, alt, shift, key}
 //                                              {type:'customHotkey', paneId, generation, customCommandId, ctrl, alt, shift, key}
 //                                              {type:'pasteRequested', paneId}   right-click paste
+//                                              {type:'switcher', paneId?, key}   Ctrl-Tab switcher: key is
+//                                                tab|reverseTab|escape|controlReleased
 //                                              {type:'dashboardHighlight'|'dashboardActivate', controlRef}
 //                                              {type:'dashboardClose'}
 //                                              {type:'hudMetrics', paneId, fontSize, cellWidth, cellHeight, session:{width,height}, left?, right?, pane?}
@@ -21,6 +23,7 @@
 //     agterm.setHotkeyManifest({generation,leaderTimeoutMs,builtinSingles,customBindings,
 //       zoomPassthroughSingles,dashboardToggleSingles}) — atomic hotkey table.
 //     agterm.setChords([{ctrl,alt,shift,key}]) — compatibility built-in-only hotkey table.
+//     agterm.setSwitcherActive(bool): whether the window's Ctrl-Tab switch is still in progress.
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
 //     agterm.applyPaneThemes({paneId: theme|null}): a pane's own colors (a workspace theme); null
 //       returns the pane to the page settings, and panes not named keep their assignment.
@@ -48,6 +51,9 @@ let programmaticFocusPaneId = null;
 let highestAcceptedLayoutGeneration = null;
 let interceptChords = []; // [{ctrl, alt, shift, key}] — hotkeys the HOST owns; see 'chords' below
 let hotkeyGeneration = 0;
+// a Ctrl-Tab switch in progress: assumed from the page's own Ctrl+Tab, cleared by the Ctrl release or
+// by the host (a switch that did not begin, or one that ended in the window)
+let switcherActive = false;
 let customHotkeyBindings = [];
 let zoomPassthroughChords = [];
 let dashboardToggleChords = [];
@@ -2262,6 +2268,33 @@ document.addEventListener(
 );
 window.addEventListener("blur", () => setHudLinkHover(false));
 
+// upstream SessionSwitcher's key monitor: Ctrl+Tab and Ctrl+Shift+Tab are always the switcher's
+// (keymap.conf cannot bind them), Esc only while a switch is in progress
+function routeSwitcherKey(paneId, ev) {
+  if (ev.key === "Tab" && ev.ctrlKey) {
+    switcherActive = true;
+    post({ type: "switcher", paneId, key: ev.shiftKey ? "reverseTab" : "tab" });
+    return true;
+  }
+  if (ev.key === "Escape" && switcherActive) {
+    switcherActive = false;
+    post({ type: "switcher", paneId, key: "escape" });
+    return true;
+  }
+  return false;
+}
+
+// releasing Ctrl commits the switch; on the document, so it is seen whichever pane has the keys
+document.addEventListener(
+  "keyup",
+  (ev) => {
+    if (ev.key !== "Control" || !switcherActive) return;
+    switcherActive = false;
+    post({ type: "switcher", key: "controlReleased" });
+  },
+  true,
+);
+
 function samePhysicalChord(left, right) {
   return (
     left.ctrl === right.ctrl &&
@@ -2548,6 +2581,10 @@ function openPane(paneId, opts) {
   // back as a chord message instead (the host's KeybindMatcher dispatches it)
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== "keydown") return true;
+    if (routeSwitcherKey(paneId, ev)) {
+      if (ev.preventDefault) ev.preventDefault();
+      return false;
+    }
     if (ev.key === "Escape" && armedCustomChords.length > 0) {
       resetCustomLeader();
       if (ev.preventDefault) ev.preventDefault();
@@ -2949,6 +2986,10 @@ window.agterm = {
     return interceptChords.length;
   },
   setHotkeyManifest,
+  setSwitcherActive: (active) => {
+    switcherActive = !!active;
+    return true;
+  },
   syntheticKeyCodeFromKey: (key) => {
     if (typeof key !== "string") return 0;
     if (key.length === 1) return key.toUpperCase().charCodeAt(0);
@@ -2993,6 +3034,11 @@ window.agterm = {
   // win32InputModeEncodes above
   win32InputModeActive: (paneId) =>
     withPane(paneId, (p) => !!p.term.modes.win32InputMode),
+  // test-only: a synthetic keyup on the document (the Ctrl release the switcher waits for)
+  dispatchKeyUp: (key) => {
+    document.dispatchEvent(new KeyboardEvent("keyup", { key }));
+    return true;
+  },
   // test-only: run a synthetic keydown through the real xterm key path (chord interception).
   // event.code matters as much as event.key: win32-input-mode encodes from code and is consulted
   // before the kitty protocol, so an event without one takes a path no hardware key takes.

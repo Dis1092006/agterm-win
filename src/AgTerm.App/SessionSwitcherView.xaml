@@ -1,0 +1,37 @@
+<UserControl
+    x:Class="AgTerm.App.SessionSwitcherView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Visibility="Collapsed"
+    IsHitTestVisible="False"
+    IsTabStop="False">
+    <!-- upstream SessionSwitcherOverlay: a top-centered list of the frozen candidates with the pick
+         highlighted, over a light dim. Keyboard-driven and never focused, so the terminal keeps the
+         keys and the switcher's key monitor drives it -->
+    <UserControl.Resources>
+        <Style x:Key="SwitcherRowStyle" TargetType="Border">
+            <Setter Property="Padding" Value="12,6,12,6" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style x:Key="SwitcherSelectedRowStyle" TargetType="Border" BasedOn="{StaticResource SwitcherRowStyle}">
+            <Setter Property="Background" Value="{ThemeResource AccentFillColorTertiaryBrush}" />
+        </Style>
+    </UserControl.Resources>
+    <Grid Background="#33000000">
+        <Border MaxWidth="460"
+                Margin="24,0,24,24"
+                Padding="6"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Top"
+                x:Name="SwitcherPanel"
+                Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                AutomationProperties.Name="Session switcher"
+                AutomationProperties.AutomationId="session-switcher">
+            <StackPanel x:Name="Rows" />
+        </Border>
+    </Grid>
+</UserControl>

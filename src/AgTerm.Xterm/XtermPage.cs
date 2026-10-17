@@ -197,6 +197,12 @@ public sealed class XtermPage
         return _host.ExecuteScriptAsync($"agterm.applySearch({payload})");
     }
 
+    /// <summary>Whether a Ctrl-Tab switch is in progress, as the window's switcher says. The page assumes
+    /// one from its own Ctrl+Tab until told otherwise; while it holds, Esc and the Ctrl release are the
+    /// switcher's.</summary>
+    public Task SetSwitcherActiveAsync(bool active) =>
+        _host.ExecuteScriptAsync($"agterm.setSwitcherActive({(active ? "true" : "false")})");
+
     public Task HideSearchAsync(string? clearOwnerPaneId, string? restorePaneId)
     {
         var payload = JsonSerializer.Serialize(new
@@ -257,6 +263,9 @@ public sealed class XtermPage
     public event Action<string>? DashboardActivated;
 
     public event Action? DashboardClosed;
+
+    /// <summary>A Ctrl-Tab switcher key from the terminal page (upstream SessionSwitcher's monitor).</summary>
+    public event Action<SessionSwitcherKey>? SwitcherKeyPressed;
 
     /// <summary>Push the hotkey table every pane intercepts (replaces the previous table; empty
     /// clears the interception). Call after keymap load/reload, on the WebView2 UI thread — a
@@ -595,6 +604,21 @@ public sealed class XtermPage
         if (msg?.Type == "dashboardClose")
         {
             DashboardClosed?.Invoke();
+            return;
+        }
+
+        if (msg is { Type: "switcher", Key: { } switcherKey })
+        {
+            SessionSwitcherKey? parsed = switcherKey switch
+            {
+                "tab" => SessionSwitcherKey.Tab,
+                "reverseTab" => SessionSwitcherKey.ReverseTab,
+                "escape" => SessionSwitcherKey.Escape,
+                "controlReleased" => SessionSwitcherKey.ControlReleased,
+                _ => null,
+            };
+            if (parsed is { } pressed)
+                SwitcherKeyPressed?.Invoke(pressed);
             return;
         }
 

@@ -68,6 +68,8 @@ public sealed partial class MainWindow : Window
     private TitleBarState _titleBarState = TitleBarState.Empty;
     // the armed keymap, for the shortcut each chrome button's tooltip names
     private Keymap _keymap = Keymap.Empty;
+    // the Ctrl-Tab switcher; the page's switch flag mirrors IsActive once a key has been handled
+    private readonly SessionSwitcher _switcher = new();
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
@@ -119,6 +121,7 @@ public sealed partial class MainWindow : Window
 
         InitializeComponent();
         ApplyInterfaceElements(_settings);
+        _switcher.Changed += OnSwitcherChanged;
         _notificationPresenter = new WindowsAppNotificationPresenter(
             message => System.Diagnostics.Trace.TraceWarning(message));
         ApplyThemeChrome(initialTheme.UseDarkChrome);
@@ -412,6 +415,9 @@ public sealed partial class MainWindow : Window
     private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
     {
         _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        // the Ctrl release may land in another window, so a switch never outlives the focus
+        if (!_windowIsActive)
+            _switcher.Cancel();
         if (args.WindowActivationState == WindowActivationState.Deactivated)
             return;
         PaletteOverlay.NoteActivation();
@@ -578,6 +584,8 @@ public sealed partial class MainWindow : Window
                 var previousSelection = _selection;
                 _selection = snapshot;
                 RefreshTitleBarActions(_settings);
+                // upstream cancels a switch when the dashboard takes the keyboard
+                if (snapshot.DashboardOpen) _switcher.Cancel();
                 PresentPaneThemes(snapshot);
                 // a split toggle or a divider drag moves the pane a question is anchored to
                 ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
@@ -1127,6 +1135,7 @@ public sealed partial class MainWindow : Window
         await ArmAsync(host.Host.Actions.LoadKeymap());
         page.BuiltinHotkeyPressed += hit => DispatcherQueue.TryEnqueue(() =>
             HandleChord(hit.Chord, hit.Generation));
+        page.SwitcherKeyPressed += key => DispatcherQueue.TryEnqueue(() => HandleSwitcherKey(key));
         page.CustomCommandPressed += hit => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
             ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(
                 hit.CommandId,
@@ -1434,6 +1443,76 @@ public sealed partial class MainWindow : Window
         if (IsTextInputFocused()) return;
         if (PhysicalFromKey(e.Key) is { } physical && HandleChord(physical)) e.Handled = true;
     }
+
+    // MARK: - Ctrl-Tab session switcher
+
+    // the terminal page reports these keys itself; the window's own key events cover the rest of the
+    // window (the sidebar, the title bar), before XAML takes Ctrl+Tab for focus navigation
+    private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (IsTerminalFocused()) return;
+        if (e.Key == VirtualKey.Tab && IsKeyDown(VirtualKey.Control))
+        {
+            HandleSwitcherKey(IsKeyDown(VirtualKey.Shift) ? SessionSwitcherKey.ReverseTab : SessionSwitcherKey.Tab);
+            e.Handled = true;
+        }
+        else if (e.Key == VirtualKey.Escape && _switcher.IsActive)
+        {
+            HandleSwitcherKey(SessionSwitcherKey.Escape);
+            e.Handled = true;
+        }
+    }
+
+    private void OnRootPreviewKeyUp(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (_switcher.IsActive && e.Key is VirtualKey.Control or VirtualKey.LeftControl or VirtualKey.RightControl)
+            HandleSwitcherKey(SessionSwitcherKey.ControlReleased);
+    }
+
+    private void HandleSwitcherKey(SessionSwitcherKey key)
+    {
+        switch (key)
+        {
+            case SessionSwitcherKey.Tab or SessionSwitcherKey.ReverseTab:
+                _switcher.Tab(key == SessionSwitcherKey.ReverseTab, CanSwitchSessions(), () => _titleBarState.SwitcherSessions);
+                break;
+            case SessionSwitcherKey.Escape:
+                _switcher.Escape();
+                break;
+            case SessionSwitcherKey.ControlReleased:
+                if (_switcher.ControlReleased(CanSwitchSessions()) is { } sessionId)
+                    ObserveTaskFault(SelectRecentSessionAsync(sessionId), "Session switch failed");
+                break;
+        }
+        SyncPageSwitcher();
+    }
+
+    // upstream canSwitch (uiActionsEnabled): not while a palette, a question or the dashboard has the keys
+    private bool CanSwitchSessions() =>
+        !PaletteOverlay.IsOpen && !AskOverlay.IsOpen && !_selection.DashboardOpen;
+
+    // the page assumes a switch from its own Ctrl+Tab; tell it when none began or one ended here
+    private void SyncPageSwitcher()
+    {
+        if (_pageTask.IsCompletedSuccessfully)
+            ObserveTaskFault(_pageTask.Result.SetSwitcherActiveAsync(_switcher.IsActive), "Switcher sync failed");
+    }
+
+    private void OnSwitcherChanged()
+    {
+        if (_switcher.IsActive)
+            SwitcherOverlay.Show(_switcher.Candidates, _switcher.Index);
+        else
+            SwitcherOverlay.Hide();
+    }
+
+    private bool IsTerminalFocused() =>
+        Content?.XamlRoot is { } root &&
+        Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) is WebView2;
+
+    private static bool IsKeyDown(VirtualKey key) =>
+        Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key)
+            .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     private bool IsTextInputFocused() =>
         Content?.XamlRoot is { } root &&

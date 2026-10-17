@@ -33,13 +33,14 @@ public sealed record TitleBarState(
     bool ScratchActive,
     TitleBarSplit Split,
     TitleBarAttention Attention,
-    IReadOnlyList<TitleBarRecentSession> RecentSessions)
+    IReadOnlyList<TitleBarRecentSession> RecentSessions,
+    IReadOnlyList<TitleBarRecentSession> SwitcherSessions)
 {
     /// <summary>Upstream SessionSwitcher.maxCandidates: the recent list is capped like Ctrl-Tab's.</summary>
     public const int MaxRecentSessions = 10;
 
     public static TitleBarState Empty { get; } =
-        new(false, false, TitleBarSplit.None, TitleBarAttention.None, []);
+        new(false, false, TitleBarSplit.None, TitleBarAttention.None, [], []);
 
     public static TitleBarState Project(AppStore store)
     {
@@ -49,7 +50,8 @@ public sealed record TitleBarState(
             active?.ScratchActive == true,
             SplitOf(active),
             AttentionOf(store.AttentionSessions),
-            RecentOf(store, active));
+            RecentOf(store, active),
+            SwitcherOf(store));
     }
 
     private static TitleBarSplit SplitOf(Session? session) => session switch
@@ -71,7 +73,16 @@ public sealed record TitleBarState(
     {
         var valid = store.NavigableSessions.Select(s => s.Id).ToHashSet();
         if (active is not null) valid.Remove(active.Id);
-        return store.SessionRecency.Top(MaxRecentSessions, valid)
+        return Rows(store, valid);
+    }
+
+    // upstream SessionSwitcher.begin: the same MRU order with the current session kept, so it comes
+    // first and the switch starts on the previous one
+    private static IReadOnlyList<TitleBarRecentSession> SwitcherOf(AppStore store) =>
+        Rows(store, store.NavigableSessions.Select(s => s.Id).ToHashSet());
+
+    private static IReadOnlyList<TitleBarRecentSession> Rows(AppStore store, HashSet<Guid> valid) =>
+        store.SessionRecency.Top(MaxRecentSessions, valid)
             .Select(id => store.SessionWithId(id) is { } session
                 ? new TitleBarRecentSession(
                     id,
@@ -80,5 +91,4 @@ public sealed record TitleBarState(
                 : null)
             .OfType<TitleBarRecentSession>()
             .ToList();
-    }
 }
