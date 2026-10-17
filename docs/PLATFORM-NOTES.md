@@ -532,6 +532,15 @@ The WinUI app reaches WebView2 through the Windows App SDK projection, which exp
 
 Windows refuses that call while another application is in front, for example when `agtermctl` runs in a separate terminal and agterm is behind it. Then the window's taskbar button flashes until the user switches to it. Upstream brings agterm in front of other applications, which macOS allows. The routing side does not depend on it: the window is frontmost for routing either way.
 
+## Workspace row "+" and hidden interface elements
+
+Upstream at the pin shows a `+` on a workspace row while the pointer is over it (`SidebarCellView.addButton`, accessibility id `workspace-add-session`). The spec does not describe it, so the Phase 4 sidebar shipped without it. The port now has it:
+
+- The `+` appears while the pointer is over a workspace row and never on a session row. It takes the agent-glyph column, which a workspace row never uses, so the row does not reflow when it appears. Upstream instead widens a zero-width slot.
+- A click runs the same `SidebarController.NewSession` as the workspace menu's `New Session`, and does not also toggle the workspace. A right-click on it opens the workspace menu, as Control-click does upstream.
+- It is out of the tab order, as upstream's is hover-only. The row menu and the `new_session` hotkey reach the same action from the keyboard. Its UI Automation name is `New Session`, with automation id `workspace-add-session`.
+- `hiddenInterfaceElements` containing `workspaceAddSession` hides it. `InterfaceElement` ports upstream's twelve raw values, and `AppSettings.IsInterfaceElementHidden` matches a raw value exactly. Upstream checks the setting only when the pointer enters a row. The port re-evaluates on every settings change, so a `config.reload` hides a `+` already on screen. `workspaceAddSession` is the only element the port honours so far. The other eleven are stored and round-tripped but not yet applied.
+
 ## Upstream behavior adopted beyond the pin
 
 The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.

@@ -14,7 +14,7 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("BorderBrush=\"{x:Bind RowFrame, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("CornerRadius=\"2\"", xaml, StringComparison.Ordinal);
         Assert.DoesNotContain("CornerRadius=\"{ThemeResource ListViewItemCornerRadius}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("<Grid Height=\"{x:Bind RowHeight, Mode=OneWay}\">", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Grid Height=\"{x:Bind RowHeight, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Margin=\"4,1,4,1\"", xaml, StringComparison.Ordinal);
         Assert.Contains("BackgroundSizing=\"OuterBorderEdge\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<Grid ColumnSpacing=\"6\" Margin=\"8,0,8,0\">", xaml, StringComparison.Ordinal);

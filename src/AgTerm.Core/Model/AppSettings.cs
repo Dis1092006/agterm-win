@@ -109,6 +109,12 @@ public sealed record AppSettings
     /// method, not a property, so it is never written to settings.json.</summary>
     public bool ShowSidebarThemeColors() => SidebarThemeColors != false;
 
+    /// <summary>Whether a chrome element is hidden. Everything is shown by default, so an element
+    /// absent from the persisted list reads as visible; a raw value matches exactly, as upstream's
+    /// enum decode does.</summary>
+    public bool IsInterfaceElementHidden(InterfaceElement element) =>
+        HiddenInterfaceElements?.Contains(element.RawValue(), StringComparer.Ordinal) == true;
+
     /// <summary>The SwiftUI-overlay opacity for an inactive-pane mute strength: clamped to 0…10,
     /// scaled by 0.08 (0 → 0, 5 → 0.4 — the historical default, 10 → 0.8).</summary>
     public static double MuteOpacity(int strength) => Math.Clamp(strength, 0, 10) * 0.08;

@@ -4,6 +4,7 @@ using AgTerm.Xterm;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
@@ -232,6 +233,13 @@ public sealed partial class SidebarView : UserControl
 
     private void OnRowsListContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
+        // a container leaving its row takes the pointer with it: the row may never see PointerExited,
+        // and its "+" would stay revealed when it is shown again
+        if (args.InRecycleQueue && args.Item is SidebarRowViewModel recycled)
+        {
+            recycled.IsPointerOver = false;
+            return;
+        }
         if (args.ItemContainer is ListViewItem container && args.Item is SidebarRowViewModel row)
         {
             AutomationProperties.SetName(container, row.AutomationName);
@@ -242,9 +250,43 @@ public sealed partial class SidebarView : UserControl
 
     private void OnRowTapped(object sender, TappedRoutedEventArgs e)
     {
+        // the workspace "+" acts on its own; its tap must not also toggle the workspace
+        if (FromButton(e.OriginalSource)) return;
         if ((e.OriginalSource as FrameworkElement)?.DataContext is not SidebarRowViewModel row) return;
         var mode = _snapshot?.Mode ?? SidebarMode.Tree;
         ExecuteRowAction(row, SidebarGesturePolicy.Decide(row.Kind, mode, SidebarPointerGesture.Tap));
+    }
+
+    // whether a tap landed on a button inside the row rather than on the row itself
+    private static bool FromButton(object? source)
+    {
+        for (var node = source as DependencyObject;
+             node is not null and not ListViewItem;
+             node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is ButtonBase) return true;
+        }
+        return false;
+    }
+
+    // MARK: - workspace "+"
+
+    private void OnRowPointerEntered(object sender, PointerRoutedEventArgs e) => SetPointerOver(sender, true);
+
+    private void OnRowPointerExited(object sender, PointerRoutedEventArgs e) => SetPointerOver(sender, false);
+
+    private static void SetPointerOver(object sender, bool pointerOver)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SidebarRowViewModel row)
+            row.IsPointerOver = pointerOver;
+    }
+
+    // the same path as the workspace menu's "New Session"; the button carries no id, so the row is
+    // read at click time and a recycled container targets the right workspace
+    private void OnAddSessionClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is SidebarRowViewModel { IsWorkspace: true } row)
+            _controller?.NewSession(row.Id);
     }
 
     // MARK: - inline rename

@@ -101,6 +101,23 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public Brush? RowForeground => _colors is { } colors ? BrushFrom(colors.Foreground) : null;
 
+    /// <summary>Whether the pointer is over this row. The view sets it from the row's pointer events
+    /// and clears it when the row's container is recycled.</summary>
+    public bool IsPointerOver
+    {
+        get => field;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            Raise(nameof(IsPointerOver), nameof(AddSessionVisibility));
+        }
+    }
+
+    // the workspace row's inline "+" (upstream workspace-add-session)
+    public Visibility AddSessionVisibility =>
+        SidebarAddSessionButton.IsShown(Kind, IsPointerOver, _settings) ? Visibility.Visible : Visibility.Collapsed;
+
     public Visibility FocusPillVisibility =>
         IsWorkspace && _row.Focused ? Visibility.Visible : Visibility.Collapsed;
 
@@ -199,7 +216,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _colors = colors;
         Raise(nameof(Label), nameof(Chevron), nameof(LabelOpacity), nameof(LabelWeight),
               nameof(FontSize), nameof(RowHeight),
-              nameof(FocusPillVisibility), nameof(IconData), nameof(IconFill),
+              nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),
               nameof(GlyphData), nameof(BadgeVisibility), nameof(BadgeText),
               nameof(AutomationName), nameof(ChevronAutomationName),

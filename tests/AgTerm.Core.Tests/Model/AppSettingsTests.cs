@@ -207,4 +207,37 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(home, new AppSettings { NewSessionDirectory = "future-mode" }
             .ResolveNewSessionCwd("C:\\cur", home));
     }
+
+    [Fact]
+    public void Interface_elements_carry_upstreams_raw_values_in_order()
+    {
+        Assert.Equal(
+            ["sidebarToggle", "sessionName", "windowName", "recentSessions", "scratch", "split",
+             "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "workspaceAddSession"],
+            Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
+    }
+
+    [Fact]
+    public void Every_interface_element_is_shown_by_default()
+    {
+        Assert.All(Enum.GetValues<InterfaceElement>(),
+            e => Assert.False(new AppSettings().IsInterfaceElementHidden(e)));
+    }
+
+    [Fact]
+    public void A_listed_raw_value_hides_only_its_element()
+    {
+        var settings = new AppSettings { HiddenInterfaceElements = ["workspaceAddSession", "someFutureElement"] };
+
+        Assert.True(settings.IsInterfaceElementHidden(InterfaceElement.WorkspaceAddSession));
+        Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.NewSession));
+    }
+
+    [Fact]
+    public void Hidden_interface_elements_match_the_raw_value_exactly()
+    {
+        var settings = new AppSettings { HiddenInterfaceElements = ["WorkspaceAddSession"] };
+
+        Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.WorkspaceAddSession));
+    }
 }
