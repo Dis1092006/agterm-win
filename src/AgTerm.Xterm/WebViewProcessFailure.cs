@@ -17,7 +17,7 @@ public static class WebViewProcessFailure
     private const string FatalTitle = "Terminal rendering process stopped";
 
     private const string FatalMessage =
-        "The terminal view is no longer running. Restart agterm to use the terminals again.";
+        "The terminal view is no longer running. Restart " + ProductIdentity.Name + " to use the terminals again.";
 
     /// <summary>
     /// Whether this kind leaves the page unusable. Unrecognized kinds read as survivable: a newer

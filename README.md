@@ -102,18 +102,18 @@ publish output under `artifacts\publish\`.
 single-file, with nothing else beside them:
 
 ```powershell
-dotnet build publish.proj                                  # x64 → artifacts\publish\agterm\release_x64\
+dotnet build publish.proj                                  # x64 → artifacts\publish\agterm-win\release_x64\
 dotnet build publish.proj -p:RunnablePlatform=ARM64        # same for ARM64
-dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm # somewhere on PATH
+dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm-win # somewhere on PATH
 dotnet build publish.proj -p:SelfContainedCli=true         # agtermctl without needing the .NET 8 runtime
 ```
 
-`AgTerm.App.exe` is ~162 MB: it is self-contained, so the Windows App SDK and the .NET runtime are
+`agterm-win.exe` (the `AgTerm.App` project) is ~162 MB: it is self-contained, so the Windows App SDK and the .NET runtime are
 inside it and no install is required. `agtermctl.exe` is ~1 MB and framework-dependent (needs .NET 8);
 `-p:SelfContainedCli=true` makes it standalone at ~65 MB.
 
 **Run (manual).** After `dotnet build`, the app exe lands at
-`artifacts\bin\AgTerm.App\debug\AgTerm.App.exe` and the CLI at
+`artifacts\bin\AgTerm.App\debug\agterm-win.exe` and the CLI at
 `artifacts\bin\AgTerm.Cli\debug\agtermctl.exe`.
 A bare launch uses the real state (`~\.agterm-win` — the home directory, not `%LOCALAPPDATA%`;
 `docs/PLATFORM-NOTES.md` records why). For experiments, run an **isolated
@@ -122,7 +122,7 @@ real workspaces:
 
 ```powershell
 $env:AGTERM_STATE_DIR = "$env:TEMP\agterm-dev"
-& ".\artifacts\bin\AgTerm.App\debug\AgTerm.App.exe"
+& ".\artifacts\bin\AgTerm.App\debug\agterm-win.exe"
 ```
 
 `agtermctl` finds the app only when both derive the same pipe: run it from a shell with the same
@@ -132,7 +132,7 @@ shared.
 **Run (Rider).** Open `AgTerm.slnx` and pick the **`Debug | x64`** solution configuration (the same
 AnyCPU trap). Rider detects WinUI 3 as **UWP** and its auto-created UWP run configuration has no
 environment-variables support — don't use it. Instead add a **“.NET Executable”** configuration:
-exe path = `artifacts\bin\AgTerm.App\debug\AgTerm.App.exe`, Before launch =
+exe path = `artifacts\bin\AgTerm.App\debug\agterm-win.exe`, Before launch =
 Build Project `AgTerm.App` (with `Debug | x64` active). Keep two copies: `App (dev)` with
 `AGTERM_STATE_DIR=<explicit temp path>\agterm-dev` (Rider does not expand `%TEMP%`) and `App (real)`
 with none. C# debugging is ordinary .NET; the xterm.js side lives in WebView2 — inspect it with

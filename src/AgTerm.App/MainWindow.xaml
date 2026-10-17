@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:AgTerm.App"
-    Title="agterm">
+    Title="agterm-win">
     <Grid x:Name="RootGrid"
           Background="Transparent"
           KeyDown="OnRootKeyDown">
@@ -14,7 +14,7 @@
 
         <TitleBar x:Name="AppTitleBar"
                   Grid.Row="0"
-                  Title="agterm"
+                  Title="agterm-win"
                   IsPaneToggleButtonVisible="True"
                   Background="Transparent" />
 

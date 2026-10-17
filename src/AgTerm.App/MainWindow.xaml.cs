@@ -186,7 +186,7 @@ public sealed partial class MainWindow : Window
                     _acceptedPaneId = dashboard.Cells
                         .First(cell => cell.ControlRef == dashboard.HighlightedControlRef)
                         .PaneId;
-                    Title = "Dashboard — agterm";
+                    Title = ProductIdentity.WindowTitle("Dashboard");
                     AppTitleBar.Title = "Dashboard";
                     AppTitleBar.Subtitle = string.Empty;
                     break;
@@ -198,8 +198,8 @@ public sealed partial class MainWindow : Window
                     {
                         _acceptedPaneId = layered.Layer.PaneId;
                         FocusActiveTerminal();
-                        Title = "agterm";
-                        AppTitleBar.Title = "agterm";
+                        Title = ProductIdentity.Name;
+                        AppTitleBar.Title = ProductIdentity.Name;
                         AppTitleBar.Subtitle = string.Empty;
                     }
                     else
@@ -209,8 +209,8 @@ public sealed partial class MainWindow : Window
                     break;
                 case TerminalLayout.Empty:
                     _acceptedPaneId = null;
-                    Title = "agterm";
-                    AppTitleBar.Title = "agterm";
+                    Title = ProductIdentity.Name;
+                    AppTitleBar.Title = ProductIdentity.Name;
                     AppTitleBar.Subtitle = string.Empty;
                     break;
             }
@@ -1023,7 +1023,7 @@ public sealed partial class MainWindow : Window
             _ => throw new ArgumentOutOfRangeException(nameof(baseLayout), baseLayout, "Base layout must be single, split, or zoomed."),
         };
 
-        Title = $"{title} — agterm";
+        Title = ProductIdentity.WindowTitle(title);
         AppTitleBar.Title = title;
         AppTitleBar.Subtitle = workspaceName ?? string.Empty;
 
@@ -2327,7 +2327,7 @@ public sealed partial class MainWindow : Window
             return;
 
         NotificationBanner.Title = string.IsNullOrWhiteSpace(notification.Title)
-            ? "agterm"
+            ? ProductIdentity.Name
             : notification.Title;
         NotificationBanner.Message = notification.Body;
         NotificationBanner.IsOpen = true;

@@ -4,16 +4,16 @@
     Publishes the two exes a user actually runs into one directory, single-file, with nothing else
     beside them:
 
-        dotnet build publish.proj                                  x64 -> artifacts\publish\agterm\release_x64
+        dotnet build publish.proj                                  x64 -> artifacts\publish\agterm-win\release_x64
         dotnet build publish.proj -p:RunnablePlatform=ARM64
-        dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm
+        dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm-win
         dotnet build publish.proj -p:SelfContainedCli=true         agtermctl without needing .NET 8
 
-    AgTerm.App is self-contained (WindowsPackageType=None, WindowsAppSDKSelfContained=true), so it
-    publishes as ~230 files beside the exe. DebugType=none drops the .pdb files.
+    AgTerm.App (agterm-win.exe) is self-contained (WindowsPackageType=None,
+    WindowsAppSDKSelfContained=true), so it publishes as ~230 files beside the exe. DebugType=none drops the .pdb files.
 
     The app is NOT single-file, and that is a startup decision. PublishSingleFile produces a 220 MB
-    exe that unpacks itself into %TEMP%\.net\AgTerm.App\<bundle id> before any code runs. The id is
+    exe that unpacks itself into %TEMP%\.net\agterm-win\<bundle id> before any code runs. The id is
     per build, so every new build paid the unpack again and left the old copy behind: 1.4 GB across
     8 directories on the development machine. Measured on this machine, window shown after launch:
 
@@ -42,7 +42,7 @@
     <!-- win-x64 / win-arm64: the runtime identifier, derived from the msbuild Platform name. -->
     <_Rid>win-$(RunnablePlatform.ToLowerInvariant())</_Rid>
     <_Pivot>$(RunnableConfiguration.ToLowerInvariant())_$(RunnablePlatform.ToLowerInvariant())</_Pivot>
-    <_OutDir Condition="'$(RunnableOutDir)' == ''">$(MSBuildThisFileDirectory)artifacts\publish\agterm\$(_Pivot)</_OutDir>
+    <_OutDir Condition="'$(RunnableOutDir)' == ''">$(MSBuildThisFileDirectory)artifacts\publish\agterm-win\$(_Pivot)</_OutDir>
     <_OutDir Condition="'$(RunnableOutDir)' != ''">$(RunnableOutDir)</_OutDir>
   </PropertyGroup>
 

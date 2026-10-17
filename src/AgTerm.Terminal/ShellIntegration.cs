@@ -63,7 +63,7 @@ public static class ShellIntegration
     /// The EXE's own directory is tried before AppContext.BaseDirectory, and the order matters.
     /// For this app's single-file publish (WindowsAppSDKSelfContained + PublishSingleFile) the two
     /// differ: BaseDirectory is the bundle's extraction directory under
-    /// %TEMP%\.net\AgTerm.App\&lt;hash&gt;\, while the ExcludeFromSingleFile scripts stay next to the
+    /// %TEMP%\.net\agterm-win\&lt;hash&gt;\, while the ExcludeFromSingleFile scripts stay next to the
     /// exe. Measured — a plain console single-file app reports the two as equal, so this only
     /// reproduces in the real app.
     ///
