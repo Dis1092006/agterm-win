@@ -58,6 +58,8 @@ public sealed partial class MainWindow : Window
     private readonly WindowsAppNotificationPresenter _notificationPresenter;
     private readonly SemaphoreSlim _themeApplyGate = new(1, 1);
     private AppSettings _settings; // UI-thread confined
+    // the session part of the title bar, or null while it shows something else (the dashboard)
+    private string? _titleBarSessionTitle;
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
@@ -108,6 +110,7 @@ public sealed partial class MainWindow : Window
         _paneThemes = new PaneThemeAssigner(_themeCatalog.Resolve);
 
         InitializeComponent();
+        ApplyInterfaceElements(_settings);
         _notificationPresenter = new WindowsAppNotificationPresenter(
             message => System.Diagnostics.Trace.TraceWarning(message));
         ApplyThemeChrome(initialTheme.UseDarkChrome);
@@ -187,6 +190,7 @@ public sealed partial class MainWindow : Window
                         .First(cell => cell.ControlRef == dashboard.HighlightedControlRef)
                         .PaneId;
                     Title = ProductIdentity.WindowTitle("Dashboard");
+                    SetTitleBarSessionTitle(null);
                     AppTitleBar.Title = "Dashboard";
                     AppTitleBar.Subtitle = string.Empty;
                     break;
@@ -199,7 +203,7 @@ public sealed partial class MainWindow : Window
                         _acceptedPaneId = layered.Layer.PaneId;
                         FocusActiveTerminal();
                         Title = ProductIdentity.Name;
-                        AppTitleBar.Title = ProductIdentity.Name;
+                        SetTitleBarSessionTitle(ProductIdentity.Name);
                         AppTitleBar.Subtitle = string.Empty;
                     }
                     else
@@ -210,7 +214,7 @@ public sealed partial class MainWindow : Window
                 case TerminalLayout.Empty:
                     _acceptedPaneId = null;
                     Title = ProductIdentity.Name;
-                    AppTitleBar.Title = ProductIdentity.Name;
+                    SetTitleBarSessionTitle(ProductIdentity.Name);
                     AppTitleBar.Subtitle = string.Empty;
                     break;
             }
@@ -1026,7 +1030,7 @@ public sealed partial class MainWindow : Window
         };
 
         Title = ProductIdentity.WindowTitle(title);
-        AppTitleBar.Title = title;
+        SetTitleBarSessionTitle(title);
         AppTitleBar.Subtitle = workspaceName ?? string.Empty;
 
         if (_acceptedPaneId != paneId)
@@ -2189,6 +2193,27 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // upstream WindowContentView.shows(_:) for the chrome this window draws: the sidebar toggle and
+    // the session name. The OS window title keeps the full name, as upstream's windowTitle does.
+    private void ApplyInterfaceElements(AppSettings settings)
+    {
+        AppTitleBar.IsPaneToggleButtonVisible = !settings.IsInterfaceElementHidden(InterfaceElement.SidebarToggle);
+        if (_titleBarSessionTitle is not null)
+            AppTitleBar.Title = VisibleSessionTitle(settings);
+    }
+
+    private void SetTitleBarSessionTitle(string? title)
+    {
+        _titleBarSessionTitle = title;
+        if (title is not null)
+            AppTitleBar.Title = VisibleSessionTitle(_settings);
+    }
+
+    private string VisibleSessionTitle(AppSettings settings) =>
+        settings.IsInterfaceElementHidden(InterfaceElement.SessionName)
+            ? string.Empty
+            : _titleBarSessionTitle ?? string.Empty;
+
     private async Task ApplyThemePresentationAsync(
         AppSettings settings,
         LiveThemePresentation presentation)
@@ -2207,6 +2232,7 @@ public sealed partial class MainWindow : Window
         var page = await _pageTask;
         await page.ApplyRendererSettingsAsync(presentation.RendererSettings);
         Sidebar.ApplySettings(settings);
+        ApplyInterfaceElements(settings);
         ApplyComposition(presentation.RendererSettings);
         ApplyThemeChrome(presentation.UseDarkChrome);
     }

@@ -74,7 +74,13 @@ public sealed partial class SidebarView : UserControl
 
         RefreshRealizedRowAutomationNames();
         ApplyBackgroundShiftOverlay();
+        // upstream WindowContentView.shows(_:) for the footer buttons the port draws
+        NewWorkspaceButton.Visibility = VisibleUnless(settings, InterfaceElement.NewWorkspace);
+        FlaggedToggle.Visibility = VisibleUnless(settings, InterfaceElement.FlaggedView);
     }
+
+    private static Visibility VisibleUnless(AppSettings settings, InterfaceElement element) =>
+        settings.IsInterfaceElementHidden(element) ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>Reconcile a fresh snapshot on the UI thread (the controller marshals here).</summary>
     public void Apply(SidebarSnapshot snapshot)

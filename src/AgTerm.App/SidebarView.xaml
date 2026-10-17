@@ -237,7 +237,8 @@
                               Glyph="&#xE711;" FontSize="9" />
                 </StackPanel>
             </Button>
-            <Button Grid.Column="4"
+            <Button x:Name="NewWorkspaceButton"
+                    Grid.Column="4"
                     Padding="6,2,6,2"
                     Click="OnNewWorkspaceClick"
                     AutomationProperties.Name="New workspace"
