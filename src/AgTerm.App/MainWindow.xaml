@@ -12,11 +12,107 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <Grid.Resources>
+            <Style x:Key="TitleBarActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="7,5,7,5" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+            <Style x:Key="TitleBarGlyphStyle" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="StrokeThickness" Value="1" />
+                <Setter Property="Width" Value="16" />
+                <Setter Property="Height" Value="15" />
+            </Style>
+            <Style x:Key="TitleBarDividerStyle" TargetType="Rectangle">
+                <Setter Property="Width" Value="1" />
+                <Setter Property="Height" Value="16" />
+                <Setter Property="Margin" Value="4,0,4,0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Fill" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            </Style>
+        </Grid.Resources>
+
         <TitleBar x:Name="AppTitleBar"
                   Grid.Row="0"
                   Title="agterm-win"
                   IsPaneToggleButtonVisible="True"
-                  Background="Transparent" />
+                  Background="Transparent">
+            <!-- upstream titlebarTrailingActions: recent sessions + attention | scratch + split |
+                 dashboard + quick terminal. MainWindow.RefreshTitleBarActions sets visibility, the
+                 dividers and the glyph states; the shapes are Paths like the sidebar's icons -->
+            <TitleBar.RightHeader>
+                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <Button x:Name="RecentSessionsButton"
+                            Style="{StaticResource TitleBarActionButtonStyle}"
+                            AutomationProperties.Name="Recent sessions"
+                            AutomationProperties.AutomationId="recent-sessions-button"
+                            ToolTipService.ToolTip="Recent sessions">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE81C;" FontSize="14" />
+                        <Button.Flyout>
+                            <MenuFlyout x:Name="RecentSessionsFlyout"
+                                        Placement="BottomEdgeAlignedRight"
+                                        Opening="OnRecentSessionsFlyoutOpening" />
+                        </Button.Flyout>
+                    </Button>
+                    <Button x:Name="AttentionButton"
+                            Style="{StaticResource TitleBarActionButtonStyle}"
+                            Click="OnAttentionClick"
+                            AutomationProperties.Name="Attention"
+                            AutomationProperties.AutomationId="attention-button">
+                        <FontIcon x:Name="AttentionGlyph" FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xEA8F;" FontSize="14" />
+                    </Button>
+                    <Rectangle x:Name="DividerAfterA" Style="{StaticResource TitleBarDividerStyle}" />
+                    <Button x:Name="ScratchButton"
+                            Style="{StaticResource TitleBarActionButtonStyle}"
+                            Click="OnScratchClick"
+                            AutomationProperties.Name="Scratch"
+                            AutomationProperties.AutomationId="scratch-toggle">
+                        <Grid>
+                            <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z" />
+                            <Path x:Name="ScratchFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                  Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                  Data="M3,5 H13 V10 H3 Z" />
+                        </Grid>
+                    </Button>
+                    <Button x:Name="SplitButton"
+                            Style="{StaticResource TitleBarActionButtonStyle}"
+                            Click="OnSplitClick"
+                            AutomationProperties.Name="Split"
+                            AutomationProperties.AutomationId="split-toggle">
+                        <Grid>
+                            <Path x:Name="SplitLeftFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                  Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                  Data="M0.5,2.5 H8 V12.5 H0.5 Z" />
+                            <Path x:Name="SplitRightFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                  Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                  Data="M8,2.5 H15.5 V12.5 H8 Z" />
+                            <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5" />
+                        </Grid>
+                    </Button>
+                    <Rectangle x:Name="DividerAfterB" Style="{StaticResource TitleBarDividerStyle}" />
+                    <Button x:Name="DashboardButton"
+                            Style="{StaticResource TitleBarActionButtonStyle}"
+                            Click="OnDashboardClick"
+                            AutomationProperties.Name="Dashboard"
+                            AutomationProperties.AutomationId="dashboard-toggle-button"
+                            ToolTipService.ToolTip="Dashboard">
+                        <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5 M0.5,7.5 H15.5" />
+                    </Button>
+                    <Button x:Name="QuickTerminalButton"
+                            Style="{StaticResource TitleBarActionButtonStyle}"
+                            Click="OnQuickTerminalClick"
+                            AutomationProperties.Name="Quick Terminal"
+                            AutomationProperties.AutomationId="quick-terminal-toggle"
+                            ToolTipService.ToolTip="Quick Terminal">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE756;" FontSize="14" />
+                    </Button>
+                </StackPanel>
+            </TitleBar.RightHeader>
+        </TitleBar>
 
         <SplitView x:Name="ShellSplitView"
                    Grid.Row="1"

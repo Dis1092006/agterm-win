@@ -233,6 +233,25 @@ public class AppSettingsTests : IDisposable
         Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.NewSession));
     }
 
+    // upstream InterfaceElement.titlebarGroupDividers, with upstream's cases: A = recent sessions +
+    // attention, B = scratch + split, C = dashboard + quick terminal
+    [Theory]
+    [InlineData(1, 2, 2, false, true)]
+    [InlineData(1, 1, 2, false, false)]
+    [InlineData(2, 2, 2, true, true)]
+    [InlineData(2, 0, 2, false, true)]
+    [InlineData(2, 1, 2, false, false)]
+    [InlineData(2, 2, 1, true, false)]
+    [InlineData(0, 2, 2, false, true)]
+    [InlineData(0, 0, 2, false, false)]
+    [InlineData(2, 2, 0, true, false)]
+    [InlineData(0, 0, 0, false, false)]
+    public void Title_bar_dividers_sit_only_between_full_groups(
+        int countA, int countB, int countC, bool afterA, bool afterB)
+    {
+        Assert.Equal((afterA, afterB), InterfaceElementExtensions.TitlebarGroupDividers(countA, countB, countC));
+    }
+
     [Fact]
     public void Hidden_interface_elements_match_the_raw_value_exactly()
     {

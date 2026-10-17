@@ -63,6 +63,8 @@ public sealed partial class MainWindow : Window
     private string? _sessionTitle;
     // the window's user-set name (null for an auto "window N" name), from window.rename
     private string? _customWindowName;
+    // what the title bar buttons draw, from the latest sidebar snapshot
+    private TitleBarState _titleBarState = TitleBarState.Empty;
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
@@ -944,6 +946,7 @@ public sealed partial class MainWindow : Window
     {
         _latestSidebarSnapshot = snapshot;
         ApplyPendingClose(snapshot.PendingClose);
+        ApplyTitleBarState(snapshot.TitleBar);
         if (_terminalOnlyPresentation)
             return;
 
@@ -2204,6 +2207,115 @@ public sealed partial class MainWindow : Window
     {
         AppTitleBar.IsPaneToggleButtonVisible = !settings.IsInterfaceElementHidden(InterfaceElement.SidebarToggle);
         RefreshTitles(settings);
+        RefreshTitleBarActions(settings);
+    }
+
+    private void ApplyTitleBarState(TitleBarState state)
+    {
+        _titleBarState = state;
+        RefreshTitleBarActions(_settings);
+    }
+
+    // upstream titlebarTrailingActions: each button gated by its interface element, the bell by its own
+    // attentionButtonEnabled setting (off by default), a divider only between two full groups
+    private void RefreshTitleBarActions(AppSettings settings)
+    {
+        var state = _titleBarState;
+        var showRecent = !settings.IsInterfaceElementHidden(InterfaceElement.RecentSessions);
+        var showAttention = settings.AttentionButtonEnabled == true;
+        var showScratch = !settings.IsInterfaceElementHidden(InterfaceElement.Scratch);
+        var showSplit = !settings.IsInterfaceElementHidden(InterfaceElement.Split);
+        var showDashboard = !settings.IsInterfaceElementHidden(InterfaceElement.Dashboard);
+        var showQuick = !settings.IsInterfaceElementHidden(InterfaceElement.QuickTerminal);
+        var dividers = InterfaceElementExtensions.TitlebarGroupDividers(
+            (showRecent ? 1 : 0) + (showAttention ? 1 : 0),
+            (showScratch ? 1 : 0) + (showSplit ? 1 : 0),
+            (showDashboard ? 1 : 0) + (showQuick ? 1 : 0));
+
+        RecentSessionsButton.Visibility = VisibleIf(showRecent);
+        RecentSessionsButton.IsEnabled = state.RecentSessions.Count > 0;
+
+        AttentionButton.Visibility = VisibleIf(showAttention);
+        AttentionButton.IsEnabled = state.Attention != TitleBarAttention.None;
+        ToolTipService.SetToolTip(AttentionButton, state.Attention == TitleBarAttention.None
+            ? "No sessions need attention"
+            : "Show sessions that need attention");
+        if (state.Attention == TitleBarAttention.Blocked)
+            AttentionGlyph.Foreground = BrushFromHex(settings.EffectiveStatusColorHex(AgentStatus.Blocked, null));
+        else
+            AttentionGlyph.ClearValue(IconElement.ForegroundProperty);
+
+        DividerAfterA.Visibility = VisibleIf(dividers.AfterA);
+
+        ScratchButton.Visibility = VisibleIf(showScratch);
+        ScratchButton.IsEnabled = state.HasActiveSession;
+        ScratchFill.Visibility = VisibleIf(state.ScratchActive);
+        ToolTipService.SetToolTip(ScratchButton, state.ScratchActive ? "Hide scratch terminal" : "Show scratch terminal");
+
+        SplitButton.Visibility = VisibleIf(showSplit);
+        SplitButton.IsEnabled = state.HasActiveSession;
+        SplitLeftFill.Visibility = VisibleIf(state.Split is TitleBarSplit.Both or TitleBarSplit.Left);
+        SplitRightFill.Visibility = VisibleIf(state.Split is TitleBarSplit.Both or TitleBarSplit.Right);
+        ToolTipService.SetToolTip(SplitButton, state.Split switch
+        {
+            TitleBarSplit.Both => "Hide split",
+            TitleBarSplit.None => "Split right",
+            _ => "Show split",
+        });
+
+        DividerAfterB.Visibility = VisibleIf(dividers.AfterB);
+
+        DashboardButton.Visibility = VisibleIf(showDashboard);
+        DashboardButton.IsEnabled = state.HasActiveSession;
+        QuickTerminalButton.Visibility = VisibleIf(showQuick);
+    }
+
+    private static Visibility VisibleIf(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
+
+    private static SolidColorBrush BrushFromHex(string hex) =>
+        new(Color.FromArgb(0xFF,
+            Convert.ToByte(hex.Substring(1, 2), 16),
+            Convert.ToByte(hex.Substring(3, 2), 16),
+            Convert.ToByte(hex.Substring(5, 2), 16)));
+
+    // the same router the hotkeys use, so a button and its chord behave the same
+    private void ExecuteTitleBarAction(BuiltinAction action)
+    {
+        if (_commandRouter is not { } router)
+            return;
+        ObserveTaskFault(router.ExecuteAsync(action), $"Title bar {action} failed");
+    }
+
+    private void OnAttentionClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.ShowAttention);
+
+    private void OnScratchClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.ToggleScratch);
+
+    private void OnSplitClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.ToggleSplit);
+
+    private void OnDashboardClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.Dashboard);
+
+    private void OnQuickTerminalClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.QuickTerminal);
+
+    // upstream's recent-sessions popover as a menu: the MRU other sessions, rebuilt each time it opens
+    private void OnRecentSessionsFlyoutOpening(object? sender, object e)
+    {
+        RecentSessionsFlyout.Items.Clear();
+        foreach (var recent in _titleBarState.RecentSessions)
+        {
+            var item = new MenuFlyoutItem { Text = $"{recent.Title} — {recent.Subtitle}" };
+            var sessionId = recent.Id;
+            item.Click += (_, _) => ObserveTaskFault(SelectRecentSessionAsync(sessionId), "Recent session select failed");
+            RecentSessionsFlyout.Items.Add(item);
+        }
+    }
+
+    // upstream selectRecent: note activity, select, focus — the palette's session path
+    private async Task SelectRecentSessionAsync(Guid sessionId)
+    {
+        if (_host is not { } host)
+            return;
+        await host.StoreCoordinator.MutateAsync(store => WindowPaletteActions.SelectSession(store, sessionId));
+        FocusActiveTerminal();
     }
 
     private void ShowSessionTitle(string? session)

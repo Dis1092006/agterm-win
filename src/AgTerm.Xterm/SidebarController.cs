@@ -39,6 +39,10 @@ public sealed record SidebarSnapshot
     public int FlaggedCount { get; init; }
     public PendingCloseSummary? PendingClose { get; init; }
 
+    /// <summary>The title bar buttons' state, captured with the rows: every change they draw (selection,
+    /// scratch, split, a status) also invalidates the sidebar.</summary>
+    public TitleBarState TitleBar { get; init; } = TitleBarState.Empty;
+
     /// <summary>The broadcast generation this snapshot was captured for; later captures have larger
     /// ones.</summary>
     public long Generation { get; init; }
@@ -525,6 +529,7 @@ public sealed class SidebarController : IDisposable
                 : null,
             FlaggedCount = store.FlaggedSessions.Count,
             PendingClose = store.PendingCloseSummary,
+            TitleBar = TitleBarState.Project(store),
         };
     }
 

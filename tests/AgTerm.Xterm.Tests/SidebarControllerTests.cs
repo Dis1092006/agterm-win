@@ -216,6 +216,17 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void Snapshot_carries_the_title_bar_state_of_the_same_capture()
+    {
+        var session = Latest.SelectedSessionId!.Value;
+
+        Mutate(store => store.ToggleScratch(session));
+
+        Assert.True(Latest.TitleBar.HasActiveSession);
+        Assert.True(Latest.TitleBar.ScratchActive);
+    }
+
+    [Fact]
     public void Hotkey_variants_act_on_the_active_session_and_workspace()
     {
         var initial = Latest.SelectedSessionId!.Value;
