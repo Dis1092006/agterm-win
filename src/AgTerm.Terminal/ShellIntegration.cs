@@ -132,8 +132,10 @@ public static class ShellIntegration
             ShellKind.PowerShellCore or ShellKind.WindowsPowerShell =>
                 [shell, "-NoExit", "-Command", $". '{script}'"],
 
-            // /k runs and stays (/c would exit). cmd quotes with doubled quotes, not backslashes.
-            ShellKind.Cmd => [shell, "/k", $"call \"{script}\""],
+            // /k runs and stays (/c would exit). call and the path stay separate arguments, so the
+            // spawn quotes the path as a whole: quotes embedded in one argument are escaped as \",
+            // which cmd does not understand and runs literally.
+            ShellKind.Cmd => [shell, "/k", "call", script],
 
             // --rcfile REPLACES ~/.bashrc, so integration.bash is responsible for sourcing the
             // user's own rc; -i is required for bash to read an rcfile at all.

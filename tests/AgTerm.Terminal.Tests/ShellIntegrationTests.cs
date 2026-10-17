@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace AgTerm.Terminal.Tests;
 
 /// <summary>
@@ -89,8 +91,44 @@ public class ShellIntegrationTests
     {
         var argv = ShellIntegration.Inject(["cmd.exe"], ScriptDir);
 
-        // /k runs the script and stays; /c would exit. The path is quoted for spaces.
-        Assert.Equal(["cmd.exe", "/k", @"call ""C:\app\integration\integration.cmd"""], argv);
+        // /k runs the script and stays; /c would exit. call and the path are separate arguments:
+        // the spawn quotes a path with spaces itself, and quotes embedded in one argument would
+        // reach cmd as \" (see the test below).
+        Assert.Equal(["cmd.exe", "/k", "call", @"C:\app\integration\integration.cmd"], argv);
+    }
+
+    [Fact]
+    public void Cmd_runs_the_injected_script_from_a_path_with_spaces_and_a_hash()
+    {
+        // cmd does not parse its command line with the MSVCRT rules WindowsCommandLine.FromArgv
+        // inverts, so the argv shape is pinned against a real cmd.exe, not only as a list.
+        var root = Path.Combine(Path.GetTempPath(), "agterm-int " + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(root, "C# dir");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "integration.cmd"), "@echo INTEGRATION-RAN\r\n");
+            var line = WindowsCommandLine.FromArgv(ShellIntegration.Inject(["cmd.exe"], dir));
+            var start = new ProcessStartInfo("cmd.exe", line[(line.IndexOf(' ') + 1)..])
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+
+            using var process = Process.Start(start)!;
+            process.StandardInput.Close(); // /k keeps cmd interactive; end of input ends it
+            var output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+            Assert.True(process.WaitForExit(10_000), "cmd did not exit");
+
+            Assert.DoesNotContain("is not recognized", output, StringComparison.Ordinal);
+            Assert.Contains("INTEGRATION-RAN", output, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

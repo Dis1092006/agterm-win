@@ -74,7 +74,7 @@ public sealed class LiveShellIntegrationWiringTests : IDisposable
 
         var argv = await ArgvOfSessionAsync(sessionId);
 
-        Assert.Equal([Cmd, "/k", @"call ""C:\app\integration\integration.cmd"""], argv);
+        Assert.Equal([Cmd, "/k", "call", @"C:\app\integration\integration.cmd"], argv);
     }
 
     [Fact]
