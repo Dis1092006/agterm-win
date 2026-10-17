@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
 using Microsoft.UI.Xaml.Automation;
@@ -29,6 +30,7 @@ public sealed partial class SidebarView : UserControl
     private SidebarRowThemes? _rowThemes;
     private Window? _ownerWindow;
     private AppSettings _settings = new();
+    private Keymap _keymap = Keymap.Empty;
     private SidebarSnapshot? _snapshot;
     private string? _shapeKey;
     private bool _syncingSelection;
@@ -80,6 +82,24 @@ public sealed partial class SidebarView : UserControl
         FlaggedToggle.Visibility = VisibleUnless(settings, InterfaceElement.FlaggedView);
     }
 
+    /// <summary>upstream helpHint on the footer buttons: each tooltip names the shortcut that runs it.</summary>
+    public void ApplyKeymap(Keymap keymap)
+    {
+        _keymap = keymap;
+        ToolTipService.SetToolTip(NewWorkspaceButton,
+            WindowsShortcutText.Hint("New Workspace", keymap, BuiltinAction.NewWorkspace));
+        ToolTipService.SetToolTip(NewSessionButton,
+            WindowsShortcutText.Hint("New Session", keymap, BuiltinAction.NewSession));
+        ApplyFlaggedHint();
+    }
+
+    private void ApplyFlaggedHint()
+    {
+        var text = _snapshot?.Mode == SidebarMode.Flagged ? "Show all sessions" : "Show flagged sessions";
+        ToolTipService.SetToolTip(FlaggedToggle,
+            WindowsShortcutText.Hint(text, _keymap, BuiltinAction.ToggleFlaggedView));
+    }
+
     private static Visibility VisibleUnless(AppSettings settings, InterfaceElement element) =>
         settings.IsInterfaceElementHidden(element) ? Visibility.Collapsed : Visibility.Visible;
 
@@ -106,6 +126,7 @@ public sealed partial class SidebarView : UserControl
         RefreshRealizedRowAutomationNames();
         SyncSelection(snapshot);
         FlaggedToggle.IsChecked = snapshot.Mode == SidebarMode.Flagged;
+        ApplyFlaggedHint();
         FlaggedToggle.IsEnabled = snapshot.Mode == SidebarMode.Flagged || snapshot.FlaggedCount > 0;
         ClearFlaggedButton.Visibility = snapshot.FlaggedCount > 0
             ? Visibility.Visible

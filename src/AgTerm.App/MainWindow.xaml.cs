@@ -66,6 +66,8 @@ public sealed partial class MainWindow : Window
     private string? _customWindowName;
     // what the title bar buttons draw, from the latest sidebar snapshot
     private TitleBarState _titleBarState = TitleBarState.Empty;
+    // the armed keymap, for the shortcut each chrome button's tooltip names
+    private Keymap _keymap = Keymap.Empty;
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
@@ -155,6 +157,7 @@ public sealed partial class MainWindow : Window
             error: ReportSettingsReloadFailure);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        AppTitleBar.Loaded += (_, _) => ApplyShortcutHints();
         AppTitleBar.PaneToggleRequested += (_, _) =>
         {
             var router = _commandRouter;
@@ -1115,6 +1118,8 @@ public sealed partial class MainWindow : Window
         var page = await _pageTask;
         async Task ArmAsync(Keymap keymap)
         {
+            _keymap = keymap;
+            ApplyShortcutHints();
             foreach (var diagnostic in WindowCommandRouter.EffectiveWindowsChordDiagnostics(keymap))
                 System.Diagnostics.Trace.TraceWarning($"keymap: {diagnostic.Message}");
             await PublishHotkeyManifestAsync(page, keymap);
@@ -2239,9 +2244,9 @@ public sealed partial class MainWindow : Window
 
         AttentionButton.Visibility = VisibleIf(showAttention);
         AttentionButton.IsEnabled = state.Attention != TitleBarAttention.None;
-        ToolTipService.SetToolTip(AttentionButton, state.Attention == TitleBarAttention.None
-            ? "No sessions need attention"
-            : "Show sessions that need attention");
+        ToolTipService.SetToolTip(AttentionButton, WindowsShortcutText.Hint(
+            state.Attention == TitleBarAttention.None ? "No sessions need attention" : "Show sessions that need attention",
+            _keymap, BuiltinAction.ShowAttention));
         if (state.Attention == TitleBarAttention.Blocked)
             AttentionGlyph.Foreground = BrushFromHex(settings.EffectiveStatusColorHex(AgentStatus.Blocked, null));
         else
@@ -2252,26 +2257,55 @@ public sealed partial class MainWindow : Window
         ScratchButton.Visibility = VisibleIf(showScratch);
         ScratchButton.IsEnabled = state.HasActiveSession;
         ScratchFill.Visibility = VisibleIf(state.ScratchActive);
-        ToolTipService.SetToolTip(ScratchButton, state.ScratchActive ? "Hide scratch terminal" : "Show scratch terminal");
+        ToolTipService.SetToolTip(ScratchButton, WindowsShortcutText.Hint(
+            state.ScratchActive ? "Hide scratch terminal" : "Show scratch terminal",
+            _keymap, BuiltinAction.ToggleScratch));
 
         SplitButton.Visibility = VisibleIf(showSplit);
         SplitButton.IsEnabled = state.HasActiveSession;
         SplitLeftFill.Visibility = VisibleIf(state.Split is TitleBarSplit.Both or TitleBarSplit.Left);
         SplitRightFill.Visibility = VisibleIf(state.Split is TitleBarSplit.Both or TitleBarSplit.Right);
-        ToolTipService.SetToolTip(SplitButton, state.Split switch
-        {
-            TitleBarSplit.Both => "Hide split",
-            TitleBarSplit.None => "Split right",
-            _ => "Show split",
-        });
+        ToolTipService.SetToolTip(SplitButton, WindowsShortcutText.Hint(
+            state.Split switch
+            {
+                TitleBarSplit.Both => "Hide split",
+                TitleBarSplit.None => "Split right",
+                _ => "Show split",
+            },
+            _keymap, BuiltinAction.ToggleSplit));
 
         DividerAfterB.Visibility = VisibleIf(dividers.AfterB);
 
         DashboardButton.Visibility = VisibleIf(showDashboard);
         DashboardButton.IsEnabled = state.HasActiveSession;
         ShowOpen(DashboardButton, DashboardOpenIndicator, _selection.DashboardOpen);
+        ToolTipService.SetToolTip(DashboardButton, WindowsShortcutText.Hint("Dashboard", _keymap, BuiltinAction.Dashboard));
         QuickTerminalButton.Visibility = VisibleIf(showQuick);
         ShowOpen(QuickTerminalButton, QuickTerminalOpenIndicator, _selection.QuickVisible);
+        ToolTipService.SetToolTip(QuickTerminalButton, WindowsShortcutText.Hint("Quick Terminal", _keymap, BuiltinAction.QuickTerminal));
+    }
+
+    // upstream helpHint: re-applied whenever the keymap is armed or reloaded, and once the title bar
+    // has realized its own pane-toggle button (a template part, so it is found by name)
+    private void ApplyShortcutHints()
+    {
+        Sidebar.ApplyKeymap(_keymap);
+        RefreshTitleBarActions(_settings);
+        if (FindDescendant(AppTitleBar, "PART_PaneToggleButton") is { } paneToggle)
+            ToolTipService.SetToolTip(paneToggle, WindowsShortcutText.Hint("Toggle Sidebar", _keymap, BuiltinAction.ToggleSidebar));
+    }
+
+    private static FrameworkElement? FindDescendant(DependencyObject root, string name)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement { Name: var childName } element && childName == name)
+                return element;
+            if (FindDescendant(child, name) is { } found)
+                return found;
+        }
+        return null;
     }
 
     // a Windows extension: upstream's dashboard and quick-terminal buttons draw no open state
