@@ -21,16 +21,31 @@ public sealed class InterfaceElementsSourceTests
     }
 
     [Fact]
-    public void Title_bar_session_name_goes_through_the_session_name_element()
+    public void Title_bar_text_goes_through_the_session_and_window_name_elements()
     {
         var window = Source("MainWindow.xaml.cs");
 
-        Assert.Contains("InterfaceElement.SessionName",
-            MethodBody(window, "private string VisibleSessionTitle(AppSettings settings)"), StringComparison.Ordinal);
-        Assert.Contains("SetTitleBarSessionTitle(title);",
+        var refresh = MethodBody(window, "private void RefreshTitles(AppSettings settings)");
+        Assert.Contains("AppTitleBar.Title = TitleBarText.Visible(_sessionTitle ?? ProductIdentity.Name, _customWindowName, settings);",
+            refresh, StringComparison.Ordinal);
+        Assert.Contains("Title = TitleBarText.OsTitle(_sessionTitle, _customWindowName);", refresh, StringComparison.Ordinal);
+        Assert.Contains("RefreshTitles(settings);",
+            MethodBody(window, "private void ApplyInterfaceElements(AppSettings settings)"), StringComparison.Ordinal);
+        Assert.Contains("ShowSessionTitle(title);",
             MethodBody(window, "private void ApplyAcceptedBaseLayout("), StringComparison.Ordinal);
         Assert.DoesNotContain("AppTitleBar.Title = title;", window, StringComparison.Ordinal);
         Assert.DoesNotContain("AppTitleBar.Title = ProductIdentity.Name;", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("Title = ProductIdentity.Name;", window, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Title_bar_follows_window_rename()
+    {
+        var window = Source("MainWindow.xaml.cs");
+
+        Assert.Contains("_customWindowName = TitleBarText.CustomWindowName(host.Host.WindowName);", window, StringComparison.Ordinal);
+        Assert.Contains("host.Host.Renamed += name => DispatcherQueue.TryEnqueue(() =>", window, StringComparison.Ordinal);
+        Assert.Contains("_customWindowName = TitleBarText.CustomWindowName(name);", window, StringComparison.Ordinal);
     }
 
     [Fact]

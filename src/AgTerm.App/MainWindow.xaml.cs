@@ -58,8 +58,11 @@ public sealed partial class MainWindow : Window
     private readonly WindowsAppNotificationPresenter _notificationPresenter;
     private readonly SemaphoreSlim _themeApplyGate = new(1, 1);
     private AppSettings _settings; // UI-thread confined
-    // the session part of the title bar, or null while it shows something else (the dashboard)
-    private string? _titleBarSessionTitle;
+    // what the titles show: the dashboard, or a session's title (null: no session, an empty window)
+    private bool _dashboardTitle;
+    private string? _sessionTitle;
+    // the window's user-set name (null for an auto "window N" name), from window.rename
+    private string? _customWindowName;
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
@@ -189,9 +192,7 @@ public sealed partial class MainWindow : Window
                     _acceptedPaneId = dashboard.Cells
                         .First(cell => cell.ControlRef == dashboard.HighlightedControlRef)
                         .PaneId;
-                    Title = ProductIdentity.WindowTitle("Dashboard");
-                    SetTitleBarSessionTitle(null);
-                    AppTitleBar.Title = "Dashboard";
+                    ShowDashboardTitle();
                     AppTitleBar.Subtitle = string.Empty;
                     break;
                 case TerminalLayout.Split split:
@@ -202,8 +203,7 @@ public sealed partial class MainWindow : Window
                     {
                         _acceptedPaneId = layered.Layer.PaneId;
                         FocusActiveTerminal();
-                        Title = ProductIdentity.Name;
-                        SetTitleBarSessionTitle(ProductIdentity.Name);
+                        ShowSessionTitle(null);
                         AppTitleBar.Subtitle = string.Empty;
                     }
                     else
@@ -213,8 +213,7 @@ public sealed partial class MainWindow : Window
                     break;
                 case TerminalLayout.Empty:
                     _acceptedPaneId = null;
-                    Title = ProductIdentity.Name;
-                    SetTitleBarSessionTitle(ProductIdentity.Name);
+                    ShowSessionTitle(null);
                     AppTitleBar.Subtitle = string.Empty;
                     break;
             }
@@ -860,6 +859,13 @@ public sealed partial class MainWindow : Window
         // Wired here, not in ArmHotkeysAsync: a failed WebView2 page must not leave a pending pick unseen.
         // Changed fires on the control dispatch thread, maybe under host locks, and can arrive out of order:
         // only enqueue here, and SyncModalAsync re-reads Pick.Pending and Pick.PendingAsk when it runs on the UI thread.
+        _customWindowName = TitleBarText.CustomWindowName(host.Host.WindowName);
+        RefreshTitles(_settings);
+        host.Host.Renamed += name => DispatcherQueue.TryEnqueue(() =>
+        {
+            _customWindowName = TitleBarText.CustomWindowName(name);
+            RefreshTitles(_settings);
+        });
         host.Host.Actions.Pick.Changed += () => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
             _paletteTransitions.RunAsync(SyncModalAsync),
             "Modal presentation failed"));
@@ -1029,8 +1035,7 @@ public sealed partial class MainWindow : Window
             _ => throw new ArgumentOutOfRangeException(nameof(baseLayout), baseLayout, "Base layout must be single, split, or zoomed."),
         };
 
-        Title = ProductIdentity.WindowTitle(title);
-        SetTitleBarSessionTitle(title);
+        ShowSessionTitle(title);
         AppTitleBar.Subtitle = workspaceName ?? string.Empty;
 
         if (_acceptedPaneId != paneId)
@@ -2193,26 +2198,40 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // upstream WindowContentView.shows(_:) for the chrome this window draws: the sidebar toggle and
-    // the session name. The OS window title keeps the full name, as upstream's windowTitle does.
+    // upstream WindowContentView.shows(_:) for the chrome this window draws: the sidebar toggle, and
+    // the session and window names in the title bar text
     private void ApplyInterfaceElements(AppSettings settings)
     {
         AppTitleBar.IsPaneToggleButtonVisible = !settings.IsInterfaceElementHidden(InterfaceElement.SidebarToggle);
-        if (_titleBarSessionTitle is not null)
-            AppTitleBar.Title = VisibleSessionTitle(settings);
+        RefreshTitles(settings);
     }
 
-    private void SetTitleBarSessionTitle(string? title)
+    private void ShowSessionTitle(string? session)
     {
-        _titleBarSessionTitle = title;
-        if (title is not null)
-            AppTitleBar.Title = VisibleSessionTitle(_settings);
+        _dashboardTitle = false;
+        _sessionTitle = session;
+        RefreshTitles(_settings);
     }
 
-    private string VisibleSessionTitle(AppSettings settings) =>
-        settings.IsInterfaceElementHidden(InterfaceElement.SessionName)
-            ? string.Empty
-            : _titleBarSessionTitle ?? string.Empty;
+    private void ShowDashboardTitle()
+    {
+        _dashboardTitle = true;
+        RefreshTitles(_settings);
+    }
+
+    // upstream titleText and windowTitle: the title bar is gated by the interface elements, the OS
+    // window title never is; an empty window shows the product name where upstream shows "Agterm"
+    private void RefreshTitles(AppSettings settings)
+    {
+        if (_dashboardTitle)
+        {
+            Title = ProductIdentity.WindowTitle("Dashboard");
+            AppTitleBar.Title = "Dashboard";
+            return;
+        }
+        Title = TitleBarText.OsTitle(_sessionTitle, _customWindowName);
+        AppTitleBar.Title = TitleBarText.Visible(_sessionTitle ?? ProductIdentity.Name, _customWindowName, settings);
+    }
 
     private async Task ApplyThemePresentationAsync(
         AppSettings settings,

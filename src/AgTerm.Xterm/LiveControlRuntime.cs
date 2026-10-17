@@ -8,6 +8,8 @@ public interface ILiveControlRuntime
 {
     Guid WindowId { get; }
     string WindowName { get; }
+    /// <summary>Raised with the new name after window.rename stores it, off the UI thread.</summary>
+    event Action<string>? Renamed;
     string PipeName { get; }
     AppStore Store { get; }
     ControlEventRing Ring { get; }
@@ -23,6 +25,8 @@ internal sealed class HeadlessControlRuntime(HeadlessHost host) : ILiveControlRu
 {
     public Guid WindowId => host.WindowId;
     public string WindowName => host.WindowName;
+    // the headless host has one window and no title bar to rename
+    public event Action<string>? Renamed { add { } remove { } }
     public string PipeName => host.PipeName;
     public AppStore Store => host.Store;
     public ControlEventRing Ring => host.Ring;
@@ -40,6 +44,11 @@ internal sealed class WindowControlRuntime(
 {
     public Guid WindowId => host.WindowId;
     public string WindowName => host.WindowName;
+    public event Action<string>? Renamed
+    {
+        add => host.Renamed += value;
+        remove => host.Renamed -= value;
+    }
     public string PipeName => pipeName;
     public AppStore Store => host.Store;
     public ControlEventRing Ring => host.Ring;

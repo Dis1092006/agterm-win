@@ -304,6 +304,10 @@ public sealed class LiveWindowHost
         lock (_gate) Store.ResetSessionFontSizes();
     }
 
+    /// <summary>Raised with the new name after window.rename stores it, outside the host gate and on
+    /// the renaming thread; the window marshals it to its title bar.</summary>
+    public event Action<string>? Renamed;
+
     internal void Rename(string name)
     {
         lock (_gate)
@@ -311,6 +315,7 @@ public sealed class LiveWindowHost
             _windowName = name;
             Actions.WindowRename(WindowId.ToString("D"), name);
         }
+        Renamed?.Invoke(name);
     }
 
     internal void CancelPendingSave()

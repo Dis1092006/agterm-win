@@ -544,8 +544,9 @@ Upstream at the pin shows a `+` on a workspace row while the pointer is over it 
   - `workspaceAddSession`.
   - `sidebarToggle`: the title bar's pane-toggle button.
   - `sessionName`: the title bar text, including the `agterm-win` fallback of an empty window, which upstream's `Agterm` fallback also belongs to. The OS window title and the workspace subtitle stay, as upstream keeps `windowTitle` and the cwd subtitle. The dashboard's `Dashboard` title is not a session name and stays.
+  - `windowName`: a window with a user-set name shows `session — window` in the title bar, as upstream does. `WindowNames.IsAutoName` ports upstream's rule: `window` followed by a positive integer is an auto name and is not shown. A `window.rename` updates the title at once through `LiveWindowHost.Renamed`. The OS window title always carries both parts: `session — window — agterm-win`.
   - `newWorkspace` and `flaggedView`: the sidebar footer buttons.
-- The port does not draw the rest, so there is nothing to hide: the title bar's recent-sessions, scratch, split, dashboard and quick-terminal buttons, the footer's New Session menu (`newSession`), and the custom window name in the title (`windowName`). Their raw values are stored and round-tripped.
+- The port does not draw the rest, so there is nothing to hide: the title bar's recent-sessions, scratch, split, dashboard and quick-terminal buttons, and the footer's New Session menu (`newSession`). Their raw values are stored and round-tripped.
 
 The workspace menu's `New Session`, the `+` and the `new_session` hotkey open where `newSessionDirectory` says, as upstream's `AppActions.resolvedNewSessionCwd` does: home, the active session's focused-pane cwd, or `newSessionCustomDirectory`. Before this, all three always opened home and `ResolveNewSessionCwd` had no caller. The settings are read on the UI thread when the session is made, so a `config.reload` applies at once. Open Directory and Explorer drops keep the directory they were given. `session.new` over the pipe does not read the setting, as upstream's does not.
 
