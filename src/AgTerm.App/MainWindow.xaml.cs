@@ -683,7 +683,9 @@ public sealed partial class MainWindow : Window
             host.StoreCoordinator,
             runOnUi: work => DispatcherQueue.TryEnqueue(() => work()),
             log: message => System.Diagnostics.Debug.WriteLine(message),
-            confirm: ConfirmSidebarActionAsync);
+            confirm: ConfirmSidebarActionAsync,
+            // read on the UI thread at each new session, so a config.reload applies at once
+            settings: () => _settings);
         _sidebar = sidebar;
 
         static WindowCommandHandler Sync(Func<bool> canExecute, Action execute)

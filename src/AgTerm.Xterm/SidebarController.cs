@@ -61,6 +61,7 @@ public sealed class SidebarController : IDisposable
     private readonly string _homeDirectory;
     private readonly Action<string>? _log;
     private readonly Func<SidebarConfirmationRequest, Task<bool>> _confirm;
+    private readonly Func<AppSettings> _settings;
     private int _started;
     private int _disposed;
     private long _latestRequestedGeneration;
@@ -70,7 +71,8 @@ public sealed class SidebarController : IDisposable
         Action<Action> runOnUi,
         string? homeDirectory = null,
         Action<string>? log = null,
-        Func<SidebarConfirmationRequest, Task<bool>>? confirm = null)
+        Func<SidebarConfirmationRequest, Task<bool>>? confirm = null,
+        Func<AppSettings>? settings = null)
     {
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _runOnUi = runOnUi ?? throw new ArgumentNullException(nameof(runOnUi));
@@ -78,6 +80,7 @@ public sealed class SidebarController : IDisposable
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _log = log;
         _confirm = confirm ?? (_ => Task.FromResult(true));
+        _settings = settings ?? (() => new AppSettings());
     }
 
     public event Action<SidebarSnapshot>? SnapshotChanged;
@@ -226,9 +229,17 @@ public sealed class SidebarController : IDisposable
             "SidebarController close sessions failed");
 
     /// <summary>The workspace-row "New Session" / "+": a fresh shell in the workspace, selected
-    /// and realized like the toolbar path.</summary>
-    public void NewSession(Guid workspaceId, string? cwd = null) =>
-        Mutate(store => store.AddSession(workspaceId, cwd ?? _homeDirectory));
+    /// and realized like the toolbar path. Without a cwd it opens where newSessionDirectory says.</summary>
+    public void NewSession(Guid workspaceId, string? cwd = null)
+    {
+        var settings = _settings();
+        Mutate(store => store.AddSession(workspaceId, cwd ?? NewSessionCwd(store, settings)));
+    }
+
+    // upstream AppActions.resolvedNewSessionCwd: the settings are read on the calling (UI) thread,
+    // the active session's focused-pane cwd under the gate, before the new session exists
+    private string NewSessionCwd(AppStore store, AppSettings settings) =>
+        settings.ResolveNewSessionCwd(store.ActiveSession?.FocusedCwd, _homeDirectory);
 
     public void ImportDirectories(IReadOnlyList<DirectoryImportRequest> requests) => Mutate(store =>
     {
@@ -347,11 +358,15 @@ public sealed class SidebarController : IDisposable
 
     // MARK: - hotkey-driven variants (BuiltinAction dispatch targets the ACTIVE session/workspace)
 
-    public void NewSessionInActiveWorkspace(string? cwd = null) => Mutate(store =>
+    public void NewSessionInActiveWorkspace(string? cwd = null)
     {
-        if (store.CurrentWorkspaceId is { } workspace)
-            store.AddSession(workspace, cwd ?? _homeDirectory);
-    });
+        var settings = _settings();
+        Mutate(store =>
+        {
+            if (store.CurrentWorkspaceId is { } workspace)
+                store.AddSession(workspace, cwd ?? NewSessionCwd(store, settings));
+        });
+    }
 
     public void CloseActiveSession() => Mutate(store =>
     {

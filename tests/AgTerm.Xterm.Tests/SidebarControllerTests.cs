@@ -173,6 +173,48 @@ public sealed class SidebarControllerTests : IDisposable
         Assert.Equal(new[] { first, second }, importedCwds);
     }
 
+    // upstream AppActions.resolvedNewSessionCwd: the workspace-row New Session, its "+" and the
+    // new_session hotkey all open where newSessionDirectory says, read when the session is made
+    [Fact]
+    public async Task New_session_without_a_directory_honours_the_new_session_directory_setting()
+    {
+        var home = Directory.CreateDirectory(Path.Combine(_stateDir, "home")).FullName;
+        var custom = Directory.CreateDirectory(Path.Combine(_stateDir, "custom")).FullName;
+        var current = Directory.CreateDirectory(Path.Combine(_stateDir, "current")).FullName;
+        var settings = new AppSettings();
+        using var controller = new SidebarController(
+            _coordinator, runOnUi: work => work(), homeDirectory: home, settings: () => settings);
+        var workspace = Latest.Workspaces.Single().Id;
+
+        controller.NewSession(workspace);
+        settings = new AppSettings { NewSessionDirectory = "custom", NewSessionCustomDirectory = custom };
+        controller.NewSession(workspace);
+        settings = new AppSettings { NewSessionDirectory = "currentSession" };
+        Mutate(store => store.ActiveSession!.CurrentCwd = current);
+        controller.NewSessionInActiveWorkspace();
+
+        var cwds = await _coordinator.ReadAsync(store => store.Workspaces.Single().Sessions
+            .Skip(1).Select(session => session.InitialCwd).ToArray());
+        Assert.Equal(new[] { home, custom, current }, cwds);
+    }
+
+    [Fact]
+    public async Task An_explicit_directory_wins_over_the_new_session_directory_setting()
+    {
+        var custom = Directory.CreateDirectory(Path.Combine(_stateDir, "custom")).FullName;
+        var picked = Directory.CreateDirectory(Path.Combine(_stateDir, "picked")).FullName;
+        var settings = new AppSettings { NewSessionDirectory = "custom", NewSessionCustomDirectory = custom };
+        using var controller = new SidebarController(
+            _coordinator, runOnUi: work => work(), settings: () => settings);
+
+        controller.NewSession(Latest.Workspaces.Single().Id, picked);
+        controller.NewSessionInActiveWorkspace(picked);
+
+        var cwds = await _coordinator.ReadAsync(store => store.Workspaces.Single().Sessions
+            .Skip(1).Select(session => session.InitialCwd).ToArray());
+        Assert.Equal(new[] { picked, picked }, cwds);
+    }
+
     [Fact]
     public void Hotkey_variants_act_on_the_active_session_and_workspace()
     {

@@ -541,6 +541,8 @@ Upstream at the pin shows a `+` on a workspace row while the pointer is over it 
 - It is out of the tab order, as upstream's is hover-only. The row menu and the `new_session` hotkey reach the same action from the keyboard. Its UI Automation name is `New Session`, with automation id `workspace-add-session`.
 - `hiddenInterfaceElements` containing `workspaceAddSession` hides it. `InterfaceElement` ports upstream's twelve raw values, and `AppSettings.IsInterfaceElementHidden` matches a raw value exactly. Upstream checks the setting only when the pointer enters a row. The port re-evaluates on every settings change, so a `config.reload` hides a `+` already on screen. `workspaceAddSession` is the only element the port honours so far. The other eleven are stored and round-tripped but not yet applied.
 
+The workspace menu's `New Session`, the `+` and the `new_session` hotkey open where `newSessionDirectory` says, as upstream's `AppActions.resolvedNewSessionCwd` does: home, the active session's focused-pane cwd, or `newSessionCustomDirectory`. Before this, all three always opened home and `ResolveNewSessionCwd` had no caller. The settings are read on the UI thread when the session is made, so a `config.reload` applies at once. Open Directory and Explorer drops keep the directory they were given. `session.new` over the pipe does not read the setting, as upstream's does not.
+
 ## Upstream behavior adopted beyond the pin
 
 The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.
