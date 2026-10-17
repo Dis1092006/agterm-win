@@ -8,6 +8,7 @@ using AgTerm.Terminal;
 using AgTerm.Xterm;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
@@ -573,6 +574,7 @@ public sealed partial class MainWindow : Window
 
                 var previousSelection = _selection;
                 _selection = snapshot;
+                RefreshTitleBarActions(_settings);
                 PresentPaneThemes(snapshot);
                 // a split toggle or a divider drag moves the pane a question is anchored to
                 ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
@@ -2267,7 +2269,16 @@ public sealed partial class MainWindow : Window
 
         DashboardButton.Visibility = VisibleIf(showDashboard);
         DashboardButton.IsEnabled = state.HasActiveSession;
+        ShowOpen(DashboardButton, DashboardOpenIndicator, _selection.DashboardOpen);
         QuickTerminalButton.Visibility = VisibleIf(showQuick);
+        ShowOpen(QuickTerminalButton, QuickTerminalOpenIndicator, _selection.QuickVisible);
+    }
+
+    // a Windows extension: upstream's dashboard and quick-terminal buttons draw no open state
+    private static void ShowOpen(Button button, FrameworkElement indicator, bool open)
+    {
+        indicator.Visibility = VisibleIf(open);
+        AutomationProperties.SetItemStatus(button, open ? "Open" : string.Empty);
     }
 
     private static Visibility VisibleIf(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;

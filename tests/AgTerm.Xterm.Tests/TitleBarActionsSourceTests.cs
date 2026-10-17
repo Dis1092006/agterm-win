@@ -55,6 +55,28 @@ public sealed class TitleBarActionsSourceTests
             Assert.Contains($"InterfaceElement.{element})", refresh, StringComparison.Ordinal);
     }
 
+    // a Windows extension: upstream draws no open state on these two buttons
+    [Fact]
+    public void Dashboard_and_quick_terminal_buttons_mark_an_open_surface()
+    {
+        var xaml = Source("MainWindow.xaml");
+        foreach (var indicator in new[] { "DashboardOpenIndicator", "QuickTerminalOpenIndicator" })
+            Assert.Contains($"<Rectangle x:Name=\"{indicator}\" Style=\"{{StaticResource TitleBarOpenIndicatorStyle}}\" />",
+                xaml, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"Fill\" Value=\"{ThemeResource AccentFillColorDefaultBrush}\" />", xaml, StringComparison.Ordinal);
+
+        var window = Source("MainWindow.xaml.cs");
+        var refresh = MethodBody(window, "private void RefreshTitleBarActions(AppSettings settings)");
+        Assert.Contains("ShowOpen(DashboardButton, DashboardOpenIndicator, _selection.DashboardOpen);", refresh, StringComparison.Ordinal);
+        Assert.Contains("ShowOpen(QuickTerminalButton, QuickTerminalOpenIndicator, _selection.QuickVisible);", refresh, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetItemStatus(button, open ? \"Open\" : string.Empty);",
+            MethodBody(window, "private static void ShowOpen("), StringComparison.Ordinal);
+
+        var selectionUpdate = window[window.IndexOf("_selection = snapshot;", StringComparison.Ordinal)..];
+        selectionUpdate = selectionUpdate[..selectionUpdate.IndexOf("SubmitLayout();", StringComparison.Ordinal)];
+        Assert.Contains("RefreshTitleBarActions(_settings);", selectionUpdate, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Buttons_run_the_same_builtin_actions_as_the_hotkeys()
     {

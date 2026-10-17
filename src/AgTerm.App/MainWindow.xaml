@@ -27,6 +27,18 @@
                 <Setter Property="Width" Value="16" />
                 <Setter Property="Height" Value="15" />
             </Style>
+            <!-- the taskbar's open-app mark: an accent bar under the glyph while its surface is up -->
+            <Style x:Key="TitleBarOpenIndicatorStyle" TargetType="Rectangle">
+                <Setter Property="Width" Value="10" />
+                <Setter Property="Height" Value="2" />
+                <Setter Property="RadiusX" Value="1" />
+                <Setter Property="RadiusY" Value="1" />
+                <Setter Property="Margin" Value="0,0,0,-4" />
+                <Setter Property="VerticalAlignment" Value="Bottom" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Setter Property="Fill" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+            </Style>
             <Style x:Key="TitleBarDividerStyle" TargetType="Rectangle">
                 <Setter Property="Width" Value="1" />
                 <Setter Property="Height" Value="16" />
@@ -105,7 +117,10 @@
                             AutomationProperties.Name="Dashboard"
                             AutomationProperties.AutomationId="dashboard-toggle-button"
                             ToolTipService.ToolTip="Dashboard">
-                        <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5 M0.5,7.5 H15.5" />
+                        <Grid>
+                            <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5 M0.5,7.5 H15.5" />
+                            <Rectangle x:Name="DashboardOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
+                        </Grid>
                     </Button>
                     <Button x:Name="QuickTerminalButton"
                             Style="{StaticResource TitleBarActionButtonStyle}"
@@ -113,7 +128,10 @@
                             AutomationProperties.Name="Quick Terminal"
                             AutomationProperties.AutomationId="quick-terminal-toggle"
                             ToolTipService.ToolTip="Quick Terminal">
-                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE756;" FontSize="14" />
+                        <Grid>
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE756;" FontSize="14" />
+                            <Rectangle x:Name="QuickTerminalOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
+                        </Grid>
                     </Button>
                 </StackPanel>
             </TitleBar.RightHeader>
