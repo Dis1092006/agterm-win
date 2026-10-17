@@ -27,6 +27,19 @@ public sealed class TitleBarActionsSourceTests
     }
 
     [Fact]
+    public void Header_content_keeps_the_title_bar_at_its_compact_height()
+    {
+        // TitleBar switches to TitleBarExpandedHeight (48) once it has header content; the buttons fit
+        // the compact 32, so the expanded height is overridden on the control itself
+        var xaml = Source("MainWindow.xaml");
+        var start = xaml.IndexOf("<TitleBar.Resources>", StringComparison.Ordinal);
+        Assert.True(start >= 0, "TitleBar.Resources not found");
+        var resources = xaml[start..xaml.IndexOf("</TitleBar.Resources>", start, StringComparison.Ordinal)];
+
+        Assert.Contains("<x:Double x:Key=\"TitleBarExpandedHeight\">32</x:Double>", resources, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Buttons_follow_the_snapshot_and_the_settings()
     {
         var window = Source("MainWindow.xaml.cs");

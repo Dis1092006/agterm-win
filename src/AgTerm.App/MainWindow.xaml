@@ -41,6 +41,11 @@
                   Title="agterm-win"
                   IsPaneToggleButtonVisible="True"
                   Background="Transparent">
+            <!-- TitleBar grows to TitleBarExpandedHeight (48) once it has header content, which left
+                 the caption buttons at the top of a tall bar. The buttons below fit the compact 32 -->
+            <TitleBar.Resources>
+                <x:Double x:Key="TitleBarExpandedHeight">32</x:Double>
+            </TitleBar.Resources>
             <!-- upstream titlebarTrailingActions: recent sessions + attention | scratch + split |
                  dashboard + quick terminal. MainWindow.RefreshTitleBarActions sets visibility, the
                  dividers and the glyph states; the shapes are Paths like the sidebar's icons -->
