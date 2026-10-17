@@ -205,6 +205,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <ToggleButton x:Name="FlaggedToggle"
                           Grid.Column="0"
@@ -245,6 +246,25 @@
                     ToolTipService.ToolTip="New workspace">
                 <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
                           Glyph="&#xE710;" FontSize="12" />
+            </Button>
+            <!-- upstream's New Session menu (add-session): a terminal rect with a plus, the session
+                 icon's shape drawn as a Path like the rows' -->
+            <Button x:Name="NewSessionButton"
+                    Grid.Column="5"
+                    Padding="6,2,6,2"
+                    AutomationProperties.Name="Add session"
+                    AutomationProperties.AutomationId="add-session"
+                    ToolTipService.ToolTip="New Session">
+                <Path Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,5 V10 M5.5,7.5 H10.5"
+                      Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                      StrokeThickness="1"
+                      Width="16" Height="15" />
+                <Button.Flyout>
+                    <MenuFlyout Placement="TopEdgeAlignedRight">
+                        <MenuFlyoutItem Text="New Session" Click="OnFooterNewSessionClick" />
+                        <MenuFlyoutItem Text="Open Directory…" Click="OnFooterOpenDirectoryClick" />
+                    </MenuFlyout>
+                </Button.Flyout>
             </Button>
         </Grid>
     </Grid>

@@ -76,6 +76,7 @@ public sealed partial class SidebarView : UserControl
         ApplyBackgroundShiftOverlay();
         // upstream WindowContentView.shows(_:) for the footer buttons the port draws
         NewWorkspaceButton.Visibility = VisibleUnless(settings, InterfaceElement.NewWorkspace);
+        NewSessionButton.Visibility = VisibleUnless(settings, InterfaceElement.NewSession);
         FlaggedToggle.Visibility = VisibleUnless(settings, InterfaceElement.FlaggedView);
     }
 
@@ -608,6 +609,19 @@ public sealed partial class SidebarView : UserControl
 
     private void OnNewWorkspaceClick(object sender, RoutedEventArgs e) =>
         _controller?.NewWorkspace();
+
+    // upstream actions.newSession(): the active workspace, at the newSessionDirectory cwd
+    private void OnFooterNewSessionClick(object sender, RoutedEventArgs e)
+    {
+        _controller?.NewSessionInActiveWorkspace();
+    }
+
+    // upstream actions.openDirectory(): a picked directory in the active workspace
+    private void OnFooterOpenDirectoryClick(object sender, RoutedEventArgs e)
+    {
+        if (_snapshot?.CurrentWorkspaceId is { } workspaceId)
+            _ = OpenDirectoryIntoAsync(workspaceId);
+    }
 
     private SidebarCloseOptions CurrentCloseOptions() => new(
         _settings.ConfirmCloseSession == true,
