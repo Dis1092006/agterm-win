@@ -27,6 +27,8 @@ public sealed class XtermSurfaceOptions
     /// <summary>The theme of the pane's workspace, or null for the global theme. The host fills it
     /// when it captures the request; the window turns it into colors.</summary>
     public string? ThemeName { get; init; }
+    /// <summary>Saved VT output of this pane from the previous run (see TerminalPaneOptions).</summary>
+    public string? RestoredOutput { get; init; }
 }
 
 /// <summary>
@@ -36,7 +38,7 @@ public sealed class XtermSurfaceOptions
 /// and blocks (bounded) — a timeout or a torn-down pane reports as "not realized" (false/null),
 /// which the arms map to the pinned wire errors, never a crash.
 /// </summary>
-public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurface, ILiveShutdownSurface, IDisposable
+public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurface, ILiveShutdownSurface, IScrollbackSurface, IDisposable
 {
     private static readonly TimeSpan UiCallBudget = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(5);
@@ -100,6 +102,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
                 ExtraEnvironment = TerminalIdentity.PaneEnvironment(token),
                 RemoveEnvironment = TerminalIdentity.RemovedVariables,
                 Theme = theme,
+                RestoredOutput = options.RestoredOutput,
             }, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -149,6 +152,20 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
 
     public string? ReadScreenText(bool all, int? lines) =>
         OnUi(() => Pane.Terminal.ReadTextAsync(all, lines));
+
+    public async Task<string?> CaptureScrollbackAsync()
+    {
+        if (IsOutputStopped) return null;
+        try
+        {
+            return await Pane.RunOnUiAsync<string?>(async () => await Pane.Terminal.SerializeForRestoreAsync())
+                .WaitAsync(UiCallBudget).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     public bool IsRealized => !IsOutputStopped;
 

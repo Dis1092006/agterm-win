@@ -100,6 +100,8 @@ public class XtermTerminalTests
         Assert.Contains("agterm.selectAll(\"p1\")", _host.Scripts[^1]);
         await terminal.SerializeAsync();
         Assert.Contains("agterm.serialize(\"p1\")", _host.Scripts[^1]);
+        await terminal.SerializeForRestoreAsync();
+        Assert.Contains("agterm.serializeForRestore(\"p1\")", _host.Scripts[^1]);
         await terminal.SearchCloseAsync();
         Assert.Contains("agterm.searchClose(\"p1\")", _host.Scripts[^1]);
         await terminal.PasteAsync("x");

@@ -92,6 +92,11 @@ public sealed class XtermTerminal
     public async Task<string> SerializeAsync() =>
         DecodeString(await _page.ExecuteScriptAsync($"agterm.serialize({_pane})").ConfigureAwait(false)) ?? "";
 
+    /// <summary>The normal-screen buffer as VT sequences without terminal modes — what is saved at
+    /// shutdown and written back into the pane after a relaunch.</summary>
+    public async Task<string> SerializeForRestoreAsync() =>
+        DecodeString(await _page.ExecuteScriptAsync($"agterm.serializeForRestore({_pane})").ConfigureAwait(false)) ?? "";
+
     public async Task<SearchOutcome> SearchAsync(string needle, SearchDirection direction)
     {
         var script = $"agterm.search({_pane}, {JsonSerializer.Serialize(needle, ScriptLiteral)}, " +

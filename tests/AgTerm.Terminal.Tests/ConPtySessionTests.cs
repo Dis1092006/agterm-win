@@ -70,6 +70,29 @@ public class ConPtySessionTests : IDisposable
     }
 
     [Fact]
+    public void A_fresh_pseudoconsole_clears_the_screen()
+    {
+        Start(Cmd, "/c", "echo fresh-marker");
+        Assert.Contains("\x1b[2J", WaitForOutput("fresh-marker"));
+    }
+
+    [Fact]
+    public async Task InheritCursor_asks_for_the_cursor_and_keeps_the_screen()
+    {
+        var pty = StartWith(new ConPtyStartInfo
+        {
+            Argv = [Cmd, "/c", "echo inherit-marker"],
+            InheritCursor = true,
+        });
+        WaitForOutput("\x1b[6n");
+        pty.WriteText("\x1b[5;1R"); // the terminal's cursor-position report: row 5 is below restored text
+
+        var text = WaitForOutput("inherit-marker");
+        Assert.DoesNotContain("\x1b[2J", text);
+        Assert.Equal(0, await pty.Exited.WaitAsync(ChildBudget));
+    }
+
+    [Fact]
     public async Task Exit_code_propagates()
     {
         var pty = Start(Cmd, "/c", "exit 3");

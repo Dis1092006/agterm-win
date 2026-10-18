@@ -501,6 +501,7 @@ public sealed partial class AppStore
             session.ScratchSurface?.Teardown();
         }
         WatermarkStorage.RemoveRenderedText(session.Id, _stateDirectory);
+        ScrollbackStorage.Remove(session.Id, _stateDirectory);
         RemoveFromRecency(session.Id);
     }
 

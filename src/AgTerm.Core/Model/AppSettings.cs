@@ -73,6 +73,12 @@ public sealed record AppSettings
     // Windows-only (parity/windows-only.json): absent means on
     [JsonPropertyName("sidebarThemeColors")] public bool? SidebarThemeColors { get; init; }
 
+    /// <summary>Windows-only (not in the upstream surface): re-render each main/split pane's saved
+    /// output after a relaunch. Absent means on; see docs/PLATFORM-NOTES.md.</summary>
+    [JsonPropertyName("restoreScrollback")] public bool? RestoreScrollback { get; init; }
+
+    [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
+
     /// <summary>Records compare by value; a list property needs an explicit sequence comparison.</summary>
     public bool Equals(AppSettings? other) =>
         other is not null &&
@@ -94,10 +100,11 @@ public sealed record AppSettings
          other.BlockedStatusSoundName, other.RightClickPaste) &&
         (NewSessionDirectory, NewSessionCustomDirectory, ConfirmCloseSession, CloseGraceUndoEnabled,
          AutoFollowAttention, AutoFollowStayOnActive, SidebarFontSize,
-         AutoHideSidebarInactiveWindows, SidebarThemeColors) ==
+         AutoHideSidebarInactiveWindows, SidebarThemeColors, RestoreScrollback) ==
         (other.NewSessionDirectory, other.NewSessionCustomDirectory, other.ConfirmCloseSession,
          other.CloseGraceUndoEnabled, other.AutoFollowAttention, other.AutoFollowStayOnActive,
-         other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors) &&
+         other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors,
+         other.RestoreScrollback) &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&

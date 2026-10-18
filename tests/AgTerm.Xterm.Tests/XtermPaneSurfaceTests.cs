@@ -69,6 +69,40 @@ public class XtermPaneSurfaceTests
     }
 
     [Fact]
+    public async Task Restored_output_is_shown_and_captured_again_without_the_alternate_screen()
+    {
+        using var surface = await OpenAsync(new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd, "/c", "echo surface-live-marker" },
+            RestoredOutput = "surface-restored-marker",
+        });
+        WaitForScreen(surface, "surface-live-marker");
+        Assert.Contains("surface-restored-marker", surface.ReadScreenText(all: true, lines: null));
+
+        await _webView.RunAsync<object?>(_ =>
+        {
+            surface.Pane.Terminal.FeedOutput(System.Text.Encoding.UTF8.GetBytes("\x1b[?1049halt-screen-only"));
+            return Task.FromResult<object?>(null);
+        });
+        WaitForScreen(surface, "alt-screen-only");
+
+        var captured = await surface.CaptureScrollbackAsync();
+        Assert.NotNull(captured);
+        Assert.Contains("surface-restored-marker", captured);
+        Assert.Contains("surface-live-marker", captured);
+        Assert.DoesNotContain("alt-screen-only", captured);
+        Assert.DoesNotContain("\x1b[?1049h", captured);
+    }
+
+    [Fact]
+    public async Task Capture_after_teardown_is_null()
+    {
+        var surface = await OpenAsync();
+        surface.Teardown();
+        Assert.Null(await surface.CaptureScrollbackAsync());
+    }
+
+    [Fact]
     public async Task Inject_types_keystrokes_with_Enter_as_CR()
     {
         using var surface = await OpenAsync();

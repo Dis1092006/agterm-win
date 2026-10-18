@@ -572,6 +572,16 @@ Upstream's Ctrl-Tab switcher is ported. Hold Ctrl and press Tab to walk the wind
 - The overlay is drawn in the window below the title bar: a top-centered panel of `name` over `workspace · detail` rows on a light dim, the pick in the accent color. It is never focused and does not take the mouse, so the terminal keeps the keys. Its automation id is `session-switcher`.
 - Upstream's Ctrl+1/Ctrl+2 pane shortcuts, its other key monitor, are not part of this port.
 
+## Pane output is restored after a relaunch
+
+Upstream has no analogue: a restored session starts with an empty screen, and the snapshot keeps structure only. The port adds it because VS Code and Windows Terminal do it on Windows, and users expect it there. No command, tree field or wire string changes.
+
+- The setting is `restoreScrollback` in `settings.json`, a Windows-only field. It is on when absent. `"restoreScrollback": false` turns it off. There is no settings UI; `config.reload` applies a change.
+- At shutdown, before output stops, `LiveControlHost` asks each realized main and split pane for its normal buffer (`bridge.js` `serializeForRestore`, the xterm serialize addon). The alternate screen and terminal modes are left out, so a full-screen program such as vim or Claude Code does not come back as a frozen picture and a mode it set does not leak into the new shell. All panes are asked in parallel, with a 3 second budget; a pane that does not answer is skipped.
+- Each pane goes to `<stateDir>\scrollback\<SESSION-UUID>.<left|right>.vt`. The file is taken (read and deleted) when the pane is realized next time, also when the setting is off, so old output does not show up after the setting is turned back on. A crash before the next clean exit does not replay the same output twice. Closing a session, removing its workspace or deleting its window removes its files. Scratch, overlay and quick panes are not saved.
+- On realize, `TerminalPane` writes the saved text into xterm, then a dim `-- restored from the previous session --` line, and only then starts ConPTY. A new pseudoconsole clears the screen at start (`ESC[2J`), which would wipe the restored text. ConPTY is therefore created with `PSEUDOCONSOLE_INHERIT_CURSOR`: it asks for the cursor position (`ESC[6n`), xterm answers through the input pipe, and the shell starts below the restored text without a clear.
+- The banner line is part of the buffer at the next shutdown, so each relaunch adds one. The shell process is new: variables, the current command and the PSReadLine state are not restored; PSReadLine history works as before.
+
 ## Upstream behavior adopted beyond the pin
 
 The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.
@@ -658,3 +668,4 @@ Commands and fields that upstream does not have. `parity/windows-only.json` list
   - A selected colored row keeps its colors: its label is bold and it has a 1 px frame in the theme foreground. Rows of workspaces without a theme, or with a theme the catalog does not have, look as before.
   - The workspace theme palette previews a theme on that workspace's rows too, in its own window only. Esc shows the saved colors again.
   - `sidebarThemeColors: false` turns the colors off; absent or `true` means on. `config.reload` applies a change at once.
+- Restored pane output: the setting `restoreScrollback` in `settings.json`, listed under `settings` in `parity/windows-only.json`. Described in "Pane output is restored after a relaunch" above.

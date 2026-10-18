@@ -67,6 +67,8 @@ internal static class ConPtyNative
     internal static extern int CreatePseudoConsole(
         Coord size, SafeFileHandle input, SafeFileHandle output, uint flags, out IntPtr console);
 
+    internal const uint PseudoConsoleInheritCursor = 0x1;
+
     [DllImport("kernel32.dll")]
     internal static extern int ResizePseudoConsole(IntPtr console, Coord size);
 

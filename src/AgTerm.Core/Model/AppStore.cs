@@ -566,6 +566,7 @@ public sealed partial class AppStore
         removed.OverlaySurface?.Teardown();
         removed.ScratchSurface?.Teardown();
         WatermarkStorage.RemoveRenderedText(sessionId, _stateDirectory); // drop any rendered .text PNG; the session is gone
+        ScrollbackStorage.Remove(sessionId, _stateDirectory);
         SessionRecency.Remove(sessionId);
         if (wasActive)
         {
@@ -612,6 +613,7 @@ public sealed partial class AppStore
             session.OverlaySurface?.Teardown();
             session.ScratchSurface?.Teardown();
             WatermarkStorage.RemoveRenderedText(session.Id, _stateDirectory); // drop any rendered .text PNG; the session is gone
+            ScrollbackStorage.Remove(session.Id, _stateDirectory);
             SessionRecency.Remove(session.Id);
         }
         if (FocusedWorkspaceId == workspaceId) FocusedWorkspaceId = null; // the focused root is gone

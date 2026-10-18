@@ -131,9 +131,23 @@ public class AppSettingsTests : IDisposable
             HiddenInterfaceElements = new[] { "flaggedView", "someFutureElement" },
             AutoHideSidebarInactiveWindows = true,
             SidebarThemeColors = false,
+            RestoreScrollback = false,
         };
         store.Save(settings);
         Assert.Equal(settings, new SettingsStore(_dir).Load());
+    }
+
+    [Fact]
+    public void Restore_scrollback_is_on_unless_explicitly_disabled()
+    {
+        Assert.True(new AppSettings().EffectiveRestoreScrollback);
+        Assert.True(new AppSettings { RestoreScrollback = true }.EffectiveRestoreScrollback);
+        Assert.False(new AppSettings { RestoreScrollback = false }.EffectiveRestoreScrollback);
+        Assert.NotEqual(new AppSettings(), new AppSettings { RestoreScrollback = false });
+
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { RestoreScrollback = false });
+        Assert.Contains("\"restoreScrollback\":false", File.ReadAllText(FilePath));
     }
 
     [Fact]

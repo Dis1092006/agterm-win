@@ -19,6 +19,9 @@ public sealed record TerminalPaneOptions
 
     /// <summary>The pane's own theme (its workspace's), or null for the global theme.</summary>
     public TerminalTheme? Theme { get; init; }
+    /// <summary>Saved VT output of this pane from the previous run, shown above the new child's
+    /// output. Null = a fresh pane.</summary>
+    public string? RestoredOutput { get; init; }
 }
 
 /// <summary>
@@ -29,6 +32,9 @@ public sealed record TerminalPaneOptions
 /// </summary>
 public sealed class TerminalPane : IDisposable
 {
+    /// <summary>The dim line written between restored output and the new child's output.</summary>
+    public const string RestoredBannerText = "-- restored from the previous session --";
+
     private readonly SynchronizationContext _ui;
     private int _disposed;
     private int _outputStopped;
@@ -97,6 +103,13 @@ public sealed class TerminalPane : IDisposable
 
             cancellationToken.ThrowIfCancellationRequested();
 
+            var restored = !string.IsNullOrEmpty(options.RestoredOutput);
+            if (restored)
+            {
+                // posted before any pty output, so the page renders it first
+                terminal.FeedOutput(System.Text.Encoding.UTF8.GetBytes(
+                    options.RestoredOutput + "\x1b[0m\r\n\x1b[2m" + RestoredBannerText + "\x1b[0m\r\n"));
+            }
             outputPump = new TerminalOutputPump(
                 new TerminalOutputPumpOptions(),
                 chunk => PostBatchToUiAndFeedAsync(ui, terminal, chunk, () => pane is { IsOutputStopped: true }));
@@ -107,6 +120,9 @@ public sealed class TerminalPane : IDisposable
                 Cwd = options.Cwd,
                 ExtraEnvironment = options.ExtraEnvironment,
                 RemoveEnvironment = options.RemoveEnvironment,
+                // ConPTY would otherwise clear the screen with the restored output on it; its
+                // cursor-position request is answered by xterm.js through DataReceived
+                InheritCursor = restored,
                 Cols = terminal.Cols > 0 ? terminal.Cols : 80,
                 Rows = terminal.Rows > 0 ? terminal.Rows : 24,
                 OnOutput = chunk =>

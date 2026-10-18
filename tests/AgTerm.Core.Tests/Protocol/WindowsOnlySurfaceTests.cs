@@ -9,12 +9,12 @@ namespace AgTerm.Core.Tests.Protocol;
 public class WindowsOnlySurfaceTests
 {
     [Fact]
-    public void The_list_names_the_workspace_theme_and_the_sidebar_colors_setting()
+    public void The_list_names_the_workspace_theme_and_the_windows_only_settings()
     {
         Assert.Equal(["workspace.theme"], ParitySurface.WindowsOnly("commands"));
         Assert.Equal(["theme"], ParitySurface.WindowsOnly("workspaceNode"));
         Assert.Equal(["theme"], ParitySurface.WindowsOnly("workspaceSnapshot"));
-        Assert.Equal(["sidebarThemeColors"], ParitySurface.WindowsOnly("settings"));
+        Assert.Equal(["sidebarThemeColors", "restoreScrollback"], ParitySurface.WindowsOnly("settings"));
     }
 
     [Theory]

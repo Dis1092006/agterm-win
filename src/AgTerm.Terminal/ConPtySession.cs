@@ -32,6 +32,12 @@ public sealed record ConPtyStartInfo
     /// would misidentify the terminal). Removal applies before ExtraEnvironment, so naming a
     /// variable in both keeps the explicit value. Null = remove nothing.</summary>
     public IReadOnlyList<string>? RemoveEnvironment { get; init; }
+
+    /// <summary>Start the pseudoconsole at the terminal's current cursor instead of clearing the
+    /// screen (PSEUDOCONSOLE_INHERIT_CURSOR). Used when the terminal already shows restored output.
+    /// ConPTY then sends a cursor-position request (ESC[6n) and waits for the terminal's reply on
+    /// the input pipe before it renders anything.</summary>
+    public bool InheritCursor { get; init; }
 }
 
 /// <summary>
@@ -75,7 +81,9 @@ public sealed class ConPtySession : IDisposable
             throw new Win32Exception();
 
         var size = new ConPtyNative.Coord { X = (short)info.Cols, Y = (short)info.Rows };
-        var hr = ConPtyNative.CreatePseudoConsole(size, ptyInputRead, ptyOutputWrite, 0, out var console);
+        var hr = ConPtyNative.CreatePseudoConsole(
+            size, ptyInputRead, ptyOutputWrite,
+            info.InheritCursor ? ConPtyNative.PseudoConsoleInheritCursor : 0u, out var console);
         if (hr != 0) throw new Win32Exception(hr, "CreatePseudoConsole failed");
         // the pseudoconsole holds its own duplicates of the child-side pipe ends
         ptyInputRead.Dispose();

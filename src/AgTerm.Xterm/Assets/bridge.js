@@ -18,7 +18,7 @@
 //                                              {type:'hudMetrics', paneId, fontSize, cellWidth, cellHeight, session:{width,height}, left?, right?, pane?}
 //   host-invoked (ExecuteScriptAsync, result = JSON): agterm.openPane(paneId, {fontSize, theme}) → {cols,rows},
 //     agterm.showPane(paneId), agterm.closePane(paneId), agterm.applyLayout(layout), and the per-pane reads/writes:
-//     text/selection/selectAll/serialize/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
+//     text/selection/selectAll/serialize/serializeForRestore/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
 //     each takes paneId first; every call on an unknown paneId returns null. Page-global:
 //     agterm.setHotkeyManifest({generation,leaderTimeoutMs,builtinSingles,customBindings,
 //       zoomPassthroughSingles,dashboardToggleSingles}) — atomic hotkey table.
@@ -2940,6 +2940,12 @@ window.agterm = {
       return true;
     }),
   serialize: (paneId) => withPane(paneId, (p) => p.serializeAddon.serialize()),
+  // the saved output for a relaunch: the normal screen only, and no mode switches, so a full-screen
+  // app or a pushed keyboard mode from the old shell cannot leak into the new one
+  serializeForRestore: (paneId) =>
+    withPane(paneId, (p) =>
+      p.serializeAddon.serialize({ excludeAltBuffer: true, excludeModes: true }),
+    ),
   search: (paneId, needle, dir) =>
     withPane(paneId, (p) => {
       const opts = searchOptions();

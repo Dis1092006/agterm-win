@@ -871,7 +871,10 @@ public sealed class LiveApplicationHost : IDisposable
 
         File.Delete(WindowSnapshotPath(windowId));
         foreach (var sessionId in sessionIds)
+        {
             WatermarkStorage.RemoveRenderedText(sessionId, _stateDirectory);
+            ScrollbackStorage.Remove(sessionId, _stateDirectory);
+        }
         if (!isOpen)
             EmitTreeChanged(windowId);
         return OkWindowId(windowId);

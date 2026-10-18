@@ -318,6 +318,32 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     }
 
     [Fact]
+    public void Window_delete_removes_saved_pane_output_of_the_closed_window_sessions()
+    {
+        var keptId = Guid.NewGuid();
+        var deletedId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        WriteWindowSnapshot(keptId, "alpha");
+        WriteWindowSnapshot(deletedId, SnapshotWithCommands("beta", sessionId));
+        WriteIndex(keptId,
+            new IndexEntry(keptId, "kept", IsOpen: true),
+            new IndexEntry(deletedId, "deleted", IsOpen: false));
+        ScrollbackStorage.Write(sessionId, StatusPane.Left, "saved", _stateDir);
+        var path = ScrollbackStorage.FilePath(sessionId, StatusPane.Left, _stateDir);
+
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest
+        {
+            Cmd = Command.WindowDelete,
+            Target = deletedId.ToString("D"),
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
     public void Window_list_projects_live_geometry_and_presenter_flags_for_open_windows_only()
     {
         var firstId = Guid.NewGuid();

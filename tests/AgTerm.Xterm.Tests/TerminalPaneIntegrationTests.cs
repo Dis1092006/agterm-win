@@ -52,6 +52,28 @@ public class TerminalPaneIntegrationTests
     }
 
     [Fact]
+    public async Task Restored_output_stays_above_the_new_shell_output()
+    {
+        var page = await _webView.CreatePageAsync();
+        using var pane = await _webView.RunAsync(async _ =>
+            await TerminalPane.OpenAsync(
+                page,
+                Guid.NewGuid().ToString("N"),
+                new TerminalPaneOptions
+                {
+                    Argv = [Cmd, "/c", "echo live-after-restore"],
+                    RestoredOutput = "restored-line-1\r\n\x1b[32mrestored-line-2\x1b[0m",
+                }));
+
+        var text = await WaitForTextAsync(pane, "live-after-restore");
+        var first = text.IndexOf("restored-line-1", StringComparison.Ordinal);
+        var second = text.IndexOf("restored-line-2", StringComparison.Ordinal);
+        var banner = text.IndexOf(TerminalPane.RestoredBannerText, StringComparison.Ordinal);
+        var live = text.IndexOf("live-after-restore", StringComparison.Ordinal);
+        Assert.True(first >= 0 && first < second && second < banner && banner < live, text);
+    }
+
+    [Fact]
     public async Task Pty_gets_the_xterm_size_and_input_typed_into_the_pty_renders()
     {
         using var pane = await OpenAsync(Cmd);

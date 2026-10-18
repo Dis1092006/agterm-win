@@ -12,6 +12,13 @@ internal interface ILiveShutdownSurface
     Task ShutdownAsync(CancellationToken cancellationToken = default);
 }
 
+/// <summary>A surface whose output can be saved at shutdown and shown again after a relaunch.</summary>
+internal interface IScrollbackSurface
+{
+    /// <summary>The normal-screen buffer as VT text; null when the renderer is gone.</summary>
+    Task<string?> CaptureScrollbackAsync();
+}
+
 /// <summary>Construction options for <see cref="LiveControlHost"/> — the HeadlessHostOptions
 /// subset the app configures, plus the live-surface machinery.</summary>
 public sealed record LiveControlHostOptions
@@ -90,6 +97,9 @@ public sealed record LiveControlHostOptions
 public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 {
     private readonly LiveControlHostOptions _options;
+    // All panes are serialized in parallel; this keeps a stuck page from holding up the exit
+    // (Dispose waits five seconds for the whole shutdown).
+    private static readonly TimeSpan ScrollbackCaptureBudget = TimeSpan.FromSeconds(3);
     private readonly LiveDispatchScopeFactory _scopeFactory;
     private readonly LiveStoreCoordinator _storeCoordinator;
     private readonly LiveSurfaceCoordinator? _coordinator;
@@ -1100,6 +1110,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             [ShellResolver.Resolve(_options.DefaultShell)],
             _options.ShellIntegrationDirectory);
         var restoreRunningCommand = _options.RestoreRunningCommand;
+        string? restoredOutput = null;
 
         switch (kind)
         {
@@ -1136,6 +1147,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
                 cwd = session.EffectiveCwd;
                 sessionId = session.Id;
+                restoredOutput = TakeRestoredOutput(session.Id, StatusPane.Left);
                 break;
             }
 
@@ -1162,6 +1174,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
                 cwd = session.InitialSplitCwd ?? session.EffectiveCwd;
                 sessionId = session.Id;
+                restoredOutput = TakeRestoredOutput(session.Id, StatusPane.Right);
                 break;
             }
 
@@ -1211,7 +1224,26 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 BaseFontSize = baseFontSize,
                 ReadClipboard = _options.ReadClipboard,
                 ThemeName = sessionId is { } owner ? PaneThemeAssignment.ForSession(Store, owner) : null,
+                RestoredOutput = restoredOutput,
             });
+    }
+
+    // The saved file is consumed even when the setting is off, so stale output never shows up
+    // later after the user turns the setting back on.
+    private string? TakeRestoredOutput(Guid sessionId, StatusPane pane)
+    {
+        string? restored;
+        try
+        {
+            restored = ScrollbackStorage.Take(sessionId, pane, Host.Store.StateDirectory);
+        }
+        catch (InvalidOperationException)
+        {
+            // No state directory resolves (a test run without AGTERM_STATE_DIR): nothing is saved.
+            return null;
+        }
+
+        return Volatile.Read(ref _notificationSettings).EffectiveRestoreScrollback ? restored : null;
     }
 
     private SurfaceOpenRequest CaptureQuickRequest(Session? activeSession) =>
@@ -1588,6 +1620,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         _storeCoordinator.Dispose();
 
         ITerminalSurface[] surfacesToShutdown = Array.Empty<ITerminalSurface>();
+        var scrollbackTargets = new List<(Guid SessionId, StatusPane Pane, IScrollbackSurface Surface)>();
+        var unsplitSessions = new List<Guid>();
         Host.RunLocked(() =>
         {
             var distinctSurfaces = new HashSet<ITerminalSurface>(ReferenceEqualityComparer.Instance);
@@ -1602,6 +1636,13 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 AddSurface(session.SplitSurface);
                 AddSurface(session.ScratchSurface);
                 AddSurface(session.OverlaySurface);
+
+                if (session.Surface is IScrollbackSurface main)
+                    scrollbackTargets.Add((session.Id, StatusPane.Left, main));
+                if (!session.HasSplit)
+                    unsplitSessions.Add(session.Id);
+                else if (session.SplitSurface is IScrollbackSurface split)
+                    scrollbackTargets.Add((session.Id, StatusPane.Right, split));
             }
 
             AddSurface(Host.Actions.Quick.Surface);
@@ -1621,6 +1662,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 }
             }
         });
+
+        await SaveScrollbackAsync(scrollbackTargets, unsplitSessions).ConfigureAwait(false);
 
         foreach (var surface in surfacesToShutdown)
         {
@@ -1665,5 +1708,43 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }
 
         Host.DetachLive();
+    }
+
+    /// <summary>Write each realized main/split pane's output for the next launch (Windows-only, see
+    /// docs/PLATFORM-NOTES.md). Runs before StopOutput, while the panes still answer. Best effort:
+    /// a pane that does not answer within the budget is skipped.</summary>
+    private async Task SaveScrollbackAsync(
+        IReadOnlyList<(Guid SessionId, StatusPane Pane, IScrollbackSurface Surface)> targets,
+        IReadOnlyList<Guid> unsplitSessions)
+    {
+        var stateDir = Host.Store.StateDirectory;
+        try
+        {
+            foreach (var sessionId in unsplitSessions)
+                ScrollbackStorage.Write(sessionId, StatusPane.Right, string.Empty, stateDir);
+
+            if (!Volatile.Read(ref _notificationSettings).EffectiveRestoreScrollback || targets.Count == 0)
+                return;
+
+            var captures = targets.Select(target => target.Surface.CaptureScrollbackAsync()).ToArray();
+            try
+            {
+                await Task.WhenAll(captures).WaitAsync(ScrollbackCaptureBudget).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _options.Log?.Invoke($"LiveControlHost scrollback capture incomplete: {ex.Message}");
+            }
+
+            for (var i = 0; i < targets.Count; i++)
+            {
+                if (captures[i].IsCompletedSuccessfully && captures[i].Result is { } text)
+                    ScrollbackStorage.Write(targets[i].SessionId, targets[i].Pane, text, stateDir);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // No state directory resolves (a test run without AGTERM_STATE_DIR): nothing is saved.
+        }
     }
 }
