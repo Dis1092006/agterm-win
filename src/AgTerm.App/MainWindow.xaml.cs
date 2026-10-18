@@ -558,6 +558,7 @@ public sealed partial class MainWindow : Window
                     AvailableThemes = _themeCatalog.Names,
                     InitialTheme = LiveThemeSettings.From(_settings),
                     NotificationSettings = _settings,
+                    RestoreRunningCommand = _settings.RestoreRunningCommand == true,
                     FailureReported = QueueFailureNotice,
                     IsUiThread = () => DispatcherQueue.HasThreadAccess,
                     BootstrapCancellationToken = _bootstrapCancellation.Token,

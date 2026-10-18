@@ -68,7 +68,7 @@ public class TerminalPaneIntegrationTests
         var text = await WaitForTextAsync(pane, "live-after-restore");
         var first = text.IndexOf("restored-line-1", StringComparison.Ordinal);
         var second = text.IndexOf("restored-line-2", StringComparison.Ordinal);
-        var banner = text.IndexOf(TerminalPane.RestoredBannerText, StringComparison.Ordinal);
+        var banner = text.IndexOf("-- saved output, new shell below --", StringComparison.Ordinal);
         var live = text.IndexOf("live-after-restore", StringComparison.Ordinal);
         Assert.True(first >= 0 && first < second && second < banner && banner < live, text);
     }

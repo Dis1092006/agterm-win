@@ -629,6 +629,17 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Main_window_passes_the_restore_running_command_setting_to_the_live_host()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        Assert.Contains(
+            "RestoreRunningCommand = _settings.RestoreRunningCommand == true,",
+            source,
+            StringComparison.Ordinal);
+    }
+
     private HeadlessHost BuildHost() =>
         new(new HeadlessHostOptions
         {

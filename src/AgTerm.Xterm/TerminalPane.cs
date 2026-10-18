@@ -33,7 +33,7 @@ public sealed record TerminalPaneOptions
 public sealed class TerminalPane : IDisposable
 {
     /// <summary>The dim line written between restored output and the new child's output.</summary>
-    public const string RestoredBannerText = "-- restored from the previous session --";
+    public const string RestoredBannerText = "-- saved output, new shell below --";
 
     private readonly SynchronizationContext _ui;
     private int _disposed;
