@@ -176,7 +176,9 @@ public sealed class XtermPageOverlayTests
             new TerminalLayout.Single(3, "main", "shell"),
             new TerminalLayer("overlay", sizePercent: 50));
 
-        coordinator.Submit(layered);
+        // Submit off the xUnit context: the worker's Task.Yield would otherwise queue behind live
+        // tests that block xUnit's few worker threads on small CI machines.
+        await Task.Run(() => coordinator.Submit(layered));
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Same(layered, applied);
@@ -553,7 +555,11 @@ public sealed class XtermPageOverlayLiveTests
         var (page, view) = await BootPageAsync();
         await _webView.RunAsync(_ => page.OpenTerminalAsync("cb-base"));
         var layer = await _webView.RunAsync(_ => page.OpenTerminalAsync("cb-layer"));
-        layer.FeedOutput(Encoding.UTF8.GetBytes("LAYER-PRESERVED\r\n"));
+        await _webView.RunAsync<object?>(_ =>
+        {
+            layer.FeedOutput(Encoding.UTF8.GetBytes("LAYER-PRESERVED\r\n"));
+            return Task.FromResult<object?>(null);
+        });
 
         Assert.True(await ApplyAsync(page, new TerminalLayout.Layered(
             1,

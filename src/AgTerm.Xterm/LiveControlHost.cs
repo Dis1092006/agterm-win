@@ -982,21 +982,27 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        if (update.Active)
+        // XtermPage is affine to the WebView2 UI thread; this update runs on a background scope.
+        await surface.Pane.RunOnUiAsync<object?>(async () =>
         {
-            await surface.Pane.Page.ApplySearchAsync(
-                surface.PaneToken,
-                update.Needle,
-                update.DisplayText,
-                update.Selected,
-                update.FocusInput).ConfigureAwait(false);
-        }
-        else
-        {
-            await surface.Pane.Page.HideSearchAsync(
-                surface.PaneToken,
-                update.RestorePaneId).ConfigureAwait(false);
-        }
+            if (update.Active)
+            {
+                await surface.Pane.Page.ApplySearchAsync(
+                    surface.PaneToken,
+                    update.Needle,
+                    update.DisplayText,
+                    update.Selected,
+                    update.FocusInput);
+            }
+            else
+            {
+                await surface.Pane.Page.HideSearchAsync(
+                    surface.PaneToken,
+                    update.RestorePaneId);
+            }
+
+            return null;
+        }).ConfigureAwait(false);
     }
 
     /// <summary>Reserve a pending surface under the host gate. The coordinator opens and commits

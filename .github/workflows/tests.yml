@@ -1,0 +1,57 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # AgTerm.Xterm.Tests hosts a real WebView2. The runner image ships the Edge browser, which
+      # does not guarantee the WebView2 Runtime.
+      - name: Ensure WebView2 Runtime
+        shell: pwsh
+        run: |
+          $key = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          $version = (Get-ItemProperty $key -ErrorAction SilentlyContinue).pv
+          if ($version) { "WebView2 Runtime $version is installed"; exit 0 }
+          $setup = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $setup
+          Start-Process $setup -ArgumentList '/silent', '/install' -Wait
+          "WebView2 Runtime $((Get-ItemProperty $key).pv) installed"
+
+      - name: Build
+        run: dotnet build AgTerm.slnx
+
+      - name: Build the WinUI app
+        run: dotnet build src/AgTerm.App -p:Platform=x64
+
+      - name: Test
+        run: dotnet test AgTerm.slnx --no-build --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults
