@@ -690,3 +690,18 @@ Commands and fields that upstream does not have. `parity/windows-only.json` list
   - The workspace theme palette previews a theme on that workspace's rows too, in its own window only. Esc shows the saved colors again.
   - `sidebarThemeColors: false` turns the colors off; absent or `true` means on. `config.reload` applies a change at once.
 - Restored pane output: the setting `restoreScrollback` in `settings.json`, listed under `settings` in `parity/windows-only.json`. Described in "Pane output is restored after a relaunch" above.
+
+## Help menu: installing the command line tool and the agent skill
+
+Upstream has *Install Command Line Tool…* and *Install Agent Skill…* in the macOS Help menu. This port has no menu bar, so the title bar has a Help button, the last one on the right and always shown. It opens a menu with the same two items in the same order. Design: `docs/superpowers/specs/2026-10-13-agent-skill-design.md`, section 4.
+
+- The command palette (Run an Action…) lists the same two items. They are app commands with the ids `app:install-command-line-tool` and `app:install-agent-skill`, not builtin actions: a keymap cannot bind them and no control command runs them. The 41 builtin actions and `parity/surface.json` do not change.
+- Each item runs the install and shows the result in a dialog with an OK button, as upstream shows an alert.
+- *Install Agent Skill…* copies the skill files that the build embeds from `plugins/agterm/skills/agterm` to `~\.claude\skills\agterm` and `~\.codex\skills\agterm`. The rules and the dialog text are upstream's.
+- *Install Command Line Tool…* puts `agtermctl` on the user `Path` instead of linking it into `/usr/local/bin`. It needs no administrator rights.
+  - The app adds the folder of `agtermctl.exe`, which ships next to `agterm-win.exe`, to the `Path` value in `HKCU\Environment`. The compare ignores case and a trailing `\`, and it expands `%VARIABLES%` in each entry, so a folder that is already there, also as `%LOCALAPPDATA%\…`, is not added again.
+  - The value keeps its registry type: `REG_EXPAND_SZ` stays `REG_EXPAND_SZ` and `REG_SZ` stays `REG_SZ`. It is read without expansion, so `%VARIABLES%` in it are written back as they were. A missing value is created as `REG_EXPAND_SZ`.
+  - After the write the app broadcasts `WM_SETTINGCHANGE` with `Environment`. Explorer reloads the environment, so programs started from it after that see the new `Path`.
+  - The app also adds the folder to its own process `PATH`, so panes it opens after the install find `agtermctl`. Shells that were already open, open agterm-win panes included, keep their old `PATH`; the dialog says to open a new terminal.
+  - The dialog text is not upstream's, because upstream's text is about `/usr/local/bin`.
+  - A build without `agtermctl.exe` next to the app, such as a debug build under `artifacts\bin`, answers `agtermctl is not bundled in this build.`

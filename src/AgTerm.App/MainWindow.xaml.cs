@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using AgTerm.Core.Install;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
@@ -120,6 +121,8 @@ public sealed partial class MainWindow : Window
         _paneThemes = new PaneThemeAssigner(_themeCatalog.Resolve);
 
         InitializeComponent();
+        InstallCommandLineToolItem.Text = InstallerCommands.InstallCommandLineTool;
+        InstallAgentSkillItem.Text = InstallerCommands.InstallAgentSkill;
         ApplyInterfaceElements(_settings);
         _switcher.Changed += OnSwitcherChanged;
         _notificationPresenter = new WindowsAppNotificationPresenter(
@@ -1811,7 +1814,8 @@ public sealed partial class MainWindow : Window
             (commandId, cancellationToken) => ExecuteCustomCommandAsync(
                 new CustomCommandExecutionRequest(commandId, CustomCommandSource.Palette),
                 cancellationToken),
-            (themeName, cancellationToken) => SavePaletteThemeAsync(themeName, cancellationToken));
+            (themeName, cancellationToken) => SavePaletteThemeAsync(themeName, cancellationToken),
+            executeInstallerCommandAsync: (installerId, _) => RunInstallerAsync(installerId));
 
         if (result.RestoreTerminalFocus)
             FocusActiveTerminal();
@@ -2420,6 +2424,39 @@ public sealed partial class MainWindow : Window
     private void OnDashboardClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.Dashboard);
 
     private void OnQuickTerminalClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.QuickTerminal);
+
+    private void OnInstallCommandLineToolClick(object sender, RoutedEventArgs e) =>
+        ObserveTaskFault(RunInstallerAsync(InstallerCommands.InstallCommandLineToolId), "Install command line tool failed");
+
+    private void OnInstallAgentSkillClick(object sender, RoutedEventArgs e) =>
+        ObserveTaskFault(RunInstallerAsync(InstallerCommands.InstallAgentSkillId), "Install agent skill failed");
+
+    /// <summary>Runs an installer off the UI thread, since the Path change broadcast can wait on other
+    /// windows, and shows the result like upstream's alert.</summary>
+    private async Task RunInstallerAsync(string installerId)
+    {
+        var outcome = await Task.Run(() => installerId == InstallerCommands.InstallCommandLineToolId
+            ? InstallerActions.InstallCommandLineTool(Environment.ProcessPath, WindowsUserPathEnvironment.CreateDefault())
+            : InstallerActions.InstallAgentSkill(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+        await _contentDialogs.RunAsync(async () =>
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = Content.XamlRoot,
+                Title = outcome.Title,
+                Content = new TextBlock
+                {
+                    Text = outcome.Message,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsTextSelectionEnabled = true,
+                },
+                CloseButtonText = "OK",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            await dialog.ShowAsync();
+            return true;
+        });
+    }
 
     // upstream's recent-sessions popover as a menu: the MRU other sessions, rebuilt each time it opens
     private void OnRecentSessionsFlyoutOpening(object? sender, object e)

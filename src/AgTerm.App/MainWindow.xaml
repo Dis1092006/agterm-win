@@ -135,6 +135,25 @@
                             <Rectangle x:Name="QuickTerminalOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
                         </Grid>
                     </Button>
+                    <!-- upstream's Help menu installers; always shown. MainWindow sets the item texts from
+                         InstallerCommands, which the palette and the skill text also use -->
+                    <Button x:Name="HelpButton"
+                            Style="{StaticResource TitleBarActionButtonStyle}"
+                            AutomationProperties.Name="Help"
+                            AutomationProperties.AutomationId="help-button"
+                            ToolTipService.ToolTip="Help">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE897;" FontSize="14" />
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuFlyoutItem x:Name="InstallCommandLineToolItem"
+                                                AutomationProperties.AutomationId="install-command-line-tool"
+                                                Click="OnInstallCommandLineToolClick" />
+                                <MenuFlyoutItem x:Name="InstallAgentSkillItem"
+                                                AutomationProperties.AutomationId="install-agent-skill"
+                                                Click="OnInstallAgentSkillClick" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                 </StackPanel>
             </TitleBar.RightHeader>
         </TitleBar>

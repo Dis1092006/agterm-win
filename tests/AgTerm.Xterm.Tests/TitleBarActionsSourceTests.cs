@@ -27,6 +27,43 @@ public sealed class TitleBarActionsSourceTests
     }
 
     [Fact]
+    public void Help_button_is_last_and_opens_the_two_installer_items()
+    {
+        var xaml = Source("MainWindow.xaml");
+        var start = xaml.IndexOf("<TitleBar.RightHeader>", StringComparison.Ordinal);
+        var header = xaml[start..xaml.IndexOf("</TitleBar.RightHeader>", start, StringComparison.Ordinal)];
+        var help = header.IndexOf("AutomationProperties.AutomationId=\"help-button\"", StringComparison.Ordinal);
+        Assert.True(help > header.IndexOf("quick-terminal-toggle", StringComparison.Ordinal), "help-button must follow quick-terminal-toggle");
+        Assert.Equal(-1, header.IndexOf("<Button x:Name=", help, StringComparison.Ordinal));
+
+        var button = header[header.LastIndexOf("<Button", help, StringComparison.Ordinal)..];
+        Assert.Contains("x:Name=\"HelpButton\"", button, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Help\"", button, StringComparison.Ordinal);
+        Assert.Contains("ToolTipService.ToolTip=\"Help\"", button, StringComparison.Ordinal);
+        Assert.Contains("Placement=\"BottomEdgeAlignedRight\"", button, StringComparison.Ordinal);
+        string[] items =
+        [
+            "<MenuFlyoutItem x:Name=\"InstallCommandLineToolItem\"",
+            "Click=\"OnInstallCommandLineToolClick\"",
+            "<MenuFlyoutItem x:Name=\"InstallAgentSkillItem\"",
+            "Click=\"OnInstallAgentSkillClick\"",
+        ];
+        var positions = items.Select(token => button.IndexOf(token, StringComparison.Ordinal)).ToArray();
+        Assert.All(positions, position => Assert.True(position >= 0));
+        Assert.Equal(positions.Order(), positions);
+
+        // the item texts come from the constants the palette and the skill text use
+        var window = Source("MainWindow.xaml.cs");
+        Assert.Contains("InstallCommandLineToolItem.Text = InstallerCommands.InstallCommandLineTool;", window, StringComparison.Ordinal);
+        Assert.Contains("InstallAgentSkillItem.Text = InstallerCommands.InstallAgentSkill;", window, StringComparison.Ordinal);
+        Assert.Contains("RunInstallerAsync(InstallerCommands.InstallCommandLineToolId)",
+            MethodBody(window, "private void OnInstallCommandLineToolClick("), StringComparison.Ordinal);
+        Assert.Contains("RunInstallerAsync(InstallerCommands.InstallAgentSkillId)",
+            MethodBody(window, "private void OnInstallAgentSkillClick("), StringComparison.Ordinal);
+        Assert.Contains("executeInstallerCommandAsync:", window, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Header_content_keeps_the_title_bar_at_its_compact_height()
     {
         // TitleBar switches to TitleBarExpandedHeight (48) once it has header content; the buttons fit

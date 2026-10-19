@@ -50,4 +50,13 @@
                       LogicalName="themes/%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- the agent skill, embedded from the plugin directory itself (not a copy), so the in-app
+         installer and the plugin marketplace ship the same files. SkillBundle turns the
+         %(RecursiveDir) separator into "/". -->
+    <EmbeddedResource Include="..\..\plugins\agterm\skills\agterm\**"
+                      LogicalName="skill/%(RecursiveDir)%(Filename)%(Extension)"
+                      Link="Skill\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

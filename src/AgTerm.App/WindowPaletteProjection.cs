@@ -1,3 +1,4 @@
+using AgTerm.Core.Install;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
@@ -76,6 +77,14 @@ public static class WindowPaletteProjection
 
     public static BuiltinAction? ParseAction(string itemId) =>
         BuiltinActions.TryParse(itemId, out var action) ? action : null;
+
+    /// <summary>The installer items of the Help menu. They are app commands, not builtin actions, so
+    /// keymaps and the control protocol do not see them.</summary>
+    public static string? ParseInstallerCommand(string itemId) => itemId switch
+    {
+        InstallerCommands.InstallCommandLineToolId or InstallerCommands.InstallAgentSkillId => itemId,
+        _ => null,
+    };
 
     public static Guid? ParseCustomCommandId(string itemId)
     {
@@ -162,6 +171,11 @@ public static class WindowPaletteProjection
                 action.WireName(),
                 CommandTitle(action, store),
                 shortcut: keymap.GlyphHint(action)))
+            .Concat(
+            [
+                new PaletteItemViewModel(InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallCommandLineTool),
+                new PaletteItemViewModel(InstallerCommands.InstallAgentSkillId, InstallerCommands.InstallAgentSkill),
+            ])
             .ToArray();
 
     private static IReadOnlyList<PaletteItemViewModel> CustomCommandItems(Keymap keymap) =>

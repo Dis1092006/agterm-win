@@ -159,9 +159,9 @@ public sealed class AskViewSourceTests
         Assert.Matches(new Regex(
             @"private void FocusAskAfterContentDialog\(\)\s*\{\s*if \(AskOverlay\.IsOpen && _windowIsActive\)\s*AskOverlay\.FocusPanel\(\);\s*\}"),
             source);
-        // both dialogs go through the coordinator, so its event covers each of them
-        Assert.Equal(2, Regex.Matches(source, @"await dialog\.ShowAsync\(\)").Count);
-        Assert.Equal(2, Regex.Matches(source, @"_contentDialogs\.RunAsync\(").Count);
+        // all three dialogs (confirmation, rename, installer result) go through the coordinator, so its event covers each of them
+        Assert.Equal(3, Regex.Matches(source, @"await dialog\.ShowAsync\(\)").Count);
+        Assert.Equal(3, Regex.Matches(source, @"_contentDialogs\.RunAsync\(").Count);
     }
 
     // a fault while arming the hotkeys must not leave a drawn question without its answer path

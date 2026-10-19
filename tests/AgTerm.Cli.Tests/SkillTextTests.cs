@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using AgTerm.Core.Install;
 using AgTerm.Core.Model;
 
 namespace AgTerm.Cli.Tests;
@@ -136,6 +137,17 @@ public class SkillTextTests
         }
         Assert.True(checkedCount > 50, $"only {checkedCount} agtermctl invocations found; the extractor is broken");
         Assert.True(failures.Count == 0, $"{failures.Count} invocations do not parse:\n" + string.Join('\n', failures));
+    }
+
+    [Fact]
+    public void Installer_items_named_in_the_skill_are_the_apps_menu_items()
+    {
+        var named = SkillFiles
+            .SelectMany(file => Regex.Matches(ReadSkill(file), @"Help ▸ (Install [^…\n]*…)").Select(m => m.Groups[1].Value))
+            .ToHashSet();
+
+        Assert.Contains(InstallerCommands.InstallCommandLineTool, named);
+        Assert.Empty(named.Except([InstallerCommands.InstallCommandLineTool, InstallerCommands.InstallAgentSkill]).Order());
     }
 
     private static string? ParseError(string[] argv)

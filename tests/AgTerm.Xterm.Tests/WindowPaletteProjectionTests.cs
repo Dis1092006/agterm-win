@@ -1,4 +1,5 @@
 using AgTerm.App;
+using AgTerm.Core.Install;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 
@@ -83,10 +84,44 @@ public sealed class WindowPaletteProjectionTests
 
         Assert.Equal(
             ["New Session", "Show All Sessions", "Unflag Session"],
-            snapshot.Items.Select(item => item.Title).OrderBy(title => title, StringComparer.Ordinal));
+            snapshot.Items
+                .Where(item => WindowPaletteProjection.ParseAction(item.Id) is not null)
+                .Select(item => item.Title)
+                .OrderBy(title => title, StringComparer.Ordinal));
         var newSession = Assert.Single(snapshot.Items, item => item.Id == BuiltinAction.NewSession.WireName());
         Assert.Equal(keymap.GlyphHint(BuiltinAction.NewSession), newSession.Shortcut);
         Assert.DoesNotContain(snapshot.Items, item => item.Id == BuiltinAction.CommandPalette.WireName());
+    }
+
+    [Fact]
+    public void Commands_end_with_the_two_installer_items_whatever_the_router_state()
+    {
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.Commands,
+            TestStores.Scratch(),
+            Keymap.Empty,
+            StateProvider());
+
+        Assert.Equal(
+            [
+                (InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallCommandLineTool),
+                (InstallerCommands.InstallAgentSkillId, InstallerCommands.InstallAgentSkill),
+            ],
+            snapshot.Items.Select(item => (item.Id, item.Title)));
+        Assert.All(snapshot.Items, item => Assert.Null(item.Shortcut));
+    }
+
+    [Fact]
+    public void Installer_items_are_not_builtin_actions()
+    {
+        foreach (var id in new[] { InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallAgentSkillId })
+        {
+            Assert.Null(WindowPaletteProjection.ParseAction(id));
+            Assert.Equal(id, WindowPaletteProjection.ParseInstallerCommand(id));
+        }
+        Assert.Null(WindowPaletteProjection.ParseInstallerCommand(BuiltinAction.ToggleSplit.WireName()));
+        Assert.Null(WindowPaletteProjection.ParseInstallerCommand("app:something-else"));
+        Assert.Equal(41, BuiltinActions.All.Count);
     }
 
     [Fact]
@@ -408,12 +443,41 @@ public sealed class WindowPaletteAcceptanceTests
     }
 
     [Theory]
+    [InlineData(InstallerCommands.InstallCommandLineToolId)]
+    [InlineData(InstallerCommands.InstallAgentSkillId)]
+    public async Task Installer_items_run_the_installer_handler_and_restore_focus(string itemId)
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.Commands,
+            Item(itemId),
+            UnexpectedSessionAsync,
+            UnexpectedActionAsync,
+            UnexpectedCustomCommandAsync,
+            UnexpectedThemeAsync,
+            cancellationSource.Token,
+            executeInstallerCommandAsync: (actualId, cancellationToken) =>
+            {
+                calls++;
+                Assert.Equal(itemId, actualId);
+                Assert.Equal(cancellationSource.Token, cancellationToken);
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(1, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Theory]
     [InlineData(WindowPaletteMode.Sessions, "not-a-session")]
     [InlineData(WindowPaletteMode.Attention, "not-a-session")]
     [InlineData(WindowPaletteMode.Commands, "not_an_action")]
     [InlineData(WindowPaletteMode.CustomCommands, "not-a-custom-command")]
     [InlineData(WindowPaletteMode.Themes, "not-a-theme")]
     [InlineData((WindowPaletteMode)999, "toggle_sidebar")]
+    [InlineData(WindowPaletteMode.Sessions, InstallerCommands.InstallAgentSkillId)]
+    [InlineData(WindowPaletteMode.CustomCommands, InstallerCommands.InstallCommandLineToolId)]
     public async Task Malformed_ids_and_unknown_modes_do_not_invoke_handlers_and_restore_focus(
         WindowPaletteMode mode,
         string itemId)
@@ -442,7 +506,12 @@ public sealed class WindowPaletteAcceptanceTests
                 calls++;
                 return Task.CompletedTask;
             },
-            CancellationToken.None);
+            CancellationToken.None,
+            (_, _) =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            });
 
         Assert.Equal(0, calls);
         Assert.True(result.RestoreTerminalFocus);

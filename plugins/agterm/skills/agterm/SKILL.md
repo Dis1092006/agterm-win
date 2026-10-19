@@ -66,8 +66,10 @@ daemon that already holds the wrong values.
 
 ## Running agtermctl
 
-`agtermctl.exe` ships next to `agterm-win.exe` in the published app folder. It must be on PATH (the
-user adds that folder to PATH). If it is not on PATH, invoke it by absolute path.
+`agtermctl.exe` ships next to `agterm-win.exe` in the published app folder. agtermctl must be on PATH
+(install it from agterm-win's Help ▸ Install Command Line Tool… in the title bar, or the same item in the
+command palette). To do it by hand, add the folder of `agtermctl.exe` to PATH. If it is not on PATH,
+invoke it by absolute path.
 
 - Without `--socket`, agtermctl uses the socket of the default state directory (`~\.agterm-win`). It
   does not read `AGTERM_SOCKET`. To be explicit, pass `--socket "$AGTERM_SOCKET"`.

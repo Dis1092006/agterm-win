@@ -10,3 +10,6 @@ src/AgTerm.Xterm/Integration/*.cmd  text eol=lf
 # upstream's theme files, byte for byte: a CRLF rewrite on checkout would make the next pack
 # update a diff of every line
 src/AgTerm.Xterm/Themes/** -text
+# the app embeds the skill from the checkout and installs those bytes; Claude Code does not read
+# CRLF frontmatter, and the plugin channel serves the files from git with LF
+plugins/** text eol=lf

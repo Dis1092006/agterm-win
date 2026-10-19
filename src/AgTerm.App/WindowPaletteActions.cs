@@ -15,7 +15,8 @@ public static class WindowPaletteAcceptance
         Func<BuiltinAction, CancellationToken, Task<bool>> executeActionAsync,
         Func<Guid, CancellationToken, Task> executeCustomCommandAsync,
         Func<string?, CancellationToken, Task> setThemeAsync,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<string, CancellationToken, Task>? executeInstallerCommandAsync = null)
     {
         switch (mode)
         {
@@ -32,6 +33,11 @@ public static class WindowPaletteAcceptance
                 {
                     var executed = await executeActionAsync(action, cancellationToken);
                     return new(!executed || WindowPaletteActions.ShouldRestoreTerminalFocus(action));
+                }
+                if (WindowPaletteProjection.ParseInstallerCommand(item.Id) is { } installerId &&
+                    executeInstallerCommandAsync is not null)
+                {
+                    await executeInstallerCommandAsync(installerId, cancellationToken);
                 }
                 break;
             case WindowPaletteMode.CustomCommands:

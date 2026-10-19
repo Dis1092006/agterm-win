@@ -47,6 +47,7 @@
     <Compile Include="..\..\src\AgTerm.App\HotkeyGenerationRegistry.cs" Link="App\HotkeyGenerationRegistry.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowPaletteActions.cs" Link="App\WindowPaletteActions.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowPaletteProjection.cs" Link="App\WindowPaletteProjection.cs" />
+    <Compile Include="..\..\src\AgTerm.App\InstallerActions.cs" Link="App\InstallerActions.cs" />
     <Compile Include="..\..\src\AgTerm.App\ThemePaletteSlot.cs" Link="App\ThemePaletteSlot.cs" />
     <Compile Include="..\..\src\AgTerm.App\ThemePalettePreview.cs" Link="App\ThemePalettePreview.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowCommandRouter.cs" Link="App\WindowCommandRouter.cs" />
