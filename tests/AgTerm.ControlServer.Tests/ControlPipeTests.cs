@@ -182,6 +182,21 @@ public class ControlPipeServerTests
     }
 
     [Fact]
+    public async Task OversizedLineIsRejectedBeforeTheClientFinishesWriting()
+    {
+        // the server stops reading at the cap, so most of this request is never read.
+        var pipe = FreshPipe();
+        using var server = StartEcho(pipe);
+        var huge = new string('x', 2 << 20) + "\n";
+
+        var line = await SendRaw(pipe, huge).WaitAsync(TimeSpan.FromSeconds(5));
+
+        var response = ControlJson.Deserialize<ControlResponse>(line)!;
+        Assert.False(response.Ok);
+        Assert.Equal("request too large or read failed", response.Error);
+    }
+
+    [Fact]
     public async Task NullDispatcherResultMapsToUiTestOnlySeamError()
     {
         // debug.appearance is the one command the dispatcher declines (returns null); the transport
@@ -240,14 +255,24 @@ public class ControlPipeServerTests
         Assert.Throws<PipeClientException>(() => afterStop.Send(new ControlRequest { Cmd = Command.Tree }));
     }
 
-    /// <summary>Writes raw bytes over a fresh pipe connection and reads the single response line.</summary>
+    /// <summary>Writes raw bytes over a fresh pipe connection and reads the single response line.
+    /// The server can answer and close before it reads the whole request (an oversized line), so
+    /// the response is read while the write is still in progress.</summary>
     private static async Task<string> SendRaw(string pipe, string raw)
     {
         using var stream = new NamedPipeClientStream(".", pipe, PipeDirection.InOut, PipeOptions.Asynchronous);
         await stream.ConnectAsync(5000);
-        await stream.WriteAsync(Encoding.UTF8.GetBytes(raw));
+        var write = stream.WriteAsync(Encoding.UTF8.GetBytes(raw)).AsTask();
         using var reader = new StreamReader(stream, Encoding.UTF8, leaveOpen: true);
         var line = await reader.ReadLineAsync();
+        try
+        {
+            await write;
+        }
+        catch (IOException)
+        {
+            // the server closed the pipe before it read the rest of the request.
+        }
         Assert.NotNull(line);
         return line!;
     }
