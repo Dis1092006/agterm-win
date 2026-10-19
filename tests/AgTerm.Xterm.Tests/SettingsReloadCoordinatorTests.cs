@@ -21,9 +21,10 @@ public sealed class SettingsReloadCoordinatorTests
     {
         var loadGate = new TaskCompletionSource<AppSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
         var applyCalls = new List<AppSettings>();
+        var applied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Task<AppSettings> Load(CancellationToken _) => loadGate.Task;
-        Task Apply(AppSettings s) { applyCalls.Add(s); return Task.CompletedTask; }
+        Task Apply(AppSettings s) { applyCalls.Add(s); applied.TrySetResult(); return Task.CompletedTask; }
 
         using var coordinator = new SettingsReloadCoordinator(Load, a => a(), Apply);
 
@@ -36,7 +37,8 @@ public sealed class SettingsReloadCoordinatorTests
         // Complete the load.
         var expected = MakeSettings("agterm");
         loadGate.SetResult(expected);
-        await Task.Delay(100); // let any queued continuations run
+        await applied.Task.WaitAsync(Timeout);
+        await Task.Delay(100); // a second apply, if any, would arrive here
 
         Assert.Single(applyCalls);
         Assert.Equal(expected, applyCalls[0]);
@@ -53,6 +55,7 @@ public sealed class SettingsReloadCoordinatorTests
         var load2Gate = new TaskCompletionSource<AppSettings>(TaskCreationOptions.RunContinuationsAsynchronously);
         var callIndex = 0;
         var applyCalls = new List<AppSettings>();
+        var applied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         Task<AppSettings> Load(CancellationToken _)
         {
@@ -60,7 +63,7 @@ public sealed class SettingsReloadCoordinatorTests
             return index == 1 ? load1Gate.Task : load2Gate.Task;
         }
 
-        Task Apply(AppSettings s) { applyCalls.Add(s); return Task.CompletedTask; }
+        Task Apply(AppSettings s) { applyCalls.Add(s); applied.TrySetResult(); return Task.CompletedTask; }
 
         using var coordinator = new SettingsReloadCoordinator(Load, a => a(), Apply);
 
@@ -69,7 +72,7 @@ public sealed class SettingsReloadCoordinatorTests
 
         var settings2 = MakeSettings("dark");
         load2Gate.SetResult(settings2); // second completes first
-        await Task.Delay(100);
+        await applied.Task.WaitAsync(Timeout);
 
         var settings1 = MakeSettings("light");
         load1Gate.SetResult(settings1); // first arrives late
@@ -94,6 +97,7 @@ public sealed class SettingsReloadCoordinatorTests
 
         var apply1Gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var apply1Started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var apply2Started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var applyCallCount = 0;
         var applyCalls = new List<AppSettings>();
 
@@ -105,6 +109,10 @@ public sealed class SettingsReloadCoordinatorTests
             {
                 apply1Started.TrySetResult();
                 await apply1Gate.Task;
+            }
+            else
+            {
+                apply2Started.TrySetResult();
             }
         }
 
@@ -120,7 +128,7 @@ public sealed class SettingsReloadCoordinatorTests
 
         // Release apply1.
         apply1Gate.SetResult();
-        await Task.Delay(200); // let apply2 run
+        await apply2Started.Task.WaitAsync(Timeout);
 
         // Both settings were applied, in load order.
         Assert.Equal(2, applyCallCount);
@@ -182,18 +190,20 @@ public sealed class SettingsReloadCoordinatorTests
         }
 
         var errors = new List<Exception>();
+        var errorReported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var applyCalls = new List<AppSettings>();
-        Task Apply(AppSettings s) { applyCalls.Add(s); return Task.CompletedTask; }
+        var applied = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task Apply(AppSettings s) { applyCalls.Add(s); applied.TrySetResult(); return Task.CompletedTask; }
 
         using var coordinator = new SettingsReloadCoordinator(
             Load,
             a => a(),
             Apply,
-            error: e => errors.Add(e));
+            error: e => { errors.Add(e); errorReported.TrySetResult(); });
 
         // First request — load throws.
         coordinator.Request();
-        await Task.Delay(100);
+        await errorReported.Task.WaitAsync(Timeout);
 
         Assert.Single(errors);
         Assert.Empty(applyCalls);
@@ -201,7 +211,7 @@ public sealed class SettingsReloadCoordinatorTests
         // Second request — load succeeds.
         failLoad = false;
         coordinator.Request();
-        await Task.Delay(100);
+        await applied.Task.WaitAsync(Timeout);
 
         Assert.Single(applyCalls);
         Assert.Equal("recovered", applyCalls[0].Theme);

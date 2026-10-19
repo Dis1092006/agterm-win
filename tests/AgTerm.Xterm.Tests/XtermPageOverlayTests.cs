@@ -176,9 +176,7 @@ public sealed class XtermPageOverlayTests
             new TerminalLayout.Single(3, "main", "shell"),
             new TerminalLayer("overlay", sizePercent: 50));
 
-        // Submit off the xUnit context: the worker's Task.Yield would otherwise queue behind live
-        // tests that block xUnit's few worker threads on small CI machines.
-        await Task.Run(() => coordinator.Submit(layered));
+        await coordinator.SubmitFromThreadPoolAsync(layered);
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Same(layered, applied);

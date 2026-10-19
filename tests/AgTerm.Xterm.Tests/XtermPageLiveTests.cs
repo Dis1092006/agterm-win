@@ -444,7 +444,7 @@ public class XtermPageLiveTests
         for (var i = 1; i <= 20; i++)
         {
             var paneId = i % 2 == 0 ? "rapid-p2" : "rapid-p1";
-            coordinator.Submit(new TerminalLayout.Single(i, paneId, $"title-{i}"));
+            await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(i, paneId, $"title-{i}"));
         }
 
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(30));

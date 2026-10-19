@@ -27,11 +27,11 @@ public sealed class TerminalLayoutCoordinatorTests
         using var coordinator = new TerminalLayoutCoordinator(Sink);
 
         var layout1 = new TerminalLayout.Single(1L, "pane-1", "shell");
-        coordinator.Submit(layout1);
+        await coordinator.SubmitFromThreadPoolAsync(layout1);
         await gen1Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var layout2 = new TerminalLayout.Single(2L, "pane-1", "shell");
-        coordinator.Submit(layout2);
+        await coordinator.SubmitFromThreadPoolAsync(layout2);
 
         gen1Gate.SetResult();
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
@@ -52,10 +52,10 @@ public sealed class TerminalLayoutCoordinatorTests
         using var coordinator = new TerminalLayoutCoordinator(Sink);
         coordinator.LayoutAccepted += (_, layout) => accepted.Add(layout);
 
-        coordinator.Submit(new TerminalLayout.Single(1L, "pane-a", "shell"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(1L, "pane-a", "shell"));
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
-        coordinator.Submit(new TerminalLayout.Single(2L, "pane-b", "shell"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(2L, "pane-b", "shell"));
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Single(accepted);
@@ -87,10 +87,10 @@ public sealed class TerminalLayoutCoordinatorTests
         using var coordinator = new TerminalLayoutCoordinator(Sink);
         coordinator.LayoutAccepted += (_, layout) => accepted.Add(layout);
 
-        coordinator.Submit(new TerminalLayout.Single(1L, "pane-1", "shell"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(1L, "pane-1", "shell"));
         await gen1Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        coordinator.Submit(new TerminalLayout.Single(2L, "pane-1", "shell"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(2L, "pane-1", "shell"));
 
         gen1Gate.SetResult();
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
@@ -125,10 +125,10 @@ public sealed class TerminalLayoutCoordinatorTests
         var coordinator = new TerminalLayoutCoordinator(Sink);
         coordinator.LayoutAccepted += (_, layout) => accepted.Add(layout);
 
-        coordinator.Submit(new TerminalLayout.Single(1L, "pane-1", "shell"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(1L, "pane-1", "shell"));
         await gen1Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        coordinator.Submit(new TerminalLayout.Single(2L, "pane-1", "shell"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(2L, "pane-1", "shell"));
         coordinator.Dispose();
 
         gen1Gate.SetResult();
@@ -160,12 +160,12 @@ public sealed class TerminalLayoutCoordinatorTests
         using var coordinator = new TerminalLayoutCoordinator(Sink);
         coordinator.LayoutAccepted += (_, layout) => accepted.Add(layout);
 
-        coordinator.Submit(new TerminalLayout.Single(1L, "pane-1", "shell"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(1L, "pane-1", "shell"));
         await gen1Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         for (long g = 2; g <= 20; g++)
         {
-            coordinator.Submit(new TerminalLayout.Single(g, "pane-1", $"title-{g}"));
+            await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(g, "pane-1", $"title-{g}"));
         }
 
         gen1Gate.SetResult();
@@ -192,7 +192,7 @@ public sealed class TerminalLayoutCoordinatorTests
         using var coordinator = new TerminalLayoutCoordinator(Sink);
         coordinator.LayoutAccepted += (_, layout) => { };
 
-        coordinator.Submit(new TerminalLayout.Single(1L, "pane", "session", "workspace"));
+        await coordinator.SubmitFromThreadPoolAsync(new TerminalLayout.Single(1L, "pane", "session", "workspace"));
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
         var single = Assert.IsType<TerminalLayout.Single>(accepted.Single());

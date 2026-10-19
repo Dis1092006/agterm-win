@@ -76,7 +76,7 @@ public sealed class XtermPageSplitTests
         });
         var split = new TerminalLayout.Split(8, "left", "right", 0.4, "left");
 
-        coordinator.Submit(split);
+        await coordinator.SubmitFromThreadPoolAsync(split);
         await coordinator.WhenIdleAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Same(split, applied);

@@ -565,6 +565,8 @@ public sealed class SidebarWorkflowTests : IDisposable
             };
             store.SelectionChanged += () => selectionChanges++;
         });
+        // Drop the snapshots published before the close; they also have no pending close.
+        snapshots.Clear();
         controller.UndoClose(pending.PendingClose!.Id);
         await WaitForSnapshotAsync(snapshots, snapshot => snapshot.PendingClose is null);
         Assert.True(await _coordinator.ReadAsync(store => store.SessionWithId(sessionId) is not null));
