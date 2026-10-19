@@ -7,7 +7,6 @@
         dotnet build publish.proj                                  x64 -> artifacts\publish\agterm-win\release_x64
         dotnet build publish.proj -p:RunnablePlatform=ARM64
         dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm-win
-        dotnet build publish.proj -p:SelfContainedCli=true         agtermctl without needing .NET 8
 
     AgTerm.App (agterm-win.exe) is self-contained (WindowsPackageType=None,
     WindowsAppSDKSelfContained=true), so it publishes as ~230 files beside the exe. DebugType=none drops the .pdb files.
@@ -20,12 +19,17 @@
         single file   34.9 s first run of a build, 4.4 s afterwards
         directory      5.0 s first run,            1.0 s afterwards
 
-    The bundle costs on every launch, not only the first. agtermctl stays single-file: it is one
-    small managed exe with nothing to unpack, and a CLI on PATH is better as one file.
+    The bundle costs on every launch, not only the first. agtermctl stays single-file: a CLI on PATH
+    is better as one file.
 
-    Two publishes rather than one: the app is self-contained while the CLI is framework-dependent, and
-    the SDK's artifacts layout separates publish output per project, so landing both exes in one
-    directory takes an explicit PublishDir.
+    agtermctl is self-contained too, and it has to be. A framework-dependent apphost looks for
+    hostfxr.dll beside itself first; the app's self-contained runtime puts one there, so the CLI takes
+    that directory for a self-contained install, finds no shared\Microsoft.NETCore.App in it and fails
+    with "You must install or update .NET" even when .NET is installed. A self-contained single-file
+    exe has the host linked in and never looks at its neighbours.
+
+    Two publishes rather than one: the SDK's artifacts layout separates publish output per project, so
+    landing both exes in one directory takes an explicit PublishDir.
 
     This is a standalone project rather than a target in Directory.Build.targets, because that file is
     imported into every project in the tree: the target would run once per project, and the parallel
@@ -35,8 +39,6 @@
   <PropertyGroup>
     <!-- x64 or ARM64: AgTerm.App declares only these two, never AnyCPU. -->
     <RunnablePlatform Condition="'$(RunnablePlatform)' == ''">x64</RunnablePlatform>
-    <!-- true bundles the .NET runtime into agtermctl.exe (~65 MB), for a machine without .NET 8. -->
-    <SelfContainedCli Condition="'$(SelfContainedCli)' == ''">false</SelfContainedCli>
     <RunnableConfiguration Condition="'$(RunnableConfiguration)' == ''">Release</RunnableConfiguration>
 
     <!-- win-x64 / win-arm64: the runtime identifier, derived from the msbuild Platform name. -->
@@ -57,7 +59,7 @@
          evaluation, so the two targets run as separate calls. -->
     <Message Importance="high" Text="Publishing AgTerm.App ($(_Rid)) to $(_OutDir)" />
     <!-- SelfContained=true is required, not incidental: without it the exe is framework-dependent
-         and needs .NET 8 installed on the target machine. Setting RuntimeIdentifier alone does not
+         and needs .NET 10 installed on the target machine. Setting RuntimeIdentifier alone does not
          imply it. PublishSingleFile is deliberately absent here; see the note above. -->
     <MSBuild Projects="$(MSBuildThisFileDirectory)src\AgTerm.App\AgTerm.App.csproj"
              Targets="Restore"
@@ -66,13 +68,13 @@
              Targets="Publish"
              Properties="Configuration=$(RunnableConfiguration);Platform=$(RunnablePlatform);RuntimeIdentifier=$(_Rid);SelfContained=true;DebugType=none;PublishDir=$(_OutDir)\" />
 
-    <Message Importance="high" Text="Publishing agtermctl ($(_Rid), single file, self-contained=$(SelfContainedCli))" />
+    <Message Importance="high" Text="Publishing agtermctl ($(_Rid), single file, self-contained)" />
     <MSBuild Projects="$(MSBuildThisFileDirectory)src\AgTerm.Cli\AgTerm.Cli.csproj"
              Targets="Restore"
-             Properties="Configuration=$(RunnableConfiguration);RuntimeIdentifier=$(_Rid);SelfContained=$(SelfContainedCli)" />
+             Properties="Configuration=$(RunnableConfiguration);RuntimeIdentifier=$(_Rid);SelfContained=true" />
     <MSBuild Projects="$(MSBuildThisFileDirectory)src\AgTerm.Cli\AgTerm.Cli.csproj"
              Targets="Publish"
-             Properties="Configuration=$(RunnableConfiguration);RuntimeIdentifier=$(_Rid);SelfContained=$(SelfContainedCli);PublishSingleFile=true;DebugType=none;PublishDir=$(_OutDir)\" />
+             Properties="Configuration=$(RunnableConfiguration);RuntimeIdentifier=$(_Rid);SelfContained=true;PublishSingleFile=true;DebugType=none;PublishDir=$(_OutDir)\" />
 
     <ItemGroup>
       <_Published Include="$(_OutDir)\*" />

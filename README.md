@@ -105,12 +105,12 @@ single-file, with nothing else beside them:
 dotnet build publish.proj                                  # x64 → artifacts\publish\agterm-win\release_x64\
 dotnet build publish.proj -p:RunnablePlatform=ARM64        # same for ARM64
 dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm-win # somewhere on PATH
-dotnet build publish.proj -p:SelfContainedCli=true         # agtermctl without needing the .NET 8 runtime
 ```
 
 `agterm-win.exe` (the `AgTerm.App` project) is ~162 MB: it is self-contained, so the Windows App SDK and the .NET runtime are
-inside it and no install is required. `agtermctl.exe` is ~1 MB and framework-dependent (needs .NET 8);
-`-p:SelfContainedCli=true` makes it standalone at ~65 MB.
+inside it and no install is required. `agtermctl.exe` is self-contained as well (~75 MB): a
+framework-dependent exe placed next to the app's runtime picks up its `hostfxr.dll`, takes the directory for
+a self-contained install and fails with "You must install or update .NET" even when .NET is installed.
 
 **Run (manual).** After `dotnet build`, the app exe lands at
 `artifacts\bin\AgTerm.App\debug\agterm-win.exe` and the CLI at
