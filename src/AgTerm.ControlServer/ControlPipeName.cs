@@ -20,11 +20,25 @@ public static class ControlPipeName
     {
         getEnv ??= Environment.GetEnvironmentVariable;
         if (getEnv("AGTERM_CONTROL_SOCKET") is { Length: > 0 } explicitName) return explicitName;
-        var socketPath = ControlResolve.SocketPath(
+        return Derive(ResolveSocketPath(getEnv)!);
+    }
+
+    /// <summary>The socket path behind <see cref="Resolve"/>, or null when the AGTERM_CONTROL_SOCKET
+    /// override names the pipe and no path derives to it.</summary>
+    public static string? ResolveSocketPath(Func<string, string?>? getEnv = null)
+    {
+        getEnv ??= Environment.GetEnvironmentVariable;
+        if (getEnv("AGTERM_CONTROL_SOCKET") is { Length: > 0 }) return null;
+        return ControlResolve.SocketPath(
             stateDir: getEnv("AGTERM_STATE_DIR"),
             appSupport: PersistenceStore.RealUserDirectory);
-        return Derive(socketPath);
     }
+
+    /// <summary>The socket path a shell may be told about: <paramref name="socketPath"/> when it is
+    /// non-empty and derives to <paramref name="pipeName"/>, else null, so AGTERM_SOCKET never
+    /// points a client at a different pipe.</summary>
+    public static string? AdvertisedSocketPath(string pipeName, string? socketPath) =>
+        !string.IsNullOrEmpty(socketPath) && Derive(socketPath) == pipeName ? socketPath : null;
 
     /// <summary>Derives the pipe name from the platform-neutral socket path: a stable hash keeps the
     /// per-state-dir isolation of the unix socket path while fitting the flat pipe namespace.</summary>

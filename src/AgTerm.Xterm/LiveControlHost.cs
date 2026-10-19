@@ -29,6 +29,10 @@ public sealed record LiveControlHostOptions
 
     public string? PipeName { get; init; }
 
+    /// <summary>The control socket path behind PipeName, advertised to shells as AGTERM_SOCKET only
+    /// when it derives to the pipe. With no PipeName the host uses the path it derives the pipe from.</summary>
+    public string? SocketPath { get; init; }
+
     public string WindowName { get; init; } = "main";
 
     public IReadOnlyList<string> AvailableThemes { get; init; } = Array.Empty<string>();
@@ -218,6 +222,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 picks: windowHost.Picks);
             windowHost.AttachLive(actions, ReserveSurface, _scopeFactory);
         }
+        // Without a pipe name the HeadlessHost derives the pipe from this same path.
+        AdvertisedSocketPath = ControlPipeName.AdvertisedSocketPath(
+            Host.PipeName,
+            options.PipeName is null
+                ? ControlResolve.SocketPath(options.StateDir, PersistenceStore.RealUserDirectory)
+                : options.SocketPath);
         if (options.InitialTheme is { } initialTheme)
         {
             if (initialTheme.Sync != (initialTheme.Dark is not null))
@@ -289,6 +299,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     }
 
     public string PipeName => Host.PipeName;
+
+    /// <summary>The socket path shells get as AGTERM_SOCKET, or null when none derives to
+    /// <see cref="PipeName"/> (the AGTERM_CONTROL_SOCKET override).</summary>
+    public string? AdvertisedSocketPath { get; }
 
     public Guid WindowId => Host.WindowId;
 
@@ -1225,7 +1239,26 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 ReadClipboard = _options.ReadClipboard,
                 ThemeName = sessionId is { } owner ? PaneThemeAssignment.ForSession(Store, owner) : null,
                 RestoredOutput = restoredOutput,
+                ChildEnvironment = SessionEnvironment(session.Id, kind),
             });
+    }
+
+    // Read under the store lock at capture time; the closure only adds the spawn token.
+    private Func<string, IReadOnlyDictionary<string, string>> SessionEnvironment(Guid sessionId, LiveSurfaceKind kind)
+    {
+        var windowId = Host.WindowId;
+        var workspaceId = Host.Store.WorkspaceForSession(sessionId)?.Id;
+        var socketPath = AdvertisedSocketPath;
+        // The overlay is a session surface but not a pane: no AGTERM_PANE, no AGTERM_PANE_ID.
+        StatusPane? pane = kind switch
+        {
+            LiveSurfaceKind.Main => StatusPane.Left,
+            LiveSurfaceKind.Split => StatusPane.Right,
+            LiveSurfaceKind.Scratch => StatusPane.Scratch,
+            _ => null,
+        };
+        return token => SurfaceEnvironment.Session(
+            sessionId, windowId, workspaceId, socketPath, pane, pane is null ? null : token);
     }
 
     // The saved file is consumed even when the setting is off, so stale output never shows up
@@ -1260,7 +1293,15 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     ExistingDirectoryOrNull(_options.HomeDirectory),
                 BaseFontSize = _currentBaseFontSize,
                 ReadClipboard = _options.ReadClipboard,
+                ChildEnvironment = QuickEnvironment(),
             });
+
+    private Func<string, IReadOnlyDictionary<string, string>> QuickEnvironment()
+    {
+        var windowId = Host.WindowId;
+        var socketPath = AdvertisedSocketPath;
+        return _ => SurfaceEnvironment.QuickTerminal(windowId, socketPath);
+    }
 
     private async Task PublishQuickSettlementAsync(PendingTerminalSurface pending)
     {

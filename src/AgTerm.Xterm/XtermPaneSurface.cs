@@ -29,6 +29,11 @@ public sealed class XtermSurfaceOptions
     public string? ThemeName { get; init; }
     /// <summary>Saved VT output of this pane from the previous run (see TerminalPaneOptions).</summary>
     public string? RestoredOutput { get; init; }
+
+    /// <summary>The AGTERM_* values for this surface, given its spawn token. The host fills it when
+    /// it captures the request; null sets none. A function of the token because OpenAsync creates
+    /// the token.</summary>
+    public Func<string, IReadOnlyDictionary<string, string>>? ChildEnvironment { get; init; }
 }
 
 /// <summary>
@@ -63,8 +68,9 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
 
     public TerminalPane Pane { get; }
 
-    /// <summary>The stable spawn token baked into the shell as AGTERM_PANE_ID (session.status /
-    /// session.restore resolve panes by it).</summary>
+    /// <summary>The stable spawn token, also the bridge pane id. The shell sees it as AGTERM_PANE_ID
+    /// only when the host's ChildEnvironment puts it there (main, split, scratch); session.status /
+    /// session.restore resolve panes by it.</summary>
     public string? PaneToken { get; }
 
     /// <summary>The pane's live font size (the tree read-back's fontSize source).</summary>
@@ -80,7 +86,22 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
 
     internal bool IsPromotedToPrimaryPane => Volatile.Read(ref _promotedToPrimaryPane) != 0;
 
-    /// <summary>Spawn the child with the pane token baked in, on the WebView2 UI thread. The pane
+    /// <summary>What the child gets on top of the inherited environment, and what it loses first.
+    /// Every owned AGTERM_* name is removed even with no ChildEnvironment, so a value inherited from
+    /// another agterm-win instance never reaches the shell. Removal runs before the extras.</summary>
+    internal static (IReadOnlyDictionary<string, string> Extra, IReadOnlyList<string> Remove)
+        SpawnEnvironment(XtermSurfaceOptions options, string paneToken)
+    {
+        var extra = new Dictionary<string, string>(TerminalIdentity.PaneEnvironment());
+        if (options.ChildEnvironment?.Invoke(paneToken) is { } child)
+        {
+            foreach (var (name, value) in child) extra[name] = value;
+        }
+        var remove = TerminalIdentity.RemovedVariables.Concat(SurfaceEnvironment.OwnedVariables).ToArray();
+        return (extra, remove);
+    }
+
+    /// <summary>Spawn the child with the host's environment, on the WebView2 UI thread. The pane
     /// token doubles as the bridge pane id — one identifier addresses the pane end to end.</summary>
     public static async Task<XtermPaneSurface> OpenAsync(
         XtermPage page,
@@ -91,6 +112,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
         cancellationToken.ThrowIfCancellationRequested();
 
         var token = Guid.NewGuid().ToString("N");
+        var (extraEnvironment, removeEnvironment) = SpawnEnvironment(options, token);
         TerminalPane? pane = null;
         XtermPaneSurface? surface = null;
         try
@@ -99,8 +121,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
             {
                 Argv = options.Argv,
                 Cwd = options.Cwd,
-                ExtraEnvironment = TerminalIdentity.PaneEnvironment(token),
-                RemoveEnvironment = TerminalIdentity.RemovedVariables,
+                ExtraEnvironment = extraEnvironment,
+                RemoveEnvironment = removeEnvironment,
                 Theme = theme,
                 RestoredOutput = options.RestoredOutput,
             }, cancellationToken);

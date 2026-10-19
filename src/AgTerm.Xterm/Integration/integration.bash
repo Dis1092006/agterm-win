@@ -18,7 +18,7 @@ if [ -f ~/.bashrc ]; then
 fi
 
 # Nothing to report to: sourcing this outside agterm leaves a plain, fully working shell.
-if [ -z "${AGTERM_PANE_ID:-}" ]; then
+if [ -z "${AGTERM_ENABLED:-}" ]; then
   return 0 2>/dev/null || true
 fi
 

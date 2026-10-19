@@ -23,6 +23,7 @@ public partial class App : Application, ILiveWindowController
         var applicationHost = new LiveApplicationHost(new LiveApplicationHostOptions
         {
             PipeName = ControlPipeName.Resolve(),
+            SocketPath = ControlPipeName.ResolveSocketPath(),
             WindowController = this,
         });
         _applicationHost = applicationHost;

@@ -8,6 +8,52 @@ namespace AgTerm.ControlServer.Tests;
 
 public class ControlPipeNameTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData(@"C:\tmp\state-a")]
+    public void Resolved_socket_path_derives_to_the_resolved_pipe(string? stateDir)
+    {
+        Func<string, string?> env = key => key == "AGTERM_STATE_DIR" ? stateDir : null;
+
+        var path = ControlPipeName.ResolveSocketPath(env);
+
+        Assert.NotNull(path);
+        Assert.Equal(ControlPipeName.Resolve(env), ControlPipeName.Derive(path!));
+    }
+
+    [Fact]
+    public void Override_has_no_socket_path()
+    {
+        Func<string, string?> env = key => key switch
+        {
+            "AGTERM_CONTROL_SOCKET" => "my-test-pipe",
+            "AGTERM_STATE_DIR" => @"C:\tmp\state-a",
+            _ => null,
+        };
+
+        Assert.Null(ControlPipeName.ResolveSocketPath(env));
+    }
+
+    [Fact]
+    public void Empty_override_is_not_an_override_for_the_socket_path_either()
+    {
+        // Resolve ignores an empty AGTERM_CONTROL_SOCKET, so the path must follow the same rule.
+        Func<string, string?> env = key => key == "AGTERM_CONTROL_SOCKET" ? "" : null;
+
+        Assert.Equal(ControlPipeName.Resolve(env), ControlPipeName.Derive(ControlPipeName.ResolveSocketPath(env)!));
+    }
+
+    [Fact]
+    public void Advertised_socket_path_requires_a_match()
+    {
+        const string path = @"C:\tmp\state-a\agterm.sock";
+
+        Assert.Equal(path, ControlPipeName.AdvertisedSocketPath(ControlPipeName.Derive(path), path));
+        Assert.Null(ControlPipeName.AdvertisedSocketPath("my-test-pipe", path));
+        Assert.Null(ControlPipeName.AdvertisedSocketPath(ControlPipeName.Derive(""), ""));
+        Assert.Null(ControlPipeName.AdvertisedSocketPath("my-test-pipe", null));
+    }
+
     [Fact]
     public void DerivedNameIsDeterministicAndPrefixed()
     {

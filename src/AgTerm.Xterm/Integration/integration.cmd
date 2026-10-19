@@ -14,7 +14,7 @@ rem Deliberately does NOT emit OSC 0/1/2: Session.DisplayName prefers oscTitle o
 rem basename, so auto-titling would overwrite every sidebar row with a noisy path.
 
 rem Nothing to report to: running this outside agterm leaves the prompt untouched.
-if not defined AGTERM_PANE_ID goto :eof
+if not defined AGTERM_ENABLED goto :eof
 
 rem Idempotent: a second call would prepend the escape twice and report the cwd twice per prompt.
 if defined AGTERM_PROMPT_WRAPPED goto :eof

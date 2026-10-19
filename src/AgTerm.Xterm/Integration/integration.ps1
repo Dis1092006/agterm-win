@@ -14,7 +14,7 @@
 # disables it for the same reason (`shell-integration-features = no-title`).
 
 # Nothing to report to: a plain shell outside agterm sources this as a no-op.
-if (-not $env:AGTERM_PANE_ID) { return }
+if (-not $env:AGTERM_ENABLED) { return }
 
 # Idempotent: a second dot-source would otherwise wrap our own wrapper and emit twice per prompt.
 if ($global:__AgTermState -and $global:__AgTermState.OriginalPrompt) { return }

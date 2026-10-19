@@ -10,10 +10,10 @@ namespace AgTerm.Terminal.Tests;
 public class TerminalIdentityTests
 {
     [Fact]
-    public void Pane_environment_carries_the_spawn_token()
+    public void Pane_environment_declares_only_the_terminal_identity()
     {
-        var env = TerminalIdentity.PaneEnvironment("tok123");
-        Assert.Equal("tok123", env["AGTERM_PANE_ID"]);
+        // The AGTERM_* set, the pane token included, comes from the host (SurfaceEnvironment).
+        Assert.Equal(new[] { "TERM", "TERM_PROGRAM" }, TerminalIdentity.PaneEnvironment().Keys.Order());
     }
 
     [Fact]
@@ -23,7 +23,7 @@ public class TerminalIdentityTests
         // the opposite: for terminal=windows-terminal it demands a CONFIRMED reply to CSI ? u
         // before enabling extended keys, and ConPTY answers terminal queries itself instead of
         // passing them through, so that reply never arrives and Shift+Enter stays a bare CR.
-        Assert.DoesNotContain("WT_SESSION", TerminalIdentity.PaneEnvironment("tok").Keys);
+        Assert.DoesNotContain("WT_SESSION", TerminalIdentity.PaneEnvironment().Keys);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class TerminalIdentityTests
         // list, and pushes the kitty protocol on the same test. Leaving TERM_PROGRAM unset does
         // not mean "no name": detection falls through to TERM, so the terminal became
         // "xterm-256color", which is not on the list, and extendedKeys went off entirely.
-        Assert.Equal("ghostty", TerminalIdentity.PaneEnvironment("tok")["TERM_PROGRAM"]);
+        Assert.Equal("ghostty", TerminalIdentity.PaneEnvironment()["TERM_PROGRAM"]);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class TerminalIdentityTests
     {
         // xterm.js is an xterm, and a 256-color TERM is what it actually implements; inheriting
         // the launcher's value (a bare "cygwin", or nothing at all) misdescribes it
-        Assert.Equal("xterm-256color", TerminalIdentity.PaneEnvironment("tok")["TERM"]);
+        Assert.Equal("xterm-256color", TerminalIdentity.PaneEnvironment()["TERM"]);
     }
 
     [Fact]
@@ -60,14 +60,14 @@ public class TerminalIdentityTests
         // declared value to beat it with, so it has to be removed: left alone, the launcher's
         // version would be read as this terminal's.
         Assert.Contains("TERM_PROGRAM_VERSION", TerminalIdentity.RemovedVariables);
-        Assert.DoesNotContain("TERM_PROGRAM_VERSION", TerminalIdentity.PaneEnvironment("tok").Keys);
+        Assert.DoesNotContain("TERM_PROGRAM_VERSION", TerminalIdentity.PaneEnvironment().Keys);
         Assert.DoesNotContain("TERM_PROGRAM", TerminalIdentity.RemovedVariables);
     }
 
     [Fact]
     public void Removed_variables_and_declared_variables_do_not_overlap()
     {
-        var declared = TerminalIdentity.PaneEnvironment("tok").Keys;
+        var declared = TerminalIdentity.PaneEnvironment().Keys;
         Assert.Empty(declared.Intersect(TerminalIdentity.RemovedVariables));
     }
 }

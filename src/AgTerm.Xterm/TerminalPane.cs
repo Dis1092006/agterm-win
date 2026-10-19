@@ -11,7 +11,7 @@ public sealed record TerminalPaneOptions
 
     public string? Cwd { get; init; }
 
-    /// <summary>Extra child environment (e.g. the surface's AGTERM_PANE_ID token).</summary>
+    /// <summary>Extra child environment (e.g. the terminal identity and the surface's AGTERM_* set).</summary>
     public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
 
     /// <summary>Inherited variables to drop from the child (see TerminalIdentity).</summary>

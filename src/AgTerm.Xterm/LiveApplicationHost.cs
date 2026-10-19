@@ -11,6 +11,9 @@ public sealed record LiveApplicationHostOptions
 
     public string? PipeName { get; init; }
 
+    /// <summary>The control socket path behind PipeName (see LiveControlHostOptions.SocketPath).</summary>
+    public string? SocketPath { get; init; }
+
     public string? HomeDirectory { get; init; }
 
     public ILiveWindowController? WindowController { get; init; }
@@ -86,10 +89,13 @@ public sealed class LiveApplicationHost : IDisposable
         }
         SaveIndex();
 
-        PipeName = options.PipeName
-            ?? ControlPipeName.Derive(ControlResolve.SocketPath(
-                options.StateDir,
-                PersistenceStore.DefaultDirectory));
+        // _stateDirectory is options.StateDir ?? PersistenceStore.DefaultDirectory, the same fallback
+        // the pipe name has always been derived with.
+        var socketPath = options.PipeName is null
+            ? ControlResolve.SocketPath(options.StateDir, _stateDirectory)
+            : options.SocketPath;
+        PipeName = options.PipeName ?? ControlPipeName.Derive(socketPath!);
+        SocketPath = ControlPipeName.AdvertisedSocketPath(PipeName, socketPath);
         _server = new ControlPipeServer(PipeName, DispatchAsync);
     }
 
@@ -142,6 +148,10 @@ public sealed class LiveApplicationHost : IDisposable
     public IReadOnlyList<RecentClosedItem> RecentClosedItems => _recentClosedStore.Load();
 
     public string PipeName { get; }
+
+    /// <summary>The socket path shells get as AGTERM_SOCKET, or null when none derives to
+    /// <see cref="PipeName"/> (the AGTERM_CONTROL_SOCKET override).</summary>
+    public string? SocketPath { get; }
 
     public bool IsListening => _server.IsListening;
 
@@ -269,6 +279,7 @@ public sealed class LiveApplicationHost : IDisposable
                 {
                     StateDir = options.StateDir ?? _stateDirectory,
                     PipeName = PipeName,
+                    SocketPath = SocketPath,
                     WindowName = window.WindowName,
                 },
                 window,

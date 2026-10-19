@@ -28,11 +28,15 @@ public class ShellIntegrationScriptTests
     [InlineData("integration.ps1")]
     [InlineData("integration.cmd")]
     [InlineData("integration.bash")]
-    public void Every_script_no_ops_without_a_pane_id(string name)
+    public void Every_script_no_ops_outside_agterm(string name)
     {
         // Sourced outside agterm (a user's own shell, a --command spawn) the script must leave the
-        // shell exactly as it found it, the same contract upstream's integration.sh keeps.
-        Assert.Contains("AGTERM_PANE_ID", ReadScript(name));
+        // shell exactly as it found it, the same contract upstream's integration.sh keeps. The gate is
+        // AGTERM_ENABLED: the quick terminal sources the integration too but carries no pane id.
+        var script = ReadScript(name);
+
+        Assert.Contains("AGTERM_ENABLED", script);
+        Assert.DoesNotContain("AGTERM_PANE_ID", script);
     }
 
     [Theory]

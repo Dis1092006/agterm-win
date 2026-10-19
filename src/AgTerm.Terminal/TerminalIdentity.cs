@@ -29,13 +29,12 @@ public static class TerminalIdentity
     };
 
     /// <summary>
-    /// The environment declared for a pane's child, on top of the inherited one.
-    /// <paramref name="paneToken"/> is the surface's stable spawn token (§7 session.status).
+    /// The terminal identity declared for a pane's child, on top of the inherited one. The AGTERM_*
+    /// set, the pane token included, comes from the host (SurfaceEnvironment).
     /// </summary>
-    public static IReadOnlyDictionary<string, string> PaneEnvironment(string paneToken) =>
+    public static IReadOnlyDictionary<string, string> PaneEnvironment() =>
         new Dictionary<string, string>
         {
-            ["AGTERM_PANE_ID"] = paneToken,
             // What xterm.js actually implements. Left to inheritance it would carry a value
             // describing a different emulator, or be missing entirely under a GUI-launched app.
             ["TERM"] = "xterm-256color",

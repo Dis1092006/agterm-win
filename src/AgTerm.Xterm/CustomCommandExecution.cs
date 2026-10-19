@@ -232,6 +232,9 @@ public sealed class CustomCommandProcessRunner
         if (isPowerShell)
             startInfo.ArgumentList.Add(invocation.ShellLine);
 
+        // Custom commands get AGT_*; an AGTERM_* value here would come from another instance.
+        foreach (var name in SurfaceEnvironment.OwnedVariables)
+            startInfo.Environment.Remove(name);
         foreach (var pair in invocation.Environment)
             startInfo.Environment[pair.Key] = pair.Value;
         return startInfo;

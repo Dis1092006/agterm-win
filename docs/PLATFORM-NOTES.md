@@ -168,7 +168,8 @@ available in the headless host"` (после резолюции цели — `no
   (`XtermPage` — C#-владелец страницы, `XtermTerminal` — per-pane хэндл). Переключение
   сессий = show/hide div-ов (`agterm.showPane`), а не Visibility WebView2. `PaneToken`
   поверхности (`AGTERM_PANE_ID`) и `paneId` моста — один и тот же идентификатор.
-  На wire не влияет.
+  На wire не влияет. The token stays the bridge pane id for every surface, but it is exported as
+  `AGTERM_PANE_ID` only to main, split and scratch (see "Session environment").
 
 - **Eager deck в live-хосте.** Upstream-приложение реализует вью каждой сессии с момента
   её появления в деке, поэтому `session.type` попадает в фоновую сессию без `select`.
@@ -240,6 +241,8 @@ available in the headless host"` (после резолюции цели — `no
   values; the palette path still requires an active session. The shared WebView2 receives one
   generation-stamped manifest containing active built-ins and parsed custom single/leader chords.
   Replacement is atomic and cancels any armed leader; stale generation events no-op in the host.
+  The command gets no `AGTERM_*` value: all seven names are removed from the inherited
+  environment (see "Session environment").
   A 1.5-second leader timeout and Escape abandon the prefix, and an unmatched continuation is
   retried at the root before it is returned to the terminal.
 
@@ -477,6 +480,8 @@ The third row is the tell: a reply arrives, but it is conhost's signature, not x
 
 That leaves the list. `ghostty` is the entry this port can carry: the others are gated on a version string that would have to be published and kept plausible as those terminals release, and `windows-terminal` is the dead end above.
 
+Upstream sets `TERM_PROGRAM=agterm` and `TERM_PROGRAM_VERSION=<agterm version>` in its session environment. This port keeps `ghostty` for the reason above, does not set a version, and removes an inherited one for the reason in the list above.
+
 This is a claim about behaviour, not provenance, and it is narrower than it looks. The protocol stays opt-in over the wire: the engine reports `CSI u` only while an application has pushed the stack, so a program that never asks keeps the legacy encoding. Capabilities that are probe-confirmed rather than name-granted - kitty graphics, pixel mouse - stay off on their own, because the probe gets no reply through ConPTY.
 
 The engine side is not in question: feeding either `CSI > 5 u` (what Claude Code sends) or `CSI > 1 u` into a live pane makes a following Shift+Enter arrive as `ESC [13;2u` instead of CR. Both are covered by live tests.
@@ -484,6 +489,21 @@ The engine side is not in question: feeding either `CSI > 5 u` (what Claude Code
 What the name gives up is one performance optimization that was tied to `WT_SESSION`: Claude Code skipped its `DECSTBM` scrolling-region path for a Windows terminal session and repainted more instead. Correct either way.
 
 If a future program needs something else from the name, the question to ask first is whether it queries the terminal to confirm what the name claims. Any capability confirmed by a query hits the same wall, until ConPTY forwards queries or this port answers them itself.
+
+## Session environment
+
+Every shell the app spawns gets `AGTERM_*` variables, so a script or an agent in it can tell it runs in agterm-win and can reach the app. `SurfaceEnvironment` in `AgTerm.Core` builds them. It ports upstream `SurfaceEnvironment` at the pin: the same names, the same conditions, UUIDs in upper case.
+
+- **Main, split and scratch** get `AGTERM_ENABLED=1`, `AGTERM_SESSION_ID`, `AGTERM_WINDOW_ID`, `AGTERM_WORKSPACE_ID`, `AGTERM_SOCKET`, `AGTERM_PANE` (`left`, `right` or `scratch`) and `AGTERM_PANE_ID` (the spawn token).
+- **The overlay** gets the session set without `AGTERM_PANE` and `AGTERM_PANE_ID`. It is a session surface, not a pane.
+- **The quick terminal** gets `AGTERM_ENABLED`, `AGTERM_WINDOW_ID` and `AGTERM_SOCKET` only. It belongs to the window, not to a session.
+- `AGTERM_WORKSPACE_ID` and `AGTERM_SOCKET` are left out when there is no value, as upstream does.
+
+**`AGTERM_SOCKET` holds a socket path, not a pipe name.** The value is `<state dir>\agterm.sock`, the path the pipe name is derived from (see "Транспорт: named pipe" in Phase 2). `agtermctl` derives the pipe from `--socket` the same way, so `agtermctl <command> --socket "$env:AGTERM_SOCKET"` reaches the app that started the shell. When the `AGTERM_CONTROL_SOCKET` override is set, the app listens on a literal pipe name, no path derives to it, and `AGTERM_SOCKET` is not set.
+
+**Inherited values are removed.** Upstream is started by launchd, so a foreign `AGTERM_*` value never reaches it. This port can be started from a pane of another instance. Then the app process carries that instance's values, and a shell that inherits them would talk to the wrong app. Every surface spawn removes all seven names before it sets its own, and custom commands remove all seven and set none.
+
+**The shell integration scripts gate on `AGTERM_ENABLED`.** They used to gate on `AGTERM_PANE_ID`. The quick terminal sources the integration too, and it has no pane id now.
 
 ## Product name: agterm-win where a user sees it, agterm on the wire
 

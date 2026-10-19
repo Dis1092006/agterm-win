@@ -1,4 +1,5 @@
 using AgTerm.ControlServer;
+using AgTerm.Core.Model;
 using AgTerm.Xterm;
 
 namespace AgTerm.Xterm.Tests;
@@ -172,11 +173,47 @@ public class XtermPaneSurfaceTests
     [Fact]
     public async Task Pane_token_is_baked_into_the_shell_environment()
     {
-        using var surface = await OpenAsync();
+        using var surface = await OpenAsync(new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd },
+            ChildEnvironment = token => SurfaceEnvironment.Session(Guid.NewGuid(), null, null, null, StatusPane.Left, token),
+        });
         Assert.False(string.IsNullOrWhiteSpace(surface.PaneToken));
         WaitForScreen(surface, ">");
         surface.Inject("echo token=%AGTERM_PANE_ID%\n");
         WaitForScreen(surface, $"token={surface.PaneToken}");
+    }
+
+    [Fact]
+    public void Spawn_environment_removes_every_owned_name_even_without_a_child_environment()
+    {
+        var (extra, remove) = XtermPaneSurface.SpawnEnvironment(new XtermSurfaceOptions { Argv = new[] { Cmd } }, "tok");
+
+        Assert.Subset(remove.ToHashSet(), SurfaceEnvironment.OwnedVariables.ToHashSet());
+        Assert.DoesNotContain(extra.Keys, key => key.StartsWith("AGTERM_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Spawn_environment_passes_the_spawn_token_and_keeps_the_terminal_identity()
+    {
+        string? seen = null;
+        var options = new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd },
+            ChildEnvironment = token =>
+            {
+                seen = token;
+                return SurfaceEnvironment.Session(Guid.NewGuid(), null, null, null, StatusPane.Left, token);
+            },
+        };
+
+        var (extra, remove) = XtermPaneSurface.SpawnEnvironment(options, "tok");
+
+        Assert.Equal("tok", seen);
+        Assert.Equal("tok", extra["AGTERM_PANE_ID"]);
+        Assert.Equal("ghostty", extra["TERM_PROGRAM"]);
+        Assert.DoesNotContain("TERM_PROGRAM_VERSION", extra.Keys);
+        Assert.Contains("TERM_PROGRAM_VERSION", remove);
     }
 
     [Fact]

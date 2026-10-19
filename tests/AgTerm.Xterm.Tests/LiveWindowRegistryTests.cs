@@ -303,6 +303,45 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Application_host_advertises_its_socket_path_to_attached_windows()
+    {
+        using var application = new LiveApplicationHost(new LiveApplicationHostOptions
+        {
+            StateDir = _stateDir,
+            HomeDirectory = _stateDir,
+        });
+        var socketPath = Path.Combine(_stateDir, "agterm.sock");
+
+        using var attached = application.AttachWindow(application.ActiveWindowId!.Value, new LiveControlHostOptions
+        {
+            OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
+        });
+
+        Assert.Equal(socketPath, application.SocketPath);
+        Assert.Equal(application.PipeName, ControlPipeName.Derive(socketPath));
+        Assert.Equal(socketPath, attached.AdvertisedSocketPath);
+    }
+
+    [Fact]
+    public void Application_host_with_a_literal_pipe_name_advertises_nothing()
+    {
+        using var application = new LiveApplicationHost(new LiveApplicationHostOptions
+        {
+            StateDir = _stateDir,
+            HomeDirectory = _stateDir,
+            PipeName = "agterm-literal-" + Guid.NewGuid().ToString("N"),
+        });
+
+        using var attached = application.AttachWindow(application.ActiveWindowId!.Value, new LiveControlHostOptions
+        {
+            OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
+        });
+
+        Assert.Null(application.SocketPath);
+        Assert.Null(attached.AdvertisedSocketPath);
+    }
+
+    [Fact]
     public void Winui_composition_uses_one_application_host_and_reports_bound_window_activation()
     {
         var root = FindRepositoryRoot();

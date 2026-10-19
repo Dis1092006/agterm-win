@@ -25,7 +25,7 @@ public sealed record ConPtyStartInfo
     public Action<byte[]>? OnOutput { get; init; }
 
     /// <summary>Variables added on top of the host's inherited environment (e.g. the surface's
-    /// AGTERM_PANE_ID spawn token). Null = plain inheritance.</summary>
+    /// AGTERM_* set). Null = plain inheritance.</summary>
     public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
 
     /// <summary>Inherited variables to drop from the child (e.g. a launcher's TERM_PROGRAM, which
