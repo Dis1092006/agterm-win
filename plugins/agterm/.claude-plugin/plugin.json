@@ -1,0 +1,20 @@
+{
+  "name": "agterm",
+  "version": "0.1.0",
+  "description": "Drive agterm-win, a native Windows terminal, programmatically via its agtermctl CLI and local control named pipe.",
+  "author": {
+    "name": "Dis1092006"
+  },
+  "homepage": "https://github.com/Dis1092006/agterm-win",
+  "repository": "https://github.com/Dis1092006/agterm-win",
+  "keywords": [
+    "agterm",
+    "terminal",
+    "windows",
+    "automation",
+    "named-pipe"
+  ],
+  "skills": [
+    "./skills/agterm"
+  ]
+}

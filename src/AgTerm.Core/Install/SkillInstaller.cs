@@ -40,7 +40,8 @@ public sealed class SkillInstallReport
     public List<Entry> Skipped { get; } = new();
     public bool FreshSkillsDirectory { get; set; }
 
-    /// <summary>The dialog for this report. Title and text are upstream SkillInstaller.swift's.</summary>
+    /// <summary>The dialog for this report. Title and text are upstream SkillInstaller.swift's, plus one
+    /// paragraph about the plugin channel.</summary>
     public InstallOutcome ToOutcome()
     {
         var problem = Installed.Count == 0 || Skipped.Count > 0;
@@ -64,6 +65,9 @@ public sealed class SkillInstallReport
             lines.Add("The agent uses it automatically when you ask it to control agterm. It drives the "
                 + "app via the agtermctl CLI, so install that too if you haven't: Help ▸ "
                 + InstallerCommands.InstallCommandLineTool);
+            lines.Add("");
+            lines.Add("Use this install or the agterm plugin, not both. With both, the agent loads two copies of "
+                + "the skill.");
         }
         if (Skipped.Count > 0)
         {

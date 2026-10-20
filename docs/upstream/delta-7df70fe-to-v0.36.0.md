@@ -169,7 +169,8 @@
 ## 13. Вне паритета
 
 - macOS: TCC и entitlements, Accessibility и Dictation, локаль на macOS 27, освобождение GPU-поверхностей скрытых панелей, обновления libghostty и Zig, Homebrew cask, Reduce Motion.
-- Без кода: рецепты в `cookbook/`, plugin marketplace для Claude Code и Codex, bundled agent skill, документация.
+- Без кода: рецепты в `cookbook/`, документация.
+- Bundled agent skill и plugin marketplace для Claude Code и Codex больше не вне паритета: порт держит свою адаптированную копию skill и свой marketplace (`docs/superpowers/specs/2026-10-13-agent-skill-design.md`, `docs/PLATFORM-NOTES.md`, раздел «Agent skill»).
 
 ## Открытые вопросы
 

@@ -21,6 +21,9 @@ public sealed class SkillInstallerTests
     private const string UseHint =
         "The agent uses it automatically when you ask it to control agterm. It drives the app via the agtermctl CLI, so install that too if you haven't: Help ▸ Install Command Line Tool…";
 
+    private const string OneChannelHint =
+        "Use this install or the agterm plugin, not both. With both, the agent loads two copies of the skill.";
+
     private const string FreshHint =
         "A skills directory was created for the first time — restart any running agent session so it picks up the new skill.";
 
@@ -100,7 +103,7 @@ public sealed class SkillInstallerTests
         Assert.Equal("Agent Skill Installed", outcome.Title);
         Assert.False(outcome.IsWarning);
         Assert.Equal(
-            string.Join("\n", "Installed for:", $"  • Claude Code: {ClaudeDest}", "", UseHint, "", FreshHint),
+            string.Join("\n", "Installed for:", $"  • Claude Code: {ClaudeDest}", "", UseHint, "", OneChannelHint, "", FreshHint),
             outcome.Message);
     }
 
@@ -120,7 +123,7 @@ public sealed class SkillInstallerTests
         var outcome = report.ToOutcome();
         Assert.False(outcome.IsWarning);
         Assert.Equal(
-            string.Join("\n", "Installed for:", $"  • Claude Code: {ClaudeDest}", $"  • Codex: {CodexDest}", "", UseHint),
+            string.Join("\n", "Installed for:", $"  • Claude Code: {ClaudeDest}", $"  • Codex: {CodexDest}", "", UseHint, "", OneChannelHint),
             outcome.Message);
     }
 
@@ -204,7 +207,7 @@ public sealed class SkillInstallerTests
         Assert.Equal("Agent Skill Installed", outcome.Title);
         Assert.True(outcome.IsWarning);
         Assert.Equal(
-            string.Join("\n", "Installed for:", $"  • Claude Code: {ClaudeDest}", "", UseHint, "", "Skipped:", $"  • Codex: {reason}"),
+            string.Join("\n", "Installed for:", $"  • Claude Code: {ClaudeDest}", "", UseHint, "", OneChannelHint, "", "Skipped:", $"  • Codex: {reason}"),
             outcome.Message);
     }
 

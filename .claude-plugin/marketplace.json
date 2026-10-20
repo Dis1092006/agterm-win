@@ -1,0 +1,31 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agterm-win",
+  "owner": {
+    "name": "Dis1092006"
+  },
+  "metadata": {
+    "description": "The agterm agent skill: drive the agterm-win Windows terminal over its control named pipe."
+  },
+  "plugins": [
+    {
+      "name": "agterm",
+      "source": "./plugins/agterm",
+      "description": "Drive agterm-win, a native Windows terminal, programmatically via its agtermctl CLI and local control named pipe.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Dis1092006"
+      },
+      "homepage": "https://github.com/Dis1092006/agterm-win",
+      "repository": "https://github.com/Dis1092006/agterm-win",
+      "category": "productivity",
+      "keywords": [
+        "agterm",
+        "terminal",
+        "windows",
+        "automation",
+        "named-pipe"
+      ]
+    }
+  ]
+}

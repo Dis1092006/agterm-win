@@ -697,7 +697,7 @@ Upstream has *Install Command Line Tool…* and *Install Agent Skill…* in the 
 
 - The command palette (Run an Action…) lists the same two items. They are app commands with the ids `app:install-command-line-tool` and `app:install-agent-skill`, not builtin actions: a keymap cannot bind them and no control command runs them. The 41 builtin actions and `parity/surface.json` do not change.
 - Each item runs the install and shows the result in a dialog with an OK button, as upstream shows an alert.
-- *Install Agent Skill…* copies the skill files that the build embeds from `plugins/agterm/skills/agterm` to `~\.claude\skills\agterm` and `~\.codex\skills\agterm`. The rules and the dialog text are upstream's.
+- *Install Agent Skill…* copies the skill files that the build embeds from `plugins/agterm/skills/agterm` to `~\.claude\skills\agterm` and `~\.codex\skills\agterm`. The rules are upstream's. The dialog text is upstream's plus one paragraph: use this install or the agterm plugin, not both. See "Agent skill" below.
 - *Install Command Line Tool…* puts `agtermctl` on the user `Path` instead of linking it into `/usr/local/bin`. It needs no administrator rights.
   - The app adds the folder of `agtermctl.exe`, which ships next to `agterm-win.exe`, to the `Path` value in `HKCU\Environment`. The compare ignores case and a trailing `\`, and it expands `%VARIABLES%` in each entry, so a folder that is already there, also as `%LOCALAPPDATA%\…`, is not added again.
   - The value keeps its registry type: `REG_EXPAND_SZ` stays `REG_EXPAND_SZ` and `REG_SZ` stays `REG_SZ`. It is read without expansion, so `%VARIABLES%` in it are written back as they were. A missing value is created as `REG_EXPAND_SZ`.
@@ -705,3 +705,19 @@ Upstream has *Install Command Line Tool…* and *Install Agent Skill…* in the 
   - The app also adds the folder to its own process `PATH`, so panes it opens after the install find `agtermctl`. Shells that were already open, open agterm-win panes included, keep their old `PATH`; the dialog says to open a new terminal.
   - The dialog text is not upstream's, because upstream's text is about `/usr/local/bin`.
   - A build without `agtermctl.exe` next to the app, such as a debug build under `artifacts\bin`, answers `agtermctl is not bundled in this build.`
+
+## Agent skill
+
+The skill in `plugins/agterm/skills/agterm` is this repository's copy of upstream's skill, adapted to Windows. Design: `docs/superpowers/specs/2026-10-13-agent-skill-design.md`.
+
+- The examples stay in bash, as upstream, so the diff against upstream stays small. Claude Code on Windows runs its Bash tool through Git Bash. Codex on Windows runs commands through PowerShell, so `SKILL.md` has a PowerShell section: `$env:AGTERM_SESSION_ID` instead of `$AGTERM_SESSION_ID`, quoting of JSON arguments, and the `AGTERM_ENABLED` check.
+- Upstream sections that the skill does not have:
+  - Inline images and `scripts/show-image.sh`. They need kitty graphics, and agterm-win does not support kitty graphics.
+  - `log show`. It reads the macOS unified log. agterm-win writes no log file, so the skill says to read its `Trace` output with a debug-output viewer such as DebugView.
+  - Homebrew. There is no Homebrew cask for agterm-win.
+  - Attaching a session from another Mac. It needs zmx live sessions, and agterm-win has no zmx (`docs/upstream/delta-7df70fe-to-v0.36.0.md`, section 1).
+- The plugin channel. As upstream, the repository is also a plugin marketplace. `.claude-plugin/marketplace.json` serves Claude Code and Copilot CLI, and `.agents/plugins/marketplace.json` serves Codex. Both list the plugin `agterm` from `./plugins/agterm`. It holds the same skill files that *Install Agent Skill…* copies.
+  - The plugin `version` equals the app `<Version>` in `Directory.Build.props`, not upstream's version. A person raises them together by hand, and `SkillTextTests` checks that they are equal. Claude Code does not update an installed plugin while the version string stays the same.
+  - The repository is private. A user can add the marketplace only if git can clone the repository with their credentials.
+  - A user installs the skill one way: from the app or as a plugin. With both, the agent loads two copies of the skill. The *Install Agent Skill…* dialog says this too.
+  - Copilot CLI reads personal skills only from `~/.copilot/skills` and `~/.agents/skills`, and the app installs to neither. A Copilot CLI user installs the plugin.

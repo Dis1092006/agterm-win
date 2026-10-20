@@ -602,7 +602,7 @@ control-протокол (§5–§6) переписываются на C# поч
 ### По-прежнему сознательно ВНЕ протокола
 
 - Стриминг вывода/скроллбэка терминала — нет и не планируется (читать буфер: `session.text`).
-- Установщики (CLI/hooks/skill) и чистый визуальный chrome — control-EXEMPT, драйвить нечего.
+- Установщики (CLI/hooks/skill) и чистый визуальный chrome — control-EXEMPT, драйвить нечего. Сам agent skill и его установщик (Help ▸ Install Agent Skill…, plugin marketplace) в scope порта, но вне wire-протокола: `docs/superpowers/specs/2026-10-13-agent-skill-design.md`.
 - `debug.appearance` — тестовая (XCUITest-only), в паритет не входит (см. §6).
 - Отображение картинок — НЕ control-команда, а bundled shell-хелпер поверх kitty-графики (на Windows
   зависит от выбранного движка; xterm.js имеет свои механизмы).

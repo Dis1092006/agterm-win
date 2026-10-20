@@ -3,7 +3,7 @@
 A Windows-native companion to [umputun/agterm](https://github.com/umputun/agterm) — the two-level
 `Workspace → Session` model and the agent **control API**, on a Windows stack (ConPTY + WinUI/Avalonia,
 CLI on System.CommandLine). Rendering/chrome are re-implemented natively; the drivable surface stays in
-**strict API parity** so existing agterm scripts and the bundled agent-skill work here unchanged.
+**strict API parity** so existing agterm scripts work here unchanged. The agent skill is this repository's own copy of upstream's skill, adapted to Windows (see [Agent skill](#agent-skill)).
 
 **Status:** Phases 1-5 are complete. The Core model, control plane, live ConPTY/WebView2 renderer,
 Windows shell, Phase 5 workflows, and x64/ARM64 release gates are implemented and validated.
@@ -137,6 +137,22 @@ Build Project `AgTerm.App` (with `Debug | x64` active). Keep two copies: `App (d
 `AGTERM_STATE_DIR=<explicit temp path>\agterm-dev` (Rider does not expand `%TEMP%`) and `App (real)`
 with none. C# debugging is ordinary .NET; the xterm.js side lives in WebView2 — inspect it with
 WebView2 DevTools, not the C# debugger.
+
+## Agent skill
+
+The agent skill in `plugins/agterm/skills/agterm` teaches a coding agent to drive agterm-win with `agtermctl`. It is upstream's skill adapted to Windows; `docs/PLATFORM-NOTES.md`, "Agent skill", lists what changed.
+
+Install it in one of two ways:
+
+- From the app: Help ▸ Install Agent Skill… in the title bar. It copies the skill to `~\.claude\skills\agterm` and `~\.codex\skills\agterm`. Copilot CLI does not read these directories, so Copilot CLI needs the plugin.
+- As a plugin from the marketplace in this repository:
+  - Claude Code: `/plugin marketplace add Dis1092006/agterm-win`, then `/plugin install agterm@agterm-win`.
+  - Codex: `codex plugin marketplace add Dis1092006/agterm-win`, then `codex plugin add agterm@agterm-win`.
+  - Copilot CLI: `copilot plugin marketplace add Dis1092006/agterm-win`, then `copilot plugin install agterm@agterm-win`.
+
+Use one of them, not both. With both, the agent loads two copies of the skill.
+
+The repository is private. The plugin commands work only for a user who has access to it: git must be able to clone `https://github.com/Dis1092006/agterm-win` with that user's credentials.
 
 ## Hotkeys on Windows
 

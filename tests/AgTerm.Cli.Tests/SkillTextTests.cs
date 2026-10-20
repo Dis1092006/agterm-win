@@ -150,6 +150,90 @@ public class SkillTextTests
         Assert.Empty(named.Except([InstallerCommands.InstallCommandLineTool, InstallerCommands.InstallAgentSkill]).Order());
     }
 
+    // Section 5: the plugin channel. Each marketplace lists one plugin, agterm, served from plugins/agterm, and
+    // each plugin manifest points at the skill this file tests.
+
+    [Fact]
+    public void Claude_marketplace_lists_the_agterm_plugin_from_plugins_agterm()
+    {
+        var marketplace = ReadJson(".claude-plugin", "marketplace.json");
+        Assert.Equal("agterm-win", (string?)marketplace["name"]);
+
+        var plugin = Assert.Single(marketplace["plugins"]!.AsArray())!;
+        Assert.Equal("agterm", (string?)plugin["name"]);
+        Assert.Equal("./plugins/agterm", (string?)plugin["source"]);
+        Assert.Equal(PluginDirectory(), Resolve(FindRepoRoot(), (string)plugin["source"]!));
+    }
+
+    [Fact]
+    public void Codex_marketplace_lists_the_agterm_plugin_from_plugins_agterm()
+    {
+        var marketplace = ReadJson(".agents", "plugins", "marketplace.json");
+        Assert.Equal("agterm-win", (string?)marketplace["name"]);
+
+        var plugin = Assert.Single(marketplace["plugins"]!.AsArray())!;
+        Assert.Equal("agterm", (string?)plugin["name"]);
+        Assert.Equal("local", (string?)plugin["source"]!["source"]);
+        Assert.Equal("./plugins/agterm", (string?)plugin["source"]!["path"]);
+        Assert.Equal(PluginDirectory(), Resolve(FindRepoRoot(), (string)plugin["source"]!["path"]!));
+    }
+
+    [Fact]
+    public void Claude_plugin_manifest_points_at_the_skill_directory()
+    {
+        var manifest = ReadJson("plugins", "agterm", ".claude-plugin", "plugin.json");
+        Assert.Equal("agterm", (string?)manifest["name"]);
+
+        var skill = Assert.Single(manifest["skills"]!.AsArray())!;
+        Assert.Equal(SkillDirectory(), Resolve(PluginDirectory(), (string)skill!));
+        Assert.True(File.Exists(Path.Combine(SkillDirectory(), "SKILL.md")));
+    }
+
+    [Fact]
+    public void Codex_plugin_manifest_points_at_the_skills_directory_that_holds_the_skill()
+    {
+        var manifest = ReadJson("plugins", "agterm", ".codex-plugin", "plugin.json");
+        Assert.Equal("agterm", (string?)manifest["name"]);
+
+        var skills = Resolve(PluginDirectory(), (string)manifest["skills"]!);
+        Assert.Equal(Path.GetDirectoryName(SkillDirectory()), skills);
+        Assert.True(File.Exists(Path.Combine(skills, "agterm", "SKILL.md")));
+    }
+
+    // Claude Code takes the plugin version from the manifest first and does not update an installed plugin while
+    // that string stays the same, so it follows the app version, which a person raises by hand.
+    [Fact]
+    public void Plugin_versions_equal_the_app_version()
+    {
+        var props = System.Xml.Linq.XDocument.Load(Path.Combine(FindRepoRoot(), "Directory.Build.props"));
+        var version = Assert.Single(props.Descendants("Version")).Value;
+        Assert.Matches(@"^\d+\.\d+\.\d+$", version);
+
+        Assert.Equal(version, (string?)ReadJson("plugins", "agterm", ".claude-plugin", "plugin.json")["version"]);
+        Assert.Equal(version, (string?)ReadJson("plugins", "agterm", ".codex-plugin", "plugin.json")["version"]);
+        var entry = Assert.Single(ReadJson(".claude-plugin", "marketplace.json")["plugins"]!.AsArray())!;
+        Assert.Equal(version, (string?)entry["version"]);
+    }
+
+    private static JsonNode ReadJson(params string[] path)
+    {
+        var file = Path.Combine([FindRepoRoot(), .. path]);
+        Assert.True(File.Exists(file), $"{string.Join('/', path)} does not exist");
+        return JsonNode.Parse(File.ReadAllText(file))!;
+    }
+
+    /// <summary>A manifest path: relative, starting with ./ as both agents require, and naming an existing
+    /// directory under <paramref name="baseDirectory"/>.</summary>
+    private static string Resolve(string baseDirectory, string relative)
+    {
+        Assert.StartsWith("./", relative);
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(baseDirectory, relative)));
+        Assert.True(Directory.Exists(full), $"{relative} does not name a directory under {baseDirectory}");
+        return full;
+    }
+
+    private static string PluginDirectory() => Path.Combine(FindRepoRoot(), "plugins", "agterm");
+
     private static string? ParseError(string[] argv)
     {
         // agtermctl reads --file during validation, so the sample path must exist.
