@@ -499,6 +499,7 @@ public sealed partial class MainWindow : Window
         page.SplitResized += OnPageSplitResized;
         page.PaneFocusChanged += OnPagePaneFocusChanged;
         page.SearchUpdated += OnPageSearchUpdated;
+        page.SearchResultsChanged += OnPageSearchResultsChanged;
         page.SearchClosed += OnPageSearchClosed;
         page.DashboardHighlighted += OnPageDashboardHighlighted;
         page.DashboardActivated += OnPageDashboardActivated;
@@ -2137,6 +2138,16 @@ public sealed partial class MainWindow : Window
                     store.UpdateSearch(owner.Id, paneId, needle, count, selected);
             }),
             "Search update failed");
+    }
+
+    private void OnPageSearchResultsChanged(string paneId, string needle, int count)
+    {
+        if (_host is not { } host)
+            return;
+
+        ObserveTaskFault(
+            host.ApplySearchTotalAsync(paneId, needle, count),
+            "Search total update failed");
     }
 
     private void OnPageSearchClosed(string paneId)

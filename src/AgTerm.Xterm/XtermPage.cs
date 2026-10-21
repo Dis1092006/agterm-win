@@ -242,6 +242,8 @@ public sealed class XtermPage
 
     public event Action<string, string, int, int?>? SearchUpdated;
 
+    public event Action<string, string, int>? SearchResultsChanged;
+
     public event Action<string>? SearchClosed;
 
     /// <summary>The user acted on the terminal question the page shows.</summary>
@@ -579,6 +581,13 @@ public sealed class XtermPage
             && _terminals.ContainsKey(searchPaneId))
         {
             SearchUpdated?.Invoke(searchPaneId, needle, Math.Max(0, msg.Count ?? 0), msg.Selected);
+            return;
+        }
+
+        if (msg is { Type: "searchResultsChanged", PaneId: { } resultsPaneId, Needle: { } resultsNeedle, Count: >= 0 }
+            && _terminals.ContainsKey(resultsPaneId))
+        {
+            SearchResultsChanged?.Invoke(resultsPaneId, resultsNeedle, msg.Count.Value);
             return;
         }
 

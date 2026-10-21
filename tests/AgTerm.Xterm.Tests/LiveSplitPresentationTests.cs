@@ -355,6 +355,7 @@ public sealed class MainWindowSplitWiringTests
         Assert.Contains("_selection.ToTerminalLayout(generation)", source, StringComparison.Ordinal);
         Assert.Contains("page.PaneFocusChanged += OnPagePaneFocusChanged", source, StringComparison.Ordinal);
         Assert.Contains("page.SearchUpdated += OnPageSearchUpdated", source, StringComparison.Ordinal);
+        Assert.Contains("page.SearchResultsChanged += OnPageSearchResultsChanged", source, StringComparison.Ordinal);
         Assert.Contains("page.SearchClosed += OnPageSearchClosed", source, StringComparison.Ordinal);
         Assert.Contains("host.PaneFocusRequested +=", source, StringComparison.Ordinal);
         Assert.Contains(

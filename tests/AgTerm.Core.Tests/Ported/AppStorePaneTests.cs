@@ -645,6 +645,32 @@ public class AppStorePaneTests
     }
 
     [Fact]
+    public void SearchTotalFollowsOwnerResultsWithoutReplacingSelection()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var workspace = store.AddWorkspace("work");
+        var session = store.AddSession(workspace.Id, "/a")!;
+        session.Surface = new SpySurface("owner-pane");
+
+        Assert.True(store.OpenSearch(session.Id));
+        Assert.True(store.UpdateSearch(session.Id, "owner-pane", "needle", 3, 3));
+        Assert.False(store.UpdateSearchTotal(session.Id, "other-pane", "needle", 2));
+        Assert.False(store.UpdateSearchTotal(session.Id, "owner-pane", "old-needle", 2));
+        Assert.Equal(3, session.SearchTotal);
+
+        Assert.True(store.UpdateSearchTotal(session.Id, "owner-pane", "needle", 2));
+        Assert.Equal(2, session.SearchTotal);
+        Assert.Equal(3, session.SearchSelected);
+        Assert.Equal("2 of 2", session.SearchDisplayText);
+
+        Assert.True(store.UpdateSearchTotal(session.Id, "owner-pane", "needle", 4));
+        Assert.Equal("3 of 4", session.SearchDisplayText);
+        Assert.True(store.CloseSearch(session.Id, "owner-pane"));
+        Assert.False(store.UpdateSearchTotal(session.Id, "owner-pane", "needle", 5));
+        Assert.Null(session.SearchTotal);
+    }
+
+    [Fact]
     public void ControlTreeReportsCommandWait()
     {
         var store = AppStoreFixtures.MakeStore();

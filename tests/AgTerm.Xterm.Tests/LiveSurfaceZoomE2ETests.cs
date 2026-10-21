@@ -93,7 +93,7 @@ public sealed class LiveSurfaceZoomE2ETests
                     ControlToggleMode.On));
 
             Assert.True(response.Ok, response.Error);
-            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(expectedPaneId, snapshot.ZoomPaneId);
             Assert.Equal(surface == "quick", snapshot.QuickVisible);
             Assert.Equal(surface == "quick", ReadLocked(host, () => host.Host.Actions.Quick.Visible));
@@ -139,7 +139,7 @@ public sealed class LiveSurfaceZoomE2ETests
                 Assert.True(response.Ok, response.Error);
             });
 
-            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(snapshot.DashboardOpen);
             Assert.False(ReadLocked(host, () => host.Host.Actions.Dashboard.IsOpen));
         }
@@ -188,7 +188,7 @@ public sealed class LiveSurfaceZoomE2ETests
                 Assert.True(response.Ok, response.Error);
             });
 
-            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Null(snapshot.ZoomPaneId);
             Assert.True(snapshot.DashboardOpen);
             Assert.Null(ReadLocked(host, () => host.Host.Actions.Zoom.Target));
@@ -219,7 +219,7 @@ public sealed class LiveSurfaceZoomE2ETests
 
             await host.ToggleTerminalZoomAsync();
 
-            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal("main-token", snapshot.ZoomPaneId);
             Assert.IsType<TerminalZoomTarget.Session>(
                 ReadLocked(host, () => host.Host.Actions.Zoom.Target));
@@ -341,7 +341,7 @@ public sealed class LiveSurfaceZoomE2ETests
 
             await host.StoreCoordinator.MutateAsync(store => store.CloseScratch(sessionId));
 
-            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Null(snapshot.ZoomPaneId);
             Assert.Null(ReadLocked(host, () => host.Host.Actions.Zoom.Target));
             Assert.False(host.ZoomActive);

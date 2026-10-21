@@ -693,8 +693,9 @@ public sealed class LivePhase5E2ETests
                 client,
                 firstWindowId.Value,
                 firstInitialSessionId,
-                $"{searchMarker} {searchMarker}",
-                pane: "right");
+                searchMarker,
+                pane: "right",
+                occurrences: 2);
 
             var searchOpened = Ok(client.Send(new ControlRequest
             {
@@ -722,22 +723,32 @@ public sealed class LivePhase5E2ETests
             Assert.True(searchModel.SearchActive);
             Assert.Equal(searchMarker, searchModel.SearchNeedle);
             Assert.True(searchModel.SearchTotal >= 2);
-            Assert.Equal(searchOpened.Result!.Count, searchModel.SearchTotal);
+            Assert.True(searchOpened.Result!.Count >= 2);
             Assert.Null(searchModel.SearchSelected);
             Assert.Equal($"{searchModel.SearchTotal} matches", searchModel.SearchDisplayText);
             Assert.Same(firstSplitSurface, searchModel.SearchSurface);
 
+            await WaitForSessionTextAsync(
+                client,
+                firstWindowId.Value,
+                firstInitialSessionId,
+                searchMarker,
+                pane: "right",
+                occurrences: 4);
             var openSearchState = await WaitForSearchStateAsync(
                 firstPage,
                 firstSplitSurface.PaneToken!,
                 state => !state.Hidden
                     && state.OwnerPaneId == firstSplitSurface.PaneToken
                     && state.Needle == searchMarker
-                    && state.AddonCount == searchModel.SearchTotal,
+                    && state.AddonCount == 4
+                    && ReadLocked(firstAttachment, () =>
+                        firstAttachment.Store.SessionWithId(firstInitialSessionId)!.SearchTotal) == state.AddonCount
+                    && state.Status == "4 matches",
                 "search bar/addon did not open on the focused split pane");
-            Assert.Equal(searchModel.SearchDisplayText, openSearchState.Status);
+            var settledSearchTotal = openSearchState.AddonCount;
             Assert.True(openSearchState.InputFocused);
-            Assert.True(openSearchState.AddonCount >= 2);
+            Assert.Equal(4, settledSearchTotal);
             Assert.Null(openSearchState.AddonSelected);
 
             var searchNext = Ok(client.Send(new ControlRequest
@@ -753,7 +764,7 @@ public sealed class LivePhase5E2ETests
             Assert.Equal(1, ReadLocked(
                 firstAttachment,
                 () => firstAttachment.Store.SessionWithId(firstInitialSessionId)!.SearchSelected));
-            Assert.Equal("1 of " + searchModel.SearchTotal, searchNext.Result!.Text);
+            Assert.Equal("1 of " + settledSearchTotal, searchNext.Result!.Text);
             await WaitForSearchStateAsync(
                 firstPage,
                 firstSplitSurface.PaneToken!,
@@ -770,16 +781,16 @@ public sealed class LivePhase5E2ETests
                     To = "prev",
                 },
             }));
-            Assert.Equal(searchModel.SearchTotal, ReadLocked(
+            Assert.Equal(settledSearchTotal, ReadLocked(
                 firstAttachment,
                 () => firstAttachment.Store.SessionWithId(firstInitialSessionId)!.SearchSelected));
             Assert.Equal(
-                $"{searchModel.SearchTotal} of {searchModel.SearchTotal}",
+                $"{settledSearchTotal} of {settledSearchTotal}",
                 searchPrevious.Result!.Text);
             await WaitForSearchStateAsync(
                 firstPage,
                 firstSplitSurface.PaneToken!,
-                state => state.AddonSelected == searchModel.SearchTotal,
+                state => state.AddonSelected == settledSearchTotal,
                 "search previous did not wrap to the last decoration");
 
             Ok(client.Send(new ControlRequest
@@ -1764,10 +1775,14 @@ public sealed class LivePhase5E2ETests
         void OnDashboardActivated(string controlRef) =>
             _ = host.ActivateDashboardMemberAsync(controlRef);
 
+        void OnSearchResultsChanged(string paneId, string needle, int count) =>
+            _ = host.ApplySearchTotalAsync(paneId, needle, count);
+
         host.StoreCoordinator.SelectionSnapshotChanged += OnSelectionChanged;
         host.ThemeChanged += OnThemeChanged;
         page.Page.DashboardHighlighted += OnDashboardHighlighted;
         page.Page.DashboardActivated += OnDashboardActivated;
+        page.Page.SearchResultsChanged += OnSearchResultsChanged;
 
         await host.StoreCoordinator.ReadAsync(store =>
         {
@@ -1828,6 +1843,7 @@ public sealed class LivePhase5E2ETests
                 host.ThemeChanged -= OnThemeChanged;
                 page.Page.DashboardHighlighted -= OnDashboardHighlighted;
                 page.Page.DashboardActivated -= OnDashboardActivated;
+                page.Page.SearchResultsChanged -= OnSearchResultsChanged;
             });
     }
 
@@ -2061,7 +2077,8 @@ public sealed class LivePhase5E2ETests
         Guid windowId,
         Guid sessionId,
         string marker,
-        string pane = "left")
+        string pane = "left",
+        int occurrences = 1)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
         ControlResponse? response = null;
@@ -2078,7 +2095,8 @@ public sealed class LivePhase5E2ETests
                     Pane = pane,
                 },
             });
-            if (response.Ok && response.Result?.Text?.Contains(marker) == true)
+            if (response.Ok &&
+                response.Result?.Text?.Split(marker, StringSplitOptions.None).Length > occurrences)
                 return response.Result.Text;
             await Task.Delay(100);
         }

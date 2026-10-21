@@ -316,6 +316,42 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public ILiveStoreCoordinator StoreCoordinator => _storeCoordinator;
 
+    public async Task ApplySearchTotalAsync(
+        string paneId,
+        string needle,
+        int count,
+        CancellationToken cancellationToken = default)
+    {
+        HeadlessSearchUpdate? update = null;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            var owner = store.Workspaces
+                .SelectMany(workspace => workspace.Sessions)
+                .FirstOrDefault(session => session.SearchSurface?.PaneToken == paneId);
+            if (owner is null)
+                return;
+
+            var previousTotal = owner.SearchTotal;
+            if (!store.UpdateSearchTotal(owner.Id, paneId, needle, count) ||
+                owner.SearchTotal == previousTotal ||
+                owner.SearchSurface is not IHeadlessSurface surface)
+                return;
+
+            update = new HeadlessSearchUpdate(
+                owner.Id,
+                surface,
+                Active: true,
+                Needle: owner.SearchNeedle,
+                DisplayText: owner.SearchDisplayText,
+                Selected: owner.SearchSelected,
+                FocusInput: false,
+                RestorePaneId: null);
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (update is not null)
+            await ApplySearchUpdateAsync(update, cancellationToken).ConfigureAwait(false);
+    }
+
     public void Start() => Host.Start();
 
     public Task PerformFontActionAsync(string action, CancellationToken cancellationToken = default) =>

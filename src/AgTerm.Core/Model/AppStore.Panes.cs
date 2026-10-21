@@ -44,6 +44,26 @@ public sealed partial class AppStore
         return true;
     }
 
+    public bool UpdateSearchTotal(Guid sessionId, string ownerPaneId, string needle, int count)
+    {
+        if (SessionWithId(sessionId) is not { } session ||
+            !session.SearchActive ||
+            session.SearchSurface?.PaneToken != ownerPaneId ||
+            needle.Length == 0 ||
+            session.SearchNeedle != needle)
+        {
+            return false;
+        }
+
+        var total = Math.Max(0, count);
+        if (session.SearchTotal != total)
+        {
+            session.SearchTotal = total;
+            NotifySidebar();
+        }
+        return true;
+    }
+
     public bool CloseSearch(Guid sessionId, string? expectedOwnerPaneId = null)
     {
         if (SessionWithId(sessionId) is not { } session || !session.SearchActive)

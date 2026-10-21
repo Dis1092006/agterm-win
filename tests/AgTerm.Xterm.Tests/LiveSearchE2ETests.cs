@@ -79,7 +79,7 @@ public sealed class LiveSearchE2ETests : IDisposable
         return output;
     }
 
-    private string WaitForText(string contains, string? pane = null, int timeoutMs = 30000)
+    private string WaitForText(string contains, string? pane = null, int timeoutMs = 30000, int occurrences = 1)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
         var text = "";
@@ -89,7 +89,7 @@ public sealed class LiveSearchE2ETests : IDisposable
         while (Environment.TickCount64 < deadline)
         {
             text = Ctl(args).Out;
-            if (text.Contains(contains)) return text;
+            if (text.Split(contains, StringSplitOptions.None).Length > occurrences) return text;
             Thread.Sleep(100);
         }
         Assert.Fail($"session text{(pane is null ? "" : " --pane " + pane)} never contained \"{contains}\"; last:\n{text}");
@@ -197,7 +197,7 @@ public sealed class LiveSearchE2ETests : IDisposable
 
         var marker = "NEEDLE-" + Guid.NewGuid().ToString("N")[..6];
         CtlOk("session", "type", $"echo {marker} {marker} {marker}\n");
-        WaitForText($"{marker} {marker} {marker}");
+        WaitForText(marker, occurrences: 6);
 
         CtlOk("session", "search", marker);
         var modelTotal = ReadSessionField(s => s.SearchTotal);
@@ -208,6 +208,63 @@ public sealed class LiveSearchE2ETests : IDisposable
         var state = shape.GetProperty("state");
         Assert.Equal(marker, state.GetProperty("needle").GetString());
         Assert.Equal(modelTotal, state.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task Output_after_search_open_updates_model_from_addon_results()
+    {
+        var page = await _page.Value;
+        page.SearchResultsChanged += (paneId, needle, count) =>
+            _ = _host.ApplySearchTotalAsync(paneId, needle, count);
+        WaitForText(">");
+        var paneId = MainPaneToken();
+        var marker = "LATE-" + Guid.NewGuid().ToString("N")[..6];
+
+        CtlOk("session", "type", $"ping -n 8 127.0.0.1 > nul & echo {marker} {marker}\n");
+        WaitForText(marker, occurrences: 2);
+        CtlOk("session", "search", marker);
+        Assert.Equal(2, ReadSessionField(session => session.SearchTotal));
+
+        WaitForText(marker, occurrences: 4);
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline &&
+               ReadSessionField(session => session.SearchTotal) != 4)
+            await Task.Delay(50);
+
+        Assert.Equal(4, ReadSessionField(session => session.SearchTotal));
+        Assert.Equal("4 matches", ReadSessionField(session => session.SearchDisplayText));
+        await WaitForSearchStatusAsync(page, "4 matches");
+        var state = (await GetSearchStateShapeAsync(page, paneId)).GetProperty("state");
+        Assert.Equal(4, state.GetProperty("count").GetInt32());
+
+        Assert.Equal("1 of 4", CtlOk("session", "search", "--next").Trim());
+        await WaitForSearchStatusAsync(page, "1 of 4");
+        CtlOk("session", "type", $"echo {marker}\n");
+        var selectedDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < selectedDeadline &&
+               ReadSessionField(session => session.SearchTotal) != 6)
+            await Task.Delay(50);
+        Assert.Equal(6, ReadSessionField(session => session.SearchTotal));
+        Assert.Equal(1, ReadSessionField(session => session.SearchSelected));
+        await WaitForSearchStatusAsync(page, "1 of 6");
+    }
+
+    private async Task WaitForSearchStatusAsync(XtermPage page, string expected)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        string? last = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            var state = await SearchBarStateAsync(page);
+            last = state.GetProperty("status").GetString();
+            if (last == expected)
+            {
+                Assert.True(state.GetProperty("inputFocused").GetBoolean());
+                return;
+            }
+            await Task.Delay(50);
+        }
+        Assert.Fail($"search status did not reach '{expected}'; last: '{last}'");
     }
 
     [Fact]
@@ -242,7 +299,7 @@ public sealed class LiveSearchE2ETests : IDisposable
         var exact = "CaseNeedle" + suffix;
         var otherCase = exact.ToLowerInvariant();
         CtlOk("session", "type", $"echo {exact} {otherCase}\n");
-        WaitForText(exact);
+        WaitForText(exact, occurrences: 2);
 
         CtlOk("session", "search", exact);
 

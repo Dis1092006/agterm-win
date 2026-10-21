@@ -119,7 +119,7 @@ function searchOptions(incremental = false) {
 function openSearch(paneId, needle, displayText, focusInput = true) {
   const pane = panes.get(paneId);
   if (!pane || !searchBarEl || !searchInputEl || !searchStatusEl) return false;
-  pane.el.appendChild(searchBarEl);
+  if (searchBarEl.parentElement !== pane.el) pane.el.appendChild(searchBarEl);
   searchBarEl.dataset.paneId = paneId;
   searchInputEl.value = typeof needle === "string" ? needle : "";
   searchStatusEl.textContent =
@@ -2736,6 +2736,21 @@ function openPane(paneId, opts) {
       index: r ? r.resultIndex : -1,
       count: r ? r.resultCount : 0,
     };
+    queueMicrotask(() => {
+      if (
+        !searchBarEl ||
+        searchBarEl.hidden ||
+        searchBarEl.dataset.paneId !== paneId ||
+        !pane.appliedSearch.needle
+      )
+        return;
+      const needle = pane.appliedSearch.needle;
+      const count = pane.lastSearch.count;
+      if (pane.lastReportedSearch?.needle === needle && pane.lastReportedSearch.count === count)
+        return;
+      pane.lastReportedSearch = { needle, count };
+      post({ type: "searchResultsChanged", paneId, needle, count });
+    });
   });
 
   fitAddon.fit();
