@@ -79,7 +79,7 @@ internal static class ClientOutput
     }
 
     /// <summary>Render the theme.list payload as one theme name per line, the active theme(s)
-    /// marked with "* " and a leading "default ghostty" entry for the no-theme case (no trailing
+    /// marked with "* " and a leading "default terminal" entry for the no-theme case (no trailing
     /// newline). When sync is on, both the light and dark themes are marked and a header notes the
     /// appearance pair; otherwise the single current theme is marked.</summary>
     public static string FormatThemes(IReadOnlyList<string> themes, string? current, bool sync = false,
@@ -90,10 +90,10 @@ internal static class ClientOutput
             : name => name == current;
         string Line(string? name, string label) => (active(name) ? "* " : "  ") + label;
         var body = string.Join("\n",
-            new[] { Line(null, "default ghostty") }.Concat(themes.Select(t => Line(t, t))));
+            new[] { Line(null, "default terminal") }.Concat(themes.Select(t => Line(t, t))));
         if (!sync) return body;
-        var header = "syncing with macOS appearance — light: " + (light ?? "default ghostty")
-            + ", dark: " + (dark ?? "default ghostty");
+        var header = "syncing with Windows appearance — light: " + (light ?? "default terminal")
+            + ", dark: " + (dark ?? "default terminal");
         return header + "\n" + body;
     }
 

@@ -10,7 +10,7 @@
          the same string, and SkillTextTests checks that they match. Raise it by hand, together with them,
          when the skill changes: Claude Code does not update an installed plugin while the version stays
          the same. It is not tied to upstream agterm's version numbers. -->
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
   </PropertyGroup>
 
 </Project>

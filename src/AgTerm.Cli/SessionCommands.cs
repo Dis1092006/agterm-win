@@ -362,7 +362,7 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildReveal(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("reveal",
-            "Reveal a session's focused working directory in Finder.");
+            "Open a session's focused working directory in File Explorer.");
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         target.AddTo(cmd);
@@ -790,7 +790,7 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildPaste(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("paste",
-            "Paste the system clipboard into a session (like ⌘V).");
+            "Paste the system clipboard into a session (like Ctrl+V).");
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         target.AddTo(cmd);
@@ -820,7 +820,7 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildSelectAll(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("select-all",
-            "Select a session's entire terminal buffer (like ⌘A).");
+            "Select a session's entire terminal buffer (no default shortcut).");
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         target.AddTo(cmd);

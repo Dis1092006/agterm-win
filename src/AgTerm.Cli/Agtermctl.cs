@@ -91,7 +91,7 @@ public static class Agtermctl
 
     private static RootCommand BuildRoot(CommandBindings bindings)
     {
-        var root = new RootCommand("Drive agterm over its control socket.");
+        var root = new RootCommand("Drive agterm-win over its control named pipe.");
         foreach (var command in new[]
                  {
                      TreeCommand.Build(bindings),

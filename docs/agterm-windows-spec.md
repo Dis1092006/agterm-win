@@ -279,7 +279,7 @@ commandWait?, background?, surfaces?[] }`.
 - `session.close` — target ИЛИ батч `args.targets[]` (закрытие с одним общим grace-period undo).
 - `session.select` — target.
 - `session.rename` — target + `args.name`.
-- `session.reveal` — открыть cwd фокусного пейна в файловом менеджере (Finder; на Windows — Explorer).
+- `session.reveal` — open the focused pane's working directory in File Explorer.
 - `session.move` — MODE-BEARING, три формы: `args.to` ∈ `up|down|top|bottom` РЕОРДЕР внутри воркспейса;
   `args.workspace` ПЕРЕМЕЩЕНИЕ в другой воркспейс (в конец); `args.after`/`args.before` — поставить
   после/перед якорной сессией (якорь сам определяет воркспейс — relocate+position за один вызов, в т.ч.
@@ -288,8 +288,8 @@ commandWait?, background?, surfaces?[] }`.
 - `session.type` — впечатать `args.text` keystroke'ами (каждый `\n`/`\r`/`\r\n` = Enter; НЕ «вставка» —
   иначе bracketed-paste маркеры). `args.pane` ∈ `left|right|scratch` (дефолт left/main; scratch — даже
   скрытый). `args.select:true` разрешает выбрать ещё-не-показанную сессию для реализации поверхности.
-- `session.paste` — вставить системный буфер обмена в сессию (socket-аналог ⌘V).
-- `session.selectall` — выделить весь буфер терминала (socket-аналог ⌘A; читать через `session.copy`).
+- `session.paste` — paste the system clipboard into the session (also available with Ctrl+V in the terminal).
+- `session.selectall` — select the entire terminal buffer (no default shortcut; read with `session.copy`).
 - `session.text` — вернуть буфер терминала плоским текстом (`result.text`). Дефолт — видимый экран
   фокусного пейна; `args.all` добавляет скроллбэк; `args.lines` — последние N строк;
   `args.pane` ∈ `left|right|scratch`.

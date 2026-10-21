@@ -47,7 +47,7 @@ internal static class ConfigCommands
 {
     internal sealed class Reload : IRequestCommand
     {
-        // config.reload is app-global (one settings model + GhosttyApp), so no `--window` selector.
+        // config.reload is app-global (one settings model), so no `--window` selector.
         public required BasicOptions Basic { get; init; }
         public IConnectionOptions Options => Basic;
 
@@ -64,7 +64,7 @@ internal static class ConfigCommands
     private static System.CommandLine.Command BuildReload(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("reload",
-            "Re-read and apply the agterm-scoped ghostty.conf (prints the diagnostic count).");
+            "Re-read settings.json and apply it to every pane (prints ok).");
         var options = new BasicOptions.Binder();
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Reload { Basic = options.Read(result) });
@@ -117,10 +117,10 @@ internal static class ThemeCommands
     // Upstream discussion (kept out of the one-line help):
     //
     //   theme set NAME            set the light/single theme (a dark theme, if set, is kept)
-    //   theme set --dark NAME     set the dark theme — the terminal then tracks the macOS
-    //   Light/Dark appearance (the light side seeds from the current theme)
+    //   theme set --dark NAME     set the dark theme — the terminal then tracks Windows
+    //   light/dark appearance (the light side seeds from the current theme)
     //   theme set --dark none     clear the dark theme (stop tracking the appearance)
-    //   theme set                 ghostty's built-in default (clears everything)
+    //   theme set                 built-in terminal colors (clears everything)
     internal sealed class Set : IRequestCommand
     {
         public string? Name { get; init; }
@@ -164,7 +164,7 @@ internal static class ThemeCommands
         var cmd = new System.CommandLine.Command("set", "Set + persist the terminal theme, per slot.");
         var name = new Argument<string?>("name")
         {
-            Description = "Light/single theme name (a bundled theme); omit for ghostty's built-in default.",
+            Description = "Light/single theme name (a bundled theme); omit for built-in terminal colors.",
             Arity = ArgumentArity.ZeroOrOne,
         };
         var light = new Option<string?>("--light")

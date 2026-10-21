@@ -1009,21 +1009,21 @@ default.
 ## theme
 
 The app's out-of-the-box default theme is the bundled **agterm** theme (a fresh install opens on it).
-A separate **default ghostty** entry means "no theme" — the built-in base colors (`theme` absent). The
+A separate **default terminal** entry means "no theme" — the built-in base colors (`theme` absent). The
 catalog is the 603 names of upstream agterm: the Ghostty theme pack plus `agterm`, embedded in the app.
 
 `agtermctl theme list` — list the bundled theme names; returns `result.themes` (the names),
-`result.theme` (the current plain theme, absent = the built-in base colors / "default ghostty"), and
+`result.theme` (the current plain theme, absent = the built-in base colors / "default terminal"), and
 `result.sync` with `result.light`/`result.dark` (the per-appearance themes). Wire: `theme.list`. While
 syncing,
 `result.theme` is absent — the state rides the three sync fields. Human output prints one name per
-line with a leading "default ghostty" row, the active one(s) marked `* `; when syncing, a header notes
+line with a leading "default terminal" row, the active one(s) marked `* `; when syncing, a header notes
 the light/dark pair and both sides are marked.
 
 `agtermctl theme set [name]` — set and persist the terminal theme app-wide (settings.json `theme` and
 `darkTheme`), per slot. Wire: `theme.set`.
 - `theme set <name>` sets the light/single theme; a dark theme, if set, is KEPT (syncing stays on).
-  Omit the name for the built-in base colors ("default ghostty") — with a dark theme set, that
+  Omit the name for the built-in base colors ("default terminal") — with a dark theme set, that
   clears BOTH (an unnamed side can't be part of a pair).
 - `theme set --dark <name>` sets the dark theme — the terminal then tracks the Windows light/dark app
   mode (settings.json `followSystemAppearance`), applying the matching side automatically as it

@@ -14,6 +14,29 @@ public class CliFrameworkTests
         Agtermctl.ParseAsRoot(argv).MakeRequest();
 
     [Fact]
+    public void WindowsCommandDescriptionsReflectTheLiveHost()
+    {
+        static System.CommandLine.Command Child(System.CommandLine.Command parent, string name) =>
+            Assert.Single(parent.Subcommands, command => command.Name == name);
+
+        var bindings = new CommandBindings();
+        var session = SessionCommands.Build(bindings);
+        var config = ConfigCommands.Build(bindings);
+        var theme = ThemeCommands.Build(bindings);
+
+        Assert.Contains("File Explorer", Child(session, "reveal").Description);
+        Assert.Contains("Ctrl+V", Child(session, "paste").Description);
+        Assert.DoesNotContain("⌘", Child(session, "paste").Description);
+        Assert.Contains("no default shortcut", Child(session, "select-all").Description);
+        Assert.DoesNotContain("⌘", Child(session, "select-all").Description);
+        Assert.Contains("settings.json", Child(config, "reload").Description);
+        Assert.DoesNotContain("ghostty.conf", Child(config, "reload").Description);
+        Assert.Contains("built-in terminal colors", Child(theme, "set").Arguments.Single().Description);
+        Assert.Contains("control pipe", Child(config, "reload").Options
+            .Single(option => option.Name == "--socket").Description);
+    }
+
+    [Fact]
     public void TreeParsesToABareTreeRequest()
     {
         var request = Request("tree");

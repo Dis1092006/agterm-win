@@ -477,7 +477,7 @@ session's font size to the configured base size (prints `ok`; the diagnostic cou
 terminal theme app-wide, per slot: a NAME sets the light/single theme (a dark theme, if set, is kept);
 `theme set --dark <name>` sets the dark theme, which makes the terminal track the Windows light/dark
 appearance automatically; `theme set --dark none` stops tracking. The app default is the bundled
-**agterm** theme; omit the name for the built-in default (listed as "default ghostty"); an unknown name errors.
+**agterm** theme; omit the name for the built-in terminal colors (listed as "default terminal"); an unknown name errors.
 
 **restore** — `restore clear` — clear every session's saved foreground command so the next restart
 restores plain shells. agterm-win does not capture foreground commands, so this only clears ones

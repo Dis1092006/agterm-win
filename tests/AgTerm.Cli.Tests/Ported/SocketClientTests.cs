@@ -477,19 +477,19 @@ public class SocketClientTests
             },
         };
         var @out = ClientOutput.FormatResponse(response, json: false);
-        Assert.Equal(new[] { "  default ghostty", "  Dracula", "* Nord" }, @out.Split('\n'));
+        Assert.Equal(new[] { "  default terminal", "  Dracula", "* Nord" }, @out.Split('\n'));
     }
 
     [Fact]
-    public void FormatResponseThemesMarksGhosttyDefaultWhenCurrent()
+    public void FormatResponseThemesMarksDefaultTerminalWhenCurrent()
     {
-        // nil current theme = ghostty's built-in is active, so the leading "default ghostty" row is marked.
+        // A missing current theme uses the terminal's built-in colors.
         var response = new ControlResponse
         {
             Ok = true, Result = new ControlResult { Theme = null, Themes = new[] { "Dracula" } },
         };
         var @out = ClientOutput.FormatResponse(response, json: false);
-        Assert.Equal(new[] { "* default ghostty", "  Dracula" }, @out.Split('\n'));
+        Assert.Equal(new[] { "* default terminal", "  Dracula" }, @out.Split('\n'));
     }
 
     [Fact]
@@ -517,11 +517,11 @@ public class SocketClientTests
         };
         var @out = ClientOutput.FormatResponse(response, json: false);
         var lines = @out.Split('\n');
-        Assert.Equal("syncing with macOS appearance — light: Builtin Light, dark: agterm", lines.First());
+        Assert.Equal("syncing with Windows appearance — light: Builtin Light, dark: agterm", lines.First());
         Assert.Contains("* agterm", lines);
         Assert.Contains("* Builtin Light", lines);
         Assert.Contains("  Nord", lines);
-        Assert.Contains("  default ghostty", lines); // unmarked while syncing
+        Assert.Contains("  default terminal", lines); // unmarked while syncing
     }
 
     /// <summary>Records every request and answers events.read with an empty page whose cursor

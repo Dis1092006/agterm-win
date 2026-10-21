@@ -159,7 +159,7 @@ internal sealed class BasicOptions : IConnectionOptions
     {
         public readonly Option<string?> Socket = new("--socket")
         {
-            Description = "Override the control socket path.",
+            Description = "Override the path used to derive the control pipe name.",
         };
 
         public readonly Option<bool> Json = new("--json")
