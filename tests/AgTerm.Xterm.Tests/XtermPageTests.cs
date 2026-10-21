@@ -187,6 +187,25 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task Keystrokes_route_only_from_open_panes_and_classify_interrupts()
+    {
+        var page = await InitializedAsync();
+        var terminal = await page.OpenTerminalAsync("p1");
+        var keys = new List<bool>();
+        terminal.UserKeystroke += keys.Add;
+
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"missing","code":"Escape","key":"Escape"}""");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"KeyA","key":"a"}""");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"KeyC","key":"\u0441","ctrl":true}""");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"KeyC","key":"C","ctrl":true,"shift":true}""");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"Escape","key":"Escape"}""");
+        await page.ClosePaneAsync("p1");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"Escape","key":"Escape"}""");
+
+        Assert.Equal([false, true, false, true], keys);
+    }
+
+    [Fact]
     public async Task ShowPane_runs_the_show_script()
     {
         var page = await InitializedAsync();

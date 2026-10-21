@@ -1,4 +1,5 @@
 using AgTerm.Cli;
+using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
 using System.Text.Json;
@@ -110,6 +111,185 @@ public sealed class LiveSplitE2ETests : IDisposable
         };
         CtlOk("session", "split", "on");
         return await splitRealized.Task.WaitAsync(TimeSpan.FromSeconds(15));
+    }
+
+    private async Task KeyInPaneAsync(string paneId, string key, string? code = null, bool ctrl = false, bool shift = false)
+    {
+        var page = await _page.Value;
+        await _webView.RunAsync(_ => page.ExecuteScriptAsync(
+            $"agterm.dispatchKey({JsonSerializer.Serialize(paneId)}, " +
+            $"{{key:{JsonSerializer.Serialize(key)},code:{JsonSerializer.Serialize(code)},ctrlKey:{ctrl.ToString().ToLowerInvariant()},shiftKey:{shift.ToString().ToLowerInvariant()}}})"));
+    }
+
+    private AgentIndicator CurrentIndicator()
+    {
+        AgentIndicator indicator = default;
+        _host.Host.RunLocked(() => indicator = _host.Store.ActiveSession!.AgentIndicator);
+        return indicator;
+    }
+
+    private async Task WaitForStatusAsync(AgentStatus status)
+    {
+        var deadline = Environment.TickCount64 + 5000;
+        while (CurrentIndicator().Status != status && Environment.TickCount64 < deadline)
+            await Task.Delay(25);
+        Assert.Equal(status, CurrentIndicator().Status);
+    }
+
+    [Fact]
+    public async Task Main_split_and_scratch_keystrokes_clear_only_the_status_their_pane_owns()
+    {
+        WaitForText(">");
+        string main = "";
+        _host.Host.RunLocked(() => main = _host.Store.ActiveSession!.Surface!.PaneToken!);
+        CtlOk("session", "status", "blocked");
+        await KeyInPaneAsync(main, "a");
+        await WaitForStatusAsync(AgentStatus.Idle);
+
+        CtlOk("session", "status", "active");
+        await KeyInPaneAsync(main, "b");
+        await Task.Delay(150);
+        Assert.Equal(AgentStatus.Active, CurrentIndicator().Status);
+        await KeyInPaneAsync(main, "C", "KeyC", ctrl: true, shift: true);
+        await Task.Delay(150);
+        Assert.Equal(AgentStatus.Active, CurrentIndicator().Status);
+        await KeyInPaneAsync(main, "\u0441", "KeyC", ctrl: true);
+        await WaitForStatusAsync(AgentStatus.Idle);
+
+        CtlOk("session", "status", "active");
+        await KeyInPaneAsync(main, "Escape");
+        await WaitForStatusAsync(AgentStatus.Idle);
+
+        var split = await EnableSplitAndWaitForRealizationAsync();
+        WaitForText(">", pane: "right");
+        CtlOk("session", "status", "completed", "--pane", "right");
+        await KeyInPaneAsync(main, "d");
+        await Task.Delay(150);
+        Assert.Equal(AgentStatus.Completed, CurrentIndicator().Status);
+        await KeyInPaneAsync(split.PaneToken!, "e");
+        await WaitForStatusAsync(AgentStatus.Idle);
+
+        CtlOk("session", "scratch", "on");
+        string scratch = "";
+        _host.Host.RunLocked(() => scratch = _host.Store.ActiveSession!.ScratchSurface!.PaneToken!);
+        CtlOk("session", "status", "blocked", "--pane", "scratch");
+        await KeyInPaneAsync(main, "f");
+        await Task.Delay(150);
+        Assert.Equal(AgentStatus.Blocked, CurrentIndicator().Status);
+        await KeyInPaneAsync(scratch, "g");
+        await WaitForStatusAsync(AgentStatus.Idle);
+    }
+
+    [Fact]
+    public async Task Promoted_split_keystroke_clears_migrated_left_status()
+    {
+        WaitForText(">");
+        var split = await EnableSplitAndWaitForRealizationAsync();
+        WaitForText(">", pane: "right");
+        CtlOk("session", "status", "blocked", "--pane", "right");
+        CtlOk("session", "type", "--pane", "left", "exit\n");
+        var deadline = Environment.TickCount64 + 30000;
+        while (CurrentIndicator().StatusPane != StatusPane.Left && Environment.TickCount64 < deadline)
+            await Task.Delay(50);
+        Assert.Equal(StatusPane.Left, CurrentIndicator().StatusPane);
+        await KeyInPaneAsync(split.PaneToken!, "h");
+        await WaitForStatusAsync(AgentStatus.Idle);
+    }
+
+    [Fact]
+    public async Task App_chord_does_not_clear_status_until_a_key_reaches_the_pane()
+    {
+        WaitForText(">");
+        string main = "";
+        _host.Host.RunLocked(() => main = _host.Store.ActiveSession!.Surface!.PaneToken!);
+        var page = await _page.Value;
+        await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
+            [new PhysicalChord(true, false, false, "a")]));
+
+        CtlOk("session", "status", "blocked");
+        await KeyInPaneAsync(main, "a", ctrl: true);
+        await Task.Delay(150);
+        Assert.Equal(AgentStatus.Blocked, CurrentIndicator().Status);
+
+        foreach (var (key, code, keyCode) in new[]
+        {
+            ("Shift", "ShiftLeft", 16),
+            ("Alt", "AltLeft", 18),
+            ("Meta", "MetaLeft", 91),
+            ("AltGraph", "AltRight", 18),
+            ("CapsLock", "CapsLock", 20),
+            ("OS", "MetaLeft", 91),
+        })
+        {
+            await _webView.RunAsync(_ => page.ExecuteScriptAsync($$"""
+                (() => {
+                  const ev = new KeyboardEvent("keydown", {
+                    key: {{JsonSerializer.Serialize(key)}}, code: {{JsonSerializer.Serialize(code)}},
+                    cancelable: true
+                  });
+                  Object.defineProperty(ev, "keyCode", { value: {{keyCode}} });
+                  Object.defineProperty(ev, "which", { value: {{keyCode}} });
+                  agterm.textareaFor({{JsonSerializer.Serialize(main)}}).dispatchEvent(ev);
+                })()
+                """));
+            await Task.Delay(150);
+            Assert.Equal(AgentStatus.Blocked, CurrentIndicator().Status);
+        }
+
+        await _webView.RunAsync(_ => page.SetInterceptChordsAsync([]));
+        await KeyInPaneAsync(main, "z");
+        await WaitForStatusAsync(AgentStatus.Idle);
+    }
+
+    [Fact]
+    public async Task Modifier_keydown_before_an_app_chord_does_not_clear_blocked_status()
+    {
+        WaitForText(">");
+        string main = "";
+        _host.Host.RunLocked(() => main = _host.Store.ActiveSession!.Surface!.PaneToken!);
+        var page = await _page.Value;
+        await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
+            [new PhysicalChord(true, false, false, "a")]));
+
+        CtlOk("session", "status", "blocked");
+        await _webView.RunAsync(_ => page.ExecuteScriptAsync($$"""
+            (() => {
+              const ev = new KeyboardEvent("keydown", {
+                key: "Control", code: "ControlLeft", ctrlKey: true, cancelable: true
+              });
+              Object.defineProperty(ev, "keyCode", { value: 17 });
+              Object.defineProperty(ev, "which", { value: 17 });
+              agterm.textareaFor({{JsonSerializer.Serialize(main)}}).dispatchEvent(ev);
+            })()
+            """));
+        await Task.Delay(150);
+        Assert.Equal(AgentStatus.Blocked, CurrentIndicator().Status);
+        await KeyInPaneAsync(main, "a", ctrl: true);
+        await Task.Delay(150);
+        Assert.Equal(AgentStatus.Blocked, CurrentIndicator().Status);
+    }
+
+    [Fact]
+    public async Task Ctrl_c_with_a_selection_copies_without_clearing_active_status()
+    {
+        WaitForText(">");
+        XtermPaneSurface? surface = null;
+        _host.Host.RunLocked(() => surface = (XtermPaneSurface)_host.Store.ActiveSession!.Surface!);
+        var copied = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var page = await _page.Value;
+        page.CopyRequested += (pane, text) =>
+        {
+            if (pane == surface!.PaneToken) copied.TrySetResult(text);
+        };
+        await _webView.RunAsync(async _ =>
+        {
+            await surface!.Pane.Terminal.SelectAllAsync();
+        });
+
+        CtlOk("session", "status", "active");
+        await KeyInPaneAsync(surface!.PaneToken!, "c", "KeyC", ctrl: true);
+        Assert.NotEmpty(await copied.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(AgentStatus.Active, CurrentIndicator().Status);
     }
 
     [Fact]

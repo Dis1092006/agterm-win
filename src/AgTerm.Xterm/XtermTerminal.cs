@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
@@ -52,6 +53,9 @@ public sealed class XtermTerminal
     /// Enter is CR, and under a pushed kitty keyboard protocol keys carry their CSI u form
     /// (Shift+Enter becomes ESC [13;2u), which is what makes it distinguishable from Enter.</summary>
     public event Action<string>? DataReceived;
+
+    /// <summary>A keydown that the pane passed to xterm, with its interrupt classification.</summary>
+    public event Action<bool>? UserKeystroke;
 
     /// <summary>The fit addon recomputed cols/rows — forward to ConPTY resize.</summary>
     public event Action<int, int>? Resized;
@@ -128,6 +132,14 @@ public sealed class XtermTerminal
     {
         switch (msg.Type)
         {
+            case "userKeystroke" when msg is { Key: { } key, Code: { } code }:
+                var modifiers = KeyModifiers.None;
+                if (msg.Ctrl == true) modifiers |= KeyModifiers.Control;
+                if (msg.Meta == true) modifiers |= KeyModifiers.Command;
+                if (msg.Alt == true) modifiers |= KeyModifiers.Option;
+                if (msg.Shift == true) modifiers |= KeyModifiers.Shift;
+                UserKeystroke?.Invoke(InterruptKeystroke.IsInterrupt(code, key, modifiers));
+                break;
             case "data" when msg.Data is not null:
                 DataReceived?.Invoke(msg.Data);
                 break;

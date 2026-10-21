@@ -648,6 +648,8 @@ internal sealed record BridgeMessage
     [JsonPropertyName("alt")] public bool? Alt { get; init; }
     [JsonPropertyName("shift")] public bool? Shift { get; init; }
     [JsonPropertyName("key")] public string? Key { get; init; }
+    [JsonPropertyName("code")] public string? Code { get; init; }
+    [JsonPropertyName("meta")] public bool? Meta { get; init; }
     [JsonPropertyName("generation")] public long? Generation { get; init; }
     [JsonPropertyName("customCommandId")] public string? CustomCommandId { get; init; }
     [JsonPropertyName("leftPaneId")] public string? LeftPaneId { get; init; }

@@ -5,6 +5,7 @@
 //   page → host  (chrome.webview.postMessage): {type:'ready'}                    page boot, once
 //                                              {type:'data', paneId, data}       user keystrokes
 //                                              {type:'binary', paneId, data}
+//                                              {type:'userKeystroke', paneId, code, key, ctrl, alt, shift, meta}
 //                                              {type:'resize', paneId, cols, rows}
 //                                              {type:'title', paneId, title}     OSC 0/1/2
 //                                              {type:'cwd', paneId, uri}         OSC 7 / OSC 9;9
@@ -1372,6 +1373,8 @@ function syntheticCodeFromKey(key) {
     case "Backspace":
     case "delete":
       return "Backspace";
+    case "Escape":
+      return "Escape";
     case "ArrowLeft":
     case "left":
       return "ArrowLeft";
@@ -2588,6 +2591,20 @@ function openPane(paneId, opts) {
     return true;
   };
 
+  const modifierOnlyKeys = new Set([
+    "Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock", "OS",
+    "NumLock", "ScrollLock", "Fn", "FnLock", "Symbol", "SymbolLock",
+    "Super", "Hyper",
+  ]);
+  const forwardUserKeystroke = (ev) => {
+    if (modifierOnlyKeys.has(ev.key)) return true;
+    post({
+      type: "userKeystroke", paneId, code: ev.code, key: ev.key,
+      ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, meta: ev.metaKey,
+    });
+    return true;
+  };
+
   // app hotkeys never reach the shell: a keydown matching the host-pushed chord table goes
   // back as a chord message instead (the host's KeybindMatcher dispatches it)
   term.attachCustomKeyEventHandler((ev) => {
@@ -2605,7 +2622,7 @@ function openPane(paneId, opts) {
     // Insert is not in the keymap grammar, so normalizeKey drops it: route the clipboard chords
     // before that. A key the keymap can express is routed after it, so a user binding still wins.
     if (key === null) {
-      if (!routeClipboardChord(ev)) return true;
+      if (!routeClipboardChord(ev)) return forwardUserKeystroke(ev);
       if (ev.preventDefault) ev.preventDefault();
       return false;
     }
@@ -2643,7 +2660,7 @@ function openPane(paneId, opts) {
     }
     if (!handled) handled = routeClipboardChord(ev);
     if (!handled) {
-      return true;
+      return forwardUserKeystroke(ev);
     }
     if (ev.preventDefault) ev.preventDefault();
     return false;
@@ -3020,6 +3037,8 @@ window.agterm = {
       case "Backspace":
       case "delete":
         return 8;
+      case "Escape":
+        return 27;
       case "ArrowLeft":
       case "left":
         return 37;

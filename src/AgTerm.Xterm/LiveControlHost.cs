@@ -1334,6 +1334,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     /// the host gate; the UI thread never enters RunLocked.</summary>
     private void Bind(Guid sessionId, XtermPaneSurface surface)
     {
+        BindStatusClear(sessionId, surface);
         surface.Pane.TitleChanged += title => Task.Run(() => Host.RunLocked(() =>
         {
             var live = Host.Store.SessionWithId(sessionId);
@@ -1357,6 +1358,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private void BindSplit(Guid sessionId, XtermPaneSurface surface)
     {
+        BindStatusClear(sessionId, surface);
         surface.Pane.TitleChanged += title => Task.Run(() => Host.RunLocked(() =>
         {
             var live = Host.Store.SessionWithId(sessionId);
@@ -1392,8 +1394,26 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         _ = CloseSplitOnExitAsync(sessionId, surface);
     }
 
-    private void BindScratch(Guid sessionId, XtermPaneSurface surface) =>
+    private void BindScratch(Guid sessionId, XtermPaneSurface surface)
+    {
+        BindStatusClear(sessionId, surface);
         _ = CloseScratchOnExitAsync(sessionId, surface);
+    }
+
+    private void BindStatusClear(Guid sessionId, XtermPaneSurface surface)
+    {
+        surface.Pane.Terminal.UserKeystroke += isInterrupt => _ = Task.Run(() => Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0) return;
+            var session = Store.SessionWithId(sessionId);
+            StatusPane? pane = OwnsMainPane(session, surface) ? StatusPane.Left
+                : OwnsSplitPane(session, surface) ? StatusPane.Right
+                : OwnsScratchPane(session, surface) ? StatusPane.Scratch
+                : null;
+            if (pane is { } owner && session!.AgentIndicator.ClearedBy(owner, isInterrupt))
+                Store.SetAgentIndicator(new AgentIndicator(), sessionId);
+        }));
+    }
 
     private void BindOverlay(Guid sessionId, XtermPaneSurface surface) =>
         _ = CloseOverlayOnExitAsync(sessionId, surface);
