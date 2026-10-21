@@ -15,6 +15,8 @@ internal sealed class FakeScriptHost : IWebViewScriptHost
     public Func<string, string> ScriptResult { get; set; } = script =>
         script.Contains("agterm.openPane") ? """{"cols":80,"rows":24}""" : "null";
 
+    public Func<string, Task<string>>? ScriptTask { get; set; }
+
     public event Action<string>? JsonMessageReceived;
 
     public void MapVirtualHostToFolder(string hostName, string folderPath) =>
@@ -25,7 +27,7 @@ internal sealed class FakeScriptHost : IWebViewScriptHost
     public Task<string> ExecuteScriptAsync(string script)
     {
         Scripts.Add(script);
-        return Task.FromResult(ScriptResult(script));
+        return ScriptTask?.Invoke(script) ?? Task.FromResult(ScriptResult(script));
     }
 
     public void PostJson(string json) => PostedJson.Add(json);

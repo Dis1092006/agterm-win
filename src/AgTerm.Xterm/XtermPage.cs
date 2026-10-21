@@ -62,7 +62,7 @@ public sealed class XtermPage
     public async Task<XtermTerminal> OpenTerminalAsync(string paneId, double? fontSize = null, TerminalTheme? theme = null)
     {
         var result = await _host.ExecuteScriptAsync(
-            $"agterm.openPane({PaneLiteral(paneId)}, {OpenOptions(fontSize, theme)})").ConfigureAwait(false);
+            $"agterm.openPane({PaneLiteral(paneId)}, {OpenOptions(fontSize, theme)})");
         var grid = JsonSerializer.Deserialize<GridDto>(result);
         var terminal = new XtermTerminal(this, paneId, grid?.Cols ?? 0, grid?.Rows ?? 0);
         _terminals[paneId] = terminal;

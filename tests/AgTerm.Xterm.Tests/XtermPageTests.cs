@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
 
@@ -43,6 +44,72 @@ public class XtermPageTests
         Assert.Contains("agterm.openPane(\"p1\"", _host.Scripts[^1]);
         Assert.Equal(120, terminal.Cols);
         Assert.Equal(30, terminal.Rows);
+    }
+
+    [Fact]
+    public async Task Concurrent_open_completions_update_terminals_only_on_the_ui_context()
+    {
+        var page = await InitializedAsync();
+        const int paneCount = 13;
+        var pending = new Queue<TaskCompletionSource<string>>(
+            Enumerable.Range(0, paneCount).Select(_ =>
+                new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously)));
+        var completions = pending.ToArray();
+        _host.ScriptTask = _ => pending.Dequeue().Task;
+
+        var context = new QueuedSynchronizationContext();
+        var previous = SynchronizationContext.Current;
+        Task<XtermTerminal>[] opens;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            opens = Enumerable.Range(0, paneCount)
+                .Select(i => page.OpenTerminalAsync($"pane-{i}")).ToArray();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        await Task.Run(() => Parallel.ForEach(completions,
+            completion => completion.SetResult("""{"cols":80,"rows":24}""")));
+
+        Assert.All(opens, open => Assert.False(open.IsCompleted));
+        Assert.Equal(paneCount, context.PendingCount);
+        context.RunPending();
+        var terminals = await Task.WhenAll(opens);
+        for (var i = 0; i < paneCount; i++)
+        {
+            var received = new List<string>();
+            terminals[i].DataReceived += received.Add;
+            _host.RaiseMessage($$"""{"type":"data","paneId":"pane-{{i}}","data":"{{i}}"}""");
+            Assert.Equal(i.ToString(), Assert.Single(received));
+        }
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _pending = new();
+
+        public int PendingCount => _pending.Count;
+
+        public override void Post(SendOrPostCallback callback, object? state) =>
+            _pending.Enqueue((callback, state));
+
+        public void RunPending()
+        {
+            var previous = Current;
+            try
+            {
+                SetSynchronizationContext(this);
+                while (_pending.TryDequeue(out var work))
+                    work.Callback(work.State);
+            }
+            finally
+            {
+                SetSynchronizationContext(previous);
+            }
+        }
     }
 
     [Fact]
