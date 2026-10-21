@@ -58,24 +58,29 @@ public sealed class XtermPage
     }
 
     /// <summary>Creates the pane in the page (agterm.openPane) and returns its handle at the fitted
-    /// grid. The page shows the first opened pane automatically. A theme opens the pane in it.</summary>
-    public async Task<XtermTerminal> OpenTerminalAsync(string paneId, double? fontSize = null, TerminalTheme? theme = null)
+    /// grid. The page shows the first opened pane automatically. A theme opens the pane in it.
+    /// <paramref name="readlineMarker"/> makes the pane listen for the PowerShell integration's
+    /// readline marker (OSC 7777); only a pane running the integrated PowerShell should.</summary>
+    public async Task<XtermTerminal> OpenTerminalAsync(string paneId, double? fontSize = null, TerminalTheme? theme = null,
+        bool readlineMarker = false)
     {
         var result = await _host.ExecuteScriptAsync(
-            $"agterm.openPane({PaneLiteral(paneId)}, {OpenOptions(fontSize, theme)})");
+            $"agterm.openPane({PaneLiteral(paneId)}, {OpenOptions(fontSize, theme, readlineMarker)})");
         var grid = JsonSerializer.Deserialize<GridDto>(result);
         var terminal = new XtermTerminal(this, paneId, grid?.Cols ?? 0, grid?.Rows ?? 0);
         _terminals[paneId] = terminal;
         return terminal;
     }
 
-    private static string OpenOptions(double? fontSize, TerminalTheme? theme)
+    private static string OpenOptions(double? fontSize, TerminalTheme? theme, bool readlineMarker)
     {
         var members = new List<string>();
         if (fontSize is { } px)
             members.Add($"\"fontSize\":{px.ToString(CultureInfo.InvariantCulture)}");
         if (theme is not null)
             members.Add($"\"theme\":{JsonSerializer.Serialize(PaneThemePayload.From(theme), PaneThemeScriptLiteral)}");
+        if (readlineMarker)
+            members.Add("\"readlineMarker\":true");
         return "{" + string.Join(",", members) + "}";
     }
 

@@ -130,7 +130,7 @@ public static class ShellIntegration
             // Single quotes are PowerShell's literal string: a path with spaces stays one token,
             // and nothing inside it is expanded.
             ShellKind.PowerShellCore or ShellKind.WindowsPowerShell =>
-                [shell, "-NoExit", "-Command", $". '{script}'"],
+                [shell, "-NoExit", "-Command", DotSource(script)],
 
             // /k runs and stays (/c would exit). call and the path stay separate arguments, so the
             // spawn quotes the path as a whole: quotes embedded in one argument are escaped as \",
@@ -143,5 +143,28 @@ public static class ShellIntegration
 
             _ => argv,
         };
+    }
+
+    private static string DotSource(string script) => $". '{script}'";
+
+    /// <summary>
+    /// True when argv is exactly what <see cref="Inject"/> builds for PowerShell. integration.ps1
+    /// then reports when PSReadLine reads input (the readline marker), so only such a pane listens
+    /// for it: in any other pane the marker is ordinary output that a program could print.
+    /// </summary>
+    public static bool ReportsReadline(IReadOnlyList<string> argv)
+    {
+        if (argv.Count != 4) return false;
+        if (Identify(argv[0]) is not (ShellKind.PowerShellCore or ShellKind.WindowsPowerShell)) return false;
+        if (argv[1] != "-NoExit" || argv[2] != "-Command") return false;
+
+        var command = argv[3];
+        const string prefix = ". '";
+        const string suffix = "'";
+        if (!command.StartsWith(prefix, StringComparison.Ordinal) || !command.EndsWith(suffix, StringComparison.Ordinal))
+            return false;
+        var script = command[prefix.Length..^suffix.Length];
+        return !script.Contains('\'')
+            && string.Equals(Path.GetFileName(script), ScriptName(ShellKind.PowerShellCore), StringComparison.OrdinalIgnoreCase);
     }
 }

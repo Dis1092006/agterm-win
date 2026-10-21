@@ -183,6 +183,44 @@ public class ShellIntegrationTests
         Assert.Equal(shell, ShellIntegration.Inject(shell, scriptDirectory: "   "));
     }
 
+    // --- readline marker ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(@"C:\Program Files\PowerShell\7\pwsh.exe")]
+    [InlineData("powershell.exe")]
+    [InlineData(@"C:\Program Files\agterm")]
+    public void An_injected_powershell_argv_reports_the_readline_marker(string shellOrDir)
+    {
+        // The page listens for the integration's readline marker only in a pane the app itself
+        // started PowerShell with integration.ps1; other panes treat it as ordinary output.
+        var argv = shellOrDir.EndsWith(".exe", StringComparison.Ordinal)
+            ? ShellIntegration.Inject([shellOrDir], ScriptDir)
+            : ShellIntegration.Inject(["pwsh.exe"], shellOrDir);
+
+        Assert.True(ShellIntegration.ReportsReadline(argv));
+    }
+
+    public static TheoryData<string[]> ArgvWithoutTheReadlineMarker() => new()
+    {
+        ShellIntegration.Inject(["cmd.exe"], ScriptDir).ToArray(),
+        ShellIntegration.Inject(["bash.exe"], ScriptDir).ToArray(),
+        new[] { "pwsh.exe" },
+        new[] { "pwsh.exe", "-NoLogo" },
+        new[] { "pwsh.exe", "-NoExit", "-Command", @". 'C:\other\profile.ps1'" },
+        new[] { "pwsh.exe", "-NoExit", "-Command", @". 'C:\app\integration\integration.ps1'; vim" },
+        new[] { "pwsh.exe", "-Command", @". 'C:\app\integration\integration.ps1'" },
+        new[] { "cmd.exe", "-NoExit", "-Command", @". 'C:\app\integration\integration.ps1'" },
+        new[] { "npm", "run", "dev" },
+        Array.Empty<string>(),
+    };
+
+    [Theory]
+    [MemberData(nameof(ArgvWithoutTheReadlineMarker))]
+    public void Any_other_argv_does_not_report_the_readline_marker(string[] argv)
+    {
+        Assert.False(ShellIntegration.ReportsReadline(argv));
+    }
+
     // --- script directory resolution ------------------------------------------------------
 
     [Fact]

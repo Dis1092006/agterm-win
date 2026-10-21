@@ -1345,7 +1345,23 @@ function buildTheme(settings) {
   return theme;
 }
 
-// the event.code a physical key reports, for the keys tests drive (letters/digits are positional
+// US scan codes of the letter keys, the same table xterm.js's win32-input-mode encoder uses
+const LETTER_SCAN_CODES = {
+  A: 30, B: 48, C: 46, D: 32, E: 18, F: 33, G: 34, H: 35, I: 23, J: 36, K: 37, L: 38, M: 50,
+  N: 49, O: 24, P: 25, Q: 16, R: 19, S: 31, T: 20, U: 22, V: 47, W: 17, X: 45, Y: 21, Z: 44,
+};
+
+// A win32-input-mode record (ESC [ Vk ; Sc ; Uc ; Kd ; Cs ; Rc _) for Ctrl and a letter key
+// ("KeyZ"), with the lowercase Latin letter as the character. PSReadLine names a key whose
+// character is a control character through the keyboard layout, so on a non-Latin layout 0x1a
+// becomes Ctrl+я; with the letter it is Ctrl+z on any layout. The other fields copy xterm's own
+// encoder: Cs is LEFT_CTRL (xterm sets RIGHT_CTRL only for the ControlRight key itself, and
+// PowerShell sees Control either way), and no lock flags.
+function win32CtrlLetter(code, keyDown) {
+  const letter = code.slice(3);
+  return `\x1b[${letter.charCodeAt(0)};${LETTER_SCAN_CODES[letter]};`
+    + `${letter.toLowerCase().charCodeAt(0)};${keyDown ? 1 : 0};8;1_`;
+}
 // names, not the produced character; the rest are named after the key itself)
 function syntheticCodeFromKey(key) {
   if (typeof key !== "string" || key.length === 0) return "";
@@ -2523,6 +2539,14 @@ function openPane(paneId, opts) {
     lastSearch: { index: -1, count: 0 },
     appliedSearch: { needle: "", selected: null },
     el,
+    // The PowerShell integration's readline marker (OSC 7777), heard only in a pane the host
+    // started with that integration. readline: PSReadLine reads input now; readlinePaste: the key
+    // that runs its Paste function. rewrittenKeys: event.code of a pressed key the page sent in
+    // its own form → the release to send for it ("" for none).
+    readlineListening: !!(opts && opts.readlineMarker),
+    readline: false,
+    readlinePaste: null,
+    rewrittenKeys: new Map(),
   };
   panes.set(paneId, pane);
 
@@ -2562,13 +2586,64 @@ function openPane(paneId, opts) {
     }
   }
 
+  // win32-input-mode decides the encoding only while both the pane option (off while a program
+  // has kitty keyboard flags pushed) and the program's DECSET 9001 are on
+  const win32Encodes = () =>
+    !!term.options.vtExtensions?.win32InputMode && !!term.modes.win32InputMode;
+
+  // While PSReadLine reads input, a paste goes to its Paste function: it reads the clipboard
+  // itself and inserts the text as one edit, so one Ctrl+Z undoes the whole paste and a newline
+  // does not run the line. Typed in by the app, each character would be its own undo step.
+  // code is the pressed key, whose release is then sent in the same form (or not at all).
+  const sendReadlinePaste = (code) => {
+    if (!pane.readline) return false;
+    if (pane.readlinePaste === "shift-insert") {
+      pane.term.input("\x1b[2;2~", true);
+      if (code) pane.rewrittenKeys.set(code, "");
+      return true;
+    }
+    if (pane.readlinePaste === "ctrl-v" && win32Encodes()) {
+      pane.term.input(win32CtrlLetter("KeyV", true), true);
+      if (code) pane.rewrittenKeys.set(code, win32CtrlLetter("KeyV", false));
+      else pane.term.input(win32CtrlLetter("KeyV", false), true);
+      return true;
+    }
+    return false;
+  };
+
+  // xterm sends a release for a key whose press the handler consumed; for a key the page sent in
+  // its own form, the page sends the matching release instead
+  const releaseRewrittenKey = (ev) => {
+    if (!pane.rewrittenKeys.has(ev.code)) return true;
+    const release = pane.rewrittenKeys.get(ev.code);
+    pane.rewrittenKeys.delete(ev.code);
+    if (release) pane.term.input(release, true);
+    if (ev.preventDefault) ev.preventDefault();
+    return false;
+  };
+  // a key released while the page had no focus never reports it
+  term.textarea?.addEventListener("blur", () => pane.rewrittenKeys.clear());
+
+  // While PSReadLine reads input, Ctrl and a letter key on a non-Latin layout go as the record
+  // with the Latin letter (see win32CtrlLetter), so Ctrl+Z on Russian runs Undo, not Ctrl+я.
+  // Ctrl+Shift is left alone: xterm's record already matches a Ctrl+Shift binding there.
+  const rewriteCtrlLetter = (ev) => {
+    if (!pane.readline || !win32Encodes()) return false;
+    if (!ev.ctrlKey || ev.shiftKey || ev.altKey || ev.metaKey) return false;
+    if (!/^Key[A-Z]$/.test(ev.code || "")) return false;
+    if (typeof ev.key !== "string" || ev.key.length !== 1 || /^[a-zA-Z]$/.test(ev.key)) return false;
+    pane.term.input(win32CtrlLetter(ev.code, true), true);
+    pane.rewrittenKeys.set(ev.code, win32CtrlLetter(ev.code, false));
+    return true;
+  };
+
   // right-click paste is controlled by page-global renderer settings and can be toggled at runtime.
   el.addEventListener(
     "contextmenu",
     (ev) => {
       if (!rendererSettings.rightClickPaste) return;
       if (ev.preventDefault) ev.preventDefault();
-      post({ type: "pasteRequested", paneId });
+      if (!sendReadlinePaste(null)) post({ type: "pasteRequested", paneId });
     },
     true,
   );
@@ -2589,7 +2664,7 @@ function openPane(paneId, opts) {
     const isPaste = (ev.ctrlKey && letter === "v") || (ev.shiftKey && insert);
     if (!isCopy && !isPaste) return false;
     if (isPaste) {
-      post({ type: "pasteRequested", paneId });
+      if (!sendReadlinePaste(ev.code)) post({ type: "pasteRequested", paneId });
       return true;
     }
     const selection = pane.term.getSelection();
@@ -2622,7 +2697,10 @@ function openPane(paneId, opts) {
   // app hotkeys never reach the shell: a keydown matching the host-pushed chord table goes
   // back as a chord message instead (the host's KeybindMatcher dispatches it)
   term.attachCustomKeyEventHandler((ev) => {
+    if (ev.type === "keyup") return releaseRewrittenKey(ev);
     if (ev.type !== "keydown") return true;
+    // a new press replaces any release left over from an earlier press of the same key
+    pane.rewrittenKeys.delete(ev.code);
     if (routeSwitcherKey(paneId, ev)) {
       if (ev.preventDefault) ev.preventDefault();
       return false;
@@ -2673,6 +2751,11 @@ function openPane(paneId, opts) {
       handled = processCustomChord(paneId, chord, true);
     }
     if (!handled) handled = routeClipboardChord(ev);
+    if (!handled && rewriteCtrlLetter(ev)) {
+      forwardUserKeystroke(ev);
+      if (ev.preventDefault) ev.preventDefault();
+      return false;
+    }
     if (!handled) {
       if (ev.ctrlKey && !ev.altKey && key !== normalizeKey(ev.key)
           && /^[a-z]$/.test(key || "")) {
@@ -2747,6 +2830,20 @@ function openPane(paneId, opts) {
       post({ type: "cwd", paneId, uri: data.slice(2) });
     return false;
   });
+
+  // OSC 7777 — integration.ps1's private readline marker:
+  // "agterm-readline=1[;paste=shift-insert|ctrl-v]" before PSReadLine reads a line,
+  // "agterm-readline=0" once it returns. Any other payload changes nothing.
+  if (pane.readlineListening) {
+    term.parser.registerOscHandler(7777, (data) => {
+      const m = /^agterm-readline=([01])(?:;paste=(shift-insert|ctrl-v))?$/.exec(data);
+      if (m) {
+        pane.readline = m[1] === "1";
+        pane.readlinePaste = pane.readline && m[2] ? m[2] : null;
+      }
+      return true;
+    });
+  }
 
   // track search hits so a read-back after find can report "N of M"
   searchAddon.onDidChangeResults((r) => {
@@ -3103,6 +3200,11 @@ window.agterm = {
   // win32InputModeEncodes above
   win32InputModeActive: (paneId) =>
     withPane(paneId, (p) => !!p.term.modes.win32InputMode),
+  // test-only: the readline marker state of a pane
+  readlineState: (paneId) =>
+    withPane(paneId, (p) => ({
+      listening: p.readlineListening, reading: p.readline, paste: p.readlinePaste,
+    })),
   // test-only: a synthetic keyup on the document (the Ctrl release the switcher waits for)
   dispatchKeyUp: (key) => {
     document.dispatchEvent(new KeyboardEvent("keyup", { key }));

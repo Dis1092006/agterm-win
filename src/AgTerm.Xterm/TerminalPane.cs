@@ -99,7 +99,8 @@ public sealed class TerminalPane : IDisposable
 
         try
         {
-            terminal = await page.OpenTerminalAsync(paneId, theme: options.Theme);
+            terminal = await page.OpenTerminalAsync(paneId, theme: options.Theme,
+                readlineMarker: ShellIntegration.ReportsReadline(options.Argv));
 
             cancellationToken.ThrowIfCancellationRequested();
 

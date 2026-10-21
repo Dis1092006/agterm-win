@@ -69,6 +69,25 @@ public class ShellIntegrationScriptTests
     }
 
     [Fact]
+    public void The_powershell_script_wraps_the_readline_function_and_keeps_the_last_status()
+    {
+        var script = ReadScript("integration.ps1");
+
+        // The same value capture as prompt: the wrapper calls the original, not itself.
+        Assert.Contains("$function:PSConsoleHostReadLine", script);
+        Assert.Contains("OriginalReadLine", script);
+
+        // The page must stop rewriting keys once ReadLine returns, also on Ctrl+C or a throw.
+        Assert.Matches(
+            new Regex(@"finally\s*\{[^}]*agterm-readline=0", RegexOptions.Singleline), script);
+
+        // Every statement resets $?, so the wrapper reads it before anything else.
+        Assert.Matches(
+            new Regex(@"function global:PSConsoleHostReadLine\s*\{\s*\[System\.Diagnostics\.DebuggerHidden\(\)\]\s*param\(\)\s*\$lastRunStatus\s*=\s*\$\?"),
+            script);
+    }
+
+    [Fact]
     public void The_bash_script_sources_the_users_rc_that_rcfile_displaced()
     {
         var script = ReadScript("integration.bash");

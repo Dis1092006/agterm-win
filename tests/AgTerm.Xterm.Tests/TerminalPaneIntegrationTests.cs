@@ -129,6 +129,32 @@ public class TerminalPaneIntegrationTests
         lock (cwds) Assert.Fail($"no parsed cwd; saw: {string.Join(" | ", cwds)}");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Only_a_pane_running_the_integrated_powershell_listens_for_the_readline_marker(bool powershell)
+    {
+        var view = await _webView.CreateWebViewAsync();
+        var page = await _webView.RunAsync(async _ =>
+        {
+            var p = new XtermPage(new Win32ScriptHost(view.CoreWebView2));
+            await p.InitializeAsync();
+            return p;
+        });
+        // the script does not have to exist: only the argv shape decides
+        var argv = powershell
+            ? AgTerm.Terminal.ShellIntegration.Inject(["powershell.exe"], @"C:\agterm-missing-integration")
+            : AgTerm.Terminal.ShellIntegration.Inject([Cmd], @"C:\agterm-missing-integration");
+        var paneId = Guid.NewGuid().ToString("N");
+        using var pane = await _webView.RunAsync(async _ =>
+            await TerminalPane.OpenAsync(page, paneId, new TerminalPaneOptions { Argv = argv }));
+
+        var listening = await _webView.RunAsync(async _ =>
+            await view.CoreWebView2.ExecuteScriptAsync($"agterm.readlineState(\"{paneId}\").listening"));
+
+        Assert.Equal(powershell ? "true" : "false", listening);
+    }
+
     [Fact]
     public async Task Output_pump_delivers_all_lines_and_stays_within_memory_budget()
     {

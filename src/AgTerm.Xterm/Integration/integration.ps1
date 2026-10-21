@@ -4,6 +4,7 @@
 # Session.CurrentCwd live and lets a restored session reopen where it left off. Windows shells do
 # not report their cwd on their own; upstream gets the equivalent OSC 7 from libghostty's own
 # shell integration, which a WebView2/xterm.js surface has no analogue of (see PLATFORM-NOTES).
+# Also reports when PSReadLine reads input (OSC 7777, see the PSConsoleHostReadLine wrapper below).
 #
 # Dot-sourced by the spawned shell via `-NoExit -Command`, so it runs AFTER the user's profile:
 # whatever set $function:prompt (Oh My Posh, starship, posh-git, a hand-written one) is already in
@@ -49,4 +50,53 @@ function global:prompt {
     # $? and $LASTEXITCODE belong to the user's last command. Reading $PWD above does not disturb
     # them, but the original prompt is invoked last so it observes the state it would have seen.
     & $global:__AgTermState.OriginalPrompt
+}
+
+# PSReadLine reads each command line through PSConsoleHostReadLine. The wrapper tells the terminal,
+# with the private OSC 7777, when PSReadLine reads input and which key runs its Paste function. While
+# it does, the terminal sends that key to PSReadLine instead of typing the clipboard in: PSReadLine
+# then inserts the text as one edit, so one Ctrl+Z undoes the paste and a newline does not run the
+# line. Ctrl+letter keys on a non-Latin layout are then sent with the Latin letter, so PSReadLine's
+# bindings such as Ctrl+z run. Without PSReadLine (a screen reader session) the function does not
+# exist and nothing changes.
+if (Test-Path Function:\PSConsoleHostReadLine) {
+    # Captured as a value, the same as the prompt above.
+    $global:__AgTermState.OriginalReadLine = $function:PSConsoleHostReadLine
+
+    function global:PSConsoleHostReadLine {
+        [System.Diagnostics.DebuggerHidden()]
+        param()
+        $lastRunStatus = $?   # the user's last command; read first, every statement resets $?
+
+        # Checked on every read, so Set-PSReadLineKeyHandler and -EditMode apply at the next prompt.
+        # The key is compared exactly: Vi's command-mode '<Ctrl+v>' is not the insert-mode 'Ctrl+v'.
+        # Shift+Insert comes first because ConPTY reads its sequence in every keyboard mode.
+        $paste = ''
+        try {
+            $bound = Get-PSReadLineKeyHandler -Bound
+            if ($bound | Where-Object { $_.Key -eq 'Shift+Insert' -and $_.Function -eq 'Paste' }) {
+                $paste = ';paste=shift-insert'
+            }
+            elseif ($bound | Where-Object { $_.Key -eq 'Ctrl+v' -and $_.Function -eq 'Paste' }) {
+                $paste = ';paste=ctrl-v'
+            }
+        }
+        catch {
+            # Without the binding the terminal pastes as before.
+        }
+
+        [Console]::Write("$([char]27)]7777;agterm-readline=1$paste$([char]7)")
+        try {
+            # PSReadLine's own function reads $? first and uses it, for example for the
+            # -PromptText error color. The statements above set $? to True, so after a failed
+            # command a failing statement sets it back to False. -ErrorAction Ignore keeps the
+            # error out of $Error.
+            if (-not $lastRunStatus) { Write-Error 'agterm' -ErrorAction Ignore }
+            & $global:__AgTermState.OriginalReadLine
+        }
+        finally {
+            # Also when the line is accepted, cancelled with Ctrl+C, or ReadLine throws.
+            [Console]::Write("$([char]27)]7777;agterm-readline=0$([char]7)")
+        }
+    }
 }

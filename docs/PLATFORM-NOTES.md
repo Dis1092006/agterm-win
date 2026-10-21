@@ -393,7 +393,7 @@ Without a report `Session.CurrentCwd` stays null forever, `EffectiveCwd` falls b
 
 | Shell | Script | Attached as | Reports |
 | --- | --- | --- | --- |
-| `pwsh.exe`, `powershell.exe` | `integration.ps1` | `-NoExit -Command ". '<script>'"` | OSC 9;9 |
+| `pwsh.exe`, `powershell.exe` | `integration.ps1` | `-NoExit -Command ". '<script>'"` | OSC 9;9, OSC 7777 (readline marker) |
 | `cmd.exe` | `integration.cmd` | `/k call "<script>"` | OSC 9;9 |
 | `bash.exe` (Git Bash) | `integration.bash` | `--rcfile <script> -i` | OSC 7 |
 
@@ -409,6 +409,16 @@ Constraints the implementation is pinned to, each of which was a real failure fi
 - **The scripts must stay real files, and are found via the exe path.** They are marked `ExcludeFromSingleFile`, because a `PublishSingleFile` bundle would hide them from the shell that is handed their path. `ShellIntegration.ResolveScriptDirectory` therefore tries `Environment.ProcessPath`'s directory BEFORE `AppContext.BaseDirectory`: in this app's single-file publish the two differ — `BaseDirectory` is the bundle extraction directory under `%TEMP%\.net\agterm-win\<hash>\`, while the excluded scripts stay beside the exe. A plain console single-file app reports the two as equal, so this only reproduces in the real app. Existence is checked, so a layout missing the scripts degrades to a plain shell.
 
 A `cd` still does not trigger a disk write (spec line 81: reports arrive on every prompt, so only structural mutations save). The directory survives an ordinary quit because window close and `LiveApplicationHost.Dispose` both save; a hard kill still loses cwd changes made since the last structural mutation.
+
+### PowerShell readline marker (OSC 7777)
+
+`integration.ps1` also wraps `PSConsoleHostReadLine`, the function the PowerShell host calls to read a command line, if it exists. Before each read it writes `ESC]7777;agterm-readline=1` and, when PSReadLine binds `Paste` to Shift+Insert or Ctrl+V, `;paste=shift-insert` or `;paste=ctrl-v`. A `finally` block writes `ESC]7777;agterm-readline=0` once the read ends. The bindings are read on every prompt, so a change made with `Set-PSReadLineKeyHandler` or `-EditMode` applies at the next prompt. The page uses the marker to send paste keys to PSReadLine (see Clipboard chords) and to send Ctrl+letter keys with the Latin letter (see Letter keys on non-Latin layouts).
+
+- **This is a private sequence, not part of the control API.** Only this app's page reads it. 7777 is not used by xterm.js or the common OSC sets (7, 8, 9, 52, 133, 633, 777, 1337, 5522). Unknown payloads change nothing.
+- **Only a pane the app started with the integration listens.** `ShellIntegration.ReportsReadline` is true only for the exact argv `Inject` builds for pwsh and powershell, and `TerminalPane.OpenAsync` passes the result to `openPane` as `readlineMarker`. In cmd, Git Bash, WSL, a `--command` pane or an overlay, a program that writes the sequence only writes output.
+- **The wrapper keeps `$?`.** PSReadLine's own function reads `$?` first and uses it, for example for the `-PromptText` error color. The wrapper reads `$?` in its first statement; after a failed command it runs `Write-Error 'agterm' -ErrorAction Ignore` right before it calls the original, so the original sees False again. `-ErrorAction Ignore` keeps the error out of `$Error`. `PowerShellReadlineIntegrationTests` checks this with a real Windows PowerShell 5.1 and pwsh.
+- **The marker arrives with the output, so it can be late.** After Enter, until `agterm-readline=0` arrives, a paste key still goes in the PSReadLine form, to the command that just started; a command that reads input gets that key instead of the text, and a non-Latin Ctrl+letter key carries the Latin letter. After a command ends, until `agterm-readline=1` arrives, a paste is typed in as before. Each window is one ConPTY output frame plus the pipe and the WebView2 hop.
+- **Output in the pane can contain the marker.** `cat` of a file or a remote host over `ssh` can write it. Then paste keys send PSReadLine's paste key to that program, and non-Latin Ctrl+letter keys carry the Latin letter, until the next prompt sends the correct value. No data leaves the machine, and `agtermctl session paste` still pastes. A nonce would need a new `AGTERM_*` variable or argv, and a program in the pane can read both, so there is none.
 
 ## WebView2 process death
 
@@ -457,12 +467,19 @@ The chords are added in the pane, not in the keymap. Adding builtin actions woul
 - **Ctrl+Shift+C and Ctrl+Insert copy only when there is a selection.** With nothing selected they do nothing and send no input to the terminal. Ctrl+V, Ctrl+Shift+V and Shift+Insert request a paste.
 - **The letter chords also work on non-Latin layouts.** When the typed key is not an ASCII letter and Alt is not held, the pane uses the physical `KeyC` or `KeyV` position. With no selection, xterm encodes Ctrl+C for the active keyboard mode.
 - **The host writes the clipboard, the page does not.** `navigator.clipboard.writeText` fails with `NotAllowedError` without a user gesture, and a key event dispatched by the engine does not count as one. Measured in the live WebView2: the page is a secure context and the API is present, and the write is still refused. A copy posts `copyRequested` with the selected text and `MainWindow` writes it, which mirrors the clipboard read that right-click paste already used.
+- **While PSReadLine reads a command line, a paste goes to PSReadLine.** The app types a paste in as ordinary input, so PSReadLine records one undo step per character and runs each line at its newline. Its own `Paste` function reads the clipboard and inserts the text as one edit. So when the pane has the readline marker (see Shell integration), Ctrl+V, Ctrl+Shift+V, Shift+Insert and right-click send PSReadLine's paste key instead of requesting a paste. With `paste=shift-insert` the pane sends `ESC[2;2~`; ConPTY reads it in every keyboard mode. With `paste=ctrl-v` (Vi mode) it sends the win32-input-mode press and release records of Ctrl+V with the character `v`, and only while win32-input-mode encodes keys. The pane sends the release itself and xterm sends none. Without a `paste` part, after `agterm-readline=0`, or in any other pane, the app pastes as before. `agtermctl session paste` always types the text in.
+- **A multi-line paste into PowerShell no longer runs line by line.** PSReadLine inserts all lines into the edit buffer, and nothing runs until Enter; then all lines run as one input. Classic conhost and Windows Terminal do the same with Ctrl+V in PowerShell. To run the lines as they arrive, use `agtermctl session paste`.
 
 ## Letter keys on non-Latin layouts
 
 The pane resolves built-in and custom keymap chords from the typed ASCII letter when one exists, otherwise from the physical `KeyboardEvent.code` (`KeyF` to `f`). Alt+F opens search and other app chords match on a Russian layout. A user `map` binding still wins where the host gives it priority. On a Latin layout such as Dvorak, the typed letter wins over the physical QWERTY position. Ctrl+Alt does not use the physical-letter fallback, so AltGr characters do not trigger app chords.
 
 If a non-Latin Ctrl+letter key is not consumed by a chord or the clipboard handler, the pane gives xterm the corresponding Latin key before encoding. Ctrl+F on a Russian layout therefore sends 0x06 in legacy mode, and the same output as Latin Ctrl+F in kitty and win32-input modes. Plain Cyrillic text and Shift+letter remain typed characters; the clipboard handler and agent status-clear rules stay in place.
+
+That is not enough for PSReadLine. It names a key whose character is a control character through the keyboard layout, so the win32-input-mode record of Ctrl+Z (character 0x1a) reads as Ctrl+я on Russian, and `Undo` does not run. A record with the character `z` reads as Ctrl+z on any layout. So while the readline marker says PSReadLine reads input (see Shell integration), and win32-input-mode encodes keys, the pane sends Ctrl+letter (no Shift, Alt or Meta) on a non-Latin layout as the record with the lowercase Latin letter: `ESC[90;44;122;1;8;1_` for Ctrl+Z. The other fields are what xterm sends for Latin Ctrl+Z. The pane also sends the matching release record, and xterm sends none. It forgets a held key when the terminal loses focus, and a new press of the key replaces it.
+
+- **Ctrl+Shift+letter is not changed.** xterm's record of it (control character plus Shift) matches a `Ctrl+Shift+letter` binding on both layouts, and a record with the uppercase letter does not on Russian.
+- **Other keys that PSReadLine names from the typed character still break on Russian.** Alt+letter: `Alt+d` (KillWord), and in pwsh 7 `Alt+a` (SelectCommandArgument) and `Alt+h` (ShowParameterHelp) arrive as `Alt+в`, `Alt+ф`, `Alt+р`. Ctrl with a punctuation key that types a letter on Russian: `Ctrl+]` (GotoBrace) arrives as `Ctrl+ъ`.
 
 ## Agent status on terminal input
 

@@ -121,6 +121,21 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task OpenTerminal_asks_openPane_to_listen_for_the_readline_marker_only_when_told()
+    {
+        var page = await InitializedAsync();
+
+        await page.OpenTerminalAsync("p1", fontSize: 16, readlineMarker: true);
+        Assert.Contains("agterm.openPane(\"p1\", {\"fontSize\":16,\"readlineMarker\":true})", _host.Scripts[^1]);
+
+        await page.OpenTerminalAsync("p2", readlineMarker: true);
+        Assert.Contains("agterm.openPane(\"p2\", {\"readlineMarker\":true})", _host.Scripts[^1]);
+
+        await page.OpenTerminalAsync("p3");
+        Assert.Contains("agterm.openPane(\"p3\", {})", _host.Scripts[^1]);
+    }
+
+    [Fact]
     public async Task Search_presentation_scripts_preserve_owner_state_and_escape_text()
     {
         var page = await InitializedAsync();
