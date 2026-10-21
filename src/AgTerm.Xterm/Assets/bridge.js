@@ -2559,11 +2559,15 @@ function openPane(paneId, opts) {
   // Clipboard chords, after the keymap so a user binding still wins. The browser clipboard API
   // cannot serve a copy here: writeText throws NotAllowedError without a user gesture, and the
   // engine's key event is not one, so the host does the write the way it already does the read
-  // for right-click paste. Ctrl+C keeps its terminal meaning when there is nothing to copy: it
-  // falls through to 0x03, so interrupting a running program still works.
+  // for right-click paste. Ctrl+C sends 0x03 when there is nothing to copy, while the other copy
+  // chords are consumed.
   const routeClipboardChord = (ev) => {
     const insert = ev.key === "Insert";
-    const letter = ev.key.length === 1 ? ev.key.toLowerCase() : "";
+    const letter = /^[a-zA-Z]$/.test(ev.key)
+      ? ev.key.toLowerCase()
+      : !ev.altKey && /^Key[CV]$/.test(ev.code || "")
+        ? ev.code.slice(3).toLowerCase()
+        : "";
     const isCopy = (ev.ctrlKey && letter === "c") || (ev.ctrlKey && insert);
     const isPaste = (ev.ctrlKey && letter === "v") || (ev.shiftKey && insert);
     if (!isCopy && !isPaste) return false;
@@ -2572,7 +2576,14 @@ function openPane(paneId, opts) {
       return true;
     }
     const selection = pane.term.getSelection();
-    if (!selection) return false;
+    if (!selection) {
+      if (letter === "c" && ev.ctrlKey && !ev.shiftKey && !ev.altKey
+          && !/^[a-zA-Z]$/.test(ev.key)) {
+        // Let xterm encode the physical Ctrl+C for the active keyboard protocol.
+        Object.defineProperty(ev, "key", { value: "c" });
+      }
+      return ev.ctrlKey && !ev.altKey && (insert || (letter === "c" && ev.shiftKey));
+    }
     post({ type: "copyRequested", paneId, text: selection });
     return true;
   };

@@ -1048,6 +1048,246 @@ public class XtermPageLiveTests
         }
     }
 
+    [Theory]
+    [InlineData("с", "KeyC", false, "copy")]
+    [InlineData("с", "KeyC", true, "copy")]
+    [InlineData("м", "KeyV", false, "paste")]
+    [InlineData("м", "KeyV", true, "paste")]
+    public async Task Cyrillic_layout_clipboard_chords_ask_the_host(string key, string code, bool shift, string want)
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-cyrillic"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+        var copied = new List<string>();
+        var pasted = new List<string>();
+        page.CopyRequested += (_, text) => copied.Add(text);
+        page.PasteRequested += pasted.Add;
+
+        await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("hello"));
+            return Task.FromResult(0);
+        });
+        await Task.Delay(150);
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.selectAll(\"clip-cyrillic\")"));
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            $"agterm.dispatchKey(\"clip-cyrillic\", {{key:'{key}', code:'{code}', ctrlKey:true, shiftKey:{(shift ? "true" : "false")}}})"));
+        await Task.Delay(250);
+
+        if (want == "copy")
+        {
+            Assert.Single(copied);
+            Assert.Contains("hello", copied[0]);
+            Assert.Empty(pasted);
+        }
+        else
+        {
+            Assert.Single(pasted);
+            Assert.Empty(copied);
+        }
+        Assert.Empty(data);
+    }
+
+    [Theory]
+    [InlineData("ć", "KeyC", 67)]
+    [InlineData("@", "KeyV", 86)]
+    public async Task AltGr_on_clipboard_key_positions_types_instead_of_copying_or_pasting(
+        string key, string code, int keyCode)
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-altgr"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+        var copied = new List<string>();
+        var pasted = new List<string>();
+        page.CopyRequested += (_, text) => copied.Add(text);
+        page.PasteRequested += pasted.Add;
+
+        await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("hello"));
+            return Task.FromResult(0);
+        });
+        await Task.Delay(150);
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "agterm.selectAll(\"clip-altgr\")"));
+        var prevented = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            $$"""
+            (() => {
+              const ta = agterm.textareaFor("clip-altgr");
+              const ev = new KeyboardEvent("keydown", {
+                key: "{{key}}", code: "{{code}}", ctrlKey: true, altKey: true, cancelable: true
+              });
+              Object.defineProperty(ev, "keyCode", { value: {{keyCode}} });
+              Object.defineProperty(ev, "which", { value: {{keyCode}} });
+              ta.dispatchEvent(ev);
+              ta.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" }));
+              ta.value = "{{key}}";
+              ta.dispatchEvent(new CompositionEvent("compositionupdate", { bubbles: true, data: "{{key}}" }));
+              ta.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "{{key}}" }));
+              return ev.defaultPrevented;
+            })()
+            """));
+        await Task.Delay(250);
+
+        Assert.Equal("false", prevented);
+        Assert.Contains(key, string.Concat(data));
+        Assert.Empty(copied);
+        Assert.Empty(pasted);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("\u001b[>1u")]
+    [InlineData("\u001b[?9001h")]
+    public async Task Cyrillic_ctrl_c_without_selection_matches_latin_terminal_encoding(string mode)
+    {
+        var (page, view) = await BootPageAsync();
+        var latin = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-latin-mode"));
+        var cyrillic = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-cyrillic-mode"));
+        var latinData = new List<string>();
+        var cyrillicData = new List<string>();
+        latin.DataReceived += latinData.Add;
+        cyrillic.DataReceived += cyrillicData.Add;
+
+        if (mode.Length > 0) await _webView.RunAsync(_ =>
+        {
+            latin.FeedOutput(Encoding.UTF8.GetBytes(mode));
+            cyrillic.FeedOutput(Encoding.UTF8.GetBytes(mode));
+            return Task.FromResult(0);
+        });
+        if (mode.Length > 0) await Task.Delay(200);
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              for (const [pane, key] of [["clip-latin-mode", "c"], ["clip-cyrillic-mode", "с"]]) {
+                const ev = new KeyboardEvent("keydown", {
+                  key, code: "KeyC", ctrlKey: true, cancelable: true
+                });
+                Object.defineProperty(ev, "keyCode", { value: 67 });
+                Object.defineProperty(ev, "which", { value: 67 });
+                agterm.textareaFor(pane).dispatchEvent(ev);
+              }
+            })()
+            """));
+        await Task.Delay(250);
+
+        Assert.NotEmpty(latinData);
+        Assert.Equal(latinData, cyrillicData);
+    }
+
+    [Theory]
+    [InlineData("c", true, false)]
+    [InlineData("Insert", false, false)]
+    [InlineData("c", true, true)]
+    [InlineData("Insert", false, true)]
+    public async Task Copy_chords_without_a_selection_do_not_reach_the_pty_or_host(string key, bool shift, bool kitty)
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-empty"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+        var copied = new List<string>();
+        page.CopyRequested += (_, text) => copied.Add(text);
+
+        if (kitty) await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("\u001b[>1u"));
+            return Task.FromResult(0);
+        });
+        if (kitty) await Task.Delay(200);
+        var prevented = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            $$"""
+            (() => {
+              const ev = new KeyboardEvent("keydown", {
+                key: "{{key}}", code: "{{(key == "c" ? "KeyC" : "Insert")}}",
+                ctrlKey: true, shiftKey: {{(shift ? "true" : "false")}}, cancelable: true
+              });
+              Object.defineProperty(ev, "keyCode", { value: {{(key == "c" ? "67" : "45")}} });
+              Object.defineProperty(ev, "which", { value: {{(key == "c" ? "67" : "45")}} });
+              agterm.textareaFor("clip-empty").dispatchEvent(ev);
+              return ev.defaultPrevented;
+            })()
+            """));
+        await Task.Delay(250);
+
+        Assert.Empty(data);
+        Assert.Equal("true", prevented);
+        Assert.Empty(copied);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Cyrillic_ctrl_c_without_a_selection_only_interrupts_without_shift(bool shift, bool kitty)
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-cyrillic-empty"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+        var copied = new List<string>();
+        page.CopyRequested += (_, text) => copied.Add(text);
+
+        if (kitty) await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("\u001b[>1u"));
+            return Task.FromResult(0);
+        });
+        if (kitty) await Task.Delay(200);
+        var prevented = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            $$"""
+            (() => {
+              const ev = new KeyboardEvent("keydown", {
+                key: "с", code: "KeyC", ctrlKey: true,
+                shiftKey: {{(shift ? "true" : "false")}}, cancelable: true
+              });
+              Object.defineProperty(ev, "keyCode", { value: 67 });
+              Object.defineProperty(ev, "which", { value: 67 });
+              agterm.textareaFor("clip-cyrillic-empty").dispatchEvent(ev);
+              return ev.defaultPrevented;
+            })()
+            """));
+        await Task.Delay(250);
+
+        if (shift) Assert.Empty(data);
+        else if (kitty) Assert.Equal(["\u001b[99;5u"], data);
+        else Assert.Equal(["\u0003"], data);
+        Assert.Equal("true", prevented);
+        Assert.Empty(copied);
+    }
+
+    [Fact]
+    public async Task Bound_ctrl_shift_c_takes_priority_over_copy()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-bound"));
+        var data = new List<string>();
+        terminal.DataReceived += data.Add;
+        var copied = new List<string>();
+        page.CopyRequested += (_, text) => copied.Add(text);
+        var chords = new List<PhysicalChord>();
+        page.ChordPressed += (_, chord) => chords.Add(chord);
+        var binding = new PhysicalChord(true, false, true, "c");
+
+        await _webView.RunAsync(async _ =>
+        {
+            await page.SetInterceptChordsAsync([binding]);
+            await view.CoreWebView2.ExecuteScriptAsync(
+                "agterm.dispatchKey(\"clip-bound\", {key:'c', ctrlKey:true, shiftKey:true})");
+        });
+        var deadline = Environment.TickCount64 + 5000;
+        while (chords.Count == 0 && Environment.TickCount64 < deadline)
+            await Task.Delay(25);
+
+        Assert.Equal([binding], chords);
+        Assert.Empty(data);
+        Assert.Empty(copied);
+    }
+
     /// <summary>
     /// Ctrl+C with nothing selected keeps interrupting the running program. This is the half of
     /// the binding that must not regress: a terminal where Ctrl+C cannot send 0x03 is broken.

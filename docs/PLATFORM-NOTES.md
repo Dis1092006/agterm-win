@@ -448,8 +448,9 @@ Upstream has no clipboard entry among the 41 builtin actions, and `parity/surfac
 
 The chords are added in the pane, not in the keymap. Adding builtin actions would change the parity surface; the keymap grammar also has no `insert` key, so two of these chords cannot be written in it. They are handled in `openPane` instead, after the keymap, so a user binding on the same chord still wins.
 
-- **Ctrl+C copies only when there is a selection.** With nothing selected it falls through to 0x03, so interrupting a running program keeps working. `XtermPageLiveTests.Ctrl_c_without_a_selection_still_interrupts` pins that half.
-- **Ctrl+V, Ctrl+Shift+C, Ctrl+Shift+V, Ctrl+Insert and Shift+Insert always act on the clipboard.** This is what Windows Terminal and VS Code do.
+- **Ctrl+C copies only when there is a selection.** With nothing selected it sends 0x03 in the default keyboard mode, so interrupting a running program keeps working. `XtermPageLiveTests.Ctrl_c_without_a_selection_still_interrupts` pins that half.
+- **Ctrl+Shift+C and Ctrl+Insert copy only when there is a selection.** With nothing selected they do nothing and send no input to the terminal. Ctrl+V, Ctrl+Shift+V and Shift+Insert request a paste.
+- **The letter chords also work on non-Latin layouts.** When the typed key is not an ASCII letter and Alt is not held, the pane uses the physical `KeyC` or `KeyV` position. With no selection, xterm encodes Ctrl+C for the active keyboard mode.
 - **The host writes the clipboard, the page does not.** `navigator.clipboard.writeText` fails with `NotAllowedError` without a user gesture, and a key event dispatched by the engine does not count as one. Measured in the live WebView2: the page is a secure context and the API is present, and the write is still refused. A copy posts `copyRequested` with the selected text and `MainWindow` writes it, which mirrors the clipboard read that right-click paste already used.
 
 ## Terminal identification for spawned shells
