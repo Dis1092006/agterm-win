@@ -47,11 +47,12 @@ jobs:
         run: dotnet build src/AgTerm.App -p:Platform=x64 --no-incremental
 
       - name: Test
-        run: dotnet test AgTerm.slnx --no-build --logger trx --results-directory TestResults
+        run: dotnet test AgTerm.slnx --no-build --logger trx --results-directory TestResults --blame-hang-timeout 4m --blame-hang-dump-type mini -- 'xUnit.StopOnFail=true'
 
       - name: Upload test results
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: TestResults
+          retention-days: 14
