@@ -126,6 +126,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         InstallCommandLineToolItem.Text = InstallerCommands.InstallCommandLineTool;
         InstallAgentSkillItem.Text = InstallerCommands.InstallAgentSkill;
+        InstallAgentStatusHooksItem.Text = InstallerCommands.InstallAgentStatusHooks;
         ApplyInterfaceElements(_settings);
         _switcher.Changed += OnSwitcherChanged;
         _notificationPresenter = new WindowsAppNotificationPresenter(
@@ -2507,13 +2508,23 @@ public sealed partial class MainWindow : Window
     private void OnInstallAgentSkillClick(object sender, RoutedEventArgs e) =>
         ObserveTaskFault(RunInstallerAsync(InstallerCommands.InstallAgentSkillId), "Install agent skill failed");
 
+    private void OnInstallAgentStatusHooksClick(object sender, RoutedEventArgs e) =>
+        ObserveTaskFault(RunInstallerAsync(InstallerCommands.InstallAgentStatusHooksId), "Install agent status hooks failed");
+
     /// <summary>Runs an installer off the UI thread, since the Path change broadcast can wait on other
     /// windows, and shows the result like upstream's alert.</summary>
     private async Task RunInstallerAsync(string installerId)
     {
-        var outcome = await Task.Run(() => installerId == InstallerCommands.InstallCommandLineToolId
-            ? InstallerActions.InstallCommandLineTool(Environment.ProcessPath, WindowsUserPathEnvironment.CreateDefault())
-            : InstallerActions.InstallAgentSkill(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
+        var outcome = await Task.Run(() => installerId switch
+        {
+            InstallerCommands.InstallCommandLineToolId =>
+                InstallerActions.InstallCommandLineTool(Environment.ProcessPath, WindowsUserPathEnvironment.CreateDefault()),
+            InstallerCommands.InstallAgentSkillId =>
+                InstallerActions.InstallAgentSkill(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)),
+            InstallerCommands.InstallAgentStatusHooksId =>
+                InstallerActions.InstallAgentStatusHooks(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), Environment.ProcessPath),
+            _ => throw new ArgumentOutOfRangeException(nameof(installerId), installerId, null),
+        });
         await _contentDialogs.RunAsync(async () =>
         {
             var dialog = new ContentDialog

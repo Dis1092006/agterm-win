@@ -151,6 +151,9 @@
                                 <MenuFlyoutItem x:Name="InstallAgentSkillItem"
                                                 AutomationProperties.AutomationId="install-agent-skill"
                                                 Click="OnInstallAgentSkillClick" />
+                                <MenuFlyoutItem x:Name="InstallAgentStatusHooksItem"
+                                                AutomationProperties.AutomationId="install-agent-status-hooks"
+                                                Click="OnInstallAgentStatusHooksClick" />
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>

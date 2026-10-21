@@ -45,6 +45,27 @@ public class CliFrameworkTests
         Assert.Null(request.Args);
     }
 
+    [Theory]
+    [InlineData("active", "--blink", true, null)]
+    [InlineData("completed", "--auto-reset", null, true)]
+    [InlineData("blocked", null, null, null)]
+    public void StatusHookArgumentsParseAsTheExistingWireCommand(
+        string state, string? flag, bool? blink, bool? autoReset)
+    {
+        var argv = new List<string> { "session", "status", state, "--target", "ABC",
+            "--socket", "pipe name", "--pane", "right", "--pane-id", "token-1" };
+        if (flag is not null) argv.Add(flag);
+        var request = Request(argv.ToArray());
+
+        Assert.Equal(WireCommand.SessionStatus, request.Cmd);
+        Assert.Equal("ABC", request.Target);
+        Assert.Equal(state, request.Args?.Status);
+        Assert.Equal(blink, request.Args?.Blink);
+        Assert.Equal(autoReset, request.Args?.AutoReset);
+        Assert.Equal("right", request.Args?.Pane);
+        Assert.Equal("token-1", request.Args?.PaneId);
+    }
+
     [Fact]
     public void WorkspaceNewBindsNameCollapsedAndWindow()
     {

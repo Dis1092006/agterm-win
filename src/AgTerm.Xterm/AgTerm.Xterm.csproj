@@ -59,4 +59,10 @@
                       Link="Skill\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="AgentStatus\**" />
+    <EmbeddedResource Include="AgentStatus\*"
+                      LogicalName="agent-status/%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

@@ -94,7 +94,7 @@ public sealed class WindowPaletteProjectionTests
     }
 
     [Fact]
-    public void Commands_end_with_the_two_installer_items_whatever_the_router_state()
+    public void Commands_end_with_the_installer_items_whatever_the_router_state()
     {
         var snapshot = WindowPaletteProjection.Create(
             WindowPaletteMode.Commands,
@@ -106,6 +106,7 @@ public sealed class WindowPaletteProjectionTests
             [
                 (InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallCommandLineTool),
                 (InstallerCommands.InstallAgentSkillId, InstallerCommands.InstallAgentSkill),
+                (InstallerCommands.InstallAgentStatusHooksId, InstallerCommands.InstallAgentStatusHooks),
             ],
             snapshot.Items.Select(item => (item.Id, item.Title)));
         Assert.All(snapshot.Items, item => Assert.Null(item.Shortcut));
@@ -114,7 +115,7 @@ public sealed class WindowPaletteProjectionTests
     [Fact]
     public void Installer_items_are_not_builtin_actions()
     {
-        foreach (var id in new[] { InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallAgentSkillId })
+        foreach (var id in new[] { InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallAgentSkillId, InstallerCommands.InstallAgentStatusHooksId })
         {
             Assert.Null(WindowPaletteProjection.ParseAction(id));
             Assert.Equal(id, WindowPaletteProjection.ParseInstallerCommand(id));
@@ -445,6 +446,7 @@ public sealed class WindowPaletteAcceptanceTests
     [Theory]
     [InlineData(InstallerCommands.InstallCommandLineToolId)]
     [InlineData(InstallerCommands.InstallAgentSkillId)]
+    [InlineData(InstallerCommands.InstallAgentStatusHooksId)]
     public async Task Installer_items_run_the_installer_handler_and_restore_focus(string itemId)
     {
         using var cancellationSource = new CancellationTokenSource();

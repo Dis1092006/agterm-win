@@ -47,6 +47,8 @@ public sealed class TitleBarActionsSourceTests
             "Click=\"OnInstallCommandLineToolClick\"",
             "<MenuFlyoutItem x:Name=\"InstallAgentSkillItem\"",
             "Click=\"OnInstallAgentSkillClick\"",
+            "<MenuFlyoutItem x:Name=\"InstallAgentStatusHooksItem\"",
+            "Click=\"OnInstallAgentStatusHooksClick\"",
         ];
         var positions = items.Select(token => button.IndexOf(token, StringComparison.Ordinal)).ToArray();
         Assert.All(positions, position => Assert.True(position >= 0));
@@ -56,10 +58,13 @@ public sealed class TitleBarActionsSourceTests
         var window = Source("MainWindow.xaml.cs");
         Assert.Contains("InstallCommandLineToolItem.Text = InstallerCommands.InstallCommandLineTool;", window, StringComparison.Ordinal);
         Assert.Contains("InstallAgentSkillItem.Text = InstallerCommands.InstallAgentSkill;", window, StringComparison.Ordinal);
+        Assert.Contains("InstallAgentStatusHooksItem.Text = InstallerCommands.InstallAgentStatusHooks;", window, StringComparison.Ordinal);
         Assert.Contains("RunInstallerAsync(InstallerCommands.InstallCommandLineToolId)",
             MethodBody(window, "private void OnInstallCommandLineToolClick("), StringComparison.Ordinal);
         Assert.Contains("RunInstallerAsync(InstallerCommands.InstallAgentSkillId)",
             MethodBody(window, "private void OnInstallAgentSkillClick("), StringComparison.Ordinal);
+        Assert.Contains("RunInstallerAsync(InstallerCommands.InstallAgentStatusHooksId)",
+            MethodBody(window, "private void OnInstallAgentStatusHooksClick("), StringComparison.Ordinal);
         Assert.Contains("executeInstallerCommandAsync:", window, StringComparison.Ordinal);
     }
 

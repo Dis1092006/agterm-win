@@ -82,7 +82,8 @@ public static class WindowPaletteProjection
     /// keymaps and the control protocol do not see them.</summary>
     public static string? ParseInstallerCommand(string itemId) => itemId switch
     {
-        InstallerCommands.InstallCommandLineToolId or InstallerCommands.InstallAgentSkillId => itemId,
+        InstallerCommands.InstallCommandLineToolId or InstallerCommands.InstallAgentSkillId
+            or InstallerCommands.InstallAgentStatusHooksId => itemId,
         _ => null,
     };
 
@@ -175,6 +176,7 @@ public static class WindowPaletteProjection
             [
                 new PaletteItemViewModel(InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallCommandLineTool),
                 new PaletteItemViewModel(InstallerCommands.InstallAgentSkillId, InstallerCommands.InstallAgentSkill),
+                new PaletteItemViewModel(InstallerCommands.InstallAgentStatusHooksId, InstallerCommands.InstallAgentStatusHooks),
             ])
             .ToArray();
 

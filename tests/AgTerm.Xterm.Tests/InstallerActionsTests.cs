@@ -57,6 +57,53 @@ public sealed class InstallerActionsTests : IDisposable
                 .Order(StringComparer.Ordinal));
     }
 
+    [Fact]
+    public void The_agent_status_installer_reports_missing_bundle_instead_of_claiming_success()
+    {
+        var outcome = InstallerActions.InstallAgentStatusHooks(_root, Path.Join(_root, "agterm-win.exe"));
+        Assert.True(outcome.IsWarning);
+        Assert.Equal("Install Failed", outcome.Title);
+        Assert.False(Directory.Exists(Path.Join(_root, ".claude")));
+    }
+
+    [Fact]
+    public void The_agent_status_installer_handles_an_unknown_process_path()
+    {
+        var outcome = InstallerActions.InstallAgentStatusHooks(_root, null);
+        Assert.Equal("Install Failed", outcome.Title);
+        Assert.True(outcome.IsWarning);
+    }
+
+    [Fact]
+    public void The_agent_status_installer_reads_embedded_scripts_and_installs_claude_hooks()
+    {
+        File.WriteAllText(Path.Join(_root, CliInstall.ToolFileName), "");
+
+        var outcome = InstallerActions.InstallAgentStatusHooks(_root, Path.Join(_root, "agterm-win.exe"));
+
+        Assert.Equal("Agent Status Hooks Installed", outcome.Title);
+        Assert.False(outcome.IsWarning);
+        Assert.Contains("PermissionRequest", File.ReadAllText(Path.Join(_root, ".claude", "settings.json")));
+        Assert.Contains(AgentHooksInstaller.WrapperMarker,
+            File.ReadAllText(Path.Join(_root, ".config", "agterm", "agent-status", AgentHooksInstaller.WrapperName)));
+    }
+
+    [Fact]
+    public void The_agent_status_installer_embeds_a_Pi_extension_using_the_batch_hook()
+    {
+        File.WriteAllText(Path.Join(_root, CliInstall.ToolFileName), "");
+        Directory.CreateDirectory(Path.Join(_root, ".pi", "agent"));
+
+        var outcome = InstallerActions.InstallAgentStatusHooks(_root, Path.Join(_root, "agterm-win.exe"));
+
+        Assert.False(outcome.IsWarning);
+        var extension = File.ReadAllText(Path.Join(_root, ".pi", "agent", "extensions", AgentHooksInstaller.PiName));
+        Assert.Contains("pi.exec(\"cmd.exe\"", extension, StringComparison.Ordinal);
+        Assert.Contains("agterm-agent-status.cmd", extension, StringComparison.Ordinal);
+        Assert.Contains("timeout: 5_000", extension, StringComparison.Ordinal);
+        Assert.DoesNotContain("__AGTERM_STATUS_WRAPPER__", extension, StringComparison.Ordinal);
+    }
+
     private sealed class FakePathEnvironment : IUserPathEnvironment
     {
         public UserPathValue? UserPath { get; private set; }
