@@ -20,7 +20,7 @@ public sealed class WebViewProcessFailureTests
         Assert.NotNull(notice);
         Assert.Equal("Terminal rendering process stopped", notice.Title);
         Assert.Equal(
-            "The terminal view is no longer running. Restart agterm-win to use the terminals again.",
+            "The terminal view is no longer running. Reload the terminal view to use the terminals again.",
             notice.Message);
     }
 

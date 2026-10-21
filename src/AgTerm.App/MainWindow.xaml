@@ -256,7 +256,14 @@
                  IsOpen="False"
                  Severity="Error"
                  AutomationProperties.Name="Application error"
-                 Canvas.ZIndex="95" />
+                 Canvas.ZIndex="95">
+            <InfoBar.ActionButton>
+                <Button x:Name="ReloadTerminalViewButton"
+                        Click="OnReloadTerminalViewClick"
+                        Visibility="Collapsed"
+                        AutomationProperties.Name="Reload terminal view">Reload</Button>
+            </InfoBar.ActionButton>
+        </InfoBar>
 
         <InfoBar x:Name="CloseUndoBanner"
                  Grid.Row="1"

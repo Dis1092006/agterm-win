@@ -316,6 +316,37 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public ILiveStoreCoordinator StoreCoordinator => _storeCoordinator;
 
+    /// <summary>Replace renderers bound to this window's old page without replacing its store or pipe.</summary>
+    public Task ReloadSurfacesAsync(CancellationToken cancellationToken = default) =>
+        _storeCoordinator.MutateAsync(store =>
+        {
+            foreach (var session in store.Workspaces.SelectMany(workspace => workspace.Sessions))
+            {
+                var surfaces = new[]
+                {
+                    session.Surface,
+                    session.SplitSurface,
+                    session.ScratchSurface,
+                };
+                session.Surface = null;
+                session.SplitSurface = null;
+                session.ScratchSurface = null;
+                foreach (var surface in surfaces)
+                    surface?.Teardown();
+
+                var overlay = session.OverlaySurface;
+                if (!store.CloseOverlay(session.Id))
+                {
+                    session.OverlaySurface = null;
+                    overlay?.Teardown();
+                }
+            }
+
+            var quick = Host.Actions.Quick.Surface;
+            Host.Actions.Quick.Surface = null;
+            quick?.Teardown();
+        }, cancellationToken);
+
     public async Task ApplySearchTotalAsync(
         string paneId,
         string needle,

@@ -41,6 +41,20 @@ public sealed class FailurePresentationTests
     }
 
     [Fact]
+    public void Failed_page_banner_offers_manual_window_scoped_reload()
+    {
+        var root = FindRepoRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "MainWindow.xaml.cs"));
+        var xaml = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "MainWindow.xaml"));
+
+        Assert.Contains("Click=\"OnReloadTerminalViewClick\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("TerminalPageLifecycle<XtermPage>", source, StringComparison.Ordinal);
+        Assert.Contains("Trace.TraceError($\"Terminal page initialization failed: {ex}\"", source, StringComparison.Ordinal);
+        Assert.Contains("await _hostReady.Task", source, StringComparison.Ordinal);
+        Assert.Contains("host.ReloadSurfacesAsync(", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Bootstrap_surface_failure_reports_UI_notice_without_faulting_host_or_pipe()
     {
         var stateDirectory = Directory.CreateTempSubdirectory("agterm-page-failure-").FullName;

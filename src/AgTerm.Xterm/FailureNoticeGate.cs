@@ -14,6 +14,8 @@ public sealed class FailureNoticeGate
 {
     private bool _fatalShown;
 
+    public void Reset() => _fatalShown = false;
+
     /// <summary>
     /// Whether to put this notice on the banner. Pass fatal: true for a notice that leaves the
     /// window unusable — it claims the banner and nothing displaces it.

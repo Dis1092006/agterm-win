@@ -62,4 +62,16 @@ public sealed class FailureNoticeGateTests
         // WebView2 can raise ProcessFailed more than once; the banner already says this.
         Assert.False(gate.ShouldShow(RendererDied, fatal: true));
     }
+
+    [Fact]
+    public void Reload_allows_a_new_failure_after_the_previous_page_is_replaced()
+    {
+        var gate = new FailureNoticeGate();
+        gate.ShouldShow(RendererDied, fatal: true);
+
+        gate.Reset();
+
+        Assert.True(gate.ShouldShow(SurfaceFailed));
+        Assert.True(gate.ShouldShow(RendererDied, fatal: true));
+    }
 }

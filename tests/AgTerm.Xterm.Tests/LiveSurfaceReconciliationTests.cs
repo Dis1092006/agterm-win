@@ -593,6 +593,70 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
     }
 
     [Fact]
+    public async Task Reload_surfaces_keeps_session_and_host_but_replaces_its_page_bound_panes()
+    {
+        var requests = new List<SurfaceOpenRequest>();
+        using var host = BuildLiveHost(requests);
+        host.Start();
+        var client = new ControlPipeClient(host.PipeName);
+        var sessionId = await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        var oldSurface = await host.StoreCoordinator.ReadAsync(store =>
+            (FakeSurface)store.SessionWithId(sessionId)!.Surface!);
+        lock (requests) requests.Clear();
+
+        await host.ReloadSurfacesAsync();
+
+        var newSurface = await host.StoreCoordinator.ReadAsync(store =>
+            store.SessionWithId(sessionId)!.Surface);
+        Assert.Equal(sessionId, await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId));
+        Assert.NotSame(oldSurface, newSurface);
+        Assert.Equal(1, oldSurface.TeardownCount);
+        lock (requests) Assert.Single(requests, request => request.Kind == LiveSurfaceKind.Main);
+        AssertOk(client.Send(new ControlRequest { Cmd = Command.Tree }));
+    }
+
+    [Fact]
+    public async Task Reload_closes_active_overlay_without_restarting_its_command_or_hanging_the_result_poll()
+    {
+        var requests = new List<SurfaceOpenRequest>();
+        using var host = BuildLiveHost(requests);
+        host.Start();
+        var client = new ControlPipeClient(host.PipeName);
+        var sessionId = await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        AssertOk(client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayOpen,
+            Args = new ControlArgs { Command = "one-shot-command", Wait = true },
+        }));
+        var oldOverlay = await host.StoreCoordinator.ReadAsync(store =>
+            (FakeSurface)store.SessionWithId(sessionId)!.OverlaySurface!);
+        lock (requests) requests.Clear();
+        Assert.Equal(OverlayResultError.StillRunning, client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayResult,
+            Target = sessionId.ToString(),
+        }).Error);
+
+        await host.ReloadSurfacesAsync();
+
+        var overlay = await host.StoreCoordinator.ReadAsync(store =>
+        {
+            var session = store.SessionWithId(sessionId)!;
+            return (session.OverlayActive, session.OverlayWait, session.OverlaySurface);
+        });
+        Assert.False(overlay.OverlayActive);
+        Assert.False(overlay.OverlayWait);
+        Assert.Null(overlay.OverlaySurface);
+        Assert.Equal(1, oldOverlay.TeardownCount);
+        lock (requests) Assert.DoesNotContain(requests, request => request.Kind == LiveSurfaceKind.Overlay);
+        Assert.Equal(OverlayResultError.NoResult, client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayResult,
+            Target = sessionId.ToString(),
+        }).Error);
+    }
+
+    [Fact]
     public void Surface_realized_event_preserves_slot_identity()
     {
         var realized = typeof(LiveControlHost).GetEvent(nameof(LiveControlHost.SurfaceRealized));

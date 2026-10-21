@@ -44,7 +44,10 @@ public sealed partial class MainWindow : Window
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<object?> _closedCompletion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly Task<XtermPage> _pageTask;
+    private CancellationTokenSource _pageAttemptCancellation = new();
+    private readonly TerminalPageLifecycle<XtermPage> _pageLifecycle;
+    private Task<XtermPage> _pageTask;
+    private bool _pageBooted;
     private readonly FailureNoticeGate _failureNotices = new(); // UI-thread confined, like the banner
     private readonly TerminalLayoutCoordinator _layoutCoordinator; // UI-thread confined
     private readonly WindowCloseCoordinator _closeCoordinator;
@@ -151,7 +154,7 @@ public sealed partial class MainWindow : Window
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
         AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
         _contentDialogs.DialogClosed += FocusAskAfterContentDialog;
-        TerminalView.SizeChanged += (_, _) => ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
+        TerminalView.SizeChanged += OnTerminalViewSizeChanged;
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
             load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
             runOnUi: work =>
@@ -181,10 +184,9 @@ public sealed partial class MainWindow : Window
         _fullscreen = new FullscreenController(ApplyFullscreen);
         _appWindow.Changed += OnAppWindowChanged;
         Activated += OnWindowActivated;
-        _pageTask = BootPageAsync(); // starts on the UI thread; surfaces await it
-        ObserveTaskFault(
-            ReportPageInitializationFailureAsync(_pageTask),
-            "WebView2 initialization failure reporting failed");
+        _pageLifecycle = new TerminalPageLifecycle<XtermPage>(
+            BootPageAsync, TimeSpan.FromSeconds(12), ReportPageInitializationFailure);
+        _pageTask = _pageLifecycle.Current;
         _layoutCoordinator = new TerminalLayoutCoordinator(async layout =>
         {
             var page = await _pageTask;
@@ -251,6 +253,8 @@ public sealed partial class MainWindow : Window
             _themePreview.Abandon();
             _workspaceThemePreview.Abandon();
             _bootstrapCancellation.Cancel();
+            _pageAttemptCancellation.Cancel();
+            _pageAttemptCancellation.Dispose();
             _notificationBannerCancellation?.Cancel();
             _notificationBannerCancellation?.Dispose();
             _notificationPresenter.Dispose();
@@ -478,22 +482,42 @@ public sealed partial class MainWindow : Window
     /// <summary>Boot the window's single terminal page: one WebView2, one terminal.html, N panes.</summary>
     private async Task<XtermPage> BootPageAsync()
     {
+        var attemptToken = _pageAttemptCancellation.Token;
+        if (_pageBooted)
+        {
+            var oldView = TerminalView;
+            if (oldView.CoreWebView2 is { } oldCore)
+                oldCore.ProcessFailed -= OnCoreWebView2ProcessFailed;
+            oldView.SizeChanged -= OnTerminalViewSizeChanged;
+            var replacement = new WebView2();
+            TerminalView = replacement;
+            ShellSplitView.Content = replacement;
+            replacement.SizeChanged += OnTerminalViewSizeChanged;
+            oldView.Close();
+        }
+        _pageBooted = true;
+        var view = TerminalView;
         // Without an environment WebView2 writes its profile to <exe>.WebView2, which in a published
         // build is the publish directory: see AgTerm.Core.Model.WebViewProfile.
         var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
             browserExecutableFolder: string.Empty,
             userDataFolder: WebViewProfile.Directory(),
             options: new CoreWebView2EnvironmentOptions());
-        await TerminalView.EnsureCoreWebView2Async(environment);
+        attemptToken.ThrowIfCancellationRequested();
+        await view.EnsureCoreWebView2Async(environment);
+        if (!ReferenceEquals(view, TerminalView))
+            throw new OperationCanceledException("The terminal page was replaced during initialization.");
         // Ctrl+wheel would scale the whole page, every pane of the window at once, and the font
         // commands would then work inside the scaled page; the font size has its own commands
-        TerminalView.CoreWebView2.Settings.IsZoomControlEnabled = false;
+        view.CoreWebView2.Settings.IsZoomControlEnabled = false;
         // A process death AFTER this point leaves the CoreWebView2 object alive but dead, so every
         // later pane open throws. Init failure itself is reported by
         // ReportPageInitializationFailureAsync instead.
-        TerminalView.CoreWebView2.ProcessFailed += OnCoreWebView2ProcessFailed;
-        var page = new XtermPage(new WinRtScriptHost(TerminalView.CoreWebView2));
-        await page.InitializeAsync();
+        view.CoreWebView2.ProcessFailed += OnCoreWebView2ProcessFailed;
+        var page = new XtermPage(new WinRtScriptHost(view.CoreWebView2));
+        await page.InitializeAsync().WaitAsync(attemptToken);
+        if (!ReferenceEquals(view, TerminalView))
+            throw new OperationCanceledException("The terminal page was replaced during initialization.");
         page.PasteRequested += OnPagePasteRequested;
         page.CopyRequested += OnPageCopyRequested;
         page.SplitResized += OnPageSplitResized;
@@ -513,6 +537,9 @@ public sealed partial class MainWindow : Window
         return page;
     }
 
+    private void OnTerminalViewSizeChanged(object sender, SizeChangedEventArgs args) =>
+        ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
+
     /// <summary>
     /// A WebView2 process died. Only some kinds take the page down with them; the decision lives
     /// in AgTerm.Xterm.WebViewProcessFailure so it is testable without a browser.
@@ -529,17 +556,55 @@ public sealed partial class MainWindow : Window
         QueueFatalFailureNotice(notice);
     }
 
-    private async Task ReportPageInitializationFailureAsync(Task<XtermPage> pageTask)
+    private void ReportPageInitializationFailure(Exception ex)
     {
+        if (_bootstrapCancellation.IsCancellationRequested)
+            return;
+        Trace.TraceError($"Terminal page initialization failed: {ex}");
+        QueueFatalFailureNotice(new LiveFailureNotice(
+            "Terminal view failed to initialize",
+            ex is TimeoutException
+                ? "The terminal page did not become ready. Reload the terminal view to try again."
+                : $"{ex.GetBaseException().Message} Reload the terminal view to try again. If this continues, install or repair the Microsoft Edge WebView2 Runtime."));
+    }
+
+    private void OnReloadTerminalViewClick(object sender, RoutedEventArgs args) =>
+        ObserveTaskFault(ReloadTerminalViewAsync(), "Terminal view reload failed");
+
+    private async Task ReloadTerminalViewAsync()
+    {
+        ReloadTerminalViewButton.IsEnabled = false;
+        FailureBanner.IsOpen = false;
+        _failureNotices.Reset();
         try
         {
-            await pageTask;
+            _pageAttemptCancellation.Cancel();
+            _pageAttemptCancellation.Dispose();
+            _pageAttemptCancellation = new CancellationTokenSource();
+            var reload = _pageLifecycle.ReloadAsync();
+            _pageTask = _pageLifecycle.Current;
+            await reload;
+            var host = await _hostReady.Task;
+            _surfaces.Clear();
+            _paneThemes.Update(PaneThemeTable.Empty, true);
+            PresentPaneThemes(_selection);
+            await host.ReloadSurfacesAsync(_bootstrapCancellation.Token);
+            SubmitLayout();
+            SubmitSearchPresentation(new LiveSelectionSnapshot(null, null), _selection);
+            ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !_bootstrapCancellation.IsCancellationRequested)
         {
-            ShowFailure(new LiveFailureNotice(
-                "Terminal view failed to initialize",
-                $"{ex.GetBaseException().Message} Install or repair the Microsoft Edge WebView2 Runtime."));
+            // Page-start failures are reported by the lifecycle; the host may fail independently.
+            if (_pageTask.IsCompletedSuccessfully)
+            {
+                Trace.TraceError($"Terminal surface reload failed: {ex}");
+                QueueFatalFailureNotice(new LiveFailureNotice("Terminal view failed to reload", ex.Message));
+            }
+        }
+        finally
+        {
+            ReloadTerminalViewButton.IsEnabled = true;
         }
     }
 
@@ -2710,6 +2775,7 @@ public sealed partial class MainWindow : Window
 
         FailureBanner.Title = notice.Title;
         FailureBanner.Message = notice.Message;
+        ReloadTerminalViewButton.Visibility = fatal ? Visibility.Visible : Visibility.Collapsed;
         FailureBanner.IsOpen = true;
     }
 
