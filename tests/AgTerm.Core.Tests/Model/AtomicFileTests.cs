@@ -15,7 +15,7 @@ public class AtomicFileTests
         Directory.CreateTempSubdirectory("agterm-atomic-").FullName;
 
     [Fact]
-    public void Replace_waits_for_a_reader_to_let_go()
+    public async Task Replace_waits_for_a_reader_to_let_go()
     {
         var directory = NewDirectory();
         var destination = Path.Combine(directory, "windows.json");
@@ -32,7 +32,7 @@ public class AtomicFileTests
         });
 
         AtomicFile.Replace(temp, destination);
-        release.Wait();
+        await release;
 
         Assert.Equal("new", File.ReadAllText(destination));
     }

@@ -12,6 +12,7 @@ public class WorkspaceThemeDispatchTests
         var request = ControlJson.Deserialize<ControlRequest>(
             """{"cmd":"workspace.theme","target":"W","args":{"name":"Nord"}}""");
 
+        Assert.NotNull(request);
         Assert.Equal(Command.WorkspaceTheme, request.Cmd);
         Assert.Equal("W", request.Target);
         Assert.Equal("Nord", request.Args!.Name);

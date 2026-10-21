@@ -119,7 +119,8 @@ public class WorkspaceThemeTests : IDisposable
         _store.SetWorkspaceTheme(workspace.Id, "Nord");
         var restored = AppStoreFixtures.MakeStore();
 
-        restored.Restore(ControlJson.Deserialize<Snapshot>(ControlJson.Serialize(_store.Snapshot())));
+        restored.Restore(Assert.IsType<Snapshot>(
+            ControlJson.Deserialize<Snapshot>(ControlJson.Serialize(_store.Snapshot()))));
 
         Assert.Equal("Nord", Assert.Single(restored.Workspaces).ThemeName);
     }

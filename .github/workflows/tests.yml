@@ -41,10 +41,10 @@ jobs:
           "WebView2 Runtime $((Get-ItemProperty $key).pv) installed"
 
       - name: Build
-        run: dotnet build AgTerm.slnx
+        run: dotnet build AgTerm.slnx --no-incremental
 
       - name: Build the WinUI app
-        run: dotnet build src/AgTerm.App -p:Platform=x64
+        run: dotnet build src/AgTerm.App -p:Platform=x64 --no-incremental
 
       - name: Test
         run: dotnet test AgTerm.slnx --no-build --logger trx --results-directory TestResults

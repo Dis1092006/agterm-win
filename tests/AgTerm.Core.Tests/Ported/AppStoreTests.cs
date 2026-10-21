@@ -1227,10 +1227,10 @@ public class AppStoreTests
         var foldedClose = store.PendingCloseSummary!.Id;
 
         Assert.NotEqual(firstWorkspaceClose, foldedClose);
-        Assert.Equal(1, store.PendingCloseRecords.Count);
+        Assert.Single(store.PendingCloseRecords);
         // the superseded record is gone with its timer, so finalizing it cannot tear down the folded one
         store.FinalizePendingClose(firstWorkspaceClose);
-        Assert.Equal(1, store.PendingCloseRecords.Count);
+        Assert.Single(store.PendingCloseRecords);
 
         Assert.True(store.UndoPendingClose(foldedClose));
         var restored = store.Workspaces.FirstOrDefault(w => w.Id == doomed.Id);
@@ -1317,9 +1317,9 @@ public class AppStoreTests
         _ = store.RestoreRecentClosed(recentW);
 
         // reopening W must not resurrect V, and must not rebuild `moved` beside the original V still holds
-        Assert.False(store.Workspaces.Any(w => w.Id == wsV.Id));
-        Assert.Equal(1, store.PendingCloseRecords.Count);
-        Assert.Equal(0, store.Workspaces.SelectMany(w => w.Sessions).Count(s => s.Id == moved.Id));
+        Assert.DoesNotContain(store.Workspaces, w => w.Id == wsV.Id);
+        Assert.Single(store.PendingCloseRecords);
+        Assert.DoesNotContain(store.Workspaces.SelectMany(w => w.Sessions), s => s.Id == moved.Id);
     }
 
     [Fact]
@@ -1441,7 +1441,7 @@ public class AppStoreTests
 
         store.Restore(snapshot);
 
-        Assert.Equal(1, store.Workspaces.Count);
+        Assert.Single(store.Workspaces);
         Assert.Equal("one", store.Workspaces[0].Name);
         Assert.Equal(new[] { firstId, secondId }, store.Workspaces[0].Sessions.Select(s => s.Id));
         Assert.NotNull(store.SessionWithId(secondId));
@@ -1472,7 +1472,7 @@ public class AppStoreTests
 
         store.Restore(snapshot);
 
-        Assert.Equal(1, store.Workspaces.Count);
+        Assert.Single(store.Workspaces);
         Assert.Equal(new[] { repeated }, store.Workspaces[0].Sessions.Select(s => s.Id));
         Assert.Equal("a", store.Workspaces[0].Sessions[0].CustomName);
     }
@@ -1752,7 +1752,7 @@ public class AppStoreTests
         // save() to an unwritable directory is swallowed; the in-memory mutation stands.
         var session = store.AddSession(ws.Id, "/a");
         Assert.NotNull(session);
-        Assert.Equal(1, store.Workspaces[0].Sessions.Count);
+        Assert.Single(store.Workspaces[0].Sessions);
     }
 
     [Fact]

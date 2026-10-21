@@ -34,7 +34,7 @@ public class AppStoreWatermarkStateDirTests : IDisposable
     {
         var store = NewStore();
         var workspace = store.AddWorkspace("w");
-        var session = store.AddSession(workspace.Id, @"C:\work");
+        var session = Assert.IsType<Session>(store.AddSession(workspace.Id, @"C:\work"));
         var path = SeedWatermark(session.Id);
 
         store.CloseSession(session.Id);
@@ -47,7 +47,7 @@ public class AppStoreWatermarkStateDirTests : IDisposable
     {
         var store = NewStore();
         var workspace = store.AddWorkspace("w");
-        var session = store.AddSession(workspace.Id, @"C:\work");
+        var session = Assert.IsType<Session>(store.AddSession(workspace.Id, @"C:\work"));
         store.AddWorkspace("keeper"); // RemoveWorkspace no-ops while only one workspace exists
         var path = SeedWatermark(session.Id);
 

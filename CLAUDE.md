@@ -62,6 +62,8 @@ dotnet test AgTerm.slnx                          # WinUI app builds separately:
 dotnet build src/AgTerm.App -p:Platform=x64
 ```
 
+Both builds treat warnings as errors; use `--no-incremental` to check all warnings after a local build.
+
 Phases 1–5 are complete: Core, control plane (pipe + agtermctl), real terminal (ConPTY + WinUI 3 +
 WebView2/xterm.js), persistence, orchestration, the Windows shell, split/scratch/overlay/quick
 surfaces, search, palettes, custom-command chords, dashboard/zoom, themes, notifications,

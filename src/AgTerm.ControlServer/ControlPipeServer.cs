@@ -224,7 +224,7 @@ public sealed class ControlPipeServer : IDisposable
             await pipe.WriteAsync(data, writeCts.Token).ConfigureAwait(false);
             await pipe.FlushAsync(writeCts.Token).ConfigureAwait(false);
             // let the client drain the response before the server side tears the pipe down.
-            pipe.WaitForPipeDrain();
+            if (OperatingSystem.IsWindows()) pipe.WaitForPipeDrain();
         }
         catch (Exception e) when (e is OperationCanceledException or IOException
                                       or ObjectDisposedException or InvalidOperationException)

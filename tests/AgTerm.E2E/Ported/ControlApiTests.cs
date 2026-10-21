@@ -34,12 +34,12 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
         var result = Assert.IsType<JsonObject>(response["result"]);
         var tree = Assert.IsType<JsonObject>(result["tree"]);
         var workspaces = Assert.IsType<JsonArray>(tree["workspaces"]);
-        Assert.Equal(1, workspaces.Count);
+        Assert.Single(workspaces);
 
         var workspace = (JsonObject)workspaces[0]!;
         Assert.False(string.IsNullOrEmpty(workspace["id"]?.GetValue<string>()), "workspace should have an id");
         var sessions = Assert.IsType<JsonArray>(workspace["sessions"]);
-        Assert.Equal(1, sessions.Count);
+        Assert.Single(sessions);
         Assert.False(string.IsNullOrEmpty(sessions[0]!["id"]?.GetValue<string>()), "session should have an id");
         Assert.True(sessions[0]!["active"]!.GetValue<bool>(), "the seeded session should be active");
     }

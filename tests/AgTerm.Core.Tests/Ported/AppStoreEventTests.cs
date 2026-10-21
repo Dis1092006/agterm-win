@@ -145,9 +145,9 @@ public class AppStoreEventTests : IDisposable
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked, Shape: StatusShape.Star), session.Id);
 
         var items = Events(drafts, ControlEventKind.Status);
-        Assert.Equal(1, items.Count);
-        Assert.Equal("blocked", items.FirstOrDefault()?.Payload.Status);
-        Assert.Equal("star", items.FirstOrDefault()?.Payload.Shape);
+        var item = Assert.Single(items);
+        Assert.Equal("blocked", item.Payload.Status);
+        Assert.Equal("star", item.Payload.Shape);
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public class AppStoreEventTests : IDisposable
         store.SetAgentIndicator(indicator, Guid.NewGuid());
 
         var items = Events(drafts, ControlEventKind.Status);
-        Assert.Equal(1, items.Count);
+        Assert.Single(items);
         Assert.True(session.StatusChangedAt != null);
     }
 
@@ -190,7 +190,7 @@ public class AppStoreEventTests : IDisposable
 
         Assert.Equal(session.DisplayName, effectiveTitle);
         var items = Events(drafts, ControlEventKind.Notify);
-        Assert.Equal(1, items.Count);
+        Assert.Single(items);
         Assert.Equal(session.DisplayName, items[0].Payload.Name);
         Assert.Equal(session.DisplayName, items[0].Payload.Title);
         Assert.Equal("tests passed", items[0].Payload.Body);
