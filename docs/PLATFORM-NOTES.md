@@ -224,10 +224,12 @@ available in the headless host"` (после резолюции цели — `no
   | Ctrl+Alt+↓ | `next_session` (⌘⌥↓) | `next_attention_session` (⌃⌥↓) |
   Обе несут Alt, оболочке не мешают, поэтому оставлены как есть.
 
-  Перехват в терминале: страница получает таблицу активных физ-чордов
-  (`agterm.setChords`); совпавший keydown НЕ уходит в шелл, а возвращается хосту
-  `{type:'chord',…}` (xterm `attachCustomKeyEventHandler`). Ни один голый Ctrl-чорд в эту
-  таблицу не попадает. Полная таблица действий — ниже и в README.
+  Terminal interception: the page receives the active physical chords (`agterm.setChords`).
+  A matching keydown does not reach the shell; xterm's `attachCustomKeyEventHandler` sends
+  `{type:'chord',…}` to the host. No default bare Ctrl+letter enters this table, but a user
+  `map` can add one. For a non-Latin letter the chord uses its `KeyboardEvent.code` position
+  (`KeyF` to `f`); a typed Latin letter wins, including on Dvorak. The full action table
+  follows below and in the README.
 
 - **Custom-command shell and chord adaptation.** Upstream executes each custom command as an
   opaque `/bin/sh -c` line. Windows resolves `pwsh.exe` from `PATH` first and runs
@@ -430,7 +432,7 @@ That is a feature gap in the engine, not a parity divergence: the control API, t
 - **Both extensions are off by default in the engine, and both are enabled here.** `buildTerminalOptions` sets them for every pane. `win32InputMode` (`DECSET 9001`) is the ConPTY-native way to report full key events and helps TUI input generally.
 - **The kitty protocol outranks win32-input-mode here, and the engine does the opposite.** `KeyboardService.evaluateKeyDown` checks win32-input-mode first and returns before the kitty path, so an app that enables both gets win32 key records. Claude Code enables both: it writes `DECSET 9001` at startup and then `CSI > 5 u`. Measured from the real `claude.exe` through a pseudoconsole, the first bytes out are `ESC[?9001h`, then `ESC[<u ESC[>5u ESC[>4;2m`. Shift+Enter then left as `ESC[13;28;13;1;16;1_`, which Claude Code does not read as Shift+Enter, so it submitted the prompt instead of inserting a newline. Ctrl+Enter worked throughout, because it survives as a win32 record the app does understand - that asymmetry is what identifies this bug. `openPane` watches the kitty push and pop and clears the `win32InputMode` option while a request is in effect, so the pane encodes what the app asked for. The mode itself stays set: `DECSET 9001` is the app's, not ours, and the option is what the engine consults. `XtermPageLiveTests.Popping_the_kitty_stack_gives_win32_input_mode_back` pins the restore.
 - **An app that never asks keeps the old encoding.** The protocol is opt-in over the wire: the engine answers `CSI ? u`, tracks the stack pushed by `CSI > flags u` and popped by `CSI < n u`, and reports CSI u only while a request is in effect. Enabling the option changes nothing for a program that does not use it. `XtermPageLiveTests.Shift_enter_reports_kitty_csi_u_while_the_keyboard_protocol_is_pushed` pins all three states: CR before the push, `ESC [13;2u` for Shift+Enter while pushed, CR again after the pop.
-- **Host chord interception runs first and is unaffected.** `attachCustomKeyEventHandler` sees the DOM event before any encoding, so which chords reach the pty is still decided by the keymap, not by the protocol.
+- **Host chord interception runs before keyboard encoding.** `attachCustomKeyEventHandler` resolves letter chords from the typed Latin letter or the physical key on a non-Latin layout. The keymap still decides which chords reach the pty, regardless of the active keyboard protocol.
 
 Claude Code is the case that motivated this: its newline-without-submit binding needs Shift+Enter to be distinguishable from Enter, and `claude /terminal-setup` cannot help, since it writes per-terminal config for a fixed list of known terminals and has no entry for this app. Supporting the protocol is not sufficient on its own, because the request has to come from the program: see the next section.
 
@@ -452,6 +454,12 @@ The chords are added in the pane, not in the keymap. Adding builtin actions woul
 - **Ctrl+Shift+C and Ctrl+Insert copy only when there is a selection.** With nothing selected they do nothing and send no input to the terminal. Ctrl+V, Ctrl+Shift+V and Shift+Insert request a paste.
 - **The letter chords also work on non-Latin layouts.** When the typed key is not an ASCII letter and Alt is not held, the pane uses the physical `KeyC` or `KeyV` position. With no selection, xterm encodes Ctrl+C for the active keyboard mode.
 - **The host writes the clipboard, the page does not.** `navigator.clipboard.writeText` fails with `NotAllowedError` without a user gesture, and a key event dispatched by the engine does not count as one. Measured in the live WebView2: the page is a secure context and the API is present, and the write is still refused. A copy posts `copyRequested` with the selected text and `MainWindow` writes it, which mirrors the clipboard read that right-click paste already used.
+
+## Letter keys on non-Latin layouts
+
+The pane resolves built-in and custom keymap chords from the typed ASCII letter when one exists, otherwise from the physical `KeyboardEvent.code` (`KeyF` to `f`). Alt+F opens search and other app chords match on a Russian layout. A user `map` binding still wins where the host gives it priority. On a Latin layout such as Dvorak, the typed letter wins over the physical QWERTY position. Ctrl+Alt does not use the physical-letter fallback, so AltGr characters do not trigger app chords.
+
+If a non-Latin Ctrl+letter key is not consumed by a chord or the clipboard handler, the pane gives xterm the corresponding Latin key before encoding. Ctrl+F on a Russian layout therefore sends 0x06 in legacy mode, and the same output as Latin Ctrl+F in kitty and win32-input modes. Plain Cyrillic text and Shift+letter remain typed characters; the clipboard handler and agent status-clear rules stay in place.
 
 ## Agent status on terminal input
 

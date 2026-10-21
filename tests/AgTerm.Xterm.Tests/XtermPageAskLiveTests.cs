@@ -263,7 +263,7 @@ public class XtermPageAskLiveTests
             (() => {
                 agterm.applyAsk({{SessionPayload("[\"left\",\"right\"]")}});
                 document.querySelector('.ask-layer').dispatchEvent(
-                    new KeyboardEvent('keydown', { key: 'n', code: 'KeyN', altKey: true, bubbles: true, cancelable: true }));
+                    new KeyboardEvent('keydown', { key: 'т', code: 'KeyN', altKey: true, bubbles: true, cancelable: true }));
                 agterm.applyAsk(null);
                 return document.querySelector('[data-pane-id="right"]').contains(document.activeElement);
             })()

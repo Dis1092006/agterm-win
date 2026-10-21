@@ -1142,6 +1142,7 @@ public class XtermPageLiveTests
     [InlineData("")]
     [InlineData("\u001b[>1u")]
     [InlineData("\u001b[?9001h")]
+    [InlineData("\u001b[?9001h\u001b[>1u")]
     public async Task Cyrillic_ctrl_c_without_selection_matches_latin_terminal_encoding(string mode)
     {
         var (page, view) = await BootPageAsync();
@@ -1176,6 +1177,189 @@ public class XtermPageLiveTests
 
         Assert.NotEmpty(latinData);
         Assert.Equal(latinData, cyrillicData);
+    }
+
+    [Fact]
+    public async Task Cyrillic_app_chords_route_search_other_alt_and_ctrl_shift_without_terminal_input()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-chords"));
+        var data = new List<string>();
+        var hits = new List<PhysicalChord>();
+        terminal.DataReceived += data.Add;
+        page.ChordPressed += (_, chord) => hits.Add(chord);
+        await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
+        [
+            new(false, true, false, "f"),
+            new(false, true, false, "n"),
+            new(true, false, true, "p"),
+        ]));
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("layout-chords", {key:"а", code:"KeyF", altKey:true});
+              agterm.dispatchKey("layout-chords", {key:"т", code:"KeyN", altKey:true});
+              agterm.dispatchKey("layout-chords", {key:"З", code:"KeyP", ctrlKey:true, shiftKey:true});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (hits.Count < 3 && Environment.TickCount64 < deadline) await Task.Delay(25);
+
+        Assert.Equal(
+        [
+            new(false, true, false, "f"),
+            new(false, true, false, "n"),
+            new(true, false, true, "p"),
+        ], hits);
+        Assert.Empty(data);
+    }
+
+    [Fact]
+    public async Task Cyrillic_custom_single_and_leader_chords_match_physical_letters()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-custom"));
+        var single = Guid.NewGuid();
+        var leader = Guid.NewGuid();
+        var hits = new List<CustomHotkeyEvent>();
+        var data = new List<string>();
+        page.CustomCommandPressed += hits.Add;
+        terminal.DataReceived += data.Add;
+        await _webView.RunAsync(_ => page.SetHotkeyManifestAsync(new HotkeyManifest(
+            1, 2000, [],
+            [
+                new(single, [new(false, true, false, "f")]),
+                new(leader, [new(true, false, false, "k"), new(false, false, false, "b")]),
+            ])));
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("layout-custom", {key:"а", code:"KeyF", altKey:true});
+              agterm.dispatchKey("layout-custom", {key:"л", code:"KeyK", ctrlKey:true});
+              agterm.dispatchKey("layout-custom", {key:"и", code:"KeyB"});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (hits.Count < 2 && Environment.TickCount64 < deadline) await Task.Delay(25);
+
+        Assert.Equal([single, leader], hits.Select(h => h.CommandId));
+        Assert.Equal(new PhysicalChord(false, false, false, "b"), hits[1].Chord);
+        Assert.Empty(data);
+    }
+
+    [Theory]
+    [InlineData("", "f", "а", "KeyF", "\u0006")]
+    [InlineData("", "j", "о", "KeyJ", "\u000a")]
+    [InlineData("\u001b[>1u", "f", "а", "KeyF", "\u001b[102;5u")]
+    [InlineData("\u001b[>1u", "j", "о", "KeyJ", "\u001b[106;5u")]
+    [InlineData("\u001b[?9001h", "f", "а", "KeyF", null)]
+    [InlineData("\u001b[?9001h", "j", "о", "KeyJ", null)]
+    [InlineData("\u001b[?9001h\u001b[>1u", "f", "а", "KeyF", "\u001b[102;5u")]
+    public async Task Cyrillic_ctrl_letters_send_the_same_bytes_as_latin_in_every_keyboard_mode(
+        string mode, string latinKey, string cyrillicKey, string code, string? expected)
+    {
+        var (page, view) = await BootPageAsync();
+        var latin = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-latin"));
+        var cyrillic = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-cyrillic"));
+        var latinData = new List<string>();
+        var cyrillicData = new List<string>();
+        latin.DataReceived += latinData.Add;
+        cyrillic.DataReceived += cyrillicData.Add;
+        if (mode.Length > 0) await _webView.RunAsync(_ =>
+        {
+            latin.FeedOutput(Encoding.UTF8.GetBytes(mode));
+            cyrillic.FeedOutput(Encoding.UTF8.GetBytes(mode));
+            return Task.FromResult(0);
+        });
+        if (mode.Length > 0) await Task.Delay(200);
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            $$"""
+            (() => {
+              for (const [pane, key] of [["layout-latin", "{{latinKey}}"], ["layout-cyrillic", "{{cyrillicKey}}"]]) {
+                const ev = new KeyboardEvent("keydown", {key, code:"{{code}}", ctrlKey:true, cancelable:true});
+                Object.defineProperty(ev, "keyCode", {value: {{(int)latinKey[0] - 32}}});
+                Object.defineProperty(ev, "which", {value: {{(int)latinKey[0] - 32}}});
+                agterm.textareaFor(pane).dispatchEvent(ev);
+              }
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while ((latinData.Count == 0 || cyrillicData.Count == 0) && Environment.TickCount64 < deadline)
+            await Task.Delay(25);
+        Assert.NotEmpty(latinData);
+        Assert.Equal(latinData, cyrillicData);
+        if (expected is not null) Assert.Equal(expected, string.Concat(latinData));
+    }
+
+    [Fact]
+    public async Task Plain_cyrillic_shift_and_altgr_characters_still_type_without_app_chords()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-typing"));
+        var data = new List<string>();
+        var hits = new List<PhysicalChord>();
+        terminal.DataReceived += data.Add;
+        page.ChordPressed += (_, chord) => hits.Add(chord);
+        await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
+        [
+            new(false, true, false, "f"),
+            new(true, true, false, "c"),
+        ]));
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("layout-typing", {key:"а", code:"KeyF"});
+              agterm.dispatchKey("layout-typing", {key:"А", code:"KeyF", shiftKey:true});
+              const ta = agterm.textareaFor("layout-typing");
+              const ev = new KeyboardEvent("keydown", {
+                key:"ć", code:"KeyC", ctrlKey:true, altKey:true, cancelable:true
+              });
+              Object.defineProperty(ev, "keyCode", {value:67});
+              Object.defineProperty(ev, "which", {value:67});
+              ta.dispatchEvent(ev);
+              ta.dispatchEvent(new CompositionEvent("compositionstart", {bubbles:true, data:""}));
+              ta.value = "ć";
+              ta.dispatchEvent(new CompositionEvent("compositionupdate", {bubbles:true, data:"ć"}));
+              ta.dispatchEvent(new CompositionEvent("compositionend", {bubbles:true, data:"ć"}));
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (!string.Concat(data).Contains("ć") && Environment.TickCount64 < deadline)
+            await Task.Delay(25);
+        Assert.Contains("а", string.Concat(data));
+        Assert.Contains("А", string.Concat(data));
+        Assert.Contains("ć", string.Concat(data));
+        Assert.Empty(hits);
+    }
+
+    [Fact]
+    public async Task Typed_latin_letter_wins_over_physical_position_on_dvorak()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-dvorak"));
+        var hits = new List<PhysicalChord>();
+        var data = new List<string>();
+        page.ChordPressed += (_, chord) => hits.Add(chord);
+        terminal.DataReceived += data.Add;
+        await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
+            [new(false, true, false, "j"), new(false, true, false, "c")]));
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("layout-dvorak", {key:"j", code:"KeyC", altKey:true});
+              agterm.dispatchKey("layout-dvorak", {key:"j", code:"KeyC", ctrlKey:true});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (hits.Count == 0 || data.Count == 0)
+        {
+            if (Environment.TickCount64 >= deadline) break;
+            await Task.Delay(25);
+        }
+        Assert.Equal([new PhysicalChord(false, true, false, "j")], hits);
+        Assert.Equal("\u000a", string.Concat(data));
     }
 
     [Theory]

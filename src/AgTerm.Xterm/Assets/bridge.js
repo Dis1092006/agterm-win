@@ -1581,6 +1581,20 @@ function normalizeKey(key) {
   }
 }
 
+function keymapKey(ev) {
+  const key = normalizeKey(ev.key);
+  if (
+    typeof ev.key === "string" &&
+    ev.key.length === 1 &&
+    !/^[\x00-\x7f]$/.test(ev.key) &&
+    !(ev.ctrlKey && ev.altKey) &&
+    /^Key[A-Z]$/.test(ev.code || "")
+  ) {
+    return ev.code.slice(3).toLowerCase();
+  }
+  return key;
+}
+
 // Terminal-style ask (upstream AskDialogView, terminal style). The host owns the highlight and the
 // answer; the page draws the payload and reports intents, so both dialog styles share one model.
 function rgbaFromHex(color, alpha) {
@@ -1678,7 +1692,7 @@ function askOwnerPaneId() {
 
 // window chords keep working over a question; only built-in chords, as the menu would
 function routeAskChord(ev) {
-  const key = normalizeKey(ev.key);
+  const key = keymapKey(ev);
   const paneId = askOwnerPaneId();
   if (key === null || paneId === null) return;
   const chord = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key };
@@ -2618,8 +2632,8 @@ function openPane(paneId, opts) {
       if (ev.preventDefault) ev.preventDefault();
       return false;
     }
-    const key = normalizeKey(ev.key);
-    // Insert is not in the keymap grammar, so normalizeKey drops it: route the clipboard chords
+    const key = keymapKey(ev);
+    // Insert is not in the keymap grammar, so keymapKey drops it: route the clipboard chords
     // before that. A key the keymap can express is routed after it, so a user binding still wins.
     if (key === null) {
       if (!routeClipboardChord(ev)) return forwardUserKeystroke(ev);
@@ -2660,6 +2674,10 @@ function openPane(paneId, opts) {
     }
     if (!handled) handled = routeClipboardChord(ev);
     if (!handled) {
+      if (ev.ctrlKey && !ev.altKey && key !== normalizeKey(ev.key)
+          && /^[a-z]$/.test(key || "")) {
+        Object.defineProperty(ev, "key", { value: key });
+      }
       return forwardUserKeystroke(ev);
     }
     if (ev.preventDefault) ev.preventDefault();
