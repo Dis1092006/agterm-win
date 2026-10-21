@@ -245,6 +245,9 @@ available in the headless host"` (после резолюции цели — `no
   Replacement is atomic and cancels any armed leader; stale generation events no-op in the host.
   The command gets no `AGTERM_*` value: all seven names are removed from the inherited
   environment (see "Session environment").
+  Ported from upstream `babc760`: a custom command puts the bundled `agtermctl.exe` folder first
+  on its own PATH, then keeps inherited folders in order, dropping empty and duplicate entries.
+  Windows has no launchd default PATH or separate standard CLI install folders; pane shells are unchanged.
   A 1.5-second leader timeout and Escape abandon the prefix, and an unmatched continuation is
   retried at the root before it is returned to the terminal.
 

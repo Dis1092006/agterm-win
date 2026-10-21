@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using AgTerm.ControlServer;
+using AgTerm.Core.Install;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Terminal;
@@ -198,7 +199,8 @@ public sealed class CustomCommandProcessRunner
     public static ProcessStartInfo CreateStartInfo(
         CustomCommandInvocation invocation,
         Func<string, string?>? which = null,
-        Func<string, string?>? env = null)
+        Func<string, string?>? env = null,
+        string? processPath = null)
     {
         ArgumentNullException.ThrowIfNull(invocation);
         which ??= FindExecutableOnPath;
@@ -237,6 +239,14 @@ public sealed class CustomCommandProcessRunner
             startInfo.Environment.Remove(name);
         foreach (var pair in invocation.Environment)
             startInfo.Environment[pair.Key] = pair.Value;
+
+        processPath ??= Environment.ProcessPath;
+        var directory = Path.GetDirectoryName(processPath);
+        var bundledCliDirectory = !string.IsNullOrEmpty(directory) &&
+            File.Exists(Path.Join(directory, CliInstall.ToolFileName))
+            ? directory : null;
+        startInfo.Environment.TryGetValue("PATH", out var inheritedPath);
+        startInfo.Environment["PATH"] = CommandPath.Widened(inheritedPath, bundledCliDirectory);
         return startInfo;
     }
 

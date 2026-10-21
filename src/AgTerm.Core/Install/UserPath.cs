@@ -39,7 +39,7 @@ public static class UserPath
         return string.Join(Separator, kept);
     }
 
-    private static string Normalize(string entry, Func<string, string>? expand) =>
+    internal static string Normalize(string entry, Func<string, string>? expand) =>
         (expand is null ? entry : expand(entry)).TrimEnd('\\', '/');
 
     private static bool Matches(string entry, string normalizedDirectory, Func<string, string>? expand)

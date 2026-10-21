@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using AgTerm.Core.Install;
 using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm.Tests;
@@ -59,4 +60,49 @@ public class CustomCommandEnvironmentTests
         // cmd leaves an undefined %NAME% as is.
         Assert.Equal("[%AGTERM_SOCKET%][%AGTERM_SESSION_ID%][pipe]", output);
     });
+
+    [Fact]
+    public void A_bare_bundled_cli_is_found_without_installing_it_on_the_user_path()
+    {
+        var directory = Path.Join(Path.GetTempPath(), $"agterm-custom-path-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var workingDirectory = Path.Join(directory, "working");
+            Directory.CreateDirectory(workingDirectory);
+            File.WriteAllText(Path.Join(directory, CliInstall.ToolFileName), "");
+            var startInfo = CustomCommandProcessRunner.CreateStartInfo(
+                new CustomCommandInvocation(Guid.NewGuid(), "Run CLI", "where agtermctl", workingDirectory,
+                    new Dictionary<string, string>()),
+                which: _ => null,
+                env: key => key == "COMSPEC" ? Cmd : null,
+                processPath: Path.Join(directory, "agterm-win.exe"));
+            startInfo.RedirectStandardOutput = true;
+
+            Assert.Equal(directory, startInfo.Environment["PATH"]!.Split(';')[0]);
+            using var process = Process.Start(startInfo)!;
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            Assert.True(process.WaitForExit(10_000));
+            Assert.Equal(0, process.ExitCode);
+            Assert.Equal(Path.Join(directory, CliInstall.ToolFileName), output.Split('\n')[0].Trim());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_missing_bundled_cli_does_not_add_the_app_directory()
+    {
+        var directory = Path.Join(Path.GetTempPath(), $"agterm-missing-cli-{Guid.NewGuid():N}");
+        var startInfo = CustomCommandProcessRunner.CreateStartInfo(
+            new CustomCommandInvocation(Guid.NewGuid(), "Run CLI", "echo ok", "",
+                new Dictionary<string, string>()),
+            which: _ => null,
+            env: key => key == "COMSPEC" ? Cmd : null,
+            processPath: Path.Join(directory, "agterm-win.exe"));
+
+        Assert.DoesNotContain(directory, startInfo.Environment["PATH"]!, StringComparison.OrdinalIgnoreCase);
+    }
 }
