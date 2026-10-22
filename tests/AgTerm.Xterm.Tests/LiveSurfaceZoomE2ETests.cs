@@ -309,6 +309,58 @@ public sealed class LiveSurfaceZoomE2ETests
         }
     }
 
+    [Theory]
+    [InlineData("quick")]
+    [InlineData("session")]
+    public void Zooming_a_new_target_ends_active_search_and_the_background_targets_search(string targetKind)
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-zoom-search-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            host.Host.RunLocked(() =>
+            {
+                var store = host.Store;
+                var active = Assert.IsType<Session>(store.ActiveSession);
+                var workspace = store.WorkspaceForSession(active.Id)!;
+                var background = Assert.IsType<Session>(store.AddSession(workspace.Id, stateDir, select: false));
+                var unrelated = Assert.IsType<Session>(store.AddSession(workspace.Id, stateDir, select: false));
+                foreach (var session in new[] { active, background, unrelated })
+                {
+                    session.Surface = new FakeSurface(session.Id.ToString("N"));
+                    Assert.True(store.OpenSearch(session.Id));
+                    Assert.True(store.UpdateSearch(session.Id, session.Surface.PaneToken!, "needle", 2, 1));
+                    Assert.True(session.SearchActive);
+                    Assert.Same(session.Surface, session.SearchSurface);
+                }
+                host.Host.Actions.Quick.Visible = true;
+                host.Host.Actions.Quick.Surface = new FakeSurface("quick-token");
+                var target = targetKind == "quick"
+                    ? "quick"
+                    : new TerminalSurfaceId(background.Id, TerminalZoomSurface.Primary).RawValue;
+
+                var response = host.Host.Actions.SetSurfaceZoom(target, null, ControlToggleMode.On);
+
+                Assert.True(response.Ok, response.Error);
+                Assert.Equal(active.Id, store.SelectedSessionId);
+                Assert.False(active.SearchActive);
+                Assert.Null(active.SearchSurface);
+                Assert.Equal("", active.SearchNeedle);
+                Assert.Null(active.SearchTotal);
+                Assert.Null(active.SearchSelected);
+                Assert.Equal(targetKind == "quick", background.SearchActive);
+                Assert.Equal(targetKind == "quick" ? background.Surface : null, background.SearchSurface);
+                Assert.True(unrelated.SearchActive);
+                Assert.Same(unrelated.Surface, unrelated.SearchSurface);
+                Assert.Equal("needle", unrelated.SearchNeedle);
+            });
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
     [Fact]
     public async Task Closing_the_zoomed_surface_clears_controller_hotkey_state_and_presentation()
     {

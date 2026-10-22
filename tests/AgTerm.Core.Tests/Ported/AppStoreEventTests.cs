@@ -77,16 +77,6 @@ public class AppStoreEventTests : IDisposable
             batch.Items.Select(e => e.Session).ToList());
     }
 
-    [Fact(Skip = "PORT-GAP: a LiveApplicationHost test must assert the same event run and " +
-                 "five contiguous sequence numbers across window create, close, reopen, and session create.")]
-    public void RuntimeCloseAndReopenKeepsCursorContinuity()
-    {
-        // PORT-GAP: upstream asserts that closing a window emits session.closed for its live
-        // sessions, reopening it re-emits session.created, and the shared ring's sequence numbers
-        // stay contiguous (seq == [1, 2, 3, 4, 5]) across the whole runtime close/reopen cycle.
-        // Upstream does this in WindowLibrary; the Windows host lives in AgTerm.Xterm.
-    }
-
     [Fact]
     public void CursorFailureResponseCarriesCurrentAnchor()
     {

@@ -620,6 +620,78 @@ public sealed class LiveWindowControlE2ETests : IDisposable
                 $"{firstId:D}.json").Load().Workspaces.Select(workspace => workspace.Name));
     }
 
+    // Ported from upstream AppStoreEventTests.swift runtimeCloseAndReopenKeepsCursorContinuity.
+    [Fact]
+    public void Runtime_close_and_reopen_keeps_cursor_continuity()
+    {
+        var windows = new FakeWindowController();
+        using var application = CreateApplication(windows);
+        windows.Activated = application.ReportActivated;
+        windows.Closed = id => application.CloseWindowAsync(id);
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var firstId = Assert.Single(application.Windows).Id;
+        var first = application.GetOpenWindow(firstId);
+        var session = Assert.Single(Assert.Single(first.Store.Workspaces).Sessions);
+        application.FlushTreeEvents();
+        var anchor = client.Send(new ControlRequest { Cmd = Command.EventsRead }).Result!.Events!;
+
+        first.RunLocked(() => first.Store.SetAgentIndicator(
+            new AgentIndicator(AgentStatus.Active), session.Id));
+        first.Save();
+        var created = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowNew,
+            Args = new ControlArgs { Name = "keep-open" },
+        });
+        Assert.True(created.Ok, created.Error);
+        var secondId = Guid.Parse(created.Result!.Id!);
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowClose,
+            Target = firstId.ToString("D"),
+        }).Ok);
+        var closed = ReadEvents(client, anchor);
+        Assert.Equal(anchor.Run, closed.Run);
+
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowSelect,
+            Target = firstId.ToString("D"),
+        }).Ok);
+        var reopened = application.GetOpenWindow(firstId);
+        var restoredSession = Assert.Single(Assert.Single(reopened.Store.Workspaces).Sessions);
+        Assert.Equal(session.Id, restoredSession.Id);
+        var added = client.Send(new ControlRequest { Cmd = Command.SessionNew });
+        Assert.True(added.Ok, added.Error);
+        application.FlushTreeEvents();
+        var afterReopen = ReadEvents(client, closed);
+        Assert.Equal(anchor.Run, afterReopen.Run);
+        var events = closed.Items.Concat(afterReopen.Items).ToArray();
+
+        // tree.changed also consumes sequence numbers; verify continuity before filtering it.
+        Assert.Equal(
+            Enumerable.Range(1, events.Length).Select(offset => anchor.Next + (ulong)offset),
+            events.Select(item => item.Seq));
+        Assert.Equal(events[^1].Seq, afterReopen.Next);
+        var lifecycle = events.Where(item => item.Kind != ControlEventKind.TreeChanged).ToArray();
+        Assert.Equal(new[]
+        {
+            ControlEventKind.Status,
+            ControlEventKind.SessionCreated,
+            ControlEventKind.SessionClosed,
+            ControlEventKind.SessionCreated,
+            ControlEventKind.SessionCreated,
+        }, lifecycle.Select(item => item.Kind));
+        Assert.Equal(new[] { firstId, secondId, firstId, firstId, firstId }
+            .Select(id => id.ToString("D").ToUpperInvariant()),
+            lifecycle.Select(item => item.Window));
+        Assert.All(lifecycle.Take(4).Where(item => item.Window == firstId.ToString("D").ToUpperInvariant()),
+            item => Assert.Equal(session.Id.ToString("D").ToUpperInvariant(), item.Session));
+        Assert.Equal(added.Result!.Id, lifecycle[^1].Session);
+        Assert.Empty(ReadEvents(client, afterReopen).Items);
+    }
+
     // Ported from upstream AppStoreEventTests.swift runtimeWindowCloseAndReopenEmitBalancedSessionEdges
     [Fact]
     public void Window_close_and_runtime_reopen_emit_balanced_application_events()

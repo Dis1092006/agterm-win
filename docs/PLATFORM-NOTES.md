@@ -743,6 +743,12 @@ Upstream's Help menu has *Install Command Line Tool…*, *Install Agent Skill…
   - The dialog text is not upstream's, because upstream's text is about `/usr/local/bin`.
   - A build without `agtermctl.exe` next to the app, such as a debug build under `artifacts\bin`, answers `agtermctl is not bundled in this build.`
 
+## Ported live-test coverage
+
+`LiveSplitE2ETests.Promoted_main_pane_does_not_clear_fresh_split_right_status` ports the upstream promotion regression through real ConPTY shells and the WebView2 user-keystroke bridge. It waits for the status-clear callback to finish before asserting that the new right pane stays blocked, then checks that a key in that right pane clears its status. It does not test WinUI keyboard focus. `LiveSearchE2ETests.Zooming_background_target_ends_its_search_before_reselection` checks the real search bar and addon after zooming a background session. Entering zoom or changing its target closes the window's active session search for every target, including the quick terminal. A background session target also has its own search closed. Leaving zoom does not reopen either search. `LiveSurfaceZoomE2ETests.Zooming_a_new_target_ends_active_search_and_the_background_targets_search` checks active-session cleanup for quick and background-session targets, without clearing an unrelated background session's search.
+
+`LiveWindowControlE2ETests.Runtime_close_and_reopen_keeps_cursor_continuity` uses the application host and its shared event ring without OS windows. It checks the same event run across close and reopen, contiguous global sequence numbers across cursor reads, and the five upstream status/session event kinds in order. Coalesced `tree.changed` events also consume global sequence numbers, so the test checks continuity before filtering those structural events. Tests whose assertion requires WinUI row clicks or OS keyboard focus remain skipped; control-channel typing does not cover those assertions.
+
 ## Agent skill
 
 The skill in `plugins/agterm/skills/agterm` is this repository's copy of upstream's skill, adapted to Windows. Design: `docs/superpowers/specs/2026-10-13-agent-skill-design.md`.

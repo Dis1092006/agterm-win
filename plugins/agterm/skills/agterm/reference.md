@@ -657,6 +657,8 @@ All twelve are read-only projections of GUI state.
 
 ## surface
 
+Entering zoom or changing its target ends search in the window's active session, including when zooming the quick terminal or a background session. Zooming a background session also ends that session's search. Leaving zoom does not reopen either search.
+
 `agtermctl surface zoom [show|hide|toggle] [--target SURFACE_ID|active|quick] [--window W]` — zoom one
 terminal surface to fill the window's terminal area. Wire: `surface.zoom`. `SURFACE_ID` comes from
 `agtermctl tree --json` at `.result.tree.workspaces[].sessions[].surfaces[].id`, for example

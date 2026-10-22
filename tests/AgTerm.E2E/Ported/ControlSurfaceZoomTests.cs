@@ -164,21 +164,6 @@ public class ControlSurfaceZoomTests : ControlApiTestCase
         //       → "window not open — window.select it first"
     }
 
-    [Fact(Skip = "PORT-GAP: a live UI test must zoom a background session with search open, " +
-                 "exit zoom, reselect the session, and assert its search field is gone.")]
-    public void ZoomingBackgroundTargetEndsItsSearch()
-    {
-        // Upstream body, for reference:
-        //   let sessionA = try activeSessionID()
-        //   {"cmd":"session.search","target":"<sessionA>","args":{"text":"login"}}  → ok, bar up on A
-        //   {"cmd":"session.new"}                                                   → B active, A background
-        //   {"cmd":"surface.zoom","target":"surface:<sessionA>:left","args":{"mode":"show"}} → ok
-        //   {"cmd":"surface.zoom","args":{"mode":"hide"}}                           → ok
-        //   {"cmd":"session.select","target":"<sessionA>"}                          → ok
-        //   → re-selecting A shows NO search bar: zoom-enter must have ended A's search (a surviving
-        //     searchActive would re-mount the bar the moment A becomes the active session).
-    }
-
     [Fact(Skip = "PORT-GAP: a live multi-window keyboard test must exit zoom in a background " +
                  "window and assert typed text still reaches the frontmost window's search field.")]
     public void BackgroundWindowZoomExitDoesNotStealFrontmostFocus()

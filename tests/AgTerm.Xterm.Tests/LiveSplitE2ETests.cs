@@ -3,6 +3,7 @@ using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
 using System.Text.Json;
+using System.Threading.Channels;
 
 namespace AgTerm.Xterm.Tests;
 
@@ -19,6 +20,7 @@ public sealed class LiveSplitE2ETests : IDisposable
         Directory.CreateTempSubdirectory("agterm-live-split-").FullName;
     private readonly LiveControlHost _host;
     private readonly Lazy<Task<XtermPage>> _page;
+    private readonly Channel<Task> _statusClears = Channel.CreateUnbounded<Task>();
 
     public LiveSplitE2ETests(WebView2Fixture webView)
     {
@@ -31,6 +33,12 @@ public sealed class LiveSplitE2ETests : IDisposable
             PipeName = "agterm-live-split-" + Guid.NewGuid().ToString("N"),
             DefaultShell = Cmd,
             HomeDirectory = _stateDir,
+            UserKeystrokeScheduler = action =>
+            {
+                var pending = Task.Run(action);
+                Assert.True(_statusClears.Writer.TryWrite(pending));
+                return pending;
+            },
             OpenSurface = async (request, cancellationToken) =>
             {
                 var shared = await _page.Value;
@@ -194,6 +202,45 @@ public sealed class LiveSplitE2ETests : IDisposable
         Assert.Equal(StatusPane.Left, CurrentIndicator().StatusPane);
         await KeyInPaneAsync(split.PaneToken!, "h");
         await WaitForStatusAsync(AgentStatus.Idle);
+    }
+
+    // Ported from upstream ControlAPIUITests.testPromotedMainPaneDoesNotClearSplitRightStatus.
+    [Fact]
+    public async Task Promoted_main_pane_does_not_clear_fresh_split_right_status()
+    {
+        WaitForText(">");
+        var promoted = await EnableSplitAndWaitForRealizationAsync();
+        WaitForText(">", pane: "right");
+        CtlOk("session", "type", "--pane", "left", "exit\n");
+        var deadline = Environment.TickCount64 + 15000;
+        bool isPromoted = false;
+        while (Environment.TickCount64 < deadline)
+        {
+            _host.Host.RunLocked(() =>
+                isPromoted = !_host.Store.ActiveSession!.HasSplit
+                    && ReferenceEquals(promoted, _host.Store.ActiveSession.Surface));
+            if (isPromoted) break;
+            await Task.Delay(25);
+        }
+        Assert.True(isPromoted, "the surviving right pane was not promoted to main");
+
+        var freshSplit = await EnableSplitAndWaitForRealizationAsync();
+        Assert.NotSame(promoted, freshSplit);
+        WaitForText(">", pane: "right");
+        CtlOk("session", "status", "blocked", "--pane", "right");
+        Assert.Equal(StatusPane.Right, CurrentIndicator().StatusPane);
+        Assert.Equal(AgentStatus.Blocked, CurrentIndicator().Status);
+
+        await KeyInPaneAsync(promoted.PaneToken!, "x", "KeyX");
+        var mainKey = await _statusClears.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await mainKey.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(AgentStatus.Blocked, CurrentIndicator().Status);
+        Assert.Equal(StatusPane.Right, CurrentIndicator().StatusPane);
+
+        await KeyInPaneAsync(freshSplit.PaneToken!, "y", "KeyY");
+        var rightKey = await _statusClears.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await rightKey.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(AgentStatus.Idle, CurrentIndicator().Status);
     }
 
     [Fact]

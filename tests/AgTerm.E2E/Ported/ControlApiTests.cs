@@ -502,21 +502,6 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
         // try? FileManager.default.removeItem(atPath: marker)
     }
 
-    // promote → re-split keystroke-clear: typing a REAL keystroke in the promoted MAIN pane must
-    // NOT clear a `.right` block owned by the fresh split.
-    [Fact(Skip = "PORT-GAP: a live WebView2 test must promote the split pane, split again, " +
-                 "type in the promoted main pane, and assert the new right pane stays blocked.")]
-    public void PromotedMainPaneDoesNotClearSplitRightStatus()
-    {
-        // Swift body (abridged to the essential steps):
-        // let sid = try activeSessionID()
-        // session.split on; app.typeKey(.leftArrow, [.command, .option]); app.typeText("exit") + return
-        // (promotes the right pane); session.split on again; session.status blocked --pane right;
-        // poll tree until status == "blocked"; focus the promoted main pane and app.typeText("x");
-        // XCTAssertEqual(sessionNode(tree, id: sid)?["status"] as? String, "blocked",
-        //                "typing in the promoted main pane must not clear the split pane's .right block")
-    }
-
     // session.new --name seeds the new session's custom name at creation.
     [Fact]
     public void SessionNewWithName()

@@ -249,6 +249,87 @@ public sealed class LiveSearchE2ETests : IDisposable
         await WaitForSearchStatusAsync(page, "1 of 6");
     }
 
+    // Ported from upstream ControlSurfaceZoomUITests.testZoomingBackgroundTargetEndsItsSearch.
+    [Fact]
+    public async Task Zooming_background_target_ends_its_search_before_reselection()
+    {
+        var page = await _page.Value;
+        WaitForText(">");
+        var sessionId = ReadSessionField(session => session.Id);
+        var paneId = MainPaneToken();
+        var presentationGate = new object();
+        Task presentation = Task.CompletedTask;
+        var previous = new LiveSelectionSnapshot(null, null);
+        long generation = 0;
+
+        async Task PresentAsync(Task pending, LiveSelectionSnapshot before, LiveSelectionSnapshot current, long next)
+        {
+            await pending;
+            await _webView.RunAsync(async _ =>
+            {
+                Assert.True(await page.ApplyLayoutAsync(current.ToTerminalLayout(next)));
+                var transition = SearchPresentationTransition.Resolve(before, current, current.MainPaneId);
+                switch (transition)
+                {
+                    case SearchPresentationTransition.Show show:
+                        await page.ApplySearchAsync(
+                            show.PaneId, show.Needle, show.DisplayText, show.Selected, show.FocusInput);
+                        break;
+                    case SearchPresentationTransition.Hide hide:
+                        await page.HideSearchAsync(hide.ClearOwnerPaneId, hide.RestorePaneId);
+                        break;
+                }
+            });
+        }
+
+        void OnSelectionChanged(LiveSelectionSnapshot current)
+        {
+            lock (presentationGate)
+            {
+                presentation = PresentAsync(presentation, previous, current, ++generation);
+                previous = current;
+            }
+        }
+
+        Task FlushPresentationAsync()
+        {
+            lock (presentationGate) return presentation.WaitAsync(TimeSpan.FromSeconds(15));
+        }
+
+        _host.StoreCoordinator.SelectionSnapshotChanged += OnSelectionChanged;
+        try
+        {
+            CtlOk("session", "search", "login");
+            await FlushPresentationAsync();
+            Assert.True(ReadSessionField(session => session.SearchActive));
+            Assert.False((await SearchBarStateAsync(page)).GetProperty("hidden").GetBoolean());
+            Assert.Equal(paneId, (await SearchBarStateAsync(page)).GetProperty("ownerPaneId").GetString());
+
+            var other = CtlOk("session", "new").Trim();
+            await FlushPresentationAsync();
+            Assert.NotEqual(sessionId, Guid.Parse(other));
+            Assert.True(ReadSessionField(session => session.SearchActive));
+            var target = new TerminalSurfaceId(sessionId, TerminalZoomSurface.Primary).RawValue;
+            CtlOk("surface", "zoom", "show", "--target", target);
+            await FlushPresentationAsync();
+            CtlOk("surface", "zoom", "hide");
+            await FlushPresentationAsync();
+            CtlOk("session", "select", "--target", sessionId.ToString("D"));
+            await FlushPresentationAsync();
+
+            Assert.False(ReadSessionField(session => session.SearchActive));
+            Assert.Null(ReadSessionField(session => session.SearchSurface));
+            Assert.True((await SearchBarStateAsync(page)).GetProperty("hidden").GetBoolean());
+            var search = (await GetSearchStateShapeAsync(page, paneId)).GetProperty("state");
+            Assert.Equal("", search.GetProperty("needle").GetString());
+        }
+        finally
+        {
+            _host.StoreCoordinator.SelectionSnapshotChanged -= OnSelectionChanged;
+            await FlushPresentationAsync();
+        }
+    }
+
     private async Task WaitForSearchStatusAsync(XtermPage page, string expected)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);

@@ -87,6 +87,9 @@ public sealed record LiveControlHostOptions
     internal Func<Action, Task> NotificationScheduler { get; init; } =
         static notification => Task.Run(notification);
 
+    internal Func<Action, Task> UserKeystrokeScheduler { get; init; } =
+        static keystroke => Task.Run(keystroke);
+
     internal Func<TimeSpan>? NotificationClock { get; init; }
 }
 
@@ -1469,7 +1472,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private void BindStatusClear(Guid sessionId, XtermPaneSurface surface)
     {
-        surface.Pane.Terminal.UserKeystroke += isInterrupt => _ = Task.Run(() => Host.RunLocked(() =>
+        surface.Pane.Terminal.UserKeystroke += isInterrupt => _ = _options.UserKeystrokeScheduler(() => Host.RunLocked(() =>
         {
             if (Volatile.Read(ref _shutdownStarted) != 0) return;
             var session = Store.SessionWithId(sessionId);

@@ -1003,7 +1003,17 @@ public sealed class HeadlessControlActions : IControlActions
         var wasActive = Zoom.Target is not null;
         Zoom.Set(mode, target);
         if (Zoom.Target != previousTarget)
+        {
+            if (Zoom.Target is not null && _store.ActiveSession is { } activeSession)
+                CloseSessionSearch(_store, activeSession);
+            if (Zoom.Target is TerminalZoomTarget.Session zoomed
+                && zoomed.SessionId != _store.SelectedSessionId
+                && _store.SessionWithId(zoomed.SessionId) is { } session)
+            {
+                CloseSessionSearch(_store, session);
+            }
             _zoomChanged?.Invoke();
+        }
         PublishZoomActiveChange(wasActive);
     }
 
@@ -1284,6 +1294,26 @@ public sealed class HeadlessControlActions : IControlActions
         return Task.FromResult(response);
     }
 
+    private void CloseSessionSearch(AppStore store, Session session)
+    {
+        if (session.SearchSurface is not IHeadlessSurface searchOwner)
+            return;
+        var restorePaneId = store.SelectedSessionId == session.Id
+            ? session.TopmostSurface?.PaneToken
+            : null;
+        session.ClearSearch();
+        store.NotifySidebar();
+        _searchUpdated?.Invoke(new HeadlessSearchUpdate(
+            session.Id,
+            searchOwner,
+            Active: false,
+            Needle: "",
+            DisplayText: "",
+            Selected: null,
+            FocusInput: false,
+            RestorePaneId: restorePaneId));
+    }
+
     private ControlResponse SearchSessionResolved(AppStore store, Guid id, string? text, string? to)
     {
         if (to is not null && to is not ("next" or "prev" or "close"))
@@ -1294,23 +1324,7 @@ public sealed class HeadlessControlActions : IControlActions
         // close exits search without selecting; with no open search there is no owner — clean no-op.
         if (to == "close")
         {
-            if (session.SearchSurface is IHeadlessSurface searchOwner)
-            {
-                var restorePaneId = store.SelectedSessionId == id
-                    ? session.TopmostSurface?.PaneToken
-                    : null;
-                session.ClearSearch();
-                store.NotifySidebar();
-                _searchUpdated?.Invoke(new HeadlessSearchUpdate(
-                    id,
-                    searchOwner,
-                    Active: false,
-                    Needle: "",
-                    DisplayText: "",
-                    Selected: null,
-                    FocusInput: false,
-                    RestorePaneId: restorePaneId));
-            }
+            CloseSessionSearch(store, session);
             return OkId(id);
         }
         if (Pick.PendingModalError is { } pickError) return Err(pickError);
