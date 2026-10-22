@@ -12,6 +12,7 @@
 //                                              {type:'chord', paneId, generation, ctrl, alt, shift, key}
 //                                              {type:'customHotkey', paneId, generation, customCommandId, ctrl, alt, shift, key}
 //                                              {type:'pasteRequested', paneId}   right-click paste
+//                                              {type:'terminalLink', paneId, url} Ctrl+click, host-validated
 //                                              {type:'switcher', paneId?, key}   Ctrl-Tab switcher: key is
 //                                                tab|reverseTab|escape|controlReleased
 //                                              {type:'dashboardHighlight'|'dashboardActivate', controlRef}
@@ -2506,6 +2507,152 @@ const b64ToBytes = (b64) => {
   return bytes;
 };
 
+function terminalLinkModifier(ev) {
+  return ev.ctrlKey && !ev.altKey && !ev.shiftKey && !ev.metaKey;
+}
+
+function activateTerminalLink(paneId, ev, target) {
+  if (ev.button !== 0 || !terminalLinkModifier(ev) || !panes.has(paneId)) return;
+  post({ type: "terminalLink", paneId, url: target });
+}
+
+// Match Ghostty's explicit-scheme branch, including its optional bracketed suffix and
+// trailing-punctuation rule. The host rejects schemes outside the open/reveal allowlist.
+const TERMINAL_URL_RE = /(https?:\/\/|mailto:|ftp:\/\/|file:|ssh:|git:\/\/|ssh:\/\/|tel:|magnet:|ipfs:\/\/|ipns:\/\/|gemini:\/\/|gopher:\/\/|news:)(?:\[[0-9a-fA-F:]+\](?::[0-9]+)?|[\p{L}\p{N}_\-.~:/?#@!$&*+,;=%]+(?:[([][\p{L}\p{N}_]*[)\]])?)+/gu;
+const TERMINAL_DRIVE_RE = /(?<![\p{L}\p{N}_\\/:])[A-Za-z]:[\\/]/gu;
+
+function terminalLinkMatches(text) {
+  const matches = [];
+  for (const match of text.matchAll(TERMINAL_URL_RE)) {
+    const start = match.index;
+    const body = start + match[1].length;
+    let end = start + match[0].length;
+    // Reject punctuation-only bodies without making nested regex repetitions backtrack.
+    while (end > body && (text[end - 1] === "," || text[end - 1] === ".")) end--;
+    if (end > body) matches.push({ start, end, text: text.slice(start, end) });
+  }
+  for (const match of text.matchAll(TERMINAL_DRIVE_RE)) {
+    const start = match.index;
+    if (matches.some(link => start >= link.start && start < link.end)) continue;
+    const quote = text[start - 1];
+    const quoted = quote === '"' || quote === "'" || quote === "`";
+    let end;
+    if (quoted) {
+      end = text.indexOf(quote, start);
+      if (end < 0) continue;
+    } else {
+      const rest = text.slice(start);
+      const boundary = rest.search(/["'`<>|?*\r\n]/u);
+      end = boundary < 0 ? text.length : start + boundary;
+      while (end > start && /[\s,.;]/u.test(text[end - 1])) end--;
+      if (text[end - 1] === ")" && !text.slice(start, end).includes("(")) end--;
+    }
+    if (end > start + 2) matches.push({ start, end, text: text.slice(start, end) });
+  }
+  return matches.sort((a, b) => a.start - b.start);
+}
+
+function terminalLineLinks(term, y, activate, hover, leave) {
+  const buffer = term.buffer.active;
+  let first = y - 1;
+  if (!buffer.getLine(first)) return [];
+  while (first > 0 && buffer.getLine(first).isWrapped) first--;
+  let last = y - 1;
+  while (last + 1 < buffer.length && buffer.getLine(last + 1).isWrapped) last++;
+  let text = "";
+  const cells = [];
+  for (let row = first; row <= last; row++) {
+    const line = buffer.getLine(row);
+    for (let col = 0; col < line.length; col++) {
+      const cell = line.getCell(col);
+      const width = cell.getWidth();
+      if (width === 0) continue;
+      // A wide glyph pushed to the next row leaves an empty padding cell, not a space.
+      if (col === line.length - 1 && cell.getChars() === "" && row < last
+          && buffer.getLine(row + 1).getCell(0).getWidth() === 2) continue;
+      const chars = cell.getChars() || " ";
+      for (let i = 0; i < chars.length; i++)
+        cells.push({ x: col + 1, y: row + 1, endX: col + width });
+      text += chars;
+    }
+  }
+  return terminalLinkMatches(text).flatMap(match => {
+    const start = cells[match.start];
+    const end = cells[match.end - 1];
+    if (y < start.y || y > end.y) return [];
+    const link = {
+      text: match.text,
+      range: { start: { x: start.x, y: start.y }, end: { x: end.endX, y: end.y } },
+      decorations: { underline: false, pointerCursor: false },
+      activate,
+      hover: (ev, target) => hover(ev, target, link),
+      leave,
+    };
+    return [link];
+  });
+}
+
+function installTerminalLinks(paneId, pane) {
+  const activate = (ev, target) => activateTerminalLink(paneId, ev, target);
+  const hover = (ev, target, link) => {
+    pane.hoveredLink = target;
+    pane.hoveredDetectedLink = link;
+    updateTerminalLinkModifier(pane, ev);
+  };
+  const leave = () => {
+    pane.hoveredLink = null;
+    pane.hoveredDetectedLink = null;
+  };
+  pane.term.options.linkHandler = { activate, hover, leave, allowNonHttpProtocols: true };
+  pane.linkProvider = {
+    provideLinks: (y, callback) => callback(terminalLineLinks(pane.term, y, activate, hover, leave)),
+  };
+  pane.term.registerLinkProvider(pane.linkProvider);
+  pane.el.addEventListener("mousemove", ev => updateTerminalLinkModifier(pane, ev), true);
+
+  // A link gesture must not also send a mouse report to the foreground program.
+  let press = null;
+  let consumed = false;
+  pane.el.addEventListener("mousedown", ev => {
+    press = null;
+    consumed = false;
+    if (ev.button !== 0 || !terminalLinkModifier(ev) || !pane.hoveredLink
+        || !ev.target.closest(".xterm-screen")) return;
+    press = { target: pane.hoveredLink, x: ev.clientX, y: ev.clientY };
+    consumed = true;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  }, true);
+  pane.el.addEventListener("mouseup", ev => {
+    if (!press) return;
+    const previous = press;
+    press = null;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    if (previous.target === pane.hoveredLink
+        && previous.x === ev.clientX && previous.y === ev.clientY)
+      activate(ev, previous.target);
+  }, true);
+  pane.el.addEventListener("click", ev => {
+    if (!consumed) return;
+    consumed = false;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+  }, true);
+}
+
+function updateTerminalLinkModifier(pane, ev) {
+  const link = pane.hoveredDetectedLink;
+  if (!link) return;
+  link.decorations.underline = terminalLinkModifier(ev);
+  link.decorations.pointerCursor = terminalLinkModifier(ev);
+}
+
+for (const event of ["keydown", "keyup"])
+  document.addEventListener(event, ev => {
+    for (const pane of panes.values()) updateTerminalLinkModifier(pane, ev);
+  }, true);
+
 function openPane(paneId, opts) {
   if (panes.has(paneId)) return null;
   const el = document.createElement("div");
@@ -2551,6 +2698,7 @@ function openPane(paneId, opts) {
     rewrittenKeys: new Map(),
   };
   panes.set(paneId, pane);
+  installTerminalLinks(paneId, pane);
 
   // measure hidden panes too: render into the (visible-sized) container while display:none is
   // only toggled after open — xterm needs a laid-out element, so flip on, open+fit, restore.

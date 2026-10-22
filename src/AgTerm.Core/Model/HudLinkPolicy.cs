@@ -74,7 +74,7 @@ public static class HudLinkPolicy
             : full;
     }
 
-    private static bool IsPrintableAscii(string url) => url.All(c => c is >= '\u0021' and <= '\u007E');
+    internal static bool IsPrintableAscii(string url) => url.All(c => c is >= '\u0021' and <= '\u007E');
 
     private static string? Scheme(string url)
     {
@@ -88,7 +88,7 @@ public static class HudLinkPolicy
     }
 
     /// <summary>The percent-decoded URL path of a file link on this machine, or null.</summary>
-    internal static string? LocalFilePath(string url)
+    internal static string? LocalFilePath(string url, IReadOnlySet<string>? localHosts = null)
     {
         var rest = url["file:".Length..];
         var end = rest.IndexOfAny(new[] { '?', '#' });
@@ -99,8 +99,10 @@ public static class HudLinkPolicy
             var slash = rest.IndexOf('/', 2);
             if (slash < 0)
                 return null;
-            var host = WithoutTrailingDot(rest[2..slash]);
-            if (host.Length > 0 && !host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            var rawHost = rest[2..slash];
+            var host = WithoutTrailingDot(localHosts is null ? rawHost : Uri.UnescapeDataString(rawHost));
+            if (host.Length > 0 && !(localHosts?.Contains(host.ToLowerInvariant())
+                ?? host.Equals("localhost", StringComparison.OrdinalIgnoreCase)))
                 return null;
             rest = rest[slash..];
         }

@@ -236,6 +236,9 @@ public sealed class XtermPage
     /// <summary>Raised when the page requests host-side paste for a known pane id.</summary>
     public event Action<string>? PasteRequested;
 
+    /// <summary>A Ctrl+click on a terminal link in a known pane; the host must classify its target.</summary>
+    public event Action<string, string>? TerminalLinkRequested;
+
     /// <summary>A clipboard copy asked for from a pane: the pane id and the text to write. The
     /// page cannot write the clipboard itself - the browser API refuses without a user gesture -
     /// so the host does it.</summary>
@@ -534,6 +537,12 @@ public sealed class XtermPage
         {
             if (msg.Url is { Length: > 0 } url)
                 HudLinkRequested?.Invoke(url);
+            return;
+        }
+        if (msg?.Type == "terminalLink")
+        {
+            if (msg.PaneId is { } linkPaneId && _terminals.ContainsKey(linkPaneId) && msg.Url is { Length: > 0 } target)
+                TerminalLinkRequested?.Invoke(linkPaneId, target);
             return;
         }
         if (msg?.Type == "hudMetrics")

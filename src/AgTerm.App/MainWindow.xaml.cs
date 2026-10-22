@@ -532,6 +532,8 @@ public sealed partial class MainWindow : Window
         page.AskIntentReceived += OnPageAskIntentReceived;
         page.AskFocusChanged += OnPageAskFocusChanged;
         page.HudLinkRequested += OnPageHudLinkRequested;
+        page.TerminalLinkRequested += (_, target) => ObserveTaskFault(
+            Task.Run(() => new TerminalLinkOpener().Open(target)), "Open terminal link failed");
         page.HudMetricsReceived += OnPageHudMetricsReceived;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
