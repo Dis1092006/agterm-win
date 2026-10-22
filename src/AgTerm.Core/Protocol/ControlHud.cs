@@ -61,7 +61,7 @@ public sealed record ControlHudNode
 
     /// <summary>Upstream decodes an absent key as true.</summary>
     [JsonPropertyName("frame")]
-    public bool Frame { get; init; } = true;
+    public bool Frame { get; set; } = true;
 }
 
 /// <summary>HUD error strings shared by the hosts; part of the wire contract.</summary>

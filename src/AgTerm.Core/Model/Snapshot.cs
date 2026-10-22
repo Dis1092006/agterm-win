@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using AgTerm.Core.Protocol;
 
 namespace AgTerm.Core.Model;
@@ -172,7 +173,7 @@ public sealed class LossyWatermarkConverter : JsonConverter<BackgroundWatermark?
         using var doc = JsonDocument.ParseValue(ref reader);
         try
         {
-            return doc.RootElement.Deserialize<BackgroundWatermark>(options);
+            return doc.RootElement.Deserialize((JsonTypeInfo<BackgroundWatermark>)options.GetTypeInfo(typeof(BackgroundWatermark)));
         }
         catch (JsonException)
         {
@@ -181,7 +182,7 @@ public sealed class LossyWatermarkConverter : JsonConverter<BackgroundWatermark?
     }
 
     public override void Write(Utf8JsonWriter writer, BackgroundWatermark? value, JsonSerializerOptions options)
-        => JsonSerializer.Serialize(writer, value, options);
+        => JsonSerializer.Serialize(writer, value, (JsonTypeInfo<BackgroundWatermark?>)options.GetTypeInfo(typeof(BackgroundWatermark)));
 }
 
 /// <summary>Decodes a theme name LOSSILY (see WorkspaceSnapshot.Theme). Encoding writes the

@@ -140,7 +140,7 @@ public sealed class ControlPipeServer : IDisposable
         ControlRequest? request;
         try
         {
-            request = JsonSerializer.Deserialize<ControlRequest>(line, ControlJson.Options);
+            request = ControlJson.Deserialize<ControlRequest>(line);
         }
         catch (JsonException e)
         {

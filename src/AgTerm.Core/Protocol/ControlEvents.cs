@@ -73,7 +73,7 @@ public sealed record ControlEventPayload
     public string? Body { get; init; }
 }
 
-/// <summary>One immutable entry in the event ring.</summary>
+/// <summary>One entry in the event ring.</summary>
 public sealed record ControlEvent
 {
     [JsonPropertyName("seq")]
@@ -97,7 +97,7 @@ public sealed record ControlEvent
 
     /// <summary>Always encoded, even when empty — one stable object shape.</summary>
     [JsonPropertyName("payload")]
-    public ControlEventPayload Payload { get; init; } = new();
+    public ControlEventPayload Payload { get; set; } = new();
 }
 
 /// <summary>

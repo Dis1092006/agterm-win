@@ -61,7 +61,7 @@ public sealed class ControlPipeClient
         }
         try
         {
-            return JsonSerializer.Deserialize<ControlResponse>(line, ControlJson.Options)
+            return ControlJson.Deserialize<ControlResponse>(line)
                 ?? throw new PipeClientException("could not decode response: empty response");
         }
         catch (JsonException e)

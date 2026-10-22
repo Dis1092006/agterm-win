@@ -98,19 +98,26 @@ Build output follows the SDK's [artifacts output layout](https://learn.microsoft
 `bin\`/`obj\` pair per project: `artifacts\bin\<Project>\debug\`, `artifacts\obj\<Project>\`, and
 publish output under `artifacts\publish\`.
 
-**Publish (for daily use).** `publish.proj` puts the two exes you actually run into one directory,
-single-file, with nothing else beside them:
+**Publish (for daily use).** `publish.proj` puts the app, its runtime files, and the companion CLI into one directory:
 
 ```powershell
-dotnet build publish.proj                                  # x64 → artifacts\publish\agterm-win\release_x64\
-dotnet build publish.proj -p:RunnablePlatform=ARM64        # same for ARM64
-dotnet build publish.proj -p:RunnableOutDir=C:\tools\agterm-win # somewhere on PATH
+dotnet build "publish.proj"                                      # x64 → artifacts\publish\agterm-win\release_x64\
+dotnet build "publish.proj" "-p:RunnablePlatform=ARM64"            # local ARM64 tools required
+dotnet build "publish.proj" "-p:RunnableOutDir=C:\tools\agterm-win" # somewhere on PATH
 ```
 
-`agterm-win.exe` (the `AgTerm.App` project) is ~162 MB: it is self-contained, so the Windows App SDK and the .NET runtime are
-inside it and no install is required. `agtermctl.exe` is self-contained as well (~75 MB): a
-framework-dependent exe placed next to the app's runtime picks up its `hostfxr.dll`, takes the directory for
-a self-contained install and fails with "You must install or update .NET" even when .NET is installed.
+`agterm-win.exe` (the `AgTerm.App` project) publishes as a self-contained directory with the Windows App SDK and .NET runtime beside the exe. No runtime install is required. Keep the directory together. `agtermctl.exe` publishes with Native AOT as one self-contained native executable (about 5 MB on x64), without CLR startup or a runtime bundle to extract. It stays beside the app for the Help menu installers and agent-status hooks. It does not load the app's `hostfxr.dll`; a framework-dependent CLI in the same directory would pick up that DLL and fail to find a shared runtime.
+
+Native AOT publishing requires Visual Studio 2022 or later with the **Desktop development with C++** workload, the Windows SDK, and the C++ x64/x86 tools. ARM64 AOT is built and tested in CI. Local ARM64 publishing also requires the **C++ ARM64/ARM64EC build tools** component. Ordinary managed builds and tests do not need the native toolchain. `publish.proj` adds the Visual Studio Installer directory to the CLI publish process's PATH so the SDK can find `vswhere.exe`. It works from ordinary PowerShell without a Developer PowerShell or a manual PATH change.
+
+CI publishes and runs the CLI behavior tests on both x64 and ARM64. To run those tests against a local native publish:
+
+```powershell
+dotnet build "publish.proj"
+$env:AGTERMCTL_PUBLISHED_EXE = (Resolve-Path "artifacts\publish\agterm-win\release_x64\agtermctl.exe").Path
+dotnet test "tests\AgTerm.E2E\AgTerm.E2E.csproj" -c Release --filter "FullyQualifiedName~PublishedCliTests"
+Remove-Item "Env:AGTERMCTL_PUBLISHED_EXE"
+```
 
 **Run (manual).** After `dotnet build`, the app exe lands at
 `artifacts\bin\AgTerm.App\debug\agterm-win.exe` and the CLI at

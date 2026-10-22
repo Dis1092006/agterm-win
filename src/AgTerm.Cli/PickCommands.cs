@@ -62,7 +62,7 @@ internal static class PickStdin
         ControlPickItem[]? items;
         try
         {
-            items = JsonSerializer.Deserialize<ControlPickItem[]>(bytes, ControlJson.Options);
+            items = ControlJson.Deserialize<ControlPickItem[]>(bytes);
         }
         catch (JsonException)
         {

@@ -35,7 +35,7 @@ public sealed record RecentClosedItem
     /// the Swift JSONEncoder default so the local file stays cross-readable.</summary>
     [JsonPropertyName("closedAt")]
     [JsonConverter(typeof(AppleReferenceDateConverter))]
-    public DateTimeOffset ClosedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset ClosedAt { get; set; } = DateTimeOffset.UtcNow;
 
     [JsonPropertyName("session")]
     public RecentClosedSession? Session { get; init; }
@@ -78,10 +78,10 @@ public sealed record RecentClosedState
     public const int CurrentVersion = 1;
 
     [JsonPropertyName("version")]
-    public int Version { get; init; } = CurrentVersion;
+    public int Version { get; set; } = CurrentVersion;
 
     [JsonPropertyName("items")]
-    public RecentClosedItem[] Items { get; init; } = Array.Empty<RecentClosedItem>();
+    public RecentClosedItem[] Items { get; set; } = Array.Empty<RecentClosedItem>();
 }
 
 /// <summary>

@@ -1,8 +1,7 @@
 <Project>
 
   <!--
-    Publishes the two exes a user actually runs into one directory, single-file, with nothing else
-    beside them:
+    Publishes the app directory and its native companion CLI together:
 
         dotnet build publish.proj                                  x64 -> artifacts\publish\agterm-win\release_x64
         dotnet build publish.proj -p:RunnablePlatform=ARM64
@@ -19,14 +18,14 @@
         single file   34.9 s first run of a build, 4.4 s afterwards
         directory      5.0 s first run,            1.0 s afterwards
 
-    The bundle costs on every launch, not only the first. agtermctl stays single-file: a CLI on PATH
-    is better as one file.
+    The bundle costs on every launch, not only the first. agtermctl uses Native AOT, so it is one
+    native exe without the CLR startup or a runtime bundle to extract.
 
     agtermctl is self-contained too, and it has to be. A framework-dependent apphost looks for
     hostfxr.dll beside itself first; the app's self-contained runtime puts one there, so the CLI takes
     that directory for a self-contained install, finds no shared\Microsoft.NETCore.App in it and fails
-    with "You must install or update .NET" even when .NET is installed. A self-contained single-file
-    exe has the host linked in and never looks at its neighbours.
+    with "You must install or update .NET" even when .NET is installed. A Native AOT exe does not
+    load hostfxr and never looks at its neighbours.
 
     Two publishes rather than one: the SDK's artifacts layout separates publish output per project, so
     landing both exes in one directory takes an explicit PublishDir.
@@ -68,13 +67,10 @@
              Targets="Publish"
              Properties="Configuration=$(RunnableConfiguration);Platform=$(RunnablePlatform);RuntimeIdentifier=$(_Rid);SelfContained=true;DebugType=none;PublishDir=$(_OutDir)\" />
 
-    <Message Importance="high" Text="Publishing agtermctl ($(_Rid), single file, self-contained)" />
-    <MSBuild Projects="$(MSBuildThisFileDirectory)src\AgTerm.Cli\AgTerm.Cli.csproj"
-             Targets="Restore"
-             Properties="Configuration=$(RunnableConfiguration);RuntimeIdentifier=$(_Rid);SelfContained=true" />
-    <MSBuild Projects="$(MSBuildThisFileDirectory)src\AgTerm.Cli\AgTerm.Cli.csproj"
-             Targets="Publish"
-             Properties="Configuration=$(RunnableConfiguration);RuntimeIdentifier=$(_Rid);SelfContained=true;PublishSingleFile=true;DebugType=none;PublishDir=$(_OutDir)\" />
+    <Message Importance="high" Text="Publishing agtermctl ($(_Rid), Native AOT)" />
+    <!-- Native tool discovery needs vswhere on PATH. Scope it to the child publish process. -->
+    <Exec Command="dotnet publish &quot;$(MSBuildThisFileDirectory)src\AgTerm.Cli\AgTerm.Cli.csproj&quot; -c &quot;$(RunnableConfiguration)&quot; -r &quot;$(_Rid)&quot; --self-contained true -p:DebugType=none -o &quot;$(_OutDir)\.&quot;"
+          EnvironmentVariables="PATH=$([MSBuild]::Escape('$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer;$(PATH)'))" />
 
     <ItemGroup>
       <_Published Include="$(_OutDir)\*" />
