@@ -14,7 +14,7 @@ public class WindowsOnlySurfaceTests
         Assert.Equal(["workspace.theme"], ParitySurface.WindowsOnly("commands"));
         Assert.Equal(["theme"], ParitySurface.WindowsOnly("workspaceNode"));
         Assert.Equal(["theme"], ParitySurface.WindowsOnly("workspaceSnapshot"));
-        Assert.Equal(["sidebarThemeColors", "restoreScrollback"], ParitySurface.WindowsOnly("settings"));
+        Assert.Equal(["sidebarThemeColors", "sidebarThemeStyle", "restoreScrollback"], ParitySurface.WindowsOnly("settings"));
     }
 
     [Theory]

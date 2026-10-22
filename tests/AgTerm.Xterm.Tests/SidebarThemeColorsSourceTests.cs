@@ -53,6 +53,71 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("Sidebar.WorkspaceThemeSaved(workspaceId, themeName)", okBranch, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Label_area_is_a_left_aligned_grid_so_a_long_name_trims_before_the_focus_icon()
+    {
+        var xaml = Source("SidebarView.xaml");
+
+        // a horizontal StackPanel measures its children with unlimited width, so TextTrimming never ran
+        Assert.DoesNotContain("<StackPanel Grid.Column=\"1\" Orientation=\"Horizontal\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Grid Grid.Column=\"1\" HorizontalAlignment=\"Left\" VerticalAlignment=\"Center\">", xaml, StringComparison.Ordinal);
+        Assert.Contains("TextTrimming=\"CharacterEllipsis\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Label_style_draws_a_block_around_the_name_that_dims_and_hides_with_it()
+    {
+        var xaml = Source("SidebarView.xaml");
+        var block = Between(xaml, "Background=\"{x:Bind LabelBlockBackground, Mode=OneWay}\"", "</Border>");
+
+        Assert.Contains("CornerRadius=\"2\"", block, StringComparison.Ordinal);
+        Assert.Contains("Padding=\"{x:Bind LabelBlockPadding, Mode=OneWay}\"", block, StringComparison.Ordinal);
+        Assert.Contains("Opacity=\"{x:Bind LabelOpacity, Mode=OneWay}\"", block, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{x:Bind LabelVisibility, Mode=OneWay}\"", block, StringComparison.Ordinal);
+        Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind LabelForeground, Mode=OneWay}\"", block, StringComparison.Ordinal);
+        Assert.Equal(1, Count(xaml, "Opacity=\"{x:Bind LabelOpacity, Mode=OneWay}\""));
+    }
+
+    [Fact]
+    public void Swatch_style_draws_a_12px_square_after_the_unseen_badge()
+    {
+        var xaml = Source("SidebarView.xaml");
+        var badge = xaml.IndexOf("Visibility=\"{x:Bind BadgeVisibility, Mode=OneWay}\"", StringComparison.Ordinal);
+        var swatch = xaml.IndexOf("Visibility=\"{x:Bind SwatchVisibility, Mode=OneWay}\"", StringComparison.Ordinal);
+
+        Assert.True(badge >= 0 && swatch > badge, "the square comes after the badge");
+        Assert.Contains("<StackPanel Grid.Column=\"4\" Orientation=\"Horizontal\" Spacing=\"6\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Background=\"{x:Bind SwatchBackground, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("BorderBrush=\"{x:Bind SwatchFrame, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Width=\"12\" Height=\"12\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Row_view_model_reads_the_look_of_the_style()
+    {
+        var model = Source("SidebarRowViewModel.cs");
+        var view = Source("SidebarView.xaml.cs");
+
+        Assert.Contains("SidebarRowLook.From(_rowThemes?.ColorsFor(row, _settings.ShowSidebarThemeColors()), _settings.EffectiveSidebarThemeStyle())", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("ColorsOf(", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("_colors", model, StringComparison.Ordinal);
+        Assert.Contains("private bool IsColoredSelection => _look.Row is not null && IsListSelected;", model, StringComparison.Ordinal);
+        Assert.Contains("_look.Row is { } colors", Between(model, "public Brush IconFill", ";"), StringComparison.Ordinal);
+        var update = MethodBody(model, "public void Update(");
+        foreach (var name in new[] { "LabelWeight", "RowFrame", "LabelForeground", "LabelBlockBackground", "LabelBlockPadding", "SwatchVisibility", "SwatchBackground", "SwatchFrame" })
+            Assert.Contains($"nameof({name})", update, StringComparison.Ordinal);
+    }
+
+    // the text from the first marker to the first end marker after it
+    private static string Between(string source, string start, string end)
+    {
+        var from = source.IndexOf(start, StringComparison.Ordinal);
+        Assert.True(from >= 0, $"{start} not found");
+        var to = source.IndexOf(end, from, StringComparison.Ordinal);
+        Assert.True(to >= 0, $"{end} not found after {start}");
+        return source[from..to];
+    }
+
     // from the signature to the first line that closes a member at class indentation
     private static string MethodBody(string source, string signature)
     {

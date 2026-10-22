@@ -11,6 +11,7 @@
   ],
   "settings": [
     { "name": "sidebarThemeColors", "reason": "Turns off the theme colors on the sidebar rows of workspaces with their own theme." },
+    { "name": "sidebarThemeStyle", "reason": "Picks how the sidebar rows show their workspace theme: the whole row, a square on the right, or a block around the name." },
     { "name": "restoreScrollback", "reason": "Turns off restoring each pane's previous output after a relaunch." }
   ]
 }

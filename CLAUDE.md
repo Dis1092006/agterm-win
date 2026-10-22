@@ -34,7 +34,8 @@ Current parity pin: agterm `7df70fe` (66 commands, 41 builtin actions). Machine 
   structs, `null`/absent optionals **omitted** from output (never emitted as `null`).
 - Wire error strings are part of the contract — copy them verbatim from the spec/Swift source.
 - The agent skill (`plugins/agterm/skills/agterm`) describes the control surface. A change to a wire command, a CLI flag or an `AGTERM_*` variable updates the skill in the same PR. The tests in `tests/AgTerm.Cli.Tests/SkillTextTests.cs` enforce it.
-- A change to the skill raises `<Version>` in `Directory.Build.props` together with the `version` in `plugins/agterm/.claude-plugin/plugin.json`, `plugins/agterm/.codex-plugin/plugin.json` and the plugin entry of `.claude-plugin/marketplace.json`. Claude Code does not update an installed plugin while that string stays the same. `SkillTextTests` checks that the four are equal.
+- Every PR raises the app version, `<Version>` in `Directory.Build.props`, whatever it changes.
+- A change to the skill raises the plugin version: the `version` in `plugins/agterm/.claude-plugin/plugin.json`, `plugins/agterm/.codex-plugin/plugin.json` and the plugin entry of `.claude-plugin/marketplace.json`. Claude Code does not update an installed plugin while that string stays the same. The plugin version is separate from the app version, so a PR that leaves the skill alone leaves it alone too. `SkillTextTests` checks that the three are equal.
 
 ## Layout
 

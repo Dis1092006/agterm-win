@@ -87,6 +87,33 @@ public class AppSettingsTests : IDisposable
         Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeColors = false });
     }
 
+    [Theory]
+    [InlineData(null, SidebarThemeStyle.Row)]
+    [InlineData("row", SidebarThemeStyle.Row)]
+    [InlineData("swatch", SidebarThemeStyle.Swatch)]
+    [InlineData("label", SidebarThemeStyle.Label)]
+    [InlineData("Label", SidebarThemeStyle.Row)]
+    [InlineData("swatch ", SidebarThemeStyle.Row)]
+    [InlineData("stripe", SidebarThemeStyle.Row)]
+    [InlineData("", SidebarThemeStyle.Row)]
+    public void Sidebar_theme_style_reads_exact_values_and_falls_back_to_row(string? raw, SidebarThemeStyle expected) =>
+        Assert.Equal(expected, new AppSettings { SidebarThemeStyle = raw }.EffectiveSidebarThemeStyle());
+
+    [Fact]
+    public void Settings_that_differ_only_in_sidebar_theme_style_are_not_equal() =>
+        Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeStyle = "swatch" });
+
+    [Fact]
+    public void Save_writes_sidebar_theme_style_only_when_set()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { SidebarThemeStyle = "label" });
+        Assert.Contains("\"sidebarThemeStyle\":\"label\"", File.ReadAllText(FilePath));
+
+        store.Save(new AppSettings());
+        Assert.DoesNotContain("sidebarThemeStyle", File.ReadAllText(FilePath));
+    }
+
     [Fact]
     public void Round_trip_preserves_every_field_kind()
     {
@@ -131,6 +158,7 @@ public class AppSettingsTests : IDisposable
             HiddenInterfaceElements = new[] { "flaggedView", "someFutureElement" },
             AutoHideSidebarInactiveWindows = true,
             SidebarThemeColors = false,
+            SidebarThemeStyle = "swatch",
             RestoreScrollback = false,
         };
         store.Save(settings);

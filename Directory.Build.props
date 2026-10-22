@@ -7,11 +7,10 @@
     <UseArtifactsOutput>true</UseArtifactsOutput>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
-    <!-- The app version. The plugin manifests under plugins/agterm and .claude-plugin/marketplace.json carry
-         the same string, and SkillTextTests checks that they match. Raise it by hand, together with them,
-         when the skill changes: Claude Code does not update an installed plugin while the version stays
-         the same. It is not tied to upstream agterm's version numbers. -->
-    <Version>0.1.1</Version>
+    <!-- The app version. Every PR raises it by hand. The plugin manifests under plugins/agterm and
+         .claude-plugin/marketplace.json carry their own version, which goes up only when the skill changes
+         (CLAUDE.md). It is not tied to upstream agterm's version numbers. -->
+    <Version>0.1.2</Version>
   </PropertyGroup>
 
 </Project>

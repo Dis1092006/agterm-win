@@ -19,18 +19,18 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     private SidebarRow _row;
     private AppSettings _settings;
     private SidebarSurfaceStatus _surfaceStatus;
-    private SidebarRowColors? _colors;
+    private SidebarRowLook _look;
 
     public SidebarRowViewModel(
         SidebarRow row,
         AppSettings settings,
         SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
-        SidebarRowColors? colors = null)
+        SidebarRowLook? look = null)
     {
         _row = row;
         _settings = settings;
         _surfaceStatus = surfaceStatus;
-        _colors = colors;
+        _look = look ?? SidebarRowLook.Default;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -91,15 +91,27 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     }
 
     // a colored row shows selection without changing color: bold label and a theme-foreground frame
-    private bool IsColoredSelection => _colors is not null && IsListSelected;
+    private bool IsColoredSelection => _look.Row is not null && IsListSelected;
 
-    public Brush? RowBackground => _colors is { } colors ? BrushFrom(colors.Background) : null;
+    public Brush? RowBackground => _look.Row is { } colors ? BrushFrom(colors.Background) : null;
 
     public Brush RowFrame => IsColoredSelection
-        ? BrushFrom(_colors!.Foreground)
+        ? BrushFrom(_look.Row!.Foreground)
         : new SolidColorBrush(Colors.Transparent);
 
-    public Brush? RowForeground => _colors is { } colors ? BrushFrom(colors.Foreground) : null;
+    public Brush? RowForeground => _look.Row is { } colors ? BrushFrom(colors.Foreground) : null;
+
+    public Brush? LabelForeground => (_look.Row ?? _look.Label) is { } colors ? BrushFrom(colors.Foreground) : null;
+
+    public Brush? LabelBlockBackground => _look.Label is { } colors ? BrushFrom(colors.Background) : null;
+
+    public Thickness LabelBlockPadding => _look.Label is null ? new Thickness(0) : new Thickness(4, 1, 4, 1);
+
+    public Visibility SwatchVisibility => _look.Swatch is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public Brush? SwatchBackground => _look.Swatch is { } colors ? BrushFrom(colors.Background) : null;
+
+    public Brush? SwatchFrame => _look.Swatch is { } colors ? BrushFrom(colors.Foreground) : null;
 
     /// <summary>Whether the pointer is over this row. The view sets it from the row's pointer events
     /// and clears it when the row's container is recycled.</summary>
@@ -128,7 +140,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         : "M0.5,2.5 H15.5 V12.5 H0.5 Z";
 
     public Brush IconFill => _row.Flagged
-        ? _colors is { } colors
+        ? _look.Row is { } colors
             ? BrushFrom(colors.Foreground, alpha: 0x60)
             : new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF))
         : new SolidColorBrush(Colors.Transparent);
@@ -205,15 +217,16 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         SidebarRow row,
         AppSettings settings,
         SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
-        SidebarRowColors? colors = null)
+        SidebarRowLook? look = null)
     {
+        look ??= SidebarRowLook.Default;
         var settingsChanged = !ReferenceEquals(_settings, settings);
         var surfaceStatusChanged = _surfaceStatus != surfaceStatus;
-        if (_row == row && !settingsChanged && !surfaceStatusChanged && _colors == colors) return;
+        if (_row == row && !settingsChanged && !surfaceStatusChanged && _look == look) return;
         _row = row;
         _settings = settings;
         _surfaceStatus = surfaceStatus;
-        _colors = colors;
+        _look = look;
         Raise(nameof(Label), nameof(Chevron), nameof(LabelOpacity), nameof(LabelWeight),
               nameof(FontSize), nameof(RowHeight),
               nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill),
@@ -224,7 +237,9 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
               nameof(UnseenAutomationName), nameof(FocusedWorkspaceAutomationName),
               nameof(IsSurfacePending), nameof(IsSurfaceFailed),
               nameof(PendingVisibility), nameof(FailedVisibility),
-              nameof(RowBackground), nameof(RowFrame), nameof(RowForeground));
+              nameof(RowBackground), nameof(RowFrame), nameof(RowForeground),
+              nameof(LabelForeground), nameof(LabelBlockBackground), nameof(LabelBlockPadding),
+              nameof(SwatchVisibility), nameof(SwatchBackground), nameof(SwatchFrame));
     }
 
     /// <summary>A brush from a "#rrggbb" color, as settings and theme files write them.</summary>

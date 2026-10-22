@@ -72,6 +72,8 @@ public sealed record AppSettings
     [JsonPropertyName("autoHideSidebarInactiveWindows")] public bool? AutoHideSidebarInactiveWindows { get; init; }
     // Windows-only (parity/windows-only.json): absent means on
     [JsonPropertyName("sidebarThemeColors")] public bool? SidebarThemeColors { get; init; }
+    // Windows-only (parity/windows-only.json): absent or unknown means row
+    [JsonPropertyName("sidebarThemeStyle")] public string? SidebarThemeStyle { get; init; }
 
     /// <summary>Windows-only (not in the upstream surface): re-render each main/split pane's saved
     /// output after a relaunch. Absent means on; see docs/PLATFORM-NOTES.md.</summary>
@@ -100,11 +102,11 @@ public sealed record AppSettings
          other.BlockedStatusSoundName, other.RightClickPaste) &&
         (NewSessionDirectory, NewSessionCustomDirectory, ConfirmCloseSession, CloseGraceUndoEnabled,
          AutoFollowAttention, AutoFollowStayOnActive, SidebarFontSize,
-         AutoHideSidebarInactiveWindows, SidebarThemeColors, RestoreScrollback) ==
+         AutoHideSidebarInactiveWindows, SidebarThemeColors, SidebarThemeStyle, RestoreScrollback) ==
         (other.NewSessionDirectory, other.NewSessionCustomDirectory, other.ConfirmCloseSession,
          other.CloseGraceUndoEnabled, other.AutoFollowAttention, other.AutoFollowStayOnActive,
          other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors,
-         other.RestoreScrollback) &&
+         other.SidebarThemeStyle, other.RestoreScrollback) &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&
@@ -115,6 +117,16 @@ public sealed record AppSettings
     /// <summary>Whether sidebar rows of a workspace with its own theme show that theme's colors. A
     /// method, not a property, so it is never written to settings.json.</summary>
     public bool ShowSidebarThemeColors() => SidebarThemeColors != false;
+
+    /// <summary>The style of the sidebar theme colors. A value is matched exactly, like upstream's
+    /// enum decode of other settings.</summary>
+    // Model. qualifies the enum: inside this record the string property of the same name hides it
+    public Model.SidebarThemeStyle EffectiveSidebarThemeStyle() => SidebarThemeStyle switch
+    {
+        "swatch" => Model.SidebarThemeStyle.Swatch,
+        "label" => Model.SidebarThemeStyle.Label,
+        _ => Model.SidebarThemeStyle.Row,
+    };
 
     /// <summary>Whether a chrome element is hidden. Everything is shown by default, so an element
     /// absent from the persisted list reads as visible; a raw value matches exactly, as upstream's

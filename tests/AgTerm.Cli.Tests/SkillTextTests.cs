@@ -200,16 +200,22 @@ public class SkillTextTests
         Assert.True(File.Exists(Path.Combine(skills, "agterm", "SKILL.md")));
     }
 
-    // Claude Code takes the plugin version from the manifest first and does not update an installed plugin while
-    // that string stays the same, so it follows the app version, which a person raises by hand.
     [Fact]
-    public void Plugin_versions_equal_the_app_version()
+    public void App_version_is_three_numbers()
     {
         var props = System.Xml.Linq.XDocument.Load(Path.Combine(FindRepoRoot(), "Directory.Build.props"));
-        var version = Assert.Single(props.Descendants("Version")).Value;
+        Assert.Matches(@"^\d+\.\d+\.\d+$", Assert.Single(props.Descendants("Version")).Value);
+    }
+
+    // Claude Code takes the plugin version from the manifest first and does not update an installed plugin while
+    // that string stays the same. A person raises it by hand when the skill changes, apart from the app version,
+    // so a release that leaves the skill alone does not update the plugin.
+    [Fact]
+    public void Plugin_manifests_carry_one_version()
+    {
+        var version = (string?)ReadJson("plugins", "agterm", ".claude-plugin", "plugin.json")["version"];
         Assert.Matches(@"^\d+\.\d+\.\d+$", version);
 
-        Assert.Equal(version, (string?)ReadJson("plugins", "agterm", ".claude-plugin", "plugin.json")["version"]);
         Assert.Equal(version, (string?)ReadJson("plugins", "agterm", ".codex-plugin", "plugin.json")["version"]);
         var entry = Assert.Single(ReadJson(".claude-plugin", "marketplace.json")["plugins"]!.AsArray())!;
         Assert.Equal(version, (string?)entry["version"]);

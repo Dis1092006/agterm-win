@@ -71,7 +71,7 @@ public sealed partial class SidebarView : UserControl
             var status = _snapshot is { } snapshot
                 ? SurfaceStatusOf(snapshot, row)
                 : SidebarSurfaceStatus.Ready;
-            _items[i].Update(row, _settings, status, ColorsOf(row));
+            _items[i].Update(row, _settings, status, LookOf(row));
         }
 
         RefreshRealizedRowAutomationNames();
@@ -114,13 +114,13 @@ public sealed partial class SidebarView : UserControl
             CancelRename();
             _items.Clear();
             foreach (var row in snapshot.Rows)
-                _items.Add(new SidebarRowViewModel(row, _settings, SurfaceStatusOf(snapshot, row), ColorsOf(row)));
+                _items.Add(new SidebarRowViewModel(row, _settings, SurfaceStatusOf(snapshot, row), LookOf(row)));
         }
         else
         {
             for (var i = 0; i < snapshot.Rows.Count; i++)
                 _items[i].Update(snapshot.Rows[i], _settings, SurfaceStatusOf(snapshot, snapshot.Rows[i]),
-                    ColorsOf(snapshot.Rows[i]));
+                    LookOf(snapshot.Rows[i]));
         }
 
         RefreshRealizedRowAutomationNames();
@@ -218,15 +218,15 @@ public sealed partial class SidebarView : UserControl
         RecolorRows();
     }
 
-    private SidebarRowColors? ColorsOf(SidebarRow row) =>
-        _rowThemes?.ColorsFor(row, _settings.ShowSidebarThemeColors());
+    private SidebarRowLook LookOf(SidebarRow row) =>
+        SidebarRowLook.From(_rowThemes?.ColorsFor(row, _settings.ShowSidebarThemeColors()), _settings.EffectiveSidebarThemeStyle());
 
     private void RecolorRows()
     {
         foreach (var item in _items)
         {
             var status = _snapshot is { } snapshot ? SurfaceStatusOf(snapshot, item.Row) : SidebarSurfaceStatus.Ready;
-            item.Update(item.Row, _settings, status, ColorsOf(item.Row));
+            item.Update(item.Row, _settings, status, LookOf(item.Row));
         }
     }
 

@@ -93,15 +93,29 @@
                             </Path.Style>
                         </Path>
 
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
-                                    VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Label, Mode=OneWay}"
-                                   FontSize="{x:Bind FontSize, Mode=OneWay}"
-                                       FontWeight="{x:Bind LabelWeight, Mode=OneWay}"
-                                       Opacity="{x:Bind LabelOpacity, Mode=OneWay}"
-                                       local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
-                                       TextTrimming="CharacterEllipsis"
-                                       Visibility="{x:Bind LabelVisibility, Mode=OneWay}" />
+                        <!-- left-aligned, so the star column is as wide as the name until the
+                             name needs more than the column has, and then the name trims. A
+                             horizontal StackPanel measured it with unlimited width, so it never
+                             trimmed -->
+                        <Grid Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <!-- the block of the label style. The opacity dims the block together
+                                 with the name, so the name keeps its contrast to the block -->
+                            <Border Background="{x:Bind LabelBlockBackground, Mode=OneWay}"
+                                    CornerRadius="2"
+                                    Padding="{x:Bind LabelBlockPadding, Mode=OneWay}"
+                                    Opacity="{x:Bind LabelOpacity, Mode=OneWay}"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind LabelVisibility, Mode=OneWay}">
+                                <TextBlock Text="{x:Bind Label, Mode=OneWay}"
+                                           FontSize="{x:Bind FontSize, Mode=OneWay}"
+                                           FontWeight="{x:Bind LabelWeight, Mode=OneWay}"
+                                           local:SidebarRowBrushes.Foreground="{x:Bind LabelForeground, Mode=OneWay}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Border>
                             <TextBox Text="{x:Bind EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      Visibility="{x:Bind EditorVisibility, Mode=OneWay}"
                                      MinHeight="22" Padding="4,1,4,1"
@@ -109,7 +123,10 @@
                                      KeyDown="OnRenameKeyDown"
                                      LostFocus="OnRenameLostFocus"
                                      Loaded="OnRenameEditorLoaded" />
-                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                            <!-- a margin, not column spacing, so a hidden icon leaves no gap -->
+                            <FontIcon Grid.Column="1"
+                                      Margin="6,0,0,0"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       Glyph="&#xE72E;"
                                       FontSize="10"
                                       VerticalAlignment="Center"
@@ -117,7 +134,7 @@
                                       AutomationProperties.AccessibilityView="Raw"
                                       local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
                                       Visibility="{x:Bind FocusPillVisibility, Mode=OneWay}" />
-                        </StackPanel>
+                        </Grid>
 
                         <!-- lifecycle status (ready has no icon): pending ring or failed marker -->
                         <Grid Grid.Column="2"
@@ -172,23 +189,36 @@
                                       local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}" />
                         </Button>
 
-                        <!-- unseen badge -->
-                        <Border Grid.Column="4"
-                                Background="#E81123"
-                                CornerRadius="8"
-                                MinWidth="16" Height="16"
-                                Padding="4,0,4,0"
-                                VerticalAlignment="Center"
-                                AutomationProperties.Name="{x:Bind UnseenAutomationName, Mode=OneWay}"
-                                AutomationProperties.AccessibilityView="Raw"
-                                Visibility="{x:Bind BadgeVisibility, Mode=OneWay}">
-                            <TextBlock Text="{x:Bind BadgeText, Mode=OneWay}"
-                                       Foreground="White"
-                                       FontSize="10"
-                                       FontWeight="Bold"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
-                        </Border>
+                        <!-- a StackPanel adds no spacing for a collapsed child, so a row without
+                             a badge or without a square keeps no gap -->
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6"
+                                    VerticalAlignment="Center">
+                            <!-- unseen badge -->
+                            <Border Background="#E81123"
+                                    CornerRadius="8"
+                                    MinWidth="16" Height="16"
+                                    Padding="4,0,4,0"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="{x:Bind UnseenAutomationName, Mode=OneWay}"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Visibility="{x:Bind BadgeVisibility, Mode=OneWay}">
+                                <TextBlock Text="{x:Bind BadgeText, Mode=OneWay}"
+                                           Foreground="White"
+                                           FontSize="10"
+                                           FontWeight="Bold"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <!-- the theme sample of the swatch style. Not dimmed on an inactive
+                                 workspace: a dimmed sample shows a color the terminal does not have -->
+                            <Border Width="12" Height="12"
+                                    CornerRadius="2"
+                                    BorderThickness="1"
+                                    Background="{x:Bind SwatchBackground, Mode=OneWay}"
+                                    BorderBrush="{x:Bind SwatchFrame, Mode=OneWay}"
+                                    VerticalAlignment="Center"
+                                    Visibility="{x:Bind SwatchVisibility, Mode=OneWay}" />
+                        </StackPanel>
                     </Grid>
                     </Grid>
                 </DataTemplate>
