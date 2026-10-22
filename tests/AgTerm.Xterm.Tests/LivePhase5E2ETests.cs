@@ -1294,6 +1294,7 @@ public sealed class LivePhase5E2ETests
                 .Single(session => session.Id == secondBackgroundSessionId.ToString("D").ToUpperInvariant())
                 .Unseen);
 
+            application.FlushTreeEvents();
             var events = Ok(client.Send(new ControlRequest
             {
                 Cmd = Command.EventsRead,
@@ -1582,6 +1583,7 @@ public sealed class LivePhase5E2ETests
                 restartClient,
                 secondWindowId.Value,
                 "restart second event workspace");
+            restartApplication.FlushTreeEvents();
             var restartEvents = Ok(restartClient.Send(new ControlRequest
             {
                 Cmd = Command.EventsRead,

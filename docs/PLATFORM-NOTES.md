@@ -40,6 +40,8 @@
 
 ## Фаза 2 (control plane)
 
+- **Structural event coalescing.** `LiveApplicationHost` coalesces `tree.changed` per window after 100 ms of quiet, matching upstream `WindowLibrary`. Store drafts and application-level window changes share the same scheduler. Other event kinds append immediately. Closing or deleting a window flushes its pending invalidation; application shutdown and `FlushTreeEvents()` flush all windows, including removed records. Timers run on the thread pool and serialize publication and flush under a separate gate; callbacks from cancelled timers cannot publish an old invalidation. The existing `Debouncer` does not join an in-flight callback on flush and can run an old timer callback after rescheduling, so this scheduler uses identity-checked timers instead. Standalone `HeadlessHost` and `LiveControlHost` harnesses still forward drafts immediately; production windows use `LiveApplicationHost.AttachWindow` and its coalescing sink.
+
 - **AppStore и потоки.** Upstream `AppStore` изолирован на `@MainActor`; в порте класс
   так же НЕ потокобезопасен, но actor-а в .NET нет — хост обязан сериализовать доступ
   сам (headless-хост и pipe-сервер оборачивают диспетчеризацию в один замок).

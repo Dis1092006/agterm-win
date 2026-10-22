@@ -31,7 +31,8 @@ public sealed class LiveWindowHost
         RecentClosedStore recentClosedStore,
         bool seedIfEmpty,
         bool launchRestore,
-        PickRegistry? picks = null)
+        PickRegistry? picks = null,
+        Action<Guid>? scheduleTreeChanged = null)
     {
         WindowId = windowId;
         Picks = picks ?? new PickRegistry();
@@ -50,7 +51,11 @@ public sealed class LiveWindowHost
             recentClosedStore: recentClosedStore,
             controlEventSink: draft =>
             {
-                if (!bootstrapping) ring.Append(draft with { Window = windowTag });
+                if (bootstrapping) return;
+                if (draft.Kind == ControlEventKind.TreeChanged && scheduleTreeChanged is not null)
+                    scheduleTreeChanged(windowId);
+                else
+                    ring.Append(draft with { Window = windowTag });
             },
             stateDirectory: stateDirectory)
         {

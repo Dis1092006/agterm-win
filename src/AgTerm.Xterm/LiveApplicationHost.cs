@@ -17,6 +17,8 @@ public sealed record LiveApplicationHostOptions
     public string? HomeDirectory { get; init; }
 
     public ILiveWindowController? WindowController { get; init; }
+
+    internal TimeProvider TreeEventTimeProvider { get; init; } = TimeProvider.System;
 }
 
 public sealed record LiveWindowEntry(
@@ -31,6 +33,9 @@ public sealed record LiveWindowEntry(
 public sealed class LiveApplicationHost : IDisposable
 {
     private readonly Lock _gate = new();
+    private readonly Lock _treeEventGate = new();
+    private readonly Dictionary<Guid, ITimer> _treeEventTimers = new();
+    private readonly TimeProvider _treeEventTimeProvider;
     private readonly string _stateDirectory;
     private readonly string _homeDirectory;
     private readonly ILiveWindowController? _windowController;
@@ -49,6 +54,7 @@ public sealed class LiveApplicationHost : IDisposable
     public LiveApplicationHost(LiveApplicationHostOptions? options = null)
     {
         options ??= new LiveApplicationHostOptions();
+        _treeEventTimeProvider = options.TreeEventTimeProvider;
         _stateDirectory = options.StateDir ?? PersistenceStore.DefaultDirectory;
         _homeDirectory = options.HomeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -350,6 +356,7 @@ public sealed class LiveApplicationHost : IDisposable
         finally
         {
             window.Save();
+            FlushTreeEvents(windowId);
             lock (_gate) _closingWindows.Remove(windowId);
         }
     }
@@ -384,6 +391,7 @@ public sealed class LiveApplicationHost : IDisposable
         foreach (var attachment in attachments) attachment.Dispose();
         foreach (var window in windows) window.Save();
         SaveIndex();
+        FlushTreeEvents();
     }
 
     private async Task<ControlResponse?> DispatchAsync(
@@ -888,6 +896,7 @@ public sealed class LiveApplicationHost : IDisposable
         }
         if (!isOpen)
             EmitTreeChanged(windowId);
+        FlushTreeEvents(windowId);
         return OkWindowId(windowId);
     }
 
@@ -921,20 +930,51 @@ public sealed class LiveApplicationHost : IDisposable
                 Payload = new ControlEventPayload { Name = session.Name },
             });
         }
-        Ring.Append(new ControlEventDraft
-        {
-            Kind = ControlEventKind.TreeChanged,
-            Window = window,
-        });
+        EmitTreeChanged(windowId);
     }
 
     private void EmitTreeChanged(Guid windowId)
     {
-        Ring.Append(new ControlEventDraft
+        lock (_treeEventGate)
         {
-            Kind = ControlEventKind.TreeChanged,
-            Window = windowId.ToString("D").ToUpperInvariant(),
-        });
+            if (_treeEventTimers.Remove(windowId, out var previous)) previous.Dispose();
+            ITimer? timer = null;
+            timer = _treeEventTimeProvider.CreateTimer(_ =>
+            {
+                lock (_treeEventGate)
+                {
+                    // A disposed timer may already have queued its callback before a reschedule.
+                    if (_treeEventTimers.TryGetValue(windowId, out var pending) && pending == timer)
+                        FlushTreeEvents(windowId);
+                }
+            }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _treeEventTimers.Add(windowId, timer);
+            timer.Change(TimeSpan.FromMilliseconds(100), Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    /// <summary>Synchronously publishes pending invalidations, including deleted windows.</summary>
+    public void FlushTreeEvents()
+    {
+        lock (_treeEventGate)
+        {
+            foreach (var windowId in _treeEventTimers.Keys.ToArray())
+                FlushTreeEvents(windowId);
+        }
+    }
+
+    private void FlushTreeEvents(Guid windowId)
+    {
+        lock (_treeEventGate)
+        {
+            if (!_treeEventTimers.Remove(windowId, out var timer)) return;
+            timer.Dispose();
+            Ring.Append(new ControlEventDraft
+            {
+                Kind = ControlEventKind.TreeChanged,
+                Window = windowId.ToString("D").ToUpperInvariant(),
+            });
+        }
     }
 
     private async Task<ControlResponse> ResizeWindowAsync(
@@ -1303,7 +1343,8 @@ public sealed class LiveApplicationHost : IDisposable
             _recentClosedStore,
             seedIfEmpty,
             launchRestore,
-            _picks);
+            _picks,
+            EmitTreeChanged);
 
     private void SetOpen(Guid windowId, bool isOpen)
     {

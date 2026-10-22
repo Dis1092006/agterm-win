@@ -14,7 +14,7 @@ namespace AgTerm.Core.Tests.Ported;
 /// - ring-seam tests compose AppStore + ControlEventRing with a window-stamping sink, exactly the
 ///   composition the library performs;
 /// - tests that exercise WindowLibrary's own lifecycle (newWindow/closeWindow/loadStore/
-///   removeWindow) or its tree-event debouncers are skipped with a PORT-GAP note.
+///   removeWindow) are skipped with a PORT-GAP note unless covered in AgTerm.Xterm.Tests.
 /// </summary>
 public class AppStoreEventTests : IDisposable
 {
@@ -286,25 +286,6 @@ public class AppStoreEventTests : IDisposable
         Assert.Equal(new[] { Uuid(first!.Id), Uuid(second!.Id) },
             items.Select(d => d.Session).ToList());
         Assert.Equal(new[] { "one", "two" }, items.Select(d => d.Payload.Name).ToList());
-    }
-
-    [Fact(Skip = "PORT-GAP: a LiveApplicationHost test must delete an open window and assert " +
-                 "session.closed then one window-stamped tree.changed event.")]
-    public void DeletingOpenWindowEmitsClosedEdgeAndStructuralInvalidation()
-    {
-        // PORT-GAP: upstream asserts that deleting an OPEN window emits session.closed for its live
-        // session followed by one tree.changed, all stamped with the deleted window's id. Both the
-        // deletion path and the coalesced flush live in WindowLibrary.
-    }
-
-    [Fact(Skip = "PORT-GAP: the live host currently appends every tree.changed event immediately; " +
-                 "per-window coalescing and a flush assertion need behavior work and a live test.")]
-    public void TreeChangesCoalescePerWindowAndStayIndependent()
-    {
-        // PORT-GAP: upstream asserts scheduled tree changes are invisible before flushTreeEvents and
-        // coalesce to exactly one tree.changed per window afterwards. The debouncers are owned by
-        // WindowLibrary; the AppStore seam ported here forwards each ScheduleTreeChanged draft
-        // immediately, so the coalescing contract cannot be asserted against the current host.
     }
 
     [Fact]

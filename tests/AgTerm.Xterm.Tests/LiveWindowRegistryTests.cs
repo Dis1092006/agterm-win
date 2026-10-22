@@ -417,6 +417,175 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public void TreeChangesCoalescePerWindowAndStayIndependent()
+    {
+        // Ported from upstream AppStoreEventTests.swift treeChangesCoalescePerWindowAndStayIndependent.
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        var clock = new TreeEventClock();
+        using var application = CreateApplication(clock);
+        var anchor = application.Ring.Read(cursor: null).Batch;
+
+        foreach (var windowId in new[] { firstId, secondId })
+        {
+            var window = application.GetOpenWindow(windowId);
+            window.RunLocked(() =>
+            {
+                window.Store.AddWorkspace("one");
+                window.Store.AddWorkspace("two");
+            });
+        }
+
+        Assert.Empty(application.Ring.Read(
+            new ControlEventCursor(anchor.Run, anchor.Next)).Batch.Items);
+        application.FlushTreeEvents();
+        var events = application.Ring.Read(new ControlEventCursor(anchor.Run, anchor.Next)).Batch;
+        Assert.Equal(new[] { firstId, secondId }.Select(id => id.ToString("D").ToUpperInvariant()),
+            events.Items.Select(item => item.Window));
+        Assert.All(events.Items, item =>
+        {
+            Assert.Equal(ControlEventKind.TreeChanged, item.Kind);
+            Assert.Null(item.Workspace);
+            Assert.Null(item.Session);
+        });
+        application.FlushTreeEvents();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        clock.FireQueuedCallbacks();
+        Assert.Empty(application.Ring.Read(new ControlEventCursor(events.Run, events.Next)).Batch.Items);
+    }
+
+    [Fact]
+    public void Tree_events_wait_100_ms_and_only_reset_the_changed_windows_deadline()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        var clock = new TreeEventClock();
+        using var application = CreateApplication(clock);
+        var anchor = application.Ring.Read(cursor: null).Batch;
+        application.GetOpenWindow(firstId).Store.AddWorkspace("one");
+        clock.Advance(TimeSpan.FromMilliseconds(50));
+        application.GetOpenWindow(secondId).Store.AddWorkspace("two");
+        clock.Advance(TimeSpan.FromMilliseconds(25));
+        application.GetOpenWindow(firstId).Store.AddWorkspace("three");
+
+        clock.FireQueuedCallbacks();
+        clock.Advance(TimeSpan.FromMilliseconds(74));
+        Assert.Empty(application.Ring.Read(new ControlEventCursor(anchor.Run, anchor.Next)).Batch.Items);
+        clock.Advance(TimeSpan.FromMilliseconds(1));
+        var second = Assert.Single(application.Ring.Read(
+            new ControlEventCursor(anchor.Run, anchor.Next)).Batch.Items);
+        Assert.Equal(secondId.ToString("D").ToUpperInvariant(), second.Window);
+        clock.Advance(TimeSpan.FromMilliseconds(25));
+        var first = Assert.Single(application.Ring.Read(
+            new ControlEventCursor(anchor.Run, second.Seq)).Batch.Items);
+        Assert.Equal(firstId.ToString("D").ToUpperInvariant(), first.Window);
+        Assert.Equal(second.Seq + 1, first.Seq);
+    }
+
+    [Fact]
+    public void Non_tree_events_are_immediate_and_status_and_selection_do_not_invalidate_the_tree()
+    {
+        // Ported from upstream AppStoreEventTests.swift statusAndSelectionDoNotScheduleStructuralInvalidation.
+        var clock = new TreeEventClock();
+        using var application = CreateApplication(clock);
+        var window = application.GetOpenWindow(application.ActiveWindowId!.Value);
+        var anchor = application.Ring.Read(cursor: null).Batch;
+        var workspace = window.Store.Workspaces[0];
+        var session = window.Store.AddSession(workspace.Id, _stateDir)!;
+        window.Store.SetAgentIndicator(new AgentIndicator(AgentStatus.Active), session.Id);
+        window.Store.RecordNotificationEvent(session.Id, "done", "ok");
+        var immediate = application.Ring.Read(new ControlEventCursor(anchor.Run, anchor.Next)).Batch;
+        Assert.Equal(new[] { ControlEventKind.SessionCreated, ControlEventKind.Status, ControlEventKind.Notify },
+            immediate.Items.Select(item => item.Kind));
+        application.FlushTreeEvents();
+        var tree = Assert.Single(application.Ring.Read(
+            new ControlEventCursor(immediate.Run, immediate.Next)).Batch.Items);
+        Assert.Equal(ControlEventKind.TreeChanged, tree.Kind);
+        Assert.Equal(immediate.Next + 1, tree.Seq);
+
+        window.Store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked), session.Id);
+        window.Store.SelectSession(session.Id);
+        application.FlushTreeEvents();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        var status = Assert.Single(application.Ring.Read(
+            new ControlEventCursor(immediate.Run, tree.Seq)).Batch.Items);
+        Assert.Equal(ControlEventKind.Status, status.Kind);
+    }
+
+    [Fact]
+    public void Attached_live_window_coalesces_two_session_renames_over_the_application_pipe()
+    {
+        var clock = new TreeEventClock();
+        using var application = CreateApplication(clock);
+        var windowId = application.ActiveWindowId!.Value;
+        using var attached = application.AttachWindow(windowId, new LiveControlHostOptions
+        {
+            OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
+        });
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var anchor = application.Ring.Read(cursor: null).Batch;
+        foreach (var name in new[] { "one", "two" })
+        {
+            var response = client.Send(new ControlRequest
+            {
+                Cmd = Command.SessionRename,
+                Args = new ControlArgs { Name = name, Window = windowId.ToString("D") },
+            });
+            Assert.True(response.Ok, response.Error);
+        }
+        Assert.Same(application.Ring, attached.Ring);
+        Assert.Same(application.GetOpenWindow(windowId).Actions, attached.Actions);
+        Assert.Empty(application.Ring.Read(new ControlEventCursor(anchor.Run, anchor.Next)).Batch.Items);
+
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+        var events = application.Ring.Read(new ControlEventCursor(anchor.Run, anchor.Next)).Batch;
+        var changed = Assert.Single(events.Items);
+        Assert.Equal(ControlEventKind.TreeChanged, changed.Kind);
+        Assert.Equal(windowId.ToString("D").ToUpperInvariant(), changed.Window);
+        clock.Advance(TimeSpan.FromMilliseconds(300));
+        Assert.Empty(application.Ring.Read(new ControlEventCursor(events.Run, events.Next)).Batch.Items);
+    }
+
+    [Fact]
+    public async Task Closing_one_window_flushes_its_pending_event_without_flushing_another_window()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        var clock = new TreeEventClock();
+        using var application = CreateApplication(clock);
+        var anchor = application.Ring.Read(cursor: null).Batch;
+        application.GetOpenWindow(firstId).Store.AddWorkspace("one");
+        application.GetOpenWindow(secondId).Store.AddWorkspace("two");
+
+        await application.CloseWindowAsync(firstId);
+
+        var closed = application.Ring.Read(new ControlEventCursor(anchor.Run, anchor.Next)).Batch;
+        Assert.Equal(firstId.ToString("D").ToUpperInvariant(), Assert.Single(closed.Items).Window);
+        application.Dispose();
+        var shutdown = application.Ring.Read(new ControlEventCursor(closed.Run, closed.Next)).Batch;
+        Assert.Equal(secondId.ToString("D").ToUpperInvariant(), Assert.Single(shutdown.Items).Window);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        clock.FireQueuedCallbacks();
+        Assert.Empty(application.Ring.Read(new ControlEventCursor(shutdown.Run, shutdown.Next)).Batch.Items);
+    }
+
+    [Fact]
     public void Events_read_returns_events_from_both_windows_in_one_application_run()
     {
         var firstId = Guid.NewGuid();
@@ -449,6 +618,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
             Assert.True(response.Ok, response.Error);
         }
 
+        application.FlushTreeEvents();
         var events = client.Send(new ControlRequest
         {
             Cmd = Command.EventsRead,
@@ -1001,13 +1171,62 @@ public sealed class LiveWindowRegistryTests : IDisposable
         OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
     };
 
-    private LiveApplicationHost CreateApplication() =>
+    private LiveApplicationHost CreateApplication(TimeProvider? clock = null) =>
         new(new LiveApplicationHostOptions
         {
             StateDir = _stateDir,
             HomeDirectory = _stateDir,
             PipeName = "agterm-window-registry-" + Guid.NewGuid().ToString("N"),
+            TreeEventTimeProvider = clock ?? TimeProvider.System,
         });
+
+    private sealed class TreeEventClock : TimeProvider
+    {
+        private TimeSpan _elapsed;
+        private readonly List<TestTimer> _timers = new();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new TestTimer(this, callback, state);
+            _timers.Add(timer);
+            timer.Change(dueTime, period);
+            return timer;
+        }
+
+        public void Advance(TimeSpan elapsed)
+        {
+            _elapsed += elapsed;
+            foreach (var timer in _timers.Where(timer => !timer.Disposed && timer.Due <= _elapsed).ToArray())
+                timer.Fire();
+        }
+
+        public void FireQueuedCallbacks()
+        {
+            foreach (var timer in _timers.Where(timer => timer.Disposed).ToArray())
+                timer.Fire();
+        }
+
+        private sealed class TestTimer(TreeEventClock clock, TimerCallback callback, object? state) : ITimer
+        {
+            public bool Disposed { get; private set; }
+            public TimeSpan Due { get; private set; }
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                Assert.Equal(Timeout.InfiniteTimeSpan, period);
+                Due = dueTime == Timeout.InfiniteTimeSpan ? TimeSpan.MaxValue : clock._elapsed + dueTime;
+                return !Disposed;
+            }
+
+            public void Fire() => callback(state);
+            public void Dispose() => Disposed = true;
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
 
     private static string FindRepositoryRoot()
     {

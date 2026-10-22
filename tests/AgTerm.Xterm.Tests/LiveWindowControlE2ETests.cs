@@ -659,6 +659,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
             Cmd = Command.WindowSelect,
             Target = secondId.ToString("D"),
         }).Ok);
+        application.FlushTreeEvents();
         var reopened = ReadEvents(client, closed);
         Assert.Equal(
             new[] { ControlEventKind.SessionCreated, ControlEventKind.TreeChanged },
@@ -732,6 +733,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         var created = client.Send(new ControlRequest { Cmd = Command.WindowNew });
         Assert.True(created.Ok, created.Error);
         var createdId = Guid.Parse(created.Result!.Id!);
+        application.FlushTreeEvents();
         var creationEvents = ReadEvents(client, anchor);
         Assert.Equal(
             new[] { ControlEventKind.SessionCreated, ControlEventKind.TreeChanged },
@@ -782,12 +784,49 @@ public sealed class LiveWindowControlE2ETests : IDisposable
                 Args = new ControlArgs { Name = $"renamed-{windowId:N}" },
             });
             Assert.True(response.Ok, response.Error);
+            application.FlushTreeEvents();
             var events = ReadEvents(client, cursor);
             var changed = Assert.Single(events.Items);
             Assert.Equal(ControlEventKind.TreeChanged, changed.Kind);
             Assert.Equal(windowId.ToString("D").ToUpperInvariant(), changed.Window);
             cursor = events;
         }
+    }
+
+    [Fact]
+    public void DeletingOpenWindowEmitsClosedEdgeAndStructuralInvalidation()
+    {
+        // Ported from upstream AppStoreEventTests.swift deletingOpenWindowEmitsClosedEdgeAndStructuralInvalidation.
+        var keptId = Guid.NewGuid();
+        var deletedId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        WriteWindowSnapshot(keptId, "keep");
+        WriteWindowSnapshot(deletedId, SnapshotWithSession("delete", sessionId));
+        WriteIndex(keptId,
+            new IndexEntry(keptId, "keep", IsOpen: true),
+            new IndexEntry(deletedId, "delete", IsOpen: true));
+        var windows = new FakeWindowController();
+        using var application = CreateApplication(windows);
+        windows.Closed = id => application.CloseWindowAsync(id);
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var anchor = application.Ring.Read(cursor: null).Batch;
+
+        var response = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowDelete,
+            Target = deletedId.ToString("D"),
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.DoesNotContain(application.Windows, window => window.Id == deletedId);
+        var events = ReadEvents(client, anchor);
+        Assert.Equal(new[] { ControlEventKind.SessionClosed, ControlEventKind.TreeChanged },
+            events.Items.Select(item => item.Kind));
+        Assert.All(events.Items, item => Assert.Equal(deletedId.ToString("D").ToUpperInvariant(), item.Window));
+        Assert.Equal(sessionId.ToString("D").ToUpperInvariant(), events.Items[0].Session);
+        application.FlushTreeEvents();
+        Assert.Empty(ReadEvents(client, events).Items);
     }
 
     [Fact]
