@@ -1362,6 +1362,8 @@ function win32CtrlLetter(code, keyDown) {
   return `\x1b[${letter.charCodeAt(0)};${LETTER_SCAN_CODES[letter]};`
     + `${letter.toLowerCase().charCodeAt(0)};${keyDown ? 1 : 0};8;1_`;
 }
+
+// the event.code a physical key reports, for the keys tests drive (letters/digits are positional
 // names, not the produced character; the rest are named after the key itself)
 function syntheticCodeFromKey(key) {
   if (typeof key !== "string" || key.length === 0) return "";
