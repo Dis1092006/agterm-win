@@ -307,16 +307,42 @@ public sealed class LiveApplicationHost : IDisposable
         }
     }
 
-    public void ReportActivated(Guid windowId)
+    public void ReportAcceptedPane(Guid windowId, string? paneId)
     {
         lock (_gate)
         {
-            if (_disposed || !_openWindows.ContainsKey(windowId) || _frontmostWindowId == windowId)
-                return;
-
-            _frontmostWindowId = windowId;
-            SaveIndexLocked();
+            if (!_disposed && _openWindows.TryGetValue(windowId, out var window))
+                window.AcceptedPaneId = paneId;
         }
+    }
+
+    public Task ReportActivatedAsync(Guid windowId)
+    {
+        LiveWindowHost window;
+        string? acceptedPaneId;
+        lock (_gate)
+        {
+            if (_disposed || !_openWindows.TryGetValue(windowId, out window!))
+                return Task.CompletedTask;
+
+            if (_frontmostWindowId != windowId)
+            {
+                _frontmostWindowId = windowId;
+                SaveIndexLocked();
+            }
+            acceptedPaneId = window.AcceptedPaneId;
+        }
+        return Task.Run(() => window.RunLocked(() =>
+        {
+            // The accepted layout may change while this callback waits for the store gate.
+            if (acceptedPaneId is null || window.AcceptedPaneId != acceptedPaneId)
+                return;
+            var session = window.Store.Workspaces.SelectMany(workspace => workspace.Sessions)
+                .FirstOrDefault(candidate => candidate.Surface?.PaneToken == acceptedPaneId
+                    || candidate.SplitSurface?.PaneToken == acceptedPaneId);
+            if (session is { UnseenCount: > 0 })
+                window.Store.ClearUnseen(session.Id);
+        }));
     }
 
     public async Task CloseWindowAsync(
@@ -585,7 +611,7 @@ public sealed class LiveApplicationHost : IDisposable
             {
                 // The modal is open and the client needs its id, like window.select with a refused activation.
             }
-            ReportActivated(windowId);
+            await ReportActivatedAsync(windowId).ConfigureAwait(false);
         }
         return response;
     }
@@ -749,7 +775,7 @@ public sealed class LiveApplicationHost : IDisposable
         }
         // The OS may refuse to activate a window for a background caller, and then no Activated event
         // arrives. The control reply promises the window is frontmost, so take it here.
-        ReportActivated(windowId);
+        await ReportActivatedAsync(windowId).ConfigureAwait(false);
         return OkWindowId(windowId);
     }
 

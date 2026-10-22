@@ -170,7 +170,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     // unseen badge (gated render-only by notificationBadgeEnabled; 99+ cap)
     public Visibility BadgeVisibility =>
-        _settings.NotificationBadgeEnabled != false && _row.Unseen > 0
+        SidebarBadge.IsShown(_row.Unseen, _settings)
             ? Visibility.Visible
             : Visibility.Collapsed;
 

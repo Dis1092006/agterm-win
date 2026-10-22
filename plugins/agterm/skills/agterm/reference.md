@@ -132,7 +132,7 @@ command string = the shell line that runs on the next launch; reported from pers
 after the override already fired still reports what is pinned), `background` (the
 background spec set via `session background` — a `{kind, text?, imagePath?, colorHex?, opacity?, fit?,
 position?, repeats?}` object; `kind` is `image`/`text`/`color` — omitted when none is set), `unseen`
-(the unseen-notification badge count — raised by `notify`, cleared by `session seen` — omitted
+(the unseen-notification badge count — raised by `notify`, cleared by `session seen`, session selection, or window activation when that session's main or split pane has accepted focus — omitted
 when zero), `fontSize`/`splitFontSize`/`scratchFontSize` (the LIVE font size in points of each pane —
 the read side of `font --pane`; each omitted when that pane isn't realized. `fontSize` tracks the
 default/left target (the main pane, or the promoted split survivor once the primary exits — the same pane
@@ -630,9 +630,7 @@ All twelve are read-only projections of GUI state.
   `window.list`. The
   `geometry`/`fullscreen`/`zoomed` fields come only from open windows, so a hand-drag or a GUI toggle is
   reflected without needing another command. Unlike `tree`, `window.list` does NOT carry `idleMs`.
-- `window select <id>` — raise it if open, else open it. Wire: `window.select`. Windows may refuse to
-  bring the window to the foreground for a background caller; then the taskbar button flashes, and the
-  window still counts as frontmost for routing.
+- `window select <id>` — raise it if open, else open it. Wire: `window.select`. Windows may refuse to bring the window to the foreground for a background caller; then the taskbar button flashes, and the window still counts as frontmost for routing. Activation clears the unseen count of the session whose main or split pane has accepted focus, including a zoomed pane or highlighted dashboard cell. That session need not be selected. Other sessions keep their counts. The command waits for this policy before replying.
 - `window close <id>` — close the on-screen window (the record is kept; reopen with select). Wire:
   `window.close`. Closing the last open window exits agterm-win after it answers; the record is kept as
   closed and the next launch reopens it.
@@ -915,6 +913,8 @@ not. With banners off the command still succeeds and still raises the badge, but
 off, so no banner was posted`) instead of a bare `ok`. Treat the presence of `result.text` as "no banner
 appeared"; a delivered notification carries none. The badge itself reads back on `tree` as `unseen`;
 settings.json `notificationBadgeEnabled` only hides it in the sidebar.
+
+Returning to a window applies the same badge policy as `window select`, even when no other agterm-win window was activated in between. The policy clears the badge of the session whose main or split pane has accepted focus, without a session switch. An overlay, scratch, or quick pane clears no session badge. Zoom and dashboard panes follow the same owner check even when their session is not selected.
 
 For agentic attention (waiting on input, or a finished result), prefer `session status` over `notify`.
 The two overlap, either can raise an "I need you" signal, but a notification is a

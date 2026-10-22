@@ -21,6 +21,7 @@ public sealed class LiveWindowHost
     private readonly string _stateDirectory;
     private readonly string _homeDirectory;
     private string _windowName;
+    private string? _acceptedPaneId;
 
     internal LiveWindowHost(
         Guid windowId,
@@ -107,6 +108,12 @@ public sealed class LiveWindowHost
     public AppStore Store { get; }
 
     public HeadlessControlActions Actions { get; private set; }
+
+    internal string? AcceptedPaneId
+    {
+        get => Volatile.Read(ref _acceptedPaneId);
+        set => Volatile.Write(ref _acceptedPaneId, value);
+    }
 
     internal async Task<ControlResponse?> DispatchAsync(
         ControlRequest request,

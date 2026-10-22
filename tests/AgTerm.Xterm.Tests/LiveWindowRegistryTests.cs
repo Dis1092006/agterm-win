@@ -79,7 +79,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Closed_frontmost_falls_back_and_explicit_activation_persists()
+    public async Task Closed_frontmost_falls_back_and_explicit_activation_persists()
     {
         var firstId = Guid.NewGuid();
         var secondId = Guid.NewGuid();
@@ -94,7 +94,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
             Assert.Equal(secondId, application.FrontmostWindowId);
             Assert.Equal(firstId, application.ActiveWindowId);
 
-            application.ReportActivated(firstId);
+            await application.ReportActivatedAsync(firstId);
 
             Assert.Equal(firstId, application.FrontmostWindowId);
             Assert.Equal(firstId, application.ActiveWindowId);
@@ -360,7 +360,9 @@ public sealed class LiveWindowRegistryTests : IDisposable
         Assert.Contains("_applicationHost.AttachWindow(", mainWindow, StringComparison.Ordinal);
         Assert.Contains("_windowId,", mainWindow, StringComparison.Ordinal);
         Assert.Contains("Activated += OnWindowActivated;", mainWindow, StringComparison.Ordinal);
-        Assert.Contains("_applicationHost.ReportActivated(_windowId);", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("ObserveTaskFault(_applicationHost.ReportActivatedAsync(_windowId), \"Window activation failed\");",
+            mainWindow, StringComparison.Ordinal);
+        Assert.Contains("_applicationHost.ReportAcceptedPane(_windowId, paneId);", mainWindow, StringComparison.Ordinal);
         Assert.Contains(
             "await _applicationHost.CloseWindowAsync(_windowId).ConfigureAwait(false);",
             mainWindow,
@@ -783,7 +785,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Implicit_requests_follow_the_last_explicitly_activated_window()
+    public async Task Implicit_requests_follow_the_last_explicitly_activated_window()
     {
         var firstId = Guid.NewGuid();
         var secondId = Guid.NewGuid();
@@ -794,7 +796,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
             new IndexEntry(secondId, "second", IsOpen: true));
 
         using var application = CreateApplication();
-        application.ReportActivated(secondId);
+        await application.ReportActivatedAsync(secondId);
         application.Start();
         var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest
         {

@@ -24,6 +24,350 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         }
     }
 
+    // Ported from upstream ControlSidebarStatusUITests.testNotificationBadgeToggleHidesAndShowsBadge.
+    // Covers render policy and host state, not rendered XAML or OS activation.
+    [Fact]
+    public void Notification_badge_toggle_hides_and_shows_badge_without_losing_unseen_count()
+    {
+        using var application = CreateApplication();
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var windowId = Assert.Single(application.Windows).Id;
+        var seeded = application.GetOpenWindow(windowId).Store.ActiveSession!.Id;
+        var created = client.Send(new ControlRequest { Cmd = Command.SessionNew });
+        Assert.True(created.Ok, created.Error);
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = seeded.ToString("D"),
+            Args = new ControlArgs { Body = "first" },
+        }).Ok);
+        var settings = new AppSettings();
+        var initial = BadgeSession(client, windowId, seeded);
+        Assert.Equal(1, initial.Unseen);
+        Assert.False(initial.Active);
+        Assert.True(SidebarBadge.IsShown(initial.Unseen ?? 0, settings));
+
+        settings = settings with { NotificationBadgeEnabled = false };
+        Assert.False(SidebarBadge.IsShown(BadgeSession(client, windowId, seeded).Unseen ?? 0, settings));
+        Assert.Equal(1, BadgeSession(client, windowId, seeded).Unseen);
+        settings = settings with { NotificationBadgeEnabled = true };
+        Assert.True(SidebarBadge.IsShown(BadgeSession(client, windowId, seeded).Unseen ?? 0, settings));
+        Assert.Equal(1, BadgeSession(client, windowId, seeded).Unseen);
+
+        settings = settings with { NotificationBadgeEnabled = false };
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = seeded.ToString("D"),
+            Args = new ControlArgs { Body = "while hidden" },
+        }).Ok);
+        Assert.Equal(2, BadgeSession(client, windowId, seeded).Unseen);
+        Assert.False(SidebarBadge.IsShown(BadgeSession(client, windowId, seeded).Unseen ?? 0, settings));
+        settings = settings with { NotificationBadgeEnabled = true };
+        Assert.True(SidebarBadge.IsShown(BadgeSession(client, windowId, seeded).Unseen ?? 0, settings));
+        Assert.False(SidebarBadge.IsShown(0, settings));
+        Assert.True(BadgeSession(client, windowId, Guid.Parse(created.Result!.Id!)).Active);
+        var source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "src", "AgTerm.App", "SidebarRowViewModel.cs"));
+        Assert.Contains("SidebarBadge.IsShown(_row.Unseen, _settings)", source, StringComparison.Ordinal);
+    }
+
+    // Ported from upstream ControlSidebarStatusUITests.testRefocusingWindowClearsOnScreenSessionBadge.
+    // Covers activation policy and host state, not the OS activation event or rendered XAML.
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, true)]
+    public async Task Refocusing_window_clears_shown_session_badge_without_a_session_switch(
+        bool sameWindow, bool split, bool zoomed)
+    {
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var firstId = Assert.Single(application.Windows).Id;
+        var first = application.GetOpenWindow(firstId);
+        var seeded = first.Store.ActiveSession!.Id;
+        first.RunLocked(() =>
+        {
+            first.Store.ActiveSession!.Surface = new BadgeSurface("main");
+            first.Store.ActiveSession.SplitSurface = new BadgeSurface("split");
+            first.Store.ActiveSession.SplitFocused = split;
+            if (zoomed)
+                first.Actions.Zoom.Set(ControlToggleMode.On, new TerminalZoomTarget.Session(
+                    seeded, split ? TerminalZoomSurface.Split : TerminalZoomSurface.Primary));
+        });
+        application.ReportAcceptedPane(firstId, split ? "split" : "main");
+        if (!sameWindow)
+            Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowNew }).Ok);
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = seeded.ToString("D"),
+            Args = new ControlArgs { Body = "unseen" },
+        }).Ok);
+        Assert.Equal(1, BadgeSession(client, firstId, seeded).Unseen);
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionStatus,
+            Target = seeded.ToString("D"),
+            Args = new ControlArgs { Status = "blocked", AutoReset = true },
+        }).Ok);
+        var selectionChanges = 0;
+        first.Store.SelectionChanged += () => selectionChanges++;
+
+        await application.ReportActivatedAsync(firstId).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(firstId, application.ActiveWindowId);
+        Assert.Null(BadgeSession(client, firstId, seeded).Unseen);
+        Assert.True(BadgeSession(client, firstId, seeded).Active);
+        Assert.Equal("blocked", BadgeSession(client, firstId, seeded).Status);
+        Assert.Equal(0, selectionChanges);
+    }
+
+    // Ported from upstream ControlSidebarStatusUITests.testRefocusingWindowKeepsNonFocusedSessionBadge.
+    // Covers activation policy and host state, not the OS activation event or rendered XAML.
+    [Fact]
+    public async Task Refocusing_window_keeps_nonfocused_session_badge()
+    {
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var firstId = Assert.Single(application.Windows).Id;
+        var first = application.GetOpenWindow(firstId);
+        var seeded = first.Store.ActiveSession!.Id;
+        first.RunLocked(() => first.Store.ActiveSession!.Surface = new BadgeSurface("main"));
+        application.ReportAcceptedPane(firstId, "main");
+        var created = client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionNew,
+            Args = new ControlArgs { NoSelect = true },
+        });
+        Assert.True(created.Ok, created.Error);
+        var other = Guid.Parse(created.Result!.Id!);
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = other.ToString("D"),
+            Args = new ControlArgs { Body = "not shown" },
+        }).Ok);
+        Assert.Equal(1, BadgeSession(client, firstId, other).Unseen);
+        var second = client.Send(new ControlRequest { Cmd = Command.WindowNew });
+        Assert.True(second.Ok, second.Error);
+        var secondId = Guid.Parse(second.Result!.Id!);
+        var secondSession = application.GetOpenWindow(secondId).Store.ActiveSession!.Id;
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = secondSession.ToString("D"),
+            Args = new ControlArgs { Body = "other window" },
+        }).Ok);
+        var selectionChanges = 0;
+        first.Store.SelectionChanged += () => selectionChanges++;
+
+        await application.ReportActivatedAsync(firstId).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(firstId, application.ActiveWindowId);
+        Assert.True(BadgeSession(client, firstId, seeded).Active);
+        Assert.Equal(1, BadgeSession(client, firstId, other).Unseen);
+        Assert.Equal(1, BadgeSession(client, secondId, secondSession).Unseen);
+        Assert.Equal(0, selectionChanges);
+    }
+
+    [Theory]
+    [InlineData("overlay")]
+    [InlineData("scratch")]
+    [InlineData("quick")]
+    [InlineData(null)]
+    public async Task Activation_only_marks_the_accepted_main_or_split_pane_owner_seen(string? acceptedPane)
+    {
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var windowId = Assert.Single(application.Windows).Id;
+        var window = application.GetOpenWindow(windowId);
+        var session = window.Store.ActiveSession!;
+        window.RunLocked(() =>
+        {
+            session.Surface = new BadgeSurface("main");
+            session.SplitSurface = new BadgeSurface("split");
+            session.OverlaySurface = new BadgeSurface("overlay");
+            session.ScratchSurface = new BadgeSurface("scratch");
+            session.OverlayActive = acceptedPane == "overlay";
+            session.ScratchActive = acceptedPane == "scratch";
+        });
+        application.ReportAcceptedPane(windowId, acceptedPane);
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = session.Id.ToString("D"),
+            Args = new ControlArgs { Body = "main is covered" },
+        }).Ok);
+
+        await application.ReportActivatedAsync(windowId).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, BadgeSession(client, windowId, session.Id).Unseen);
+        Assert.True(BadgeSession(client, windowId, session.Id).Active);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Activation_clears_background_focused_pane_owner_not_selected_session(
+        bool dashboard, bool split)
+    {
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var firstId = Assert.Single(application.Windows).Id;
+        var first = application.GetOpenWindow(firstId);
+        var selected = first.Store.ActiveSession!.Id;
+        var created = client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionNew,
+            Args = new ControlArgs { NoSelect = true },
+        });
+        Assert.True(created.Ok, created.Error);
+        var other = Guid.Parse(created.Result!.Id!);
+        first.RunLocked(() =>
+        {
+            first.Store.ActiveSession!.Surface = new BadgeSurface("selected-main");
+            var background = first.Store.SessionWithId(other)!;
+            background.Surface = new BadgeSurface("background-main");
+            background.SplitSurface = new BadgeSurface("background-split");
+            var surface = split ? TerminalZoomSurface.Split : TerminalZoomSurface.Primary;
+            if (dashboard)
+                first.Actions.Dashboard.Open(
+                    [new DashboardMember(other, surface), new DashboardMember(selected, TerminalZoomSurface.Primary)],
+                    new DashboardFontMode.Untouched());
+            else
+                first.Actions.Zoom.Set(ControlToggleMode.On, new TerminalZoomTarget.Session(other, surface));
+        });
+        application.ReportAcceptedPane(firstId, split ? "background-split" : "background-main");
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowNew }).Ok);
+        foreach (var sessionId in new[] { selected, other })
+        {
+            Assert.True(client.Send(new ControlRequest
+            {
+                Cmd = Command.Notify,
+                Target = sessionId.ToString("D"),
+                Args = new ControlArgs { Body = "unseen" },
+            }).Ok);
+            Assert.Equal(1, BadgeSession(client, firstId, sessionId).Unseen);
+        }
+        var selectionChanges = 0;
+        first.Store.SelectionChanged += () => selectionChanges++;
+
+        await application.ReportActivatedAsync(firstId).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(firstId, application.ActiveWindowId);
+        Assert.Null(BadgeSession(client, firstId, other).Unseen);
+        Assert.Equal(1, BadgeSession(client, firstId, selected).Unseen);
+        Assert.True(BadgeSession(client, firstId, selected).Active);
+        Assert.False(BadgeSession(client, firstId, other).Active);
+        Assert.Equal(0, selectionChanges);
+    }
+
+    [Fact]
+    public async Task Window_select_awaits_badge_clear_without_an_os_activation_callback()
+    {
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var firstId = Assert.Single(application.Windows).Id;
+        var first = application.GetOpenWindow(firstId);
+        var sessionId = first.Store.ActiveSession!.Id;
+        first.RunLocked(() => first.Store.ActiveSession!.Surface = new BadgeSurface("main"));
+        application.ReportAcceptedPane(firstId, "main");
+        Assert.True(client.Send(new ControlRequest { Cmd = Command.WindowNew }).Ok);
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = sessionId.ToString("D"),
+            Args = new ControlArgs { Body = "unseen" },
+        }).Ok);
+        Assert.Equal(1, BadgeSession(client, firstId, sessionId).Unseen);
+
+        var selected = await Task.Run(() => client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowSelect,
+            Target = firstId.ToString("D"),
+        })).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(selected.Ok, selected.Error);
+        Assert.Null(BadgeSession(client, firstId, sessionId).Unseen);
+    }
+
+    private static ControlSessionNode BadgeSession(ControlPipeClient client, Guid windowId, Guid sessionId)
+    {
+        var response = client.Send(new ControlRequest
+        {
+            Cmd = Command.Tree,
+            Args = new ControlArgs { Window = windowId.ToString("D") },
+        });
+        Assert.True(response.Ok, response.Error);
+        return Assert.Single(response.Result!.Tree!.Workspaces.SelectMany(workspace => workspace.Sessions),
+            session => Guid.Parse(session.Id) == sessionId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Activation_waits_off_ui_and_ignores_a_replaced_accepted_layout(bool layoutChanges)
+    {
+        using var application = CreateApplication();
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var windowId = Assert.Single(application.Windows).Id;
+        var window = application.GetOpenWindow(windowId);
+        var sessionId = window.Store.ActiveSession!.Id;
+        window.RunLocked(() => window.Store.ActiveSession!.Surface = new BadgeSurface("main"));
+        application.ReportAcceptedPane(windowId, "main");
+        Assert.True(client.Send(new ControlRequest
+        {
+            Cmd = Command.Notify,
+            Target = sessionId.ToString("D"),
+            Args = new ControlArgs { Body = "unseen" },
+        }).Ok);
+        var acquired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var returned = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var holder = Task.Run(() => window.RunLocked(() =>
+        {
+            acquired.SetResult();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10)), "Store gate was not released.");
+        }));
+        Task? caller = null;
+        Task? activation = null;
+        try
+        {
+            await acquired.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            caller = Task.Run(() =>
+            {
+                var pending = application.ReportActivatedAsync(windowId);
+                returned.SetResult(pending);
+            });
+            activation = await returned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(activation.IsCompleted);
+            if (layoutChanges)
+                application.ReportAcceptedPane(windowId, "overlay");
+        }
+        finally
+        {
+            release.Set();
+            await holder.WaitAsync(TimeSpan.FromSeconds(5));
+            if (caller is not null)
+                await caller.WaitAsync(TimeSpan.FromSeconds(5));
+            if (activation is not null)
+                await activation.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        Assert.Equal(layoutChanges ? 1 : (int?)null, BadgeSession(client, windowId, sessionId).Unseen);
+    }
+
     [Fact]
     public void Window_list_projects_every_registry_entry_in_persisted_order()
     {
@@ -105,7 +449,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         var windows = new FakeWindowController();
 
         using var application = CreateApplication(windows);
-        windows.Activated = application.ReportActivated;
+        windows.Activated = application.ReportActivatedAsync;
         application.Start();
         var client = new ControlPipeClient(application.PipeName);
 
@@ -539,7 +883,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         var windows = new FakeWindowController();
 
         using var application = CreateApplication(windows);
-        windows.Activated = application.ReportActivated;
+        windows.Activated = application.ReportActivatedAsync;
         application.Start();
         var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest
         {
@@ -561,7 +905,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         var windows = new FakeWindowController();
         using (var application = CreateApplication(windows))
         {
-            windows.Activated = application.ReportActivated;
+            windows.Activated = application.ReportActivatedAsync;
             windows.Closed = id => application.CloseWindowAsync(id);
             application.Start();
             var client = new ControlPipeClient(application.PipeName);
@@ -626,7 +970,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     {
         var windows = new FakeWindowController();
         using var application = CreateApplication(windows);
-        windows.Activated = application.ReportActivated;
+        windows.Activated = application.ReportActivatedAsync;
         windows.Closed = id => application.CloseWindowAsync(id);
         application.Start();
         var client = new ControlPipeClient(application.PipeName);
@@ -707,7 +1051,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         var windows = new FakeWindowController();
 
         using var application = CreateApplication(windows);
-        windows.Activated = application.ReportActivated;
+        windows.Activated = application.ReportActivatedAsync;
         windows.Closed = id => application.CloseWindowAsync(id);
         application.Start();
         var client = new ControlPipeClient(application.PipeName);
@@ -796,7 +1140,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     {
         var windows = new FakeWindowController();
         using var application = CreateApplication(windows);
-        windows.Activated = application.ReportActivated;
+        windows.Activated = application.ReportActivatedAsync;
         windows.Closed = id => application.CloseWindowAsync(id);
         application.Start();
         var client = new ControlPipeClient(application.PipeName);
@@ -1559,6 +1903,19 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public required IndexEntry[] Windows { get; init; }
     }
 
+    private sealed class BadgeSurface(string token) : IHeadlessSurface
+    {
+        public string? PaneToken => token;
+        public bool Inject(string text) => true;
+        public string? ReadScreenText(bool all, int? lines) => string.Empty;
+        public string? SelectedText => null;
+        public void SelectAll() { }
+        public bool Paste() => true;
+        public bool PerformBindingAction(string action) => true;
+        public void PromoteToPrimaryPane() { }
+        public void Teardown() { }
+    }
+
     private sealed class FakeWindowController : ILiveWindowController
     {
         public List<Guid> Opened { get; } = new();
@@ -1573,7 +1930,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public int DisplayCount { get; set; } = 1;
         public Exception? OpenError { get; set; }
         public Exception? ActivateError { get; set; }
-        public Action<Guid>? Activated { get; set; }
+        public Func<Guid, Task>? Activated { get; set; }
         public Func<Guid, Task>? Closed { get; set; }
 
         public Task OpenWindowAsync(Guid windowId, CancellationToken cancellationToken)
@@ -1581,8 +1938,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
             Opened.Add(windowId);
             if (OpenError is not null)
                 return Task.FromException(OpenError);
-            Activated?.Invoke(windowId);
-            return Task.CompletedTask;
+            return Activated?.Invoke(windowId) ?? Task.CompletedTask;
         }
 
         public Task ActivateWindowAsync(Guid windowId, CancellationToken cancellationToken)
@@ -1590,8 +1946,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
             ActivationRequests.Add(windowId);
             if (ActivateError is not null)
                 return Task.FromException(ActivateError);
-            Activated?.Invoke(windowId);
-            return Task.CompletedTask;
+            return Activated?.Invoke(windowId) ?? Task.CompletedTask;
         }
 
         public async Task CloseWindowAsync(Guid windowId, CancellationToken cancellationToken)

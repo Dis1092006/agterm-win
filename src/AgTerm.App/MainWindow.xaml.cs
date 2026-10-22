@@ -204,9 +204,9 @@ public sealed partial class MainWindow : Window
                     ApplyAcceptedBaseLayout(zoomed, zoomed.PaneId);
                     break;
                 case TerminalLayout.Dashboard dashboard:
-                    _acceptedPaneId = dashboard.Cells
+                    SetAcceptedPane(dashboard.Cells
                         .First(cell => cell.ControlRef == dashboard.HighlightedControlRef)
-                        .PaneId;
+                        .PaneId);
                     ShowDashboardTitle();
                     AppTitleBar.Subtitle = string.Empty;
                     break;
@@ -216,7 +216,7 @@ public sealed partial class MainWindow : Window
                 case TerminalLayout.Layered layered:
                     if (layered.BaseLayout is TerminalLayout.Empty)
                     {
-                        _acceptedPaneId = layered.Layer.PaneId;
+                        SetAcceptedPane(layered.Layer.PaneId);
                         FocusActiveTerminal();
                         ShowSessionTitle(null);
                         AppTitleBar.Subtitle = string.Empty;
@@ -227,7 +227,7 @@ public sealed partial class MainWindow : Window
                     }
                     break;
                 case TerminalLayout.Empty:
-                    _acceptedPaneId = null;
+                    SetAcceptedPane(null);
                     ShowSessionTitle(null);
                     AppTitleBar.Subtitle = string.Empty;
                     break;
@@ -430,7 +430,7 @@ public sealed partial class MainWindow : Window
             return;
         PaletteOverlay.NoteActivation();
 
-        _applicationHost.ReportActivated(_windowId);
+        ObserveTaskFault(_applicationHost.ReportActivatedAsync(_windowId), "Window activation failed");
         if (PaletteOverlay.IsOpen)
             PaletteOverlay.FocusQuery();
         if (AskOverlay.IsOpen)
@@ -1128,9 +1128,15 @@ public sealed partial class MainWindow : Window
 
         if (_acceptedPaneId != paneId)
         {
-            _acceptedPaneId = paneId;
+            SetAcceptedPane(paneId);
             FocusActiveTerminal();
         }
+    }
+
+    private void SetAcceptedPane(string? paneId)
+    {
+        _acceptedPaneId = paneId;
+        _applicationHost.ReportAcceptedPane(_windowId, paneId);
     }
 
     /// <summary>Keyboard focus never lives in the sidebar (upstream): after a row gesture, return

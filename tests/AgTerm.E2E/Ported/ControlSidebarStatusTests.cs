@@ -506,24 +506,6 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         Assert.Null(SessionNode(seeded)["status"]);
     }
 
-    // the General → "Show notification badges" toggle gates the red count pill's RENDERING (the count
-    // keeps tracking either way): fire a notification on a non-selected session so notify-badge shows,
-    // toggle the setting off → the badge hides, toggle on → it reappears with the same count.
-    [Fact(Skip = "PORT-GAP: a live WinUI test must toggle notificationBadgeEnabled, check " +
-                 "the badge hides and returns, and assert the unseen count stays unchanged.")]
-    public void NotificationBadgeToggleHidesAndShowsBadge()
-    {
-        // Swift body (ControlSidebarStatusUITests.testNotificationBadgeToggleHidesAndShowsBadge):
-        //   let seeded = <first session id from {"cmd":"tree"}>
-        //   sendCommand(#"{"cmd":"session.new"}"#)                          // second session takes focus
-        //   sendCommand(#"{"cmd":"notify","target":"\#(seeded)","args":{"body":"hi"}}"#)
-        //   app.staticTexts["notify-badge"].waitForExistence(timeout: 12)   // pill shows
-        //   toggleNotificationBadges()                                      // Settings → Notifications
-        //   app.staticTexts["notify-badge"].waitForNonExistence(timeout: 12) // pill hides (render-only)
-        //   toggleNotificationBadges()
-        //   app.staticTexts["notify-badge"].waitForExistence(timeout: 12)   // pill returns, same count
-    }
-
     // session.seen clears a session's unseen badge WITHOUT changing the selection/focus — the focus-free
     // counterpart to notify. Fire notify on a non-selected session so the badge + tree `unseen` read-back
     // show, then session.seen clears both while the selection stays on the other session.
@@ -568,41 +550,6 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         var bad = SendCommand("""{"cmd":"session.seen","target":"deadbeef"}""");
         Assert.False(bad["ok"]!.GetValue<bool>(), "session.seen with an unknown target should fail");
         Assert.StartsWith("no such session", bad["error"]!.GetValue<string>());
-    }
-
-    // returning agterm to the foreground on a session that's on screen clears that session's badge — the
-    // same "you've seen it" clear a focus transition does.
-    [Fact(Skip = "PORT-GAP: a live multi-window focus test must notify the visible session " +
-                 "in a background window, refocus that window, and assert its badge clears.")]
-    public void RefocusingWindowClearsOnScreenSessionBadge()
-    {
-        // Swift body (ControlSidebarStatusUITests.testRefocusingWindowClearsOnScreenSessionBadge):
-        //   let seeded = try activeSessionID()
-        //   let firstWindow = <first id from {"cmd":"window.list"}>
-        //   sendCommand(#"{"cmd":"window.new"}"#)                            // second window takes key
-        //   sendCommand(#"{"cmd":"notify","target":"\#(seeded)","args":{"body":"hi"}}"#)
-        //   app.staticTexts["notify-badge"].waitForExistence(timeout: 12)
-        //   sendCommand(#"{"cmd":"window.select","target":"\#(firstWindow)"}"#) // re-key window 1
-        //   pollWindowActive(firstWindow, timeout: 12)
-        //   app.staticTexts["notify-badge"].waitForNonExistence(timeout: 12) // didBecomeKey clears it
-    }
-
-    // the refocus clear is gated on liveFocus, so it clears ONLY the focused pane's session — never other
-    // badged sessions in the same window (the inverse regression guard of the test above).
-    [Fact(Skip = "PORT-GAP: a live multi-window focus test must refocus a window while another " +
-                 "session has an unseen badge and assert that badge remains.")]
-    public void RefocusingWindowKeepsNonFocusedSessionBadge()
-    {
-        // Swift body (ControlSidebarStatusUITests.testRefocusingWindowKeepsNonFocusedSessionBadge):
-        //   let seeded = try activeSessionID(); let firstWindow = <window.list first id>
-        //   let other = <{"cmd":"session.new"} result.id>
-        //   sendCommand(#"{"cmd":"session.select","target":"\#(seeded)"}"#)  // seeded holds focus
-        //   sendCommand(#"{"cmd":"notify","target":"\#(other)","args":{"body":"hi"}}"#)
-        //   pollUnseen(other, equals: 1)                                     // badge landed
-        //   sendCommand(#"{"cmd":"window.new"}"#)                            // window 1 loses key
-        //   sendCommand(#"{"cmd":"window.select","target":"\#(firstWindow)"}"#) // refocus → seeded
-        //   pollWindowActive(firstWindow, timeout: 12)
-        //   XCTAssertEqual(unseenCount(forSession: other), 1)                // other's badge survives
     }
 
     // notify posts a banner for the active session; a missing body errors.

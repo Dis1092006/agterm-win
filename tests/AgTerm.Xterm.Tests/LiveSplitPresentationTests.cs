@@ -388,7 +388,10 @@ public sealed class MainWindowSplitWiringTests
             @"SetTerminalCompositionOnly\(\s*snapshot\.QuickVisible && !string\.IsNullOrWhiteSpace\(snapshot\.QuickPaneId\)\s+\|\| !string\.IsNullOrWhiteSpace\(snapshot\.ZoomPaneId\)\s+\|\| snapshot\.DashboardOpen\);",
             source);
         Assert.Matches(
-            @"_acceptedPaneId = layered\.Layer\.PaneId;\s+FocusActiveTerminal\(\);",
+            @"SetAcceptedPane\(layered\.Layer\.PaneId\);\s+FocusActiveTerminal\(\);",
+            source);
+        Assert.Matches(
+            @"_acceptedPaneId = paneId;\s+_applicationHost\.ReportAcceptedPane\(_windowId, paneId\);",
             source);
     }
 
