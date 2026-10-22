@@ -452,54 +452,6 @@ public class ControlOverlaySplitTests : ControlApiTestCase
         Assert.Contains("invalid scratch mode", bad["error"]?.GetValue<string>() ?? "");
     }
 
-    // Cmd-W with the scratch shown DISMISSES the scratch, not the session under it.
-    [Fact(Skip = "PORT-GAP: upstream Cmd-W hides scratch, but Windows Alt+W closes the session " +
-                 "(docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
-    public void CloseSessionShortcutHidesScratchInsteadOfClosingSession()
-    {
-        // Swift body (testCloseSessionShortcutHidesScratchInsteadOfClosingSession):
-        //   session.scratch {mode: "on"} → ok; pollActiveSessionScratch(true)
-        //   app.activate(); app.typeKey("w", modifierFlags: .command)
-        //   pollActiveSessionScratch(false)  // Cmd-W hid the scratch
-        //   pollSessionRowCount(1)           // the session behind it survived
-    }
-
-    // Cmd-W with a full overlay up DISMISSES the overlay (closes it), not the session under it.
-    [Fact(Skip = "PORT-GAP: upstream Cmd-W closes the overlay, but Windows Alt+W closes the " +
-                 "session (docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
-    public void CloseSessionShortcutClosesOverlayInsteadOfClosingSession()
-    {
-        // Swift body (testCloseSessionShortcutClosesOverlayInsteadOfClosingSession):
-        //   session.overlay.open {command: "cat"} on the seeded session → ok
-        //   pollSessionOverlay(seededID, true)
-        //   app.activate(); app.typeKey("w", modifierFlags: .command)
-        //   pollSessionOverlay(seededID, false); pollSessionRowCount(1)
-    }
-
-    // Cmd-W closes a FLOATING overlay (session visible behind it) without closing the session.
-    [Fact(Skip = "PORT-GAP: upstream Cmd-W closes the floating overlay, but Windows Alt+W " +
-                 "closes the session (docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
-    public void CloseSessionShortcutClosesFloatingOverlayInsteadOfClosingSession()
-    {
-        // Swift body (testCloseSessionShortcutClosesFloatingOverlayInsteadOfClosingSession):
-        //   session.overlay.open {command: "cat", sizePercent: 70} → ok
-        //   pollSessionOverlay(seededID, true)
-        //   app.activate(); app.typeKey("w", modifierFlags: .command)
-        //   pollSessionOverlay(seededID, false); pollSessionRowCount(1)
-    }
-
-    // Cmd-W peels stacked covers in z-order: overlay (zIndex 2) over scratch (zIndex 1).
-    [Fact(Skip = "PORT-GAP: upstream Cmd-W peels overlay then scratch, but Windows Alt+W " +
-                 "closes the session (docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
-    public void CloseSessionShortcutPeelsStackedCoversInPrecedenceOrder()
-    {
-        // Swift body (testCloseSessionShortcutPeelsStackedCoversInPrecedenceOrder):
-        //   session.scratch {mode: "on"} → ok; pollActiveSessionScratch(true)
-        //   session.overlay.open {command: "cat"} → ok; pollSessionOverlay(seededID, true)
-        //   Cmd-W #1: pollSessionOverlay(seededID, false); pollActiveSessionScratch(true)
-        //   Cmd-W #2: pollActiveSessionScratch(false); pollSessionRowCount(1)
-    }
-
     // session.scratch --command runs the command AS the scratch's process (not a shell). Upstream
     // the marker file the command writes is the run oracle; headless no process spawns, so the
     // recorded scratch command (consumed run-once by the surface factory) plus the scratch being up

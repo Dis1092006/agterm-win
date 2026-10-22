@@ -825,11 +825,12 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.RenameSession] = Sync(HasSelectedSession, Sidebar.BeginRenameSelected),
             [BuiltinAction.DuplicateSession] = Sync(HasSelectedSession, sidebar.DuplicateActiveSession),
             [BuiltinAction.CloseSession] = Async(
-                HasSelectedSession,
-                () => EscapeFocusedTerminalAsk() ? Task.CompletedTask
-                    : _selectedSessionId is { } selectedSessionId
-                        ? sidebar.CloseSessionsAsync(new[] { selectedSessionId }, CurrentSidebarCloseOptions())
-                        : Task.CompletedTask),
+                () => true,
+                () => new CloseSessionShortcut(host.StoreCoordinator, host.Host.Actions).ExecuteAsync(
+                    selectedSessionId => sidebar.CloseSessionsAsync(
+                        new[] { selectedSessionId }, CurrentSidebarCloseOptions()),
+                    EscapeFocusedTerminalAsk,
+                    FocusActiveTerminal)),
             [BuiltinAction.ReopenRecent] = Async(
                 () => true,
                 async () => _ = await _applicationHost.ReopenLatestRecentClosedAsync(_windowId)),
