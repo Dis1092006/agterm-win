@@ -724,7 +724,7 @@ Commands and fields that upstream does not have. `parity/windows-only.json` list
   - A selected colored row keeps its colors: its label is bold and it has a 1 px frame in the theme foreground. Rows of workspaces without a theme, or with a theme the catalog does not have, look as before.
   - The workspace theme palette previews a theme on that workspace's rows too, in its own window only. Esc shows the saved colors again.
   - `sidebarThemeColors: false` turns the colors off; absent or `true` means on. `config.reload` applies a change at once.
-  - `sidebarThemeStyle` picks how a row shows the colors. `row` (also when absent or any other value) colors the whole row as described above. `swatch` keeps the row default and adds a 12 px square in the theme colors after the unseen badge. `label` keeps the row default and puts the name in a block in the theme colors. In `swatch` and `label` the selection is the default one. `config.reload` applies a change at once.
+  - `sidebarThemeStyle` picks how a row shows the colors. `row` (also when absent or any other value) colors the whole row as described above. `label` keeps the row default and puts the name in a block in the theme colors. In `label` the selection is the default one, without the frame. A selected session row is bold in every style, and also on a row without theme colors. `config.reload` applies a change at once.
   - A long row name ends with an ellipsis in every style.
 - Restored pane output: the setting `restoreScrollback` in `settings.json`, listed under `settings` in `parity/windows-only.json`. Described in "Pane output is restored after a relaunch" above.
 

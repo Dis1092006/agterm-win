@@ -5,19 +5,18 @@ namespace AgTerm.Xterm;
 /// <summary>The colors of one sidebar row, copied from a theme: "#rrggbb" each.</summary>
 public sealed record SidebarRowColors(string Background, string Foreground);
 
-/// <summary>Where a row shows its theme colors: on the whole row, in a square, or in a block around
-/// the name. At most one slot is set; none for a row with no theme colors.</summary>
-public sealed record SidebarRowLook(SidebarRowColors? Row, SidebarRowColors? Swatch, SidebarRowColors? Label)
+/// <summary>Where a row shows its theme colors: on the whole row or in a block around the name. At
+/// most one slot is set; none for a row with no theme colors.</summary>
+public sealed record SidebarRowLook(SidebarRowColors? Row, SidebarRowColors? Label)
 {
-    public static SidebarRowLook Default { get; } = new(null, null, null);
+    public static SidebarRowLook Default { get; } = new(null, null);
 
     public static SidebarRowLook From(SidebarRowColors? colors, SidebarThemeStyle style) => colors is null
         ? Default
         : style switch
         {
-            SidebarThemeStyle.Swatch => new(null, colors, null),
-            SidebarThemeStyle.Label => new(null, null, colors),
-            _ => new(colors, null, null),
+            SidebarThemeStyle.Label => new(null, colors),
+            _ => new(colors, null),
         };
 }
 

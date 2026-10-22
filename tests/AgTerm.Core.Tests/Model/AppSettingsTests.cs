@@ -90,10 +90,10 @@ public class AppSettingsTests : IDisposable
     [Theory]
     [InlineData(null, SidebarThemeStyle.Row)]
     [InlineData("row", SidebarThemeStyle.Row)]
-    [InlineData("swatch", SidebarThemeStyle.Swatch)]
+    [InlineData("swatch", SidebarThemeStyle.Row)]
     [InlineData("label", SidebarThemeStyle.Label)]
     [InlineData("Label", SidebarThemeStyle.Row)]
-    [InlineData("swatch ", SidebarThemeStyle.Row)]
+    [InlineData("label ", SidebarThemeStyle.Row)]
     [InlineData("stripe", SidebarThemeStyle.Row)]
     [InlineData("", SidebarThemeStyle.Row)]
     public void Sidebar_theme_style_reads_exact_values_and_falls_back_to_row(string? raw, SidebarThemeStyle expected) =>
@@ -101,7 +101,7 @@ public class AppSettingsTests : IDisposable
 
     [Fact]
     public void Settings_that_differ_only_in_sidebar_theme_style_are_not_equal() =>
-        Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeStyle = "swatch" });
+        Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeStyle = "label" });
 
     [Fact]
     public void Save_writes_sidebar_theme_style_only_when_set()
@@ -158,7 +158,7 @@ public class AppSettingsTests : IDisposable
             HiddenInterfaceElements = new[] { "flaggedView", "someFutureElement" },
             AutoHideSidebarInactiveWindows = true,
             SidebarThemeColors = false,
-            SidebarThemeStyle = "swatch",
+            SidebarThemeStyle = "label",
             RestoreScrollback = false,
         };
         store.Save(settings);

@@ -5,6 +5,5 @@ namespace AgTerm.Core.Model;
 public enum SidebarThemeStyle
 {
     Row,
-    Swatch,
     Label,
 }

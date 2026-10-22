@@ -79,17 +79,15 @@ public sealed class SidebarThemeColorsSourceTests
     }
 
     [Fact]
-    public void Swatch_style_draws_a_12px_square_after_the_unseen_badge()
+    public void The_unseen_badge_is_the_last_column_and_no_swatch_square_is_left()
     {
         var xaml = Source("SidebarView.xaml");
-        var badge = xaml.IndexOf("Visibility=\"{x:Bind BadgeVisibility, Mode=OneWay}\"", StringComparison.Ordinal);
-        var swatch = xaml.IndexOf("Visibility=\"{x:Bind SwatchVisibility, Mode=OneWay}\"", StringComparison.Ordinal);
+        var model = Source("SidebarRowViewModel.cs");
 
-        Assert.True(badge >= 0 && swatch > badge, "the square comes after the badge");
-        Assert.Contains("<StackPanel Grid.Column=\"4\" Orientation=\"Horizontal\" Spacing=\"6\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Background=\"{x:Bind SwatchBackground, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("BorderBrush=\"{x:Bind SwatchFrame, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("Width=\"12\" Height=\"12\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<Border Grid.Column=\"4\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("<StackPanel Grid.Column=\"4\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Swatch", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Swatch", model, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -104,8 +102,19 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("private bool IsColoredSelection => _look.Row is not null && IsListSelected;", model, StringComparison.Ordinal);
         Assert.Contains("_look.Row is { } colors", Between(model, "public Brush IconFill", ";"), StringComparison.Ordinal);
         var update = MethodBody(model, "public void Update(");
-        foreach (var name in new[] { "LabelWeight", "RowFrame", "LabelForeground", "LabelBlockBackground", "LabelBlockPadding", "SwatchVisibility", "SwatchBackground", "SwatchFrame" })
+        foreach (var name in new[] { "LabelWeight", "RowFrame", "LabelForeground", "LabelBlockBackground", "LabelBlockPadding" })
             Assert.Contains($"nameof({name})", update, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_selected_session_row_is_bold_with_or_without_theme_colors_and_framed_only_in_row()
+    {
+        var model = Source("SidebarRowViewModel.cs");
+
+        var weight = Between(model, "public FontWeight LabelWeight =>", ";");
+        Assert.Contains(": IsListSelected ? Microsoft.UI.Text.FontWeights.Bold", weight, StringComparison.Ordinal);
+        Assert.DoesNotContain("IsBoldSelection", model, StringComparison.Ordinal);
+        Assert.Contains("public Brush RowFrame => IsColoredSelection", model, StringComparison.Ordinal);
     }
 
     // the text from the first marker to the first end marker after it

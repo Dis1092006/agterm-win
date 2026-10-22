@@ -123,7 +123,6 @@ public sealed record AppSettings
     // Model. qualifies the enum: inside this record the string property of the same name hides it
     public Model.SidebarThemeStyle EffectiveSidebarThemeStyle() => SidebarThemeStyle switch
     {
-        "swatch" => Model.SidebarThemeStyle.Swatch,
         "label" => Model.SidebarThemeStyle.Label,
         _ => Model.SidebarThemeStyle.Row,
     };

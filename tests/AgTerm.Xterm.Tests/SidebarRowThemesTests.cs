@@ -31,14 +31,12 @@ public sealed class SidebarRowThemesTests
     [Fact]
     public void Each_style_puts_the_colors_in_its_own_slot_only()
     {
-        Assert.Equal(new SidebarRowLook(SolarizedColors, null, null), SidebarRowLook.From(SolarizedColors, SidebarThemeStyle.Row));
-        Assert.Equal(new SidebarRowLook(null, SolarizedColors, null), SidebarRowLook.From(SolarizedColors, SidebarThemeStyle.Swatch));
-        Assert.Equal(new SidebarRowLook(null, null, SolarizedColors), SidebarRowLook.From(SolarizedColors, SidebarThemeStyle.Label));
+        Assert.Equal(new SidebarRowLook(SolarizedColors, null), SidebarRowLook.From(SolarizedColors, SidebarThemeStyle.Row));
+        Assert.Equal(new SidebarRowLook(null, SolarizedColors), SidebarRowLook.From(SolarizedColors, SidebarThemeStyle.Label));
     }
 
     [Theory]
     [InlineData(SidebarThemeStyle.Row)]
-    [InlineData(SidebarThemeStyle.Swatch)]
     [InlineData(SidebarThemeStyle.Label)]
     public void A_row_without_colors_gets_the_default_look_in_every_style(SidebarThemeStyle style) =>
         Assert.Equal(SidebarRowLook.Default, SidebarRowLook.From(null, style));

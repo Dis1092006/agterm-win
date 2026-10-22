@@ -74,7 +74,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public FontWeight LabelWeight =>
         IsWorkspace ? Microsoft.UI.Text.FontWeights.SemiBold
-        : IsColoredSelection ? Microsoft.UI.Text.FontWeights.Bold
+        : IsListSelected ? Microsoft.UI.Text.FontWeights.Bold
         : Microsoft.UI.Text.FontWeights.Normal;
 
     /// <summary>Whether the list shows this row as selected. The view sets it from the list's own
@@ -90,7 +90,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         }
     }
 
-    // a colored row shows selection without changing color: bold label and a theme-foreground frame
+    // a colored row shows selection without changing color, so it gets a frame in the theme foreground
     private bool IsColoredSelection => _look.Row is not null && IsListSelected;
 
     public Brush? RowBackground => _look.Row is { } colors ? BrushFrom(colors.Background) : null;
@@ -106,12 +106,6 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public Brush? LabelBlockBackground => _look.Label is { } colors ? BrushFrom(colors.Background) : null;
 
     public Thickness LabelBlockPadding => _look.Label is null ? new Thickness(0) : new Thickness(4, 1, 4, 1);
-
-    public Visibility SwatchVisibility => _look.Swatch is null ? Visibility.Collapsed : Visibility.Visible;
-
-    public Brush? SwatchBackground => _look.Swatch is { } colors ? BrushFrom(colors.Background) : null;
-
-    public Brush? SwatchFrame => _look.Swatch is { } colors ? BrushFrom(colors.Foreground) : null;
 
     /// <summary>Whether the pointer is over this row. The view sets it from the row's pointer events
     /// and clears it when the row's container is recycled.</summary>
@@ -238,8 +232,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
               nameof(IsSurfacePending), nameof(IsSurfaceFailed),
               nameof(PendingVisibility), nameof(FailedVisibility),
               nameof(RowBackground), nameof(RowFrame), nameof(RowForeground),
-              nameof(LabelForeground), nameof(LabelBlockBackground), nameof(LabelBlockPadding),
-              nameof(SwatchVisibility), nameof(SwatchBackground), nameof(SwatchFrame));
+              nameof(LabelForeground), nameof(LabelBlockBackground), nameof(LabelBlockPadding));
     }
 
     /// <summary>A brush from a "#rrggbb" color, as settings and theme files write them.</summary>

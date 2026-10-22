@@ -189,36 +189,23 @@
                                       local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}" />
                         </Button>
 
-                        <!-- a StackPanel adds no spacing for a collapsed child, so a row without
-                             a badge or without a square keeps no gap -->
-                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6"
-                                    VerticalAlignment="Center">
-                            <!-- unseen badge -->
-                            <Border Background="#E81123"
-                                    CornerRadius="8"
-                                    MinWidth="16" Height="16"
-                                    Padding="4,0,4,0"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.Name="{x:Bind UnseenAutomationName, Mode=OneWay}"
-                                    AutomationProperties.AccessibilityView="Raw"
-                                    Visibility="{x:Bind BadgeVisibility, Mode=OneWay}">
-                                <TextBlock Text="{x:Bind BadgeText, Mode=OneWay}"
-                                           Foreground="White"
-                                           FontSize="10"
-                                           FontWeight="Bold"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
-                            </Border>
-                            <!-- the theme sample of the swatch style. Not dimmed on an inactive
-                                 workspace: a dimmed sample shows a color the terminal does not have -->
-                            <Border Width="12" Height="12"
-                                    CornerRadius="2"
-                                    BorderThickness="1"
-                                    Background="{x:Bind SwatchBackground, Mode=OneWay}"
-                                    BorderBrush="{x:Bind SwatchFrame, Mode=OneWay}"
-                                    VerticalAlignment="Center"
-                                    Visibility="{x:Bind SwatchVisibility, Mode=OneWay}" />
-                        </StackPanel>
+                        <!-- unseen badge -->
+                        <Border Grid.Column="4"
+                                Background="#E81123"
+                                CornerRadius="8"
+                                MinWidth="16" Height="16"
+                                Padding="4,0,4,0"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="{x:Bind UnseenAutomationName, Mode=OneWay}"
+                                AutomationProperties.AccessibilityView="Raw"
+                                Visibility="{x:Bind BadgeVisibility, Mode=OneWay}">
+                            <TextBlock Text="{x:Bind BadgeText, Mode=OneWay}"
+                                       Foreground="White"
+                                       FontSize="10"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
                     </Grid>
                     </Grid>
                 </DataTemplate>
