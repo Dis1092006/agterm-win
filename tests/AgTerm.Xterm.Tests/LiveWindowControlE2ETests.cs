@@ -620,6 +620,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
                 $"{firstId:D}.json").Load().Workspaces.Select(workspace => workspace.Name));
     }
 
+    // Ported from upstream AppStoreEventTests.swift runtimeWindowCloseAndReopenEmitBalancedSessionEdges
     [Fact]
     public void Window_close_and_runtime_reopen_emit_balanced_application_events()
     {
@@ -716,6 +717,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Equal("display 2 out of range (have 2)", response.Error);
     }
 
+    // Ported from upstream AppStoreEventTests.swift deletingClosedWindowStillEmitsStructuralInvalidation
     [Fact]
     public void Window_new_and_closed_delete_emit_application_lifecycle_events()
     {

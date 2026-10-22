@@ -197,9 +197,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
     }
 
     // closing an overlay must hand keyboard focus back to the underlying session terminal.
-    [Fact(Skip = "PORT-GAP: needs live terminal — the oracle is a real keyboard first-responder "
-        + "handoff (XCUI typeText into whichever surface holds focus, proven by a shell `read`/tty "
-        + "marker); the headless host has no key-event routing or focus model")]
+    [Fact(Skip = "PORT-GAP: a live WebView2 test must close an overlay, type into the window, " +
+                 "and assert the underlying session receives the keys.")]
     public void OverlayCloseReturnsFocusToSession()
     {
         // Swift body (ControlOverlaySplitUITests.testOverlayCloseReturnsFocusToSession):
@@ -218,9 +217,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
 
     // a cover (overlay or scratch) is modal within its session: a sidebar click restores keyboard
     // focus to the cover ON TOP, not to the pane BEHIND it.
-    [Fact(Skip = "PORT-GAP: needs live terminal — asserts which surface holds keyboard first "
-        + "responder across a real sidebar row click (XCUI click + typeText); headless has no "
-        + "sidebar view, click routing, or focus model")]
+    [Fact(Skip = "PORT-GAP: a live sidebar click test must type after selecting an overlay's " +
+                 "session and assert the overlay, not its covered pane, receives the keys.")]
     public void SidebarClickKeepsFocusOnOverlayNotPaneBehind()
     {
         // Swift body (testSidebarClickKeepsFocusOnOverlayNotPaneBehind):
@@ -239,8 +237,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
 
     // the scratch terminal is the other `topmostSurface` branch and is full-coverage, so a sidebar
     // click landing on the pane would type into a shell that is not even visible.
-    [Fact(Skip = "PORT-GAP: needs live terminal — same keyboard-focus-across-sidebar-click oracle "
-        + "as the overlay variant, for the scratch cover; headless has no click or focus routing")]
+    [Fact(Skip = "PORT-GAP: a live sidebar click test must type while scratch is shown and " +
+                 "assert scratch, not its covered pane, receives the keys.")]
     public void SidebarClickKeepsFocusOnScratchNotPaneBehind()
     {
         // Swift body (testSidebarClickKeepsFocusOnScratchNotPaneBehind):
@@ -301,9 +299,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
 
     // a FULL overlay opened in a BACKGROUND (non-selected) session must NOT steal keyboard first
     // responder.
-    [Fact(Skip = "PORT-GAP: needs live terminal — the oracle is real keyboard input reaching the "
-        + "visible active session's tty rather than the hidden overlay's shell `read`; headless "
-        + "has no keyboard routing or first responder")]
+    [Fact(Skip = "PORT-GAP: a live keyboard test must open an overlay on a background session " +
+                 "and assert typed input stays on the visible session.")]
     public void BackgroundSessionOverlayDoesNotStealKeyboardFocus()
     {
         // Swift body (testBackgroundSessionOverlayDoesNotStealKeyboardFocus):
@@ -456,8 +453,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
     }
 
     // Cmd-W with the scratch shown DISMISSES the scratch, not the session under it.
-    [Fact(Skip = "PORT-GAP: needs live terminal — the Cmd-W cover-peel shortcut is app-side key "
-        + "handling (no control command drives it) and the headless host has no key-event route")]
+    [Fact(Skip = "PORT-GAP: upstream Cmd-W hides scratch, but Windows Alt+W closes the session " +
+                 "(docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
     public void CloseSessionShortcutHidesScratchInsteadOfClosingSession()
     {
         // Swift body (testCloseSessionShortcutHidesScratchInsteadOfClosingSession):
@@ -468,8 +465,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
     }
 
     // Cmd-W with a full overlay up DISMISSES the overlay (closes it), not the session under it.
-    [Fact(Skip = "PORT-GAP: needs live terminal — same Cmd-W key-event route as the scratch "
-        + "variant; not reachable over the control API")]
+    [Fact(Skip = "PORT-GAP: upstream Cmd-W closes the overlay, but Windows Alt+W closes the " +
+                 "session (docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
     public void CloseSessionShortcutClosesOverlayInsteadOfClosingSession()
     {
         // Swift body (testCloseSessionShortcutClosesOverlayInsteadOfClosingSession):
@@ -480,8 +477,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
     }
 
     // Cmd-W closes a FLOATING overlay (session visible behind it) without closing the session.
-    [Fact(Skip = "PORT-GAP: needs live terminal — same Cmd-W key-event route; the floating overlay "
-        + "holding first responder is a UI-focus fact with no headless analogue")]
+    [Fact(Skip = "PORT-GAP: upstream Cmd-W closes the floating overlay, but Windows Alt+W " +
+                 "closes the session (docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
     public void CloseSessionShortcutClosesFloatingOverlayInsteadOfClosingSession()
     {
         // Swift body (testCloseSessionShortcutClosesFloatingOverlayInsteadOfClosingSession):
@@ -492,8 +489,8 @@ public class ControlOverlaySplitTests : ControlApiTestCase
     }
 
     // Cmd-W peels stacked covers in z-order: overlay (zIndex 2) over scratch (zIndex 1).
-    [Fact(Skip = "PORT-GAP: needs live terminal — the z-order peel precedence lives in the app's "
-        + "Cmd-W handler; the headless host has no key routing and no cover-peel seam")]
+    [Fact(Skip = "PORT-GAP: upstream Cmd-W peels overlay then scratch, but Windows Alt+W " +
+                 "closes the session (docs/PLATFORM-NOTES.md, HUD notes: Alt+W closes the session).")]
     public void CloseSessionShortcutPeelsStackedCoversInPrecedenceOrder()
     {
         // Swift body (testCloseSessionShortcutPeelsStackedCoversInPrecedenceOrder):

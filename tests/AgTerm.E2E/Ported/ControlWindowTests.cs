@@ -130,7 +130,7 @@ public class ControlWindowTests : ControlApiTestCase
     //   let normal = window.frame.size  // settles near 800x600
     //   emptyHeaderPoint(window).doubleClick()
     //   // window grows past normal+50, then a second double-click restores toward normal
-    [Fact(Skip = "PORT-GAP: title-bar double-click gesture — needs a real on-screen window and cursor")]
+    [Fact(Skip = "PORT-GAP: macOS AppKit title-bar double-click gesture; Windows uses WinUI window chrome.")]
     public void DoubleClickHeaderZoomsAndRestores()
     {
     }
@@ -140,7 +140,7 @@ public class ControlWindowTests : ControlApiTestCase
     //   sendCommand({"cmd":"window.resize","args":{"width":800,"height":600}}) == ok
     //   emptyHeaderPoint(window).doubleClick()
     //   // with 'None' set, the frame must NOT change (width/height within 8pt of normal)
-    [Fact(Skip = "PORT-GAP: title-bar gesture honoring the macOS 'Do Nothing' setting — needs the real window host")]
+    [Fact(Skip = "PORT-GAP: macOS Desktop & Dock 'Do Nothing' title-bar setting has no Windows equivalent.")]
     public void DoubleClickHeaderHonorsNoneSetting()
     {
     }
@@ -151,7 +151,7 @@ public class ControlWindowTests : ControlApiTestCase
     //   XCTAssertFalse(cover.waitForExistence(2))  // must not open the quick terminal
     //   app.buttons["quick-terminal-toggle"].click()
     //   XCTAssertTrue(cover.waitForExistence(5))   // the button still takes its click
-    [Fact(Skip = "PORT-GAP: header hit-testing vs toolbar buttons — needs the real window chrome")]
+    [Fact(Skip = "PORT-GAP: macOS AppKit header hit-testing gesture; Windows uses WinUI window chrome.")]
     public void HeaderButtonsStillReceiveClicksOverControlArea()
     {
     }
@@ -162,7 +162,7 @@ public class ControlWindowTests : ControlApiTestCase
     //   sendCommand({"cmd":"window.move","args":{"x":140,"y":140}}) == ok
     //   from.click(forDuration: 0.3, thenDragTo: to, ...)
     //   // window.frame.origin moves by more than 20pt
-    [Fact(Skip = "PORT-GAP: header drag gesture — needs a real on-screen window and cursor")]
+    [Fact(Skip = "PORT-GAP: macOS AppKit header drag gesture; Windows delegates caption dragging to WinUI.")]
     public void DragHeaderMovesWindow()
     {
     }

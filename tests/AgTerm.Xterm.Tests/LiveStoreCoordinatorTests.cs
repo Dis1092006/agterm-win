@@ -199,29 +199,35 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
         var task1 = coordinator.MutateAsync(store =>
         {
             tcsFirstEntered.TrySetResult();
-            gate1.Wait(); // holds the gate until we release it
+            Assert.True(gate1.Wait(TimeSpan.FromSeconds(30)),
+                "blocked mutation was not released");
         });
 
-        await tcsFirstEntered.Task;
-
-        // Start second read after we know first has the gate.
         bool secondRan = false;
-        var task2 = coordinator.ReadAsync(store =>
+        Task<int>? task2 = null;
+        try
         {
-            secondRan = true;
-            return 0;
-        });
+            await tcsFirstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Wait for the second worker to call isUiThread (it is now blocked on the gate).
-        await tcsSecondPreGate.Task;
+            // Start second read after we know first has the gate.
+            task2 = coordinator.ReadAsync(store =>
+            {
+                secondRan = true;
+                return 0;
+            });
 
-        // First still holds the gate; second's store delegate has not run.
-        Assert.False(secondRan);
+            // Wait for the second worker to call isUiThread (it is now blocked on the gate).
+            await tcsSecondPreGate.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Release first; both complete in order.
-        gate1.Set();
+            // First still holds the gate; second's store delegate has not run.
+            Assert.False(secondRan);
+        }
+        finally
+        {
+            gate1.Set();
+        }
 
-        await Task.WhenAll(task1, task2);
+        await Task.WhenAll(task1, task2!).WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(secondRan);
     }
@@ -307,7 +313,8 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
         var coordinator = new LiveStoreCoordinator(_host, () =>
         {
             guardEntered.TrySetResult();
-            releaseGuard.Wait();
+            Assert.True(releaseGuard.Wait(TimeSpan.FromSeconds(30)),
+                "blocked worker guard was not released");
             return false;
         });
         var delegateRan = false;
@@ -317,9 +324,16 @@ public sealed class LiveStoreCoordinatorTests : IDisposable
             return 0;
         });
 
-        await guardEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        coordinator.Dispose();
-        releaseGuard.Set();
+        try
+        {
+            await guardEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            coordinator.Dispose();
+        }
+        finally
+        {
+            releaseGuard.Set();
+            coordinator.Dispose();
+        }
 
         await Assert.ThrowsAsync<ObjectDisposedException>(() => task);
         Assert.False(delegateRan);

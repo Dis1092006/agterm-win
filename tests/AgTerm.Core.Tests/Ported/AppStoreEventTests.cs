@@ -77,14 +77,14 @@ public class AppStoreEventTests : IDisposable
             batch.Items.Select(e => e.Session).ToList());
     }
 
-    [Fact(Skip = "PORT-GAP: WindowLibrary (newWindow/closeWindow/loadStore lifecycle edges and "
-                 + "per-window tree.changed coalescing) is host-level and not part of Phase 1 AgTerm.Core")]
+    [Fact(Skip = "PORT-GAP: a LiveApplicationHost test must assert the same event run and " +
+                 "five contiguous sequence numbers across window create, close, reopen, and session create.")]
     public void RuntimeCloseAndReopenKeepsCursorContinuity()
     {
         // PORT-GAP: upstream asserts that closing a window emits session.closed for its live
         // sessions, reopening it re-emits session.created, and the shared ring's sequence numbers
         // stay contiguous (seq == [1, 2, 3, 4, 5]) across the whole runtime close/reopen cycle.
-        // All of that is WindowLibrary behavior; AgTerm.Core has no window lifecycle yet.
+        // Upstream does this in WindowLibrary; the Windows host lives in AgTerm.Xterm.
     }
 
     [Fact]
@@ -288,26 +288,8 @@ public class AppStoreEventTests : IDisposable
         Assert.Equal(new[] { "one", "two" }, items.Select(d => d.Payload.Name).ToList());
     }
 
-    [Fact(Skip = "PORT-GAP: WindowLibrary.closeWindow/loadStore (runtime window close/reopen edges) "
-                 + "is host-level and not part of Phase 1 AgTerm.Core")]
-    public void RuntimeWindowCloseAndReopenEmitBalancedSessionEdges()
-    {
-        // PORT-GAP: upstream asserts closeWindow emits session.closed for the window's session and
-        // loadStore re-emits session.created for the same id — the balanced pair is produced by
-        // WindowLibrary, which AgTerm.Core does not port in Phase 1.
-    }
-
-    [Fact(Skip = "PORT-GAP: WindowLibrary.removeWindow/flushTreeEvents (window deletion + per-window "
-                 + "tree-event coalescing) is host-level and not part of Phase 1 AgTerm.Core")]
-    public void DeletingClosedWindowStillEmitsStructuralInvalidation()
-    {
-        // PORT-GAP: upstream asserts that deleting an already-closed window still emits one
-        // window-stamped tree.changed. Window deletion and the tree-event debouncers live in
-        // WindowLibrary.
-    }
-
-    [Fact(Skip = "PORT-GAP: WindowLibrary.removeWindow/flushTreeEvents (window deletion + per-window "
-                 + "tree-event coalescing) is host-level and not part of Phase 1 AgTerm.Core")]
+    [Fact(Skip = "PORT-GAP: a LiveApplicationHost test must delete an open window and assert " +
+                 "session.closed then one window-stamped tree.changed event.")]
     public void DeletingOpenWindowEmitsClosedEdgeAndStructuralInvalidation()
     {
         // PORT-GAP: upstream asserts that deleting an OPEN window emits session.closed for its live
@@ -315,15 +297,14 @@ public class AppStoreEventTests : IDisposable
         // deletion path and the coalesced flush live in WindowLibrary.
     }
 
-    [Fact(Skip = "PORT-GAP: WindowLibrary.flushTreeEvents (per-window tree.changed debounce/coalesce) "
-                 + "is host-level and not part of Phase 1 AgTerm.Core; AppStore emits every "
-                 + "tree.changed draft eagerly through the sink")]
+    [Fact(Skip = "PORT-GAP: the live host currently appends every tree.changed event immediately; " +
+                 "per-window coalescing and a flush assertion need behavior work and a live test.")]
     public void TreeChangesCoalescePerWindowAndStayIndependent()
     {
         // PORT-GAP: upstream asserts scheduled tree changes are invisible before flushTreeEvents and
         // coalesce to exactly one tree.changed per window afterwards. The debouncers are owned by
         // WindowLibrary; the AppStore seam ported here forwards each ScheduleTreeChanged draft
-        // immediately, so the coalescing contract cannot be exercised in Phase 1.
+        // immediately, so the coalescing contract cannot be asserted against the current host.
     }
 
     [Fact]

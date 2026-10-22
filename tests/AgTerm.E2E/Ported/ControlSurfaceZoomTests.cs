@@ -164,9 +164,8 @@ public class ControlSurfaceZoomTests : ControlApiTestCase
         //       → "window not open — window.select it first"
     }
 
-    [Fact(Skip = "PORT-GAP: needs live UI — the search bar (\"search-field\") is the observable, " +
-                 "and ending a background session's search on zoom-enter is the UI deck's teardown; " +
-                 "the headless zoom controller leaves model search state untouched")]
+    [Fact(Skip = "PORT-GAP: a live UI test must zoom a background session with search open, " +
+                 "exit zoom, reselect the session, and assert its search field is gone.")]
     public void ZoomingBackgroundTargetEndsItsSearch()
     {
         // Upstream body, for reference:
@@ -180,9 +179,8 @@ public class ControlSurfaceZoomTests : ControlApiTestCase
         //     searchActive would re-mount the bar the moment A becomes the active session).
     }
 
-    [Fact(Skip = "PORT-GAP: needs live UI — a second on-screen window plus real keyboard focus; " +
-                 "the headless host is single-window (window.new answers the documented refusal) " +
-                 "and has no keyboard, so frontmost-focus stealing cannot be observed")]
+    [Fact(Skip = "PORT-GAP: a live multi-window keyboard test must exit zoom in a background " +
+                 "window and assert typed text still reaches the frontmost window's search field.")]
     public void BackgroundWindowZoomExitDoesNotStealFrontmostFocus()
     {
         // Upstream body, for reference:

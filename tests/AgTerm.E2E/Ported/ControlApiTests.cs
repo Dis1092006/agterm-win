@@ -72,9 +72,8 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
     }
 
     // tree exposes each session's LIVE foreground command.
-    [Fact(Skip = "PORT-GAP: needs live terminal/UI — the tree's `foreground` argv is live pty " +
-                 "process inspection; the headless host has no processes and always omits the field " +
-                 "(foreground-pid has no Windows analogue, see docs/PLATFORM-NOTES.md)")]
+    [Fact(Skip = "PORT-GAP: Windows ConPTY has no foreground-pid inspection; tree omits the " +
+                 "foreground argv (docs/PLATFORM-NOTES.md).")]
     public void TreeExposesForegroundProcess()
     {
         // Swift body:
@@ -481,10 +480,8 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
     }
 
     // a control session.new (frontmost window) FOCUSES the new session, so real keystrokes reach it.
-    [Fact(Skip = "PORT-GAP: needs live terminal/UI — real keyboard first-responder focus and " +
-                 "app.typeText have no headless analogue (the headless host has no keystroke path). " +
-                 "The control half is live-ported: AgTerm.Xterm.Tests LivePortedE2ETests." +
-                 "Session_new_with_command_focuses_the_new_session_for_typed_input")]
+    [Fact(Skip = "PORT-GAP: a live WebView2 test must type through keyboard focus into the new " +
+                 "--command session; LivePortedE2ETests tests untargeted control-channel typing only.")]
     public void SessionNewWithCommandFocusesTheNewSession()
     {
         // Swift body:
@@ -507,8 +504,8 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
 
     // promote → re-split keystroke-clear: typing a REAL keystroke in the promoted MAIN pane must
     // NOT clear a `.right` block owned by the fresh split.
-    [Fact(Skip = "PORT-GAP: needs live terminal/UI — the scenario is driven by REAL keystrokes " +
-                 "through the onUserInputClearsStatus UI path, which does not exist in the headless host")]
+    [Fact(Skip = "PORT-GAP: a live WebView2 test must promote the split pane, split again, " +
+                 "type in the promoted main pane, and assert the new right pane stays blocked.")]
     public void PromotedMainPaneDoesNotClearSplitRightStatus()
     {
         // Swift body (abridged to the essential steps):

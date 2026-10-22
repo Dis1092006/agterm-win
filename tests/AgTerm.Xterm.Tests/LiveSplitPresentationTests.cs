@@ -701,23 +701,31 @@ public sealed class LiveControlHostApplyPaneFocusTests : IDisposable
         _host.PaneFocusRequested += _ =>
         {
             entered.Set();
-            release.Wait();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(30)),
+                "blocked pane focus was not released");
         };
 
-        var client = new ControlPipeClient(_host.PipeName);
-        var response = client.Send(new ControlRequest
+        Task? shutdown = null;
+        try
         {
-            Cmd = Command.SessionFocus,
-            Args = new ControlArgs { Pane = "left" },
-        });
-        Assert.True(response.Ok, response.Error);
-        Assert.True(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(5))));
+            var client = new ControlPipeClient(_host.PipeName);
+            var response = client.Send(new ControlRequest
+            {
+                Cmd = Command.SessionFocus,
+                Args = new ControlArgs { Pane = "left" },
+            });
+            Assert.True(response.Ok, response.Error);
+            Assert.True(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(5))));
 
-        var shutdown = _host.ShutdownAsync();
-        await Task.Delay(100);
-        Assert.False(shutdown.IsCompleted);
+            shutdown = _host.ShutdownAsync();
+            await Task.Delay(100);
+            Assert.False(shutdown.IsCompleted);
+        }
+        finally
+        {
+            release.Set();
+        }
 
-        release.Set();
-        await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
+        await shutdown!.WaitAsync(TimeSpan.FromSeconds(5));
     }
 }

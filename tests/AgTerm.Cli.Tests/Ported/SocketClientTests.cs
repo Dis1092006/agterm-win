@@ -146,7 +146,7 @@ public class SocketClientTests
         Assert.Contains("— is agterm running?", error.Message);
     }
 
-    [Fact(Skip = "PORT-GAP: unix-socket-specific; named-pipe transport covers this differently")]
+    [Fact(Skip = "PORT-GAP: sockaddr_un.sun_path capacity is Unix-socket-only; Windows uses named pipes.")]
     public void SocketPathLimitMatchesPlatformCapacity()
     {
         // The unix transport pre-validates the socket path against sockaddr_un.sun_path capacity and

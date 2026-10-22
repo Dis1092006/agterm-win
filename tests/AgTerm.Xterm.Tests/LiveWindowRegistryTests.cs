@@ -939,7 +939,8 @@ public sealed class LiveWindowRegistryTests : IDisposable
             ConfigReload = () =>
             {
                 dispatchEntered.TrySetResult(null);
-                releaseDispatch.Wait();
+                Assert.True(releaseDispatch.Wait(TimeSpan.FromSeconds(30)),
+                    "blocked dispatch was not released");
                 return 0;
             },
             OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
@@ -948,10 +949,9 @@ public sealed class LiveWindowRegistryTests : IDisposable
         var window = application.GetOpenWindow(windowId);
         var dispatch = Task.Run(() => new ControlPipeClient(application.PipeName).Send(
             new ControlRequest { Cmd = Command.ConfigReload }));
-        await dispatchEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
         try
         {
+            await dispatchEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await Task.Run(window.StopDispatching)
                 .WaitAsync(TimeSpan.FromMilliseconds(500));
         }

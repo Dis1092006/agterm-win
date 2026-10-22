@@ -126,7 +126,8 @@ public sealed class LiveShutdownTests : IDisposable
             {
                 openerToken = ct;
                 entered.TrySetResult();
-                release.Wait();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(30)),
+                    "blocked opener was not released");
                 return Task.FromCanceled<IHeadlessSurface>(ct);
             },
             committed: (_, _) => committedCount++);

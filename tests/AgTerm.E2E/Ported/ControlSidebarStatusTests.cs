@@ -509,11 +509,8 @@ public class ControlSidebarStatusTests : ControlApiTestCase
     // the General → "Show notification badges" toggle gates the red count pill's RENDERING (the count
     // keeps tracking either way): fire a notification on a non-selected session so notify-badge shows,
     // toggle the setting off → the badge hides, toggle on → it reappears with the same count.
-    [Fact(Skip = "PORT-GAP: needs live Settings UI — the toggle lives in the Settings window " +
-                 "(Cmd+, → Notifications tab) and gates only the pill's RENDERING; the headless host " +
-                 "has no settings window and no render layer, and the tracked count (the tree's " +
-                 "unseen field) is unaffected by the toggle by design, so there is nothing " +
-                 "wire-observable to assert.")]
+    [Fact(Skip = "PORT-GAP: a live WinUI test must toggle notificationBadgeEnabled, check " +
+                 "the badge hides and returns, and assert the unseen count stays unchanged.")]
     public void NotificationBadgeToggleHidesAndShowsBadge()
     {
         // Swift body (ControlSidebarStatusUITests.testNotificationBadgeToggleHidesAndShowsBadge):
@@ -575,10 +572,8 @@ public class ControlSidebarStatusTests : ControlApiTestCase
 
     // returning agterm to the foreground on a session that's on screen clears that session's badge — the
     // same "you've seen it" clear a focus transition does.
-    [Fact(Skip = "PORT-GAP: needs live multi-window UI — the scenario opens a SECOND window " +
-                 "(window.new answers 'window management is not available in the headless host') and " +
-                 "the badge clear under test rides the NSWindow.didBecomeKey → onFocusChange path; " +
-                 "the single-window headless host has no compositor and no key-window transitions.")]
+    [Fact(Skip = "PORT-GAP: a live multi-window focus test must notify the visible session " +
+                 "in a background window, refocus that window, and assert its badge clears.")]
     public void RefocusingWindowClearsOnScreenSessionBadge()
     {
         // Swift body (ControlSidebarStatusUITests.testRefocusingWindowClearsOnScreenSessionBadge):
@@ -594,9 +589,8 @@ public class ControlSidebarStatusTests : ControlApiTestCase
 
     // the refocus clear is gated on liveFocus, so it clears ONLY the focused pane's session — never other
     // badged sessions in the same window (the inverse regression guard of the test above).
-    [Fact(Skip = "PORT-GAP: needs live multi-window UI — same didBecomeKey/liveFocus wiring as " +
-                 "RefocusingWindowClearsOnScreenSessionBadge; the headless host is single-window with " +
-                 "no key-window transitions to gate the clear on.")]
+    [Fact(Skip = "PORT-GAP: a live multi-window focus test must refocus a window while another " +
+                 "session has an unseen badge and assert that badge remains.")]
     public void RefocusingWindowKeepsNonFocusedSessionBadge()
     {
         // Swift body (ControlSidebarStatusUITests.testRefocusingWindowKeepsNonFocusedSessionBadge):
