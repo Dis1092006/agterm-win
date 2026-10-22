@@ -33,6 +33,9 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("_rowThemes?.Saved(workspaceId, themeName, _controller?.RequestSnapshot() ?? 0)", view, StringComparison.Ordinal);
         Assert.Contains("_settings.ShowSidebarThemeColors()", view, StringComparison.Ordinal);
         Assert.Contains("IsListSelected = RowsList.SelectedItems.Contains(", view, StringComparison.Ordinal);
+        // the list keeps an extended (Ctrl+click) selection across snapshots, as upstream re-selects
+        // sidebarSelectionIDs after each update
+        Assert.Contains("snapshot.ListSelection()", MethodBody(view, "private void SyncSelection("), StringComparison.Ordinal);
         Assert.Contains("public void PreviewWorkspaceTheme(Guid workspaceId, string? themeName)", view, StringComparison.Ordinal);
         Assert.Contains("public void EndWorkspaceThemePreview()", view, StringComparison.Ordinal);
         Assert.Contains("public void WorkspaceThemeSaved(Guid workspaceId, string? themeName)", view, StringComparison.Ordinal);

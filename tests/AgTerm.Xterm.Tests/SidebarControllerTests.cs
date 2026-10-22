@@ -216,6 +216,34 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void Snapshot_carries_an_extended_sidebar_selection_so_the_list_keeps_every_row()
+    {
+        var first = Latest.SelectedSessionId!.Value;
+        Guid second = default;
+        Mutate(store => second = store.AddSession(store.Workspaces[0].Id, _stateDir, select: false)!.Id);
+
+        _controller.Select(second, new[] { first, second });
+
+        Assert.Equal(second, Latest.SelectedSessionId);
+        Assert.Equal(new[] { first, second }, Latest.SidebarSelectionIds);
+        Assert.Equal(new[] { first, second }, Latest.ListSelection());
+
+        _controller.Select(first);
+
+        Assert.Equal(new[] { first }, Latest.ListSelection());
+    }
+
+    [Fact]
+    public void List_selection_falls_back_to_the_selected_session_when_the_sidebar_selection_is_empty()
+    {
+        var selected = Guid.NewGuid();
+        var snapshot = Latest with { SelectedSessionId = selected, SidebarSelectionIds = Array.Empty<Guid>() };
+
+        Assert.Equal(new[] { selected }, snapshot.ListSelection());
+        Assert.Empty((snapshot with { SelectedSessionId = null }).ListSelection());
+    }
+
+    [Fact]
     public void Snapshot_carries_the_title_bar_state_of_the_same_capture()
     {
         var session = Latest.SelectedSessionId!.Value;

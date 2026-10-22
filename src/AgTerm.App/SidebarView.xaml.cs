@@ -179,19 +179,24 @@ public sealed partial class SidebarView : UserControl
 
     private void SyncSelection(SidebarSnapshot snapshot)
     {
-        _syncingSelection = true;
-        try
+        var wanted = snapshot.ListSelection()
+            .Select(id => _items.FirstOrDefault(i => i.IsSession && i.Id == id))
+            .OfType<SidebarRowViewModel>()
+            .ToList();
+        // like upstream, a list that already shows this selection is left alone
+        if (wanted.Count != RowsList.SelectedItems.Count || !wanted.All(RowsList.SelectedItems.Contains))
         {
-            RowsList.SelectedItems.Clear();
-            if (snapshot.SelectedSessionId is { } selected &&
-                _items.FirstOrDefault(i => i.IsSession && i.Id == selected) is { } item)
+            _syncingSelection = true;
+            try
             {
-                RowsList.SelectedItems.Add(item);
+                RowsList.SelectedItems.Clear();
+                foreach (var item in wanted)
+                    RowsList.SelectedItems.Add(item);
             }
-        }
-        finally
-        {
-            _syncingSelection = false;
+            finally
+            {
+                _syncingSelection = false;
+            }
         }
 
         RefreshListSelection();

@@ -29,6 +29,11 @@ public sealed record SidebarSnapshot
     public IReadOnlyDictionary<Guid, SidebarSurfaceStatus> SurfaceStatuses { get; init; } =
         new ReadOnlyDictionary<Guid, SidebarSurfaceStatus>(new Dictionary<Guid, SidebarSurfaceStatus>());
     public Guid? SelectedSessionId { get; init; }
+
+    /// <summary>The sessions of an extended (Ctrl+click) sidebar selection, in sidebar order; empty
+    /// when the store has none.</summary>
+    public IReadOnlyList<Guid> SidebarSelectionIds { get; init; } = Array.Empty<Guid>();
+
     public bool CanRemoveWorkspace { get; init; }
     public bool SidebarVisible { get; init; }
     public SidebarMode Mode { get; init; }
@@ -46,6 +51,13 @@ public sealed record SidebarSnapshot
     /// <summary>The broadcast generation this snapshot was captured for; later captures have larger
     /// ones.</summary>
     public long Generation { get; init; }
+
+    /// <summary>The session rows the list shows as selected: the extended selection, or the selected
+    /// session alone, as upstream re-selects them after each update.</summary>
+    public IReadOnlyList<Guid> ListSelection() =>
+        SidebarSelectionIds.Count > 0 ? SidebarSelectionIds
+        : SelectedSessionId is { } selected ? new[] { selected }
+        : Array.Empty<Guid>();
 }
 
 /// <summary>
@@ -518,6 +530,7 @@ public sealed class SidebarController : IDisposable
                 .ToList(),
             SurfaceStatuses = new ReadOnlyDictionary<Guid, SidebarSurfaceStatus>(surfaceStatuses),
             SelectedSessionId = store.SelectedSessionId,
+            SidebarSelectionIds = store.SidebarSelectionIds,
             CanRemoveWorkspace = store.CanRemoveWorkspace,
             SidebarVisible = store.SidebarVisible,
             Mode = store.SidebarMode,
