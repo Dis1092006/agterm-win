@@ -72,6 +72,9 @@ public sealed partial class MainWindow : Window
     private TitleBarState _titleBarState = TitleBarState.Empty;
     // the armed keymap, for the shortcut each chrome button's tooltip names
     private Keymap _keymap = Keymap.Empty;
+    private IReadOnlyList<KeymapDiagnostic> _keymapDiagnostics = [];
+    private HotkeyManifest? _keybindingsManifest;
+    private readonly PaletteAutoFollowLease _keybindingsAutoFollow = new();
     // the Ctrl-Tab switcher; the page's switch flag mirrors IsActive once a key has been handled
     private readonly SessionSwitcher _switcher = new();
     private RendererSettingsSnapshot _rendererSettings; // UI-thread confined
@@ -152,6 +155,8 @@ public sealed partial class MainWindow : Window
             HandlePaletteItemAcceptedAsync(item),
             "Palette item acceptance failed");
         PaletteOverlay.Cancelled += () => ObserveTaskFault(HandlePaletteCancelledAsync(), "Palette cancellation failed");
+        KeybindingsOverlay.CloseRequested += () => ObserveTaskFault(
+            _paletteTransitions.RunAsync(() => CloseKeybindingsAsync()), "Keyboard shortcuts close failed");
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
         AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
         _contentDialogs.DialogClosed += FocusAskAfterContentDialog;
@@ -435,7 +440,9 @@ public sealed partial class MainWindow : Window
             PaletteOverlay.FocusQuery();
         if (AskOverlay.IsOpen)
             AskOverlay.FocusPanel();
-        _terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen, FocusActiveTerminal);
+        if (KeybindingsOverlay.IsOpen)
+            KeybindingsOverlay.FocusQuery();
+        _terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -1161,7 +1168,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         // the palette is modal for the keyboard; its close returns focus to the accepted pane
-        if (PaletteOverlay.IsOpen)
+        if (PaletteOverlay.IsOpen || KeybindingsOverlay.IsOpen)
             return;
         _terminalFocus.Request(_windowIsActive, () => TerminalView.Focus(FocusState.Programmatic));
         if (_surfaces.TryGetValue(paneId, out var surface))
@@ -1204,15 +1211,16 @@ public sealed partial class MainWindow : Window
     private async Task ArmHotkeysAsync(LiveControlHost host)
     {
         var page = await _pageTask;
-        async Task ArmAsync(Keymap keymap)
+        async Task ArmAsync(Keymap keymap, IReadOnlyList<KeymapDiagnostic> diagnostics)
         {
-            _keymap = keymap;
-            ApplyShortcutHints();
             foreach (var diagnostic in WindowCommandRouter.EffectiveWindowsChordDiagnostics(keymap))
                 System.Diagnostics.Trace.TraceWarning($"keymap: {diagnostic.Message}");
-            await PublishHotkeyManifestAsync(page, keymap);
+            await PublishHotkeyManifestAsync(page, keymap, diagnostics);
         }
-        await ArmAsync(host.Host.Actions.LoadKeymap());
+        var initialKeymap = host.Host.Actions.LoadKeymap();
+        await ArmAsync(initialKeymap, host.Host.Actions.KeymapDiagnostics);
+        page.KeyboardShortcutsRequested += () => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+            ToggleKeybindingsAsync(), "Keyboard shortcuts failed"));
         page.BuiltinHotkeyPressed += hit => DispatcherQueue.TryEnqueue(() =>
             HandleChord(hit.Chord, hit.Generation));
         page.SwitcherKeyPressed += key => DispatcherQueue.TryEnqueue(() => HandleSwitcherKey(key));
@@ -1223,9 +1231,12 @@ public sealed partial class MainWindow : Window
                 hit.PaneId,
                 hit.Generation)),
             $"Custom command {hit.CommandId} failed"));
-        host.Host.Actions.KeymapReloaded += keymap => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
-            ArmAsync(keymap),
-            "Set reloaded hotkey manifest failed"));
+        host.Host.Actions.KeymapReloaded += keymap =>
+        {
+            var diagnostics = host.Host.Actions.KeymapDiagnostics;
+            DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
+                ArmAsync(keymap, diagnostics), "Set reloaded hotkey manifest failed"));
+        };
     }
 
     /// <summary>Makes the palette match the window's pick: show a newly pending pick, close one that was
@@ -1248,6 +1259,7 @@ public sealed partial class MainWindow : Window
         }
         if (_shownPickId == pending.Id)
             return;
+        await CloseKeybindingsAsync(restoreFocus: false);
         if (PaletteOverlay.IsOpen)
         {
             PaletteOverlay.Close();
@@ -1295,6 +1307,7 @@ public sealed partial class MainWindow : Window
         }
         if (_shownAskId == pending.Id)
             return;
+        await CloseKeybindingsAsync(restoreFocus: false);
         if (PaletteOverlay.IsOpen)
         {
             PaletteOverlay.Close();
@@ -1374,6 +1387,8 @@ public sealed partial class MainWindow : Window
 
     private async Task ApplyTerminalAskAsync(TerminalAskView? view)
     {
+        if (view is not null && KeybindingsOverlay.IsOpen)
+            await _paletteTransitions.RunAsync(() => CloseKeybindingsAsync());
         var page = await _pageTask;
         await page.ApplyAskAsync(view);
     }
@@ -1473,7 +1488,8 @@ public sealed partial class MainWindow : Window
         await PublishHotkeyManifestAsync(page, _hotkeyStates.Active.Keymap);
     }
 
-    private async Task PublishHotkeyManifestAsync(XtermPage page, Keymap keymap)
+    private async Task PublishHotkeyManifestAsync(
+        XtermPage page, Keymap keymap, IReadOnlyList<KeymapDiagnostic>? diagnostics = null)
     {
         await _hotkeyManifestGate.WaitAsync();
         var pending = _hotkeyStates.Prepare(keymap);
@@ -1493,7 +1509,16 @@ public sealed partial class MainWindow : Window
                     manifest,
                     zoomPassthroughSingles,
                     dashboardToggleSingles))
+            {
                 _hotkeyStates.Commit(pending.Generation);
+                _keymap = keymap;
+                if (diagnostics is not null)
+                    _keymapDiagnostics = diagnostics;
+                _keybindingsManifest = manifest;
+                ApplyShortcutHints();
+                if (KeybindingsOverlay.IsOpen)
+                    KeybindingsOverlay.Refresh(CurrentKeybindingGroups());
+            }
             else
                 _hotkeyStates.Reject(pending.Generation);
         }
@@ -1516,7 +1541,7 @@ public sealed partial class MainWindow : Window
 
     private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
-        if (AskOverlay.IsOpen) return;
+        if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen) return;
         // A focused plain-text control (e.g. the sidebar's inline rename box) must receive every
         // keystroke as text; letting single-letter chords (e.g. "n", "r") pre-empt it here would
         // silently eat characters before they ever reach the TextBox.
@@ -1538,6 +1563,14 @@ public sealed partial class MainWindow : Window
     private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (IsTerminalFocused()) return;
+        if (e.Key == VirtualKey.F1 && IsKeyDown(VirtualKey.Control) && IsKeyDown(VirtualKey.Shift)
+            && !IsKeyDown(VirtualKey.Menu))
+        {
+            e.Handled = true;
+            ObserveTaskFault(ToggleKeybindingsAsync(), "Keyboard shortcuts failed");
+            return;
+        }
+        if (KeybindingsOverlay.IsOpen) return;
         if (e.Key == VirtualKey.Tab && IsKeyDown(VirtualKey.Control))
         {
             HandleSwitcherKey(IsKeyDown(VirtualKey.Shift) ? SessionSwitcherKey.ReverseTab : SessionSwitcherKey.Tab);
@@ -1576,7 +1609,7 @@ public sealed partial class MainWindow : Window
 
     // upstream canSwitch (uiActionsEnabled): not while a palette, a question or the dashboard has the keys
     private bool CanSwitchSessions() =>
-        !PaletteOverlay.IsOpen && !AskOverlay.IsOpen && !_selection.DashboardOpen;
+        !PaletteOverlay.IsOpen && !AskOverlay.IsOpen && !KeybindingsOverlay.IsOpen && !_selection.DashboardOpen;
 
     // the page assumes a switch from its own Ctrl+Tab; tell it when none began or one ended here
     private void SyncPageSwitcher()
@@ -1637,7 +1670,7 @@ public sealed partial class MainWindow : Window
     /// socket drives. Returns whether an action fired.</summary>
     private bool HandleChord(PhysicalChord physical, long? generation = null)
     {
-        if (AskOverlay.IsOpen)
+        if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen)
             return false;
         var hotkeyState = generation is { } value
             ? _hotkeyStates.Resolve(value)
@@ -1705,6 +1738,7 @@ public sealed partial class MainWindow : Window
         Guid? workspaceThemeTarget,
         CancellationToken cancellationToken)
     {
+        await CloseKeybindingsAsync(restoreFocus: false);
         await _paletteAutoFollow.AcquireAsync(() =>
             host.StoreCoordinator.MutateAsync(
                 store => store.SuppressAutoFollow(),
@@ -2520,6 +2554,66 @@ public sealed partial class MainWindow : Window
 
     private void OnInstallCommandLineToolClick(object sender, RoutedEventArgs e) =>
         ObserveTaskFault(RunInstallerAsync(InstallerCommands.InstallCommandLineToolId), "Install command line tool failed");
+
+    private void OnKeyboardShortcutsClick(object sender, RoutedEventArgs e) =>
+        ObserveTaskFault(ToggleKeybindingsAsync(), "Keyboard shortcuts failed");
+
+    private Task ToggleKeybindingsAsync() => _paletteTransitions.RunAsync(async () =>
+    {
+        if (KeybindingsOverlay.IsOpen)
+        {
+            await CloseKeybindingsAsync();
+            return;
+        }
+        if (_host is not { } host || AskOverlay.IsOpen ||
+            host.Host.Actions.Pick.Pending is not null || host.Host.Actions.Pick.PendingAsk is not null ||
+            _terminalAsks.CurrentAskId is not null)
+            return;
+        if (PaletteOverlay.IsOpen)
+        {
+            PaletteOverlay.Close();
+            await FinishPaletteCloseAsync(restoreFocus: false);
+        }
+        await _keybindingsAutoFollow.AcquireAsync(() =>
+            host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
+        try
+        {
+            if (host.Host.Actions.Pick.Pending is not null || host.Host.Actions.Pick.PendingAsk is not null ||
+                _terminalAsks.CurrentAskId is not null)
+            {
+                await _keybindingsAutoFollow.ReleaseAsync(() =>
+                    host.StoreCoordinator.MutateAsync(store => store.ResumeAutoFollow()));
+                return;
+            }
+            _terminalFocus.Cancel();
+            _switcher.Cancel();
+            KeybindingsOverlay.Open(CurrentKeybindingGroups());
+        }
+        catch
+        {
+            KeybindingsOverlay.Close();
+            await _keybindingsAutoFollow.ReleaseAsync(() =>
+                host.StoreCoordinator.MutateAsync(store => store.ResumeAutoFollow()));
+            throw;
+        }
+    });
+
+    private IReadOnlyList<KeybindingGroup> CurrentKeybindingGroups() =>
+        KeybindingsCatalog.Create(_hotkeyStates.Active.Keymap,
+            _keymapDiagnostics.Concat(WindowCommandRouter.EffectiveWindowsChordDiagnostics(_hotkeyStates.Active.Keymap)).ToArray(),
+            _keybindingsManifest);
+
+    private async Task CloseKeybindingsAsync(bool restoreFocus = true)
+    {
+        if (!KeybindingsOverlay.IsOpen)
+            return;
+        KeybindingsOverlay.Close();
+        if (_host is { } host)
+            await _keybindingsAutoFollow.ReleaseAsync(() =>
+                host.StoreCoordinator.MutateAsync(store => store.ResumeAutoFollow()));
+        if (restoreFocus)
+            FocusActiveTerminal();
+    }
 
     private void OnInstallAgentSkillClick(object sender, RoutedEventArgs e) =>
         ObserveTaskFault(RunInstallerAsync(InstallerCommands.InstallAgentSkillId), "Install agent skill failed");

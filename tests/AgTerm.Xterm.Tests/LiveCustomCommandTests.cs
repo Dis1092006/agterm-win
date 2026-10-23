@@ -17,6 +17,28 @@ public sealed class LiveCustomCommandTests
     }
 
     [Fact]
+    public async Task Fixed_shortcuts_chord_opens_once_without_terminal_input_and_other_keys_still_work()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("shortcuts"));
+        var hits = 0;
+        var data = new List<string>();
+        page.KeyboardShortcutsRequested += () => Interlocked.Increment(ref hits);
+        terminal.DataReceived += data.Add;
+
+        await DispatchAsync(view, "shortcuts", "F1", ctrl: true, shift: true);
+        await WaitUntilAsync(() => hits == 1, TimeSpan.FromSeconds(5));
+        Assert.Empty(data);
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', {key:'F1',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true}))"));
+        await WaitUntilAsync(() => hits == 2, TimeSpan.FromSeconds(5));
+        Assert.Empty(data);
+        await DispatchAsync(view, "shortcuts", "x");
+        await WaitUntilAsync(() => data.Contains("x"), TimeSpan.FromSeconds(5));
+        Assert.Equal(2, hits);
+    }
+
+    [Fact]
     public async Task Custom_single_and_leader_emit_stable_id_generation_and_completing_chord()
     {
         var (page, view) = await BootPageAsync();

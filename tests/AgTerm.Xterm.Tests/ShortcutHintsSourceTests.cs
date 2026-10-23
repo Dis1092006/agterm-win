@@ -9,11 +9,12 @@ public sealed class ShortcutHintsSourceTests
     public void The_window_keeps_the_armed_keymap_and_reapplies_the_hints()
     {
         var window = Source("MainWindow.xaml.cs");
-        var arm = window[window.IndexOf("async Task ArmAsync(Keymap keymap)", StringComparison.Ordinal)..];
-        arm = arm[..arm.IndexOf("await ArmAsync(", StringComparison.Ordinal)];
+        var arm = MethodBody(window, "private async Task PublishHotkeyManifestAsync(");
 
         Assert.Contains("_keymap = keymap;", arm, StringComparison.Ordinal);
         Assert.Contains("ApplyShortcutHints();", arm, StringComparison.Ordinal);
+        Assert.True(arm.IndexOf("_hotkeyStates.Commit(pending.Generation)", StringComparison.Ordinal) <
+            arm.IndexOf("_keymap = keymap;", StringComparison.Ordinal));
         var apply = MethodBody(window, "private void ApplyShortcutHints()");
         Assert.Contains("Sidebar.ApplyKeymap(_keymap);", apply, StringComparison.Ordinal);
         Assert.Contains("RefreshTitleBarActions(_settings);", apply, StringComparison.Ordinal);

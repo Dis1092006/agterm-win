@@ -48,6 +48,28 @@ public sealed class HeadlessHostTests : IDisposable
 
     private ControlResponse Send(ControlRequest request) => _client.Send(request);
 
+    [Fact]
+    public void Keymap_diagnostics_snapshot_does_not_change_reload_wire_or_events()
+    {
+        File.WriteAllText(Path.Combine(_stateDir, "keymap.conf"), "bad input\nmap ctrl+shift+x new_session");
+        var initial = _host.Actions.LoadKeymap();
+        Assert.Single(_host.Actions.KeymapDiagnostics);
+        Assert.Equal("x", initial.EquivalentFor(AgTerm.Core.Keymap.BuiltinAction.NewSession)!.Value.Key);
+        var callbacks = 0;
+        _host.Actions.KeymapReloaded += keymap =>
+        {
+            callbacks++;
+            Assert.Single(_host.Actions.KeymapDiagnostics);
+            Assert.Equal("x", keymap.EquivalentFor(AgTerm.Core.Keymap.BuiltinAction.NewSession)!.Value.Key);
+        };
+        var eventsBefore = ControlJson.Serialize(Send(new ControlRequest { Cmd = Command.EventsRead }));
+        var response = Send(new ControlRequest { Cmd = Command.KeymapReload });
+        Assert.Equal("{\"ok\":true,\"result\":{\"count\":1}}", ControlJson.Serialize(response));
+        Assert.Equal(1, callbacks);
+        Assert.Equal(eventsBefore, ControlJson.Serialize(Send(new ControlRequest { Cmd = Command.EventsRead })));
+        Assert.DoesNotContain("KeymapDiagnostics", typeof(HeadlessControlActions).GetProperties().Select(property => property.Name));
+    }
+
     private static ControlRequest OpenPick(params string[] labels) => new()
     {
         Cmd = Command.PickOpen,

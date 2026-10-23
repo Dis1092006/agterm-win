@@ -1590,11 +1590,19 @@ public sealed class HeadlessControlActions : IControlActions
 
     /// <summary>The current keymap for the window's hotkey bootstrap (same file the reload arm
     /// reads; diagnostics are the arm's concern).</summary>
-    public Keymap LoadKeymap() => _keymap.Load().Keymap;
+    internal IReadOnlyList<KeymapDiagnostic> KeymapDiagnostics { get; private set; } = [];
+
+    public Keymap LoadKeymap()
+    {
+        var (keymap, diagnostics) = _keymap.Load();
+        KeymapDiagnostics = diagnostics.AsReadOnly();
+        return keymap;
+    }
 
     public ControlResponse ReloadKeymap()
     {
         var (keymap, diagnostics) = _keymap.Load();
+        KeymapDiagnostics = diagnostics.AsReadOnly();
         KeymapReloaded?.Invoke(keymap);
         return new ControlResponse { Ok = true, Result = new ControlResult { Count = diagnostics.Count } };
     }

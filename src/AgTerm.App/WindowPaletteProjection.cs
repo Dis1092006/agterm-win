@@ -211,51 +211,12 @@ public static class WindowPaletteProjection
 
     private static string CommandTitle(BuiltinAction action, AppStore store) => action switch
     {
-        BuiltinAction.NewWindow => "New Window",
-        BuiltinAction.RenameWindow => "Rename Window",
-        BuiltinAction.DeleteWindow => "Delete Window",
-        BuiltinAction.NewWorkspace => "New Workspace",
-        BuiltinAction.RenameWorkspace => "Rename Workspace",
-        BuiltinAction.DeleteWorkspace => "Delete Workspace",
-        BuiltinAction.NewSession => "New Session",
-        BuiltinAction.OpenDirectory => "Open Directory…",
-        BuiltinAction.RenameSession => "Rename Session",
-        BuiltinAction.DuplicateSession => "Duplicate Session",
-        BuiltinAction.CloseSession => "Close Session",
-        BuiltinAction.ReopenRecent => "Reopen Last Closed Item",
-        BuiltinAction.UndoClose => "Reopen Closed Item",
-        BuiltinAction.ClearStatus => "Clear Status",
-        BuiltinAction.IncreaseFontSize => "Increase Font Size",
-        BuiltinAction.DecreaseFontSize => "Decrease Font Size",
-        BuiltinAction.ResetFontSize => "Actual Font Size",
-        BuiltinAction.ToggleSplit => "Toggle Split",
-        BuiltinAction.ToggleScratch => "Toggle Scratch",
-        BuiltinAction.ToggleTerminalZoom => "Toggle Terminal Zoom",
-        BuiltinAction.ToggleSearch => "Find…",
-        BuiltinAction.ToggleSidebar => "Toggle Sidebar",
-        BuiltinAction.SelectTheme => "Select Theme…",
-        BuiltinAction.ToggleFullscreen => "Toggle Full Screen",
         BuiltinAction.ToggleFlaggedView => store.SidebarMode == SidebarMode.Flagged
             ? "Show All Sessions"
             : "Show Flagged Sessions",
         BuiltinAction.ToggleFlag => store.ActiveSession?.Flagged == true
             ? "Unflag Session"
             : "Flag Session",
-        BuiltinAction.FocusWorkspace => "Focus Workspace",
-        BuiltinAction.FocusLeftPane => "Focus Left Pane",
-        BuiltinAction.FocusRightPane => "Focus Right Pane",
-        BuiltinAction.PreviousSession => "Previous Session",
-        BuiltinAction.NextSession => "Next Session",
-        BuiltinAction.PreviousAttentionSession => "Previous Attention Session",
-        BuiltinAction.NextAttentionSession => "Next Attention Session",
-        BuiltinAction.FirstSession => "First Session",
-        BuiltinAction.LastSession => "Last Session",
-        BuiltinAction.QuickTerminal => "Quick Terminal",
-        BuiltinAction.ShowAttention => "Show Attention",
-        BuiltinAction.Dashboard => "Dashboard",
-        BuiltinAction.SessionPalette => "Go to Session…",
-        BuiltinAction.CommandPalette => "Run an Action…",
-        BuiltinAction.CustomCommandPalette => "Run a Custom Command…",
-        _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        _ => KeybindingsCatalog.TitleFor(action),
     };
 }

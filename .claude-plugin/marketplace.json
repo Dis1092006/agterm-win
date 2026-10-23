@@ -12,7 +12,7 @@
       "name": "agterm",
       "source": "./plugins/agterm",
       "description": "Drive agterm-win, a native Windows terminal, programmatically via its agtermctl CLI and local control named pipe.",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "author": {
         "name": "Dis1092006"
       },

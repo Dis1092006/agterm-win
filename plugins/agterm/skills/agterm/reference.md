@@ -943,6 +943,8 @@ isn't realized.
 parse diagnostics (0 = clean; the human output prints `ok` for 0, else `N diagnostic(s)`). Wire:
 `keymap.reload`. App-global (no `--window`). The reply carries only the count, not the diagnostic texts.
 
+**Help > Keyboard Shortcuts** (or **Ctrl+Shift+F1**) opens a read-only, searchable list of effective Windows bindings, grouped by action category and custom commands. It includes unbound actions, shortcut conflicts and keymap diagnostics. An open list updates after `agtermctl keymap reload` and keeps its search text. Esc closes it and returns focus to the terminal. The opener chord is fixed and is not in `keymap.conf`; it cannot be rebound or unbound there. The list is a Windows UI addition, not a control command or a new builtin action.
+
 ### keymap.conf format
 
 The file lives at `<config dir>\keymap.conf` (the config dir is settings.json `configDirectory`, default

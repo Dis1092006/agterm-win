@@ -195,6 +195,8 @@ available in the headless host"` (после резолюции цели — `no
   маршалит в UI; жесты сайдбара зовут те же мутаторы стора, что socket-армы
   (третий вызывающий, как upstream toolbar/menu/control).
 
+- **Keyboard Shortcuts view (Windows UI only).** Help > Keyboard Shortcuts and Ctrl+Shift+F1 open a separate read-only overlay with search and action groups. It shows all 41 builtin actions with effective Windows defaults and user overrides, unbound actions, custom commands and leader sequences, physical shortcut conflicts, and parser diagnostics. Conflict rows name the action or command that receives the chord. A parser-rejected custom shortcut remains unbound. Search matches names, identifiers, groups, chords, status and diagnostic text. Reload updates an open list after the terminal accepts the new hotkey manifest and keeps the query. Esc or Close dismisses the list and returns focus to the active terminal pane. The opener chord is fixed and is not in `keymap.conf`; it cannot be rebound or unbound there. F1 is outside the keymap grammar, so the opener does not collide with user bindings. The internal page event does not add a builtin action or a control command. Parser diagnostics stay in an internal snapshot; `keymap.reload` still returns only its existing diagnostic count and emits the same events. There is no new unbind syntax. This view has no upstream equivalent and does not change the parity surface.
+
 - **Маппинг модификаторов keymap на Windows (спец. §9: «cmd → Win/Ctrl по вкусу»).**
   Принято: `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift. Так как два
   keymap-модификатора делят одну физическую клавишу, нажатие декодируется в КАНДИДАТОВ

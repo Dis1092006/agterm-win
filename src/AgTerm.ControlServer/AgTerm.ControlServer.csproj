@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgTerm.Core\AgTerm.Core.csproj" />
+    <InternalsVisibleTo Include="agterm-win" />
+    <InternalsVisibleTo Include="AgTerm.ControlServer.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

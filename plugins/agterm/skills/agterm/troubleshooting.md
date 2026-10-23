@@ -10,10 +10,7 @@ as a GitHub issue (a bug, a feature request or a question) — safely, never pos
 You are inside agterm-win (`AGTERM_ENABLED=1`). Use:
 
 - **Live state** — `agtermctl tree --json`, `agtermctl window list --json`.
-- **Keymap problems** — `agtermctl keymap reload` prints the parse-diagnostic count (`ok` = clean). A
-  non-zero count means `keymap.conf` has problems. agterm-win has no window that lists them, so re-read
-  the lines that changed last. The file is read as UTF-8; a UTF-16 file (for example one written by
-  Windows PowerShell 5.1 `Out-File`) gives a single `could not read keymap.conf: …` diagnostic.
+- **Keymap problems** — `agtermctl keymap reload` prints the parse-diagnostic count (`ok` = clean). Open **Help > Keyboard Shortcuts** or press **Ctrl+Shift+F1** to read effective bindings, conflicts and diagnostics. Search includes names, groups, chords and diagnostic text. The view updates after reload. Ctrl+Shift+F1 is fixed and is not in `keymap.conf`. The file is read as UTF-8; a UTF-16 file (for example one written by Windows PowerShell 5.1 `Out-File`) gives a single `could not read keymap.conf: …` diagnostic.
 - **Settings** - `agtermctl config reload` re-reads `settings.json` and always prints `ok`. A failed
   reload shows the "Config reload failed" bar in the window. There is no ghostty config in agterm-win.
   `restoreRunningCommand` is read when a window opens, so a change to it needs a restart of agterm-win.

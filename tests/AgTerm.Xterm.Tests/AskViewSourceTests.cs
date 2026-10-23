@@ -30,7 +30,7 @@ public sealed class AskViewSourceTests
     {
         var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
         Assert.Matches(new Regex(
-            @"private bool HandleChord\(PhysicalChord physical, long\? generation = null\)\s*\{\s*if \(AskOverlay\.IsOpen\)\s*return false;"),
+            @"private bool HandleChord\(PhysicalChord physical, long\? generation = null\)\s*\{\s*if \(AskOverlay\.IsOpen \|\| KeybindingsOverlay\.IsOpen\)\s*return false;"),
             source);
         Assert.Matches(new Regex(
             @"private void FocusTerminal\(string paneId\)\s*\{\s*if \(AskOverlay\.IsOpen\)\s*\{\s*(//[^
@@ -85,8 +85,8 @@ public sealed class AskViewSourceTests
         Assert.Contains(".Pick.EscapeAsk(", source, StringComparison.Ordinal);
         Assert.Contains("AskOverlay.CancelChord = IsCloseSessionChord;", source, StringComparison.Ordinal);
         Assert.Contains("AskAnchorGeometry.Pane(", source, StringComparison.Ordinal);
-        Assert.Contains("if (AskOverlay.IsOpen) return;", source, StringComparison.Ordinal);
-        Assert.Contains("_terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen, FocusActiveTerminal);", source, StringComparison.Ordinal);
+        Assert.Contains("if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen) return;", source, StringComparison.Ordinal);
+        Assert.Contains("_terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);", source, StringComparison.Ordinal);
     }
 
     [Theory]

@@ -146,6 +146,11 @@
                         <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE897;" FontSize="14" />
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuFlyoutItem Text="Keyboard Shortcuts"
+                                                KeyboardAcceleratorTextOverride="Ctrl+Shift+F1"
+                                                AutomationProperties.AutomationId="keyboard-shortcuts"
+                                                Click="OnKeyboardShortcutsClick" />
+                                <MenuFlyoutSeparator />
                                 <MenuFlyoutItem x:Name="InstallCommandLineToolItem"
                                                 AutomationProperties.AutomationId="install-command-line-tool"
                                                 Click="OnInstallCommandLineToolClick" />
@@ -234,6 +239,9 @@
         <local:AskView x:Name="AskOverlay"
                        Grid.RowSpan="2"
                        Canvas.ZIndex="100" />
+        <local:KeybindingsView x:Name="KeybindingsOverlay"
+                              Grid.RowSpan="2"
+                              Canvas.ZIndex="100" />
         <local:SessionSwitcherView x:Name="SwitcherOverlay"
                                    Grid.Row="1"
                                    Canvas.ZIndex="90" />

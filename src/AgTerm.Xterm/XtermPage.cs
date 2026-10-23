@@ -277,6 +277,8 @@ public sealed class XtermPage
     /// <summary>A Ctrl-Tab switcher key from the terminal page (upstream SessionSwitcher's monitor).</summary>
     public event Action<SessionSwitcherKey>? SwitcherKeyPressed;
 
+    public event Action? KeyboardShortcutsRequested;
+
     /// <summary>Push the hotkey table every pane intercepts (replaces the previous table; empty
     /// clears the interception). Call after keymap load/reload, on the WebView2 UI thread — a
     /// script call, so nothing dispatched afterwards can outrun the table.</summary>
@@ -627,6 +629,12 @@ public sealed class XtermPage
         if (msg?.Type == "dashboardClose")
         {
             DashboardClosed?.Invoke();
+            return;
+        }
+
+        if (msg?.Type == "keyboardShortcuts")
+        {
+            KeyboardShortcutsRequested?.Invoke();
             return;
         }
 

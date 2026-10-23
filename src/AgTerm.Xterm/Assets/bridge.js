@@ -2340,6 +2340,18 @@ function samePhysicalChord(left, right) {
   );
 }
 
+function routeKeyboardShortcuts(ev) {
+  if (ev.key !== "F1" || !ev.ctrlKey || !ev.shiftKey || ev.altKey || ev.metaKey)
+    return false;
+  resetCustomLeader();
+  post({ type: "keyboardShortcuts" });
+  ev.preventDefault();
+  ev.stopPropagation();
+  return true;
+}
+
+document.addEventListener("keydown", routeKeyboardShortcuts, true);
+
 function isChordPrefix(prefix, chords) {
   if (prefix.length > chords.length) return false;
   return prefix.every((chord, index) =>
@@ -2871,6 +2883,7 @@ function openPane(paneId, opts) {
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type === "keyup") return releaseRewrittenKey(ev);
     if (ev.type !== "keydown") return true;
+    if (routeKeyboardShortcuts(ev)) return false;
     // a new press replaces any release left over from an earlier press of the same key
     pane.rewrittenKeys.delete(ev.code);
     if (routeSwitcherKey(paneId, ev)) {
