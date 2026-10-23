@@ -54,7 +54,7 @@ public sealed class WebView2Fixture : IDisposable
     /// realized surface, the way the app hosts one WebView2 per session pane.</summary>
     public async Task<WebView2> CreateWebViewAsync()
     {
-        var (form, first) = await _started.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        var (form, first) = await _started.Task.WaitAsync(TimeSpan.FromSeconds(60)).ConfigureAwait(false);
         var done = new TaskCompletionSource<WebView2>(TaskCreationOptions.RunContinuationsAsynchronously);
         form.BeginInvoke(async () =>
         {
@@ -70,26 +70,26 @@ public sealed class WebView2Fixture : IDisposable
                 done.TrySetException(ex);
             }
         });
-        return await done.Task;
+        return await done.Task.ConfigureAwait(false);
     }
 
     /// <summary>A fresh WebView2 with a booted XtermPage on it — the app's one-page-per-window
     /// shape. Panes for many surfaces open on this single page.</summary>
     public async Task<AgTerm.Xterm.XtermPage> CreatePageAsync()
     {
-        var view = await CreateWebViewAsync();
+        var view = await CreateWebViewAsync().ConfigureAwait(false);
         return await RunAsync(async _ =>
         {
             var page = new AgTerm.Xterm.XtermPage(new Win32ScriptHost(view.CoreWebView2));
             await page.InitializeAsync();
             return page;
-        });
+        }).ConfigureAwait(false);
     }
 
     /// <summary>Run work on the WebView2 UI thread; the WebView2 is initialized when this returns.</summary>
     public async Task<T> RunAsync<T>(Func<WebView2, Task<T>> work)
     {
-        var (form, webView) = await _started.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        var (form, webView) = await _started.Task.WaitAsync(TimeSpan.FromSeconds(60)).ConfigureAwait(false);
         var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         form.BeginInvoke(async () =>
         {
@@ -102,7 +102,7 @@ public sealed class WebView2Fixture : IDisposable
                 done.TrySetException(ex);
             }
         });
-        return await done.Task;
+        return await done.Task.ConfigureAwait(false);
     }
 
     /// <summary>Run work that has no result on the WebView2 UI thread.</summary>

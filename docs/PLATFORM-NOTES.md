@@ -288,6 +288,8 @@ available in the headless host"` (после резолюции цели — `no
   existing failed-terminal row state remains visible. Failure presentation is UI-only: surface,
   config, and theme wire responses and error strings are unchanged.
 
+  When the 15-second terminal realization budget expires, the host logs the surface slot and timeout and reports `Terminal failed to start` through the same InfoBar route. Request cancellation, window shutdown, session teardown, and replaced surface slots do not report a timeout failure. The wire error remains `session not realized`.
+
 ## Phase 4.5: live orchestration
 
 - **Bounded terminal output batching.** Each live pane routes ConPTY output through one

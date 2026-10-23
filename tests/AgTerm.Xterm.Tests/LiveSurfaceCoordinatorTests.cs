@@ -780,6 +780,104 @@ public sealed class LiveSurfaceCoordinatorTests : IDisposable
     // late surface (arriving after timeout) is torn down exactly once.
     // -------------------------------------------------------------------------
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Coordinator_timeout_reports_one_failure_for_cooperative_and_ignoring_openers(
+        bool cooperative)
+    {
+        using var host = BuildHost();
+        var scopes = new LiveDispatchScopeFactory();
+        var sessionId = host.Store.ActiveSession!.Id;
+        var logs = new List<string>();
+        var notices = new List<LiveFailureNotice>();
+        var lateOpen = new TaskCompletionSource<IHeadlessSurface>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var coordinator = BuildCoordinator(
+            host, scopes,
+            async (_, token) =>
+            {
+                if (cooperative)
+                    await Task.Delay(Timeout.Infinite, token);
+                return await lateOpen.Task;
+            },
+            realizeBudget: TimeSpan.FromMilliseconds(150),
+            log: logs.Add,
+            failureReported: notices.Add);
+        using var scope = scopes.Begin();
+        PendingTerminalSurface? pending = null;
+        host.RunLocked(() => pending = coordinator.Reserve(new SurfaceOpenRequest(
+            sessionId, LiveSurfaceKind.Main, DefaultOptions(_stateDir))));
+
+        await scope.CompleteAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Null(await pending!.Ready);
+        host.RunLocked(() => Assert.Null(host.Store.ActiveSession!.Surface));
+        var late = new FakeSurface { PaneToken = "late-reported-timeout" };
+        lateOpen.SetResult(late);
+        if (!cooperative)
+        {
+            await SpinUntilAsync(() => late.TeardownCount > 0, TimeSpan.FromSeconds(5));
+            Assert.Equal(1, late.TeardownCount);
+        }
+        var notice = Assert.Single(notices);
+        Assert.Equal("Terminal failed to start", notice.Title);
+        Assert.Equal("Terminal surface realization timed out after 00:00:00.1500000.", notice.Message);
+        var log = Assert.Single(logs);
+        Assert.Contains($"Main:{sessionId}", log);
+        Assert.Contains(notice.Message, log);
+    }
+
+    [Theory]
+    [InlineData("shutdown")]
+    [InlineData("request")]
+    [InlineData("reservation")]
+    [InlineData("replacement")]
+    public async Task Coordinator_intentional_cancellation_does_not_report_a_failure(string reason)
+    {
+        using var host = BuildHost();
+        var scopes = new LiveDispatchScopeFactory();
+        var sessionId = host.Store.ActiveSession!.Id;
+        var logs = new List<string>();
+        var notices = new List<LiveFailureNotice>();
+        var lateOpen = new TaskCompletionSource<IHeadlessSurface>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var coordinator = BuildCoordinator(
+            host, scopes, (_, _) => lateOpen.Task,
+            realizeBudget: TimeSpan.FromMilliseconds(150),
+            log: logs.Add, failureReported: notices.Add);
+        using var scope = scopes.Begin();
+        using var cancellation = new CancellationTokenSource();
+        PendingTerminalSurface? pending = null;
+        host.RunLocked(() => pending = coordinator.Reserve(new SurfaceOpenRequest(
+            sessionId, LiveSurfaceKind.Main, DefaultOptions(_stateDir))));
+        var completion = scope.CompleteAsync(cancellation.Token);
+        switch (reason)
+        {
+            case "shutdown":
+                coordinator.Dispose();
+                break;
+            case "request":
+                cancellation.Cancel();
+                break;
+            case "reservation":
+                pending!.Teardown();
+                break;
+            case "replacement":
+                host.RunLocked(() => host.Store.ActiveSession!.Surface = new FakeSurface());
+                await completion.WaitAsync(TimeSpan.FromSeconds(5));
+                break;
+        }
+        var late = new FakeSurface { PaneToken = "late-intentional-cancellation" };
+        lateOpen.SetResult(late);
+        await completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(await pending!.Ready);
+        await SpinUntilAsync(() => late.TeardownCount > 0, TimeSpan.FromSeconds(5));
+        Assert.Equal(1, late.TeardownCount);
+        Assert.Empty(logs);
+        Assert.Empty(notices);
+    }
+
     [Fact]
     public async Task Coordinator_timeout_cancels_opener_token_and_tears_down_late_surface()
     {

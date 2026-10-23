@@ -2,6 +2,7 @@ using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 using AgTerm.Xterm;
+using Xunit.Abstractions;
 
 namespace AgTerm.Xterm.Tests;
 
@@ -18,13 +19,15 @@ public sealed class LiveControlHostTests : IDisposable
         Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe";
 
     private readonly WebView2Fixture _webView;
+    private readonly ITestOutputHelper _output;
     private readonly string _stateDir =
         Directory.CreateTempSubdirectory("agterm-live-host-").FullName;
     private readonly List<LiveControlHost> _hosts = new();
 
-    public LiveControlHostTests(WebView2Fixture webView)
+    public LiveControlHostTests(WebView2Fixture webView, ITestOutputHelper output)
     {
         _webView = webView;
+        _output = output;
     }
 
     public void Dispose()
@@ -39,24 +42,26 @@ public sealed class LiveControlHostTests : IDisposable
         }
     }
 
-    private (LiveControlHost Host, ControlPipeClient Client) StartHost()
+    private async Task<(LiveControlHost Host, ControlPipeClient Client)> StartHostAsync()
     {
         // one page per host — the app's one-WebView2-per-window shape; every surface opens a pane on it
         var page = new Lazy<Task<XtermPage>>(() => _webView.CreatePageAsync());
-        var host = new LiveControlHost(new LiveControlHostOptions
+        // Like MainWindow, construct off the calling context so bootstrap can await the UI work.
+        var host = await Task.Run(() => new LiveControlHost(new LiveControlHostOptions
         {
             StateDir = _stateDir,
             ConfigDir = _stateDir,
             PipeName = "agterm-live-" + Guid.NewGuid().ToString("N"),
             DefaultShell = Cmd,
             HomeDirectory = _stateDir,
+            Log = _output.WriteLine,
             OpenSurface = async (request, cancellationToken) =>
             {
                 var shared = await page.Value;
                 return await _webView.RunAsync(async _ =>
                     await XtermPaneSurface.OpenAsync(shared, request.Options, cancellationToken));
             },
-        });
+        })).ConfigureAwait(false);
         _hosts.Add(host);
         host.Start();
         return (host, new ControlPipeClient(host.PipeName));
@@ -75,12 +80,12 @@ public sealed class LiveControlHostTests : IDisposable
         var text = "";
         while (Environment.TickCount64 < deadline)
         {
-            var response = client.Send(new ControlRequest
+            var response = Ok(client.Send(new ControlRequest
             {
                 Cmd = Command.SessionText,
                 Target = target,
                 Args = new ControlArgs { All = true },
-            });
+            }));
             text = response.Result?.Text ?? "";
             if (text.Contains(contains)) return text;
             Thread.Sleep(100);
@@ -90,9 +95,90 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
-    public void Type_text_copy_run_against_the_live_default_session()
+    public async Task Host_bootstrap_does_not_post_to_the_calling_synchronization_context()
     {
-        var (_, client) = StartHost();
+        var context = new RecordingSynchronizationContext();
+        var previous = SynchronizationContext.Current;
+        Task<(LiveControlHost Host, ControlPipeClient Client)> startup;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            startup = StartHostAsync();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        var (_, client) = await startup;
+        Assert.Equal(0, context.PostCount);
+        WaitForText(client, ">");
+    }
+
+    [Theory]
+    [InlineData("page")]
+    [InlineData("view")]
+    [InlineData("run")]
+    public async Task Fixture_orchestration_does_not_post_to_the_calling_synchronization_context(
+        string operation)
+    {
+        var context = new RecordingSynchronizationContext();
+        var previous = SynchronizationContext.Current;
+        Task work;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            work = operation switch
+            {
+                "page" => _webView.CreatePageAsync(),
+                "view" => _webView.CreateWebViewAsync(),
+                "run" => _webView.RunAsync(_ => Task.CompletedTask),
+                _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+            };
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        await work;
+        Assert.Equal(0, context.PostCount);
+    }
+
+    [Fact]
+    public void WaitForText_reports_the_wire_error_instead_of_an_empty_buffer()
+    {
+        var pipeName = "agterm-live-text-error-" + Guid.NewGuid().ToString("N");
+        using var server = new ControlPipeServer(pipeName, _ =>
+            Task.FromResult<ControlResponse?>(new ControlResponse
+            {
+                Ok = false,
+                Error = "session not realized",
+            }));
+        server.Start();
+
+        var failure = Assert.Throws<Xunit.Sdk.TrueException>(() =>
+            WaitForText(new ControlPipeClient(pipeName), "missing", timeoutMs: 1000));
+
+        Assert.Contains("session not realized", failure.Message);
+    }
+
+    private sealed class RecordingSynchronizationContext : SynchronizationContext
+    {
+        private int _postCount;
+        public int PostCount => Volatile.Read(ref _postCount);
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            Interlocked.Increment(ref _postCount);
+            base.Post(callback, state);
+        }
+    }
+
+    [Fact]
+    public async Task Type_text_copy_run_against_the_live_default_session()
+    {
+        var (_, client) = await StartHostAsync();
         WaitForText(client, ">"); // the default session realized and its cmd prompt painted
 
         Ok(client.Send(new ControlRequest
@@ -108,9 +194,9 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
-    public void Session_new_with_command_realizes_the_argv_child()
+    public async Task Session_new_with_command_realizes_the_argv_child()
     {
-        var (_, client) = StartHost();
+        var (_, client) = await StartHostAsync();
         var created = Ok(client.Send(new ControlRequest
         {
             Cmd = Command.SessionNew,
@@ -122,9 +208,9 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
-    public void Shell_exit_closes_the_session()
+    public async Task Shell_exit_closes_the_session()
     {
-        var (host, client) = StartHost();
+        var (host, client) = await StartHostAsync();
         var created = Ok(client.Send(new ControlRequest
         {
             Cmd = Command.SessionNew,
@@ -151,9 +237,9 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
-    public void Osc_title_reaches_the_tree_read_back()
+    public async Task Osc_title_reaches_the_tree_read_back()
     {
-        var (_, client) = StartHost();
+        var (_, client) = await StartHostAsync();
         WaitForText(client, ">");
         Ok(client.Send(new ControlRequest
         {
@@ -173,9 +259,9 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
-    public void Sessions_survive_a_host_restart()
+    public async Task Sessions_survive_a_host_restart()
     {
-        var (host, client) = StartHost();
+        var (host, client) = await StartHostAsync();
         var created = Ok(client.Send(new ControlRequest
         {
             Cmd = Command.SessionNew,
@@ -185,7 +271,7 @@ public sealed class LiveControlHostTests : IDisposable
         WaitForText(client, ">", target: id);
         host.Dispose(); // flushes the snapshot
 
-        var (restarted, client2) = StartHost();
+        var (restarted, client2) = await StartHostAsync();
         Session? restored = null;
         restarted.Host.RunLocked(() =>
             restored = restarted.Host.Store.SessionWithId(Guid.Parse(id)));

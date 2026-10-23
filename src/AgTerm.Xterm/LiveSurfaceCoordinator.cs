@@ -593,6 +593,23 @@ internal sealed class LiveSurfaceCoordinator : IDisposable
         }
         catch (OperationCanceledException)
         {
+            var reportTimeout = false;
+            if (budgetCts.IsCancellationRequested)
+            {
+                _host.RunLocked(() => reportTimeout =
+                    !operationToken.IsCancellationRequested &&
+                    !_shutdown.IsCancellationRequested &&
+                    !pending.ReservationToken.IsCancellationRequested &&
+                    TryGetSlotSurface(slot, out var current) &&
+                    ReferenceEquals(current, pending));
+            }
+            if (reportTimeout)
+            {
+                var failure = new TimeoutException(
+                    $"Terminal surface realization timed out after {_realizeBudget:c}.");
+                _log?.Invoke($"LiveSurfaceCoordinator realize failed for {DescribeSlot(slot)}: {failure}");
+                ReportFailure(failure);
+            }
             ClearPendingSlot(slot, pending);
             // Ready means this attempt settled. ReservationToken records slot teardown specifically;
             // timeout/server/shutdown cancellation is carried by the linked opener token instead.
