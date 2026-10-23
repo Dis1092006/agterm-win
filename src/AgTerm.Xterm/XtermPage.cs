@@ -237,7 +237,7 @@ public sealed class XtermPage
     public event Action<string>? PasteRequested;
 
     /// <summary>A Ctrl+click on a terminal link in a known pane; the host must classify its target.</summary>
-    public event Action<string, string>? TerminalLinkRequested;
+    public event Action<string, string, bool>? TerminalLinkRequested;
 
     /// <summary>A clipboard copy asked for from a pane: the pane id and the text to write. The
     /// page cannot write the clipboard itself - the browser API refuses without a user gesture -
@@ -544,7 +544,7 @@ public sealed class XtermPage
         if (msg?.Type == "terminalLink")
         {
             if (msg.PaneId is { } linkPaneId && _terminals.ContainsKey(linkPaneId) && msg.Url is { Length: > 0 } target)
-                TerminalLinkRequested?.Invoke(linkPaneId, target);
+                TerminalLinkRequested?.Invoke(linkPaneId, target, msg.AllowPathFallback == true);
             return;
         }
         if (msg?.Type == "hudMetrics")
@@ -675,6 +675,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("title")] public string? Title { get; init; }
     [JsonPropertyName("uri")] public string? Uri { get; init; }
     [JsonPropertyName("url")] public string? Url { get; init; }
+    [JsonPropertyName("allowPathFallback")] public bool? AllowPathFallback { get; init; }
     [JsonPropertyName("ctrl")] public bool? Ctrl { get; init; }
     [JsonPropertyName("alt")] public bool? Alt { get; init; }
     [JsonPropertyName("shift")] public bool? Shift { get; init; }

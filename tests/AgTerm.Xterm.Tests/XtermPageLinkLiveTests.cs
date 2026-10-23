@@ -71,6 +71,11 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     [InlineData("\"C:\\my files\\report.txt\" extra", @"C:\my files\report.txt")]
     [InlineData("`C:\\my files\\report.txt` extra", @"C:\my files\report.txt")]
     [InlineData(@"C:\my files\report.txt   ", @"C:\my files\report.txt")]
+    [InlineData(@"Sample API  [3F2504E0-4F89-11D3-9A0C-0305E82C3301]  C:\\git\\github\\example-org\\sample-api  title: ? Issue 328", @"C:\\git\\github\\example-org\\sample-api")]
+    [InlineData(@"C:\Program Files\x  title: extra", @"C:\Program Files\x")]
+    [InlineData(@"C:\Program Files\x   title: extra", @"C:\Program Files\x")]
+    [InlineData("C:\\Program Files\\x\ttitle: extra", @"C:\Program Files\x")]
+    [InlineData("'C:\\my  files\\report.txt' extra", @"C:\my  files\report.txt")]
     public async Task The_provider_detects_urls_and_drive_paths(string text, string expected)
     {
         var (_, view) = await BootAsync(text);
@@ -82,6 +87,45 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
             })()
             """);
         Assert.Equal(new[] { expected }, JsonSerializer.Deserialize<string[]>(result));
+    }
+
+    [Fact]
+    public async Task A_tab_ends_a_detected_path_before_terminal_tab_expansion()
+    {
+        var (_, view) = await BootAsync("");
+        var result = await EvalAsync(view, """terminalLinkMatches("C:\\folder\\x\ttitle: extra").map(link => link.text)""");
+        Assert.Equal(new[] { @"C:\folder\x" }, JsonSerializer.Deserialize<string[]>(result));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Program Files\x status", true)]
+    [InlineData("\"C:\\Program Files\\x status\"", false)]
+    [InlineData("'C:\\Program Files\\x status'", false)]
+    [InlineData("`C:\\Program Files\\x status`", false)]
+    [InlineData("file:///C:/Program%20Files/x", false)]
+    [InlineData("\x1b]8;;C:\\Program Files\\x status\x1b\\C:\\Program Files\\x status\x1b]8;;\x1b\\", false)]
+    public async Task Only_detected_unquoted_paths_request_prefix_fallback(string text, bool expectedFallback)
+    {
+        var (page, view) = await BootAsync(text);
+        var seen = new ConcurrentQueue<bool>();
+        page.TerminalLinkRequested += (_, _, fallback) => seen.Enqueue(fallback);
+        var coordinates = await EvalAsync(view, """
+            (() => {
+              const term = panes.get('links').term;
+              const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+              return {x:rect.left + rect.width / term.cols * 3.5,
+                y:rect.top + rect.height / term.rows * 0.5};
+            })()
+            """);
+        using var json = JsonDocument.Parse(coordinates);
+        var x = json.RootElement.GetProperty("x").GetDouble();
+        var y = json.RootElement.GetProperty("y").GetDouble();
+        await MouseAsync(view, "mousePressed", x, y, 2, "left");
+        await MouseAsync(view, "mouseReleased", x, y, 2, "left");
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (seen.IsEmpty && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        Assert.Equal(expectedFallback, Assert.Single(seen));
     }
 
     [Theory]
@@ -168,7 +212,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
         var (page, view) = await BootAsync(text + "\x1b[?1000h\x1b[?1006h");
         var links = new ConcurrentQueue<string>();
         var input = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, target) => links.Enqueue(target);
+        page.TerminalLinkRequested += (_, target, _) => links.Enqueue(target);
         await webView.RunAsync(async _ =>
         {
             var terminal = await page.OpenTerminalAsync("other");
@@ -223,7 +267,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
         var (page, view) = await BootAsync("! terraform -chdir=\"" + target + "\" apply \"prod-destroy.tfplan\""
             + (mouseTracking ? "\x1b[?1000h\x1b[?1006h" : ""));
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        page.TerminalLinkRequested += (_, link, _) => seen.Enqueue(link);
         await EvalAsync(view, """
             window.linkMouseInput = [];
             panes.get('links').term.onData(data => window.linkMouseInput.push(data));
@@ -273,7 +317,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
         var timer = Stopwatch.StartNew();
         var launched = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var times = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (paneId, target) =>
+        page.TerminalLinkRequested += (paneId, target, allowPathFallback) =>
         {
             times.Enqueue($"message={timer.Elapsed.TotalMilliseconds:F1}ms");
             _ = Task.Run(() =>
@@ -342,7 +386,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
         var (page, view) = await BootAsync(@"C:\Windows\System32"
             + (mouseTracking ? "\x1b[?1000h\x1b[?1006h" : ""));
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        page.TerminalLinkRequested += (_, link, _) => seen.Enqueue(link);
         var coordinates = await EvalAsync(view, """
             (() => {
               const term = panes.get('links').term;
@@ -380,7 +424,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     {
         var (page, view) = await BootAsync(@"C:\Windows\System32");
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        page.TerminalLinkRequested += (_, link, _) => seen.Enqueue(link);
         var coordinates = await EvalAsync(view, """
             (() => {
               const term = panes.get('links').term;
@@ -415,7 +459,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     {
         var (page, view) = await BootAsync("");
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, target) => seen.Enqueue(target);
+        page.TerminalLinkRequested += (_, target, _) => seen.Enqueue(target);
         var label = @"! terraform -chdir=""C:\Windows\System32"" apply ""prod-destroy.tfplan""";
         var line = osc8 ? "\x1b]8;;file:///C:/safe.txt\x1b\\" + label + "\x1b]8;;\x1b\\" : label;
         var prefix = "\x1b[?1049h" + (mouseTracking ? "\x1b[?1000h\x1b[?1006h" : "");
@@ -467,7 +511,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     {
         var (page, view) = await BootAsync("https://example.com\x1b[?1000h\x1b[?1006h");
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        page.TerminalLinkRequested += (_, link, _) => seen.Enqueue(link);
         await EvalAsync(view, """
             window.linkMouseInput = [];
             panes.get('links').term.onData(data => window.linkMouseInput.push(data));
@@ -513,7 +557,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
         var (page, view) = await BootAsync(string.Concat(Enumerable.Repeat("filler\r\n", 5))
             + line + string.Concat(Enumerable.Repeat("\r\nother", 30)), 20);
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        page.TerminalLinkRequested += (_, link, _) => seen.Enqueue(link);
         await EvalAsync(view, "panes.get('links').term.scrollToLine(5)");
         await WaitAsync(view, "panes.get('links').term.buffer.active.viewportY === 5");
         var coordinates = await EvalAsync(view, """
@@ -593,7 +637,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     {
         var (page, view) = await BootAsync("https://example.com");
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, target) => seen.Enqueue(target);
+        page.TerminalLinkRequested += (_, target, _) => seen.Enqueue(target);
         var coordinates = await EvalAsync(view, """
             (() => {
               const term = panes.get('links').term;
@@ -620,7 +664,7 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     {
         var (page, view) = await BootAsync("https://example.com");
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, target) => seen.Enqueue(target);
+        page.TerminalLinkRequested += (_, target, _) => seen.Enqueue(target);
         await EvalAsync(view, """
             (() => {
               let links;
@@ -656,14 +700,19 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     {
         var (page, view) = await BootAsync("\x1b]8;;file:///C:/safe.txt\x1b\\https://example.com\x1b]8;;\x1b\\");
         var seen = new ConcurrentQueue<string>();
-        page.TerminalLinkRequested += (_, target) => seen.Enqueue(target);
+        page.TerminalLinkRequested += (_, target, fallback) =>
+        {
+            Assert.False(fallback);
+            seen.Enqueue(target);
+        };
         var result = await EvalAsync(view, """
             (() => {
               const term = panes.get('links').term;
               const handler = term.options.linkHandler;
               window.open = () => { throw new Error('browser default must not run'); };
               handler.activate(new MouseEvent('click'), 'file:///C:/safe.txt');
-              handler.activate(new MouseEvent('click', {ctrlKey:true}), 'file:///C:/safe.txt');
+              handler.activate(new MouseEvent('click', {ctrlKey:true}), 'file:///C:/safe.txt',
+                {start:{x:1,y:1},end:{x:19,y:1}});
               return {nonHttp:handler.allowNonHttpProtocols};
             })()
             """);

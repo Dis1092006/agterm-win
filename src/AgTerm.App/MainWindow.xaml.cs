@@ -539,12 +539,27 @@ public sealed partial class MainWindow : Window
         page.AskIntentReceived += OnPageAskIntentReceived;
         page.AskFocusChanged += OnPageAskFocusChanged;
         page.HudLinkRequested += OnPageHudLinkRequested;
-        page.TerminalLinkRequested += (_, target) => ObserveTaskFault(
-            Task.Run(() => new TerminalLinkOpener().Open(target)), "Open terminal link failed");
+        page.TerminalLinkRequested += (_, target, allowPathFallback) => ObserveTaskFault(
+            OpenTerminalLinkAsync(target, allowPathFallback), "Open terminal link failed");
         page.HudMetricsReceived += OnPageHudMetricsReceived;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
+    }
+
+    private async Task OpenTerminalLinkAsync(string target, bool allowPathFallback)
+    {
+        try
+        {
+            var notice = await Task.Run(() => new TerminalLinkOpener().Open(target, allowPathFallback));
+            if (notice is not null)
+                QueueFailureNotice(notice);
+        }
+        catch (Exception ex)
+        {
+            QueueFailureNotice(new LiveFailureNotice("Open terminal link failed", ex.GetBaseException().Message));
+            throw;
+        }
     }
 
     private void OnTerminalViewSizeChanged(object sender, SizeChangedEventArgs args) =>

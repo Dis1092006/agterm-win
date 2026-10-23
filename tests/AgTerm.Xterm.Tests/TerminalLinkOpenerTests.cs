@@ -39,11 +39,72 @@ public class TerminalLinkOpenerTests
     }
 
     [Fact]
-    public void Missing_paths_are_ignored()
+    public void Missing_paths_return_a_normal_notice()
     {
         var started = new List<ProcessStartInfo>();
-        new TerminalLinkOpener(started.Add, _ => false).Open(@"C:\missing.txt");
+        var notice = new TerminalLinkOpener(started.Add, _ => false).Open(@"C:\missing.txt");
         Assert.Empty(started);
+        Assert.Equal(new LiveFailureNotice("Path not found", @"Path not found: C:\missing.txt"), notice);
+    }
+
+    [Theory]
+    [InlineData(@"C:\Program Files\x status pending", @"C:\Program Files\x status pending")]
+    [InlineData(@"C:\Program Files\x status pending", @"C:\Program Files\x status")]
+    [InlineData(@"C:\Program Files\x status pending", @"C:\Program Files\x")]
+    [InlineData(@"C:\\Program Files\\x status pending", @"C:\Program Files\x")]
+    [InlineData(@"C:\Program Files\x title: pending", @"C:\Program Files\x")]
+    public void Unquoted_paths_reveal_the_longest_existing_candidate(string target, string existing)
+    {
+        var started = new List<ProcessStartInfo>();
+        var probed = new List<string>();
+        var notice = new TerminalLinkOpener(started.Add, path =>
+        {
+            probed.Add(path);
+            return path == existing || path == @"C:\Program";
+        }).Open(target, allowPathFallback: true);
+        Assert.Null(notice);
+        Assert.Equal(existing, probed[^1]);
+        Assert.DoesNotContain(@"C:\Program", probed);
+        Assert.Equal(AgTerm.Core.Model.HudLinkPolicy.ExplorerSelectArguments(existing), Assert.Single(started).Arguments);
+    }
+
+    [Fact]
+    public void All_missing_candidates_report_the_full_detected_path()
+    {
+        var probed = new List<string>();
+        const string target = @"C:\Program Files\x status pending";
+        var notice = new TerminalLinkOpener(_ => Assert.Fail("unexpected launch"), path =>
+        {
+            probed.Add(path);
+            return false;
+        }).Open(target, allowPathFallback: true);
+        Assert.Equal(new[] { target, @"C:\Program Files\x status", @"C:\Program Files\x", @"C:\Program" }, probed);
+        Assert.Equal(new LiveFailureNotice("Path not found", "Path not found: " + target), notice);
+    }
+
+    [Theory]
+    [InlineData(@"C:\safe\NUL status", @"C:\safe\NUL status")]
+    [InlineData(@"C:\safe\x title: pending", @"C:\safe\x")]
+    public void Each_fallback_candidate_is_validated_before_probing(string target, string expectedProbe)
+    {
+        var probed = new List<string>();
+        new TerminalLinkOpener(_ => { }, path => { probed.Add(path); return false; })
+            .Open(target, allowPathFallback: true);
+        Assert.Equal(new[] { expectedProbe }, probed);
+    }
+
+    [Theory]
+    [InlineData(@"C:\Program Files\x status", false, @"C:\Program Files\x status")]
+    [InlineData("file:///C:/Program%20Files/x%20status", true, @"C:\Program Files\x status")]
+    public void Explicit_targets_do_not_try_shorter_paths(string target, bool allowPathFallback, string expectedProbe)
+    {
+        var probed = new List<string>();
+        new TerminalLinkOpener(_ => Assert.Fail("unexpected launch"), path =>
+        {
+            probed.Add(path);
+            return path == @"C:\Program Files\x";
+        }).Open(target, allowPathFallback);
+        Assert.Equal(new[] { expectedProbe }, probed);
     }
 
     [Theory]

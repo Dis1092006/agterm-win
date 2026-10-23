@@ -21,7 +21,11 @@ public class XtermPageLinkTests
         await ready;
         await page.OpenTerminalAsync("known");
         var seen = new List<(string PaneId, string Url)>();
-        page.TerminalLinkRequested += (pane, url) => seen.Add((pane, url));
+        page.TerminalLinkRequested += (pane, url, fallback) =>
+        {
+            Assert.False(fallback);
+            seen.Add((pane, url));
+        };
 
         host.RaiseMessage(json);
 
@@ -34,6 +38,27 @@ public class XtermPageLinkTests
         Assert.Empty(seen);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_internal_path_fallback_flag_routes_with_the_target(bool allowPathFallback)
+    {
+        var host = new FakeScriptHost();
+        var page = new XtermPage(host);
+        var ready = page.InitializeAsync();
+        host.RaiseMessage("""{"type":"ready"}""");
+        await ready;
+        await page.OpenTerminalAsync("known");
+        var seen = new List<(string PaneId, string Target, bool AllowPathFallback)>();
+        page.TerminalLinkRequested += (pane, target, fallback) => seen.Add((pane, target, fallback));
+        host.RaiseMessage(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            type = "terminalLink", paneId = "known", url = @"C:\Program Files\x status", allowPathFallback,
+        }));
+        Assert.Equal(("known", @"C:\Program Files\x status", allowPathFallback), Assert.Single(seen));
+        await page.ClosePaneAsync("known");
+    }
+
     [Fact]
     public void The_app_wires_terminal_links_through_the_checked_launcher_and_failure_notice()
     {
@@ -42,7 +67,8 @@ public class XtermPageLinkTests
             directory = directory.Parent;
         var source = File.ReadAllText(Path.Combine(directory!.FullName, "src", "AgTerm.App", "MainWindow.xaml.cs"));
         Assert.Contains("page.TerminalLinkRequested +=", source, StringComparison.Ordinal);
-        Assert.Contains("new TerminalLinkOpener()", source, StringComparison.Ordinal);
+        Assert.Contains("new TerminalLinkOpener().Open(target, allowPathFallback)", source, StringComparison.Ordinal);
         Assert.Contains("\"Open terminal link failed\"", source, StringComparison.Ordinal);
+        Assert.Contains("QueueFailureNotice(notice)", source, StringComparison.Ordinal);
     }
 }

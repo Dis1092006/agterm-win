@@ -12,7 +12,7 @@
 //                                              {type:'chord', paneId, generation, ctrl, alt, shift, key}
 //                                              {type:'customHotkey', paneId, generation, customCommandId, ctrl, alt, shift, key}
 //                                              {type:'pasteRequested', paneId}   right-click paste
-//                                              {type:'terminalLink', paneId, url} Ctrl+click, host-validated
+//                                              {type:'terminalLink', paneId, url, allowPathFallback} Ctrl+click, host-validated
 //                                              {type:'switcher', paneId?, key}   Ctrl-Tab switcher: key is
 //                                                tab|reverseTab|escape|controlReleased
 //                                              {type:'dashboardHighlight'|'dashboardActivate', controlRef}
@@ -2523,9 +2523,9 @@ function terminalLinkModifier(ev) {
   return ev.ctrlKey && !ev.altKey && !ev.shiftKey && !ev.metaKey;
 }
 
-function activateTerminalLink(paneId, ev, target) {
+function activateTerminalLink(paneId, ev, target, allowPathFallback = false) {
   if (ev.button !== 0 || !terminalLinkModifier(ev) || !panes.has(paneId)) return;
-  post({ type: "terminalLink", paneId, url: target });
+  post({ type: "terminalLink", paneId, url: target, allowPathFallback });
 }
 
 // Match Ghostty's explicit-scheme branch, including its optional bracketed suffix and
@@ -2554,12 +2554,13 @@ function terminalLinkMatches(text) {
       if (end < 0) continue;
     } else {
       const rest = text.slice(start);
-      const boundary = rest.search(/["'`<>|?*\r\n]/u);
+      const boundary = rest.search(/ {2,}|["'`<>|?*\t\r\n]/u);
       end = boundary < 0 ? text.length : start + boundary;
       while (end > start && /[\s,.;]/u.test(text[end - 1])) end--;
       if (text[end - 1] === ")" && !text.slice(start, end).includes("(")) end--;
     }
-    if (end > start + 2) matches.push({ start, end, text: text.slice(start, end) });
+    if (end > start + 2)
+      matches.push({ start, end, text: text.slice(start, end), allowPathFallback: !quoted });
   }
   return matches.sort((a, b) => a.start - b.start);
 }
@@ -2594,9 +2595,10 @@ function terminalLineLinks(term, y, activate, hover, leave) {
     if (y < start.y || y > end.y) return [];
     const link = {
       text: match.text,
+      allowPathFallback: match.allowPathFallback === true,
       range: { start: { x: start.x, y: start.y }, end: { x: end.endX, y: end.y } },
       decorations: { underline: false, pointerCursor: false },
-      activate,
+      activate: activate && ((ev, target) => activate(ev, target, match.allowPathFallback === true)),
       hover: (ev, target) => hover(ev, target, link),
       leave,
     };
@@ -2616,16 +2618,16 @@ function terminalLinkAtPointer(pane, ev) {
   const cell = term.buffer.active.getLine(y - 1)?.getCell(x - 1);
   const urlId = cell?.extended?.urlId;
   // The pinned xterm exposes OSC 8 IDs on cells, but its target registry is internal.
-  const target = urlId
-    ? term._core._oscLinkService.getLinkData(urlId)?.uri
-    : terminalLineLinks(term, y).find(link =>
+  const link = !urlId && terminalLineLinks(term, y).find(link =>
         (y > link.range.start.y || x >= link.range.start.x)
-        && (y < link.range.end.y || x <= link.range.end.x))?.text;
-  return target ? { target, x, y } : null;
+        && (y < link.range.end.y || x <= link.range.end.x));
+  const target = urlId ? term._core._oscLinkService.getLinkData(urlId)?.uri : link?.text;
+  return target ? { target, x, y, allowPathFallback: link?.allowPathFallback === true } : null;
 }
 
 function installTerminalLinks(paneId, pane) {
-  const activate = (ev, target) => activateTerminalLink(paneId, ev, target);
+  const activate = (ev, target, allowPathFallback = false) =>
+    activateTerminalLink(paneId, ev, target, allowPathFallback);
   const hover = (ev, target, link) => {
     pane.hoveredLink = target;
     pane.hoveredDetectedLink = link;
@@ -2635,7 +2637,10 @@ function installTerminalLinks(paneId, pane) {
     pane.hoveredLink = null;
     pane.hoveredDetectedLink = null;
   };
-  pane.term.options.linkHandler = { activate, hover, leave, allowNonHttpProtocols: true };
+  pane.term.options.linkHandler = {
+    activate: (ev, target) => activate(ev, target),
+    hover, leave, allowNonHttpProtocols: true,
+  };
   pane.linkProvider = {
     provideLinks: (y, callback) => callback(terminalLineLinks(pane.term, y, activate, hover, leave)),
   };
@@ -2664,8 +2669,9 @@ function installTerminalLinks(paneId, pane) {
     ev.stopImmediatePropagation();
     const current = terminalLinkAtPointer(pane, ev);
     if (current && previous.target === current.target
+        && previous.allowPathFallback === current.allowPathFallback
         && previous.x === current.x && previous.y === current.y)
-      activate(ev, previous.target);
+      activate(ev, previous.target, previous.allowPathFallback);
   }, true);
   pane.el.addEventListener("click", ev => {
     if (!consumed) return;
