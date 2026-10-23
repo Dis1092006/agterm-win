@@ -160,7 +160,7 @@ public sealed class AskViewSourceTests
             @"private void FocusAskAfterContentDialog\(\)\s*\{\s*if \(AskOverlay\.IsOpen && _windowIsActive\)\s*AskOverlay\.FocusPanel\(\);\s*\}"),
             source);
         // all three dialogs (confirmation, rename, installer result) go through the coordinator, so its event covers each of them
-        Assert.Equal(3, Regex.Matches(source, @"await dialog\.ShowAsync\(\)").Count);
+        Assert.Equal(3, Regex.Matches(source, @"await ShowDialogAsync\(dialog\)").Count);
         Assert.Equal(3, Regex.Matches(source, @"_contentDialogs\.RunAsync\(").Count);
     }
 

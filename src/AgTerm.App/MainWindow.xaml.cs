@@ -1011,11 +1011,22 @@ public sealed partial class MainWindow : Window
                 input.Focus(FocusState.Programmatic);
                 input.SelectAll();
             };
-            if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            if (await ShowDialogAsync(dialog) == ContentDialogResult.Primary)
                 EnsureWindowCommandSucceeded(_applicationHost.RenameWindow(_windowId, input.Text));
 
             return true;
         });
+    }
+
+    private static async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)
+    {
+        // tunnelling, so a repeat never reaches the focused button or the dialog's own Enter handling
+        dialog.PreviewKeyDown += (_, e) =>
+        {
+            if (DialogKeys.IgnoresKey((int)e.Key, e.KeyStatus.WasKeyDown))
+                e.Handled = true;
+        };
+        return await dialog.ShowAsync();
     }
 
     private SidebarCloseOptions CurrentSidebarCloseOptions() => new(
@@ -1035,7 +1046,7 @@ public sealed partial class MainWindow : Window
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Primary,
             };
-            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+            return await ShowDialogAsync(dialog) == ContentDialogResult.Primary;
         });
     }
 
@@ -2686,7 +2697,7 @@ public sealed partial class MainWindow : Window
                 CloseButtonText = "OK",
                 DefaultButton = ContentDialogButton.Close,
             };
-            await dialog.ShowAsync();
+            await ShowDialogAsync(dialog);
             return true;
         });
     }
