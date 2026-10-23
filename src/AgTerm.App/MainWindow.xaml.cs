@@ -38,6 +38,8 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<string, XtermPaneSurface> _surfaces = new(); // UI-thread confined; keyed by pane token
     private readonly AppWindow _appWindow;
     private readonly FullscreenController _fullscreen;
+    private readonly WindowFrameStore _frames = new();
+    private readonly WindowFrameTracker _frameTracker = new();
     private readonly CancellationTokenSource _bootstrapCancellation = new();
     private CancellationTokenSource? _notificationBannerCancellation;
     private readonly TaskCompletionSource<LiveControlHost> _hostReady =
@@ -191,6 +193,7 @@ public sealed partial class MainWindow : Window
         ApplyExeIcon();
         _fullscreen = new FullscreenController(ApplyFullscreen);
         _appWindow.Changed += OnAppWindowChanged;
+        RestoreWindowFrame();
         Activated += OnWindowActivated;
         _pageLifecycle = new TerminalPageLifecycle<XtermPage>(
             BootPageAsync, TimeSpan.FromSeconds(12), ReportPageInitializationFailure);
@@ -378,6 +381,69 @@ public sealed partial class MainWindow : Window
     private static LiveDisplayMetrics DisplayMetrics(RectInt32 bounds, double scale) =>
         new(bounds.X, bounds.Y, bounds.Width, bounds.Height, scale);
 
+    // runs before the first Activate, so the window never shows at the default place first
+    private void RestoreWindowFrame()
+    {
+        if (_frames.Load(_windowId) is { } saved)
+        {
+            var displays = DisplayArea.FindAll();
+            var primaryId = DisplayArea.Primary.DisplayId;
+            var frameDisplays = Enumerable.Range(0, displays.Count)
+                .Select(index => new FrameDisplay(
+                    PixelRectOf(displays[index].OuterBounds),
+                    PixelRectOf(displays[index].WorkArea),
+                    DisplayScale(displays[index])))
+                .ToArray();
+            var primaryIndex = Enumerable.Range(0, displays.Count)
+                .FirstOrDefault(index => displays[index].DisplayId.Equals(primaryId));
+            var bounds = WindowFrameRestore.Constrain(saved.Bounds, frameDisplays, primaryIndex);
+            MoveAndResizeOnTargetDisplay(new RectInt32(bounds.X, bounds.Y, bounds.Width, bounds.Height));
+            if (saved.Maximized && _appWindow.Presenter is OverlappedPresenter presenter)
+                presenter.Maximize();
+        }
+        ObserveWindowFrame();
+    }
+
+    // the window is created on the primary display; moving it to a display with another scale makes
+    // Windows rescale it to keep its size in points, so the saved pixels go on again once it is there
+    private void MoveAndResizeOnTargetDisplay(RectInt32 bounds)
+    {
+        _appWindow.MoveAndResize(bounds);
+        if (_appWindow.Size.Width != bounds.Width || _appWindow.Size.Height != bounds.Height)
+            _appWindow.MoveAndResize(bounds);
+    }
+
+    private void ObserveWindowFrame()
+    {
+        var state = _appWindow.Presenter switch
+        {
+            OverlappedPresenter { State: OverlappedPresenterState.Maximized } => WindowShowState.Maximized,
+            OverlappedPresenter { State: OverlappedPresenterState.Minimized } => WindowShowState.Minimized,
+            OverlappedPresenter => WindowShowState.Normal,
+            _ => WindowShowState.FullScreen,
+        };
+        var position = _appWindow.Position;
+        var size = _appWindow.Size;
+        _frameTracker.Observe(state, new PixelRect(position.X, position.Y, size.Width, size.Height));
+    }
+
+    // a frame that cannot be written only costs the default placement on the next open
+    private void SaveWindowFrame()
+    {
+        if (_frameTracker.Frame is not { } frame)
+            return;
+        try
+        {
+            _frames.Save(_windowId, frame);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Trace.TraceWarning($"Window frame save failed: {ex.Message}");
+        }
+    }
+
+    private static PixelRect PixelRectOf(RectInt32 rect) => new(rect.X, rect.Y, rect.Width, rect.Height);
+
     private static double DisplayScale(DisplayArea display)
     {
         var bounds = display.OuterBounds;
@@ -476,6 +542,8 @@ public sealed partial class MainWindow : Window
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidPositionChange || args.DidSizeChange || args.DidPresenterChange)
+            ObserveWindowFrame();
         if (!args.DidPresenterChange)
             return;
 
@@ -486,6 +554,7 @@ public sealed partial class MainWindow : Window
 
     private async Task ShutdownForCloseAsync()
     {
+        SaveWindowFrame();
         _bootstrapCancellation.Cancel();
         await _applicationHost.CloseWindowAsync(_windowId).ConfigureAwait(false);
     }
@@ -1136,7 +1205,16 @@ public sealed partial class MainWindow : Window
         if (enabled)
         {
             _restorePresenterKind = _appWindow.Presenter.Kind;
-            _appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            _frameTracker.EnteringFullScreen();
+            try
+            {
+                _appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+            }
+            catch
+            {
+                _frameTracker.FullScreenCancelled();
+                throw;
+            }
         }
         else
         {

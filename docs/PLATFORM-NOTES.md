@@ -609,6 +609,16 @@ The WinUI app reaches WebView2 through the Windows App SDK projection, which exp
 
 Windows refuses that call while another application is in front, for example when `agtermctl` runs in a separate terminal and agterm is behind it. Then the window's taskbar button flashes until the user switches to it. Upstream brings agterm in front of other applications, which macOS allows. The routing side does not depend on it: the window is frontmost for routing either way.
 
+## Window position and size after a relaunch
+
+Upstream saves each window's frame when the window closes, under its window id in UserDefaults (`agterm-frame-<uuid>`, `WindowAccessor.swift`), and applies it once when that window opens again, fitted to the displays attached now (`WindowGeometry.bestDisplayIndex` and `constrain`). The port does the same, with three differences:
+
+- The frames live in `<stateDir>\window-frames.json`, keyed by window id, not in a per-user OS store. `AGTERM_STATE_DIR` then isolates them like the other state files, and `windows.json` keeps upstream's shape. An unreadable file reads as no frames.
+- A frame is the window's normal bounds in physical pixels plus a `maximized` flag. A window closed maximized opens maximized on the same display, and its restore button returns it to the bounds it had before. macOS has no maximized state, so upstream stores the frame alone. Bounds are taken only while the window is in the normal state; minimized and full screen leave the last normal bounds.
+- Full screen is not restored: a window closed in full screen opens with the frame it had before it entered full screen.
+
+The frame is fitted to the display that holds most of it, or the primary display when none does: it shrinks to that display's work area, grows to the 320×240 point minimum `window.resize` uses, and moves fully inside the work area. A new window starts on the primary display, and moving it onto a display with another scale makes Windows rescale it to keep its size in points, so the frame is applied a second time once the window is on its display. A window with no saved frame, such as a new one, opens at the default place. The frame is saved on every close path, including `window.close`; a crash keeps the frame from the last close.
+
 ## Workspace row "+" and hidden interface elements
 
 Upstream at the pin shows a `+` on a workspace row while the pointer is over it (`SidebarCellView.addButton`, accessibility id `workspace-add-session`). The spec does not describe it, so the Phase 4 sidebar shipped without it. The port now has it:
