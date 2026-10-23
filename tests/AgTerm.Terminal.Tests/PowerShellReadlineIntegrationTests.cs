@@ -43,9 +43,9 @@ public class PowerShellReadlineIntegrationTests : IDisposable
         return path;
     }
 
-    /// <summary>Starts the shell with the integration dot-sourced after <paramref name="setup"/>,
-    /// the way the app's -NoExit -Command does. setup must not contain a double quote: Windows
-    /// PowerShell 5.1 parses them out of -Command.</summary>
+    /// <summary>Starts the shell with the integration loaded after <paramref name="setup"/>, by
+    /// the same command the app's -NoExit -Command uses. setup must not contain a double quote:
+    /// Windows PowerShell 5.1 parses them out of -Command.</summary>
     private ConPtySession StartShell(string shell, string setup = "")
     {
         _pty = ConPtySession.Start(new ConPtyStartInfo
@@ -53,7 +53,7 @@ public class PowerShellReadlineIntegrationTests : IDisposable
             Argv =
             [
                 shell, "-NoProfile", "-NoLogo", "-NoExit", "-Command",
-                $"Set-PSReadLineOption -HistorySaveStyle SaveNothing; {setup}. '{ScriptPath()}'",
+                $"Set-PSReadLineOption -HistorySaveStyle SaveNothing; {setup}{ShellIntegration.LoadScriptCommand(ScriptPath())}",
             ],
             Cols = 120,
             Rows = 30,

@@ -58,13 +58,16 @@ public class ShellIntegrationTests
     private const string ScriptDir = @"C:\app\integration";
 
     [Fact]
-    public void Powershell_argv_dot_sources_the_script_and_keeps_the_session_interactive()
+    public void Powershell_argv_dot_sources_the_script_text_and_keeps_the_session_interactive()
     {
         var argv = ShellIntegration.Inject([@"C:\pwsh.exe"], ScriptDir);
 
         // -NoExit is what keeps this a usable shell: without it pwsh runs the -Command and quits.
+        // The script's text is dot-sourced, not the file: execution policy checks script files
+        // only, and Windows PowerShell's default (Restricted) refuses `. 'integration.ps1'`.
         Assert.Equal(
-            [@"C:\pwsh.exe", "-NoExit", "-Command", @". 'C:\app\integration\integration.ps1'"],
+            [@"C:\pwsh.exe", "-NoExit", "-Command",
+                @". ([scriptblock]::Create([IO.File]::ReadAllText('C:\app\integration\integration.ps1')))"],
             argv);
     }
 
@@ -74,7 +77,9 @@ public class ShellIntegrationTests
         // 'Program Files' would otherwise split into two -Command tokens.
         var argv = ShellIntegration.Inject(["pwsh.exe"], @"C:\Program Files\agterm");
 
-        Assert.Equal(@". 'C:\Program Files\agterm\integration.ps1'", argv[^1]);
+        Assert.Equal(
+            @". ([scriptblock]::Create([IO.File]::ReadAllText('C:\Program Files\agterm\integration.ps1')))",
+            argv[^1]);
     }
 
     [Fact]
@@ -83,7 +88,7 @@ public class ShellIntegrationTests
         var argv = ShellIntegration.Inject(["powershell.exe"], ScriptDir);
 
         Assert.Contains("-NoExit", argv);
-        Assert.EndsWith(@"integration.ps1'", argv[^1]);
+        Assert.EndsWith(@"integration.ps1')))", argv[^1]);
     }
 
     [Fact]
@@ -207,8 +212,13 @@ public class ShellIntegrationTests
         new[] { "pwsh.exe" },
         new[] { "pwsh.exe", "-NoLogo" },
         new[] { "pwsh.exe", "-NoExit", "-Command", @". 'C:\other\profile.ps1'" },
-        new[] { "pwsh.exe", "-NoExit", "-Command", @". 'C:\app\integration\integration.ps1'; vim" },
-        new[] { "pwsh.exe", "-Command", @". 'C:\app\integration\integration.ps1'" },
+        new[] { "pwsh.exe", "-NoExit", "-Command", @". 'C:\app\integration\integration.ps1'" },
+        new[] { "pwsh.exe", "-NoExit", "-Command",
+            @". ([scriptblock]::Create([IO.File]::ReadAllText('C:\other\profile.ps1')))" },
+        new[] { "pwsh.exe", "-NoExit", "-Command",
+            @". ([scriptblock]::Create([IO.File]::ReadAllText('C:\app\integration\integration.ps1'))); vim" },
+        new[] { "pwsh.exe", "-Command",
+            @". ([scriptblock]::Create([IO.File]::ReadAllText('C:\app\integration\integration.ps1')))" },
         new[] { "cmd.exe", "-NoExit", "-Command", @". 'C:\app\integration\integration.ps1'" },
         new[] { "npm", "run", "dev" },
         Array.Empty<string>(),

@@ -130,7 +130,7 @@ public static class ShellIntegration
             // Single quotes are PowerShell's literal string: a path with spaces stays one token,
             // and nothing inside it is expanded.
             ShellKind.PowerShellCore or ShellKind.WindowsPowerShell =>
-                [shell, "-NoExit", "-Command", DotSource(script)],
+                [shell, "-NoExit", "-Command", LoadScriptCommand(script)],
 
             // /k runs and stays (/c would exit). call and the path stay separate arguments, so the
             // spawn quotes the path as a whole: quotes embedded in one argument are escaped as \",
@@ -145,7 +145,13 @@ public static class ShellIntegration
         };
     }
 
-    private static string DotSource(string script) => $". '{script}'";
+    // Dot-sources the script's TEXT rather than the file. Execution policy checks script files
+    // only, and Windows PowerShell's default policy on a client (Restricted) refuses
+    // `. 'integration.ps1'`. Loading the text leaves the policy alone for everything the user runs.
+    private const string LoadPrefix = ". ([scriptblock]::Create([IO.File]::ReadAllText('";
+    private const string LoadSuffix = "')))";
+
+    internal static string LoadScriptCommand(string script) => LoadPrefix + script + LoadSuffix;
 
     /// <summary>
     /// True when argv is exactly what <see cref="Inject"/> builds for PowerShell. integration.ps1
@@ -159,11 +165,9 @@ public static class ShellIntegration
         if (argv[1] != "-NoExit" || argv[2] != "-Command") return false;
 
         var command = argv[3];
-        const string prefix = ". '";
-        const string suffix = "'";
-        if (!command.StartsWith(prefix, StringComparison.Ordinal) || !command.EndsWith(suffix, StringComparison.Ordinal))
+        if (!command.StartsWith(LoadPrefix, StringComparison.Ordinal) || !command.EndsWith(LoadSuffix, StringComparison.Ordinal))
             return false;
-        var script = command[prefix.Length..^suffix.Length];
+        var script = command[LoadPrefix.Length..^LoadSuffix.Length];
         return !script.Contains('\'')
             && string.Equals(Path.GetFileName(script), ScriptName(ShellKind.PowerShellCore), StringComparison.OrdinalIgnoreCase);
     }

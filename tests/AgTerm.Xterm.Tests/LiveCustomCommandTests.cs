@@ -390,6 +390,22 @@ public sealed class CustomCommandInvocationTests
     }
 
     [Fact]
+    public void ProcessStartInfo_skips_windows_powershell_and_falls_back_to_COMSPEC()
+    {
+        var invocation = Invocation();
+
+        var startInfo = CustomCommandProcessRunner.CreateStartInfo(
+            invocation,
+            which: name => name == "powershell.exe"
+                ? @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+                : null,
+            env: key => key == "COMSPEC" ? @"C:\Windows\System32\cmd.exe" : null);
+
+        Assert.Equal(@"C:\Windows\System32\cmd.exe", startInfo.FileName);
+        Assert.Equal($"/d /c \"{invocation.ShellLine}\"", startInfo.Arguments);
+    }
+
+    [Fact]
     public async Task ProcessRunner_names_the_missing_session_directory_before_launch()
     {
         var missing = Path.Combine(Path.GetTempPath(), "agterm-missing-" + Guid.NewGuid().ToString("N"));

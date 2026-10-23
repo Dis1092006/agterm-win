@@ -206,7 +206,7 @@ public sealed class CustomCommandProcessRunner
         which ??= FindExecutableOnPath;
         env ??= Environment.GetEnvironmentVariable;
 
-        var shell = ShellResolver.Resolve(null, which, env);
+        var shell = ShellResolver.ResolveCommandLineShell(which, env);
         var isPowerShell = string.Equals(
             Path.GetFileName(shell),
             "pwsh.exe",

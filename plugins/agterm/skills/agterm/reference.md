@@ -227,7 +227,7 @@ All twelve are read-only projections of GUI state.
   failure bar. Wrap in a shell for shell syntax —
   `--command "pwsh -NoLogo -Command 'Get-ChildItem; git status'"` —
   or give an absolute path. Without `--command` the session runs the default shell: `pwsh.exe` from
-  `PATH`, else `%COMSPEC%`, else `cmd.exe`.
+  `PATH`, else `powershell.exe` from `PATH`, else `%COMSPEC%`, else `cmd.exe`.
   `--wait` (only with `--command`, else an error) HOLDS the session open after the command exits
   with the final output intact instead of closing immediately —
   so you can read a build/test/deploy's final output or an early failure that would otherwise flash and

@@ -3,12 +3,15 @@ namespace AgTerm.Terminal.Tests;
 /// <summary>
 /// The default-shell policy (PLATFORM-NOTES: Windows has no login-shell semantics / $SHELL):
 /// an explicitly configured shell wins verbatim; otherwise PowerShell 7 (pwsh.exe) when it is
-/// on PATH, falling back to cmd (%COMSPEC%, or literal "cmd.exe" when even that is unset).
+/// on PATH, then Windows PowerShell (powershell.exe), falling back to cmd (%COMSPEC%, or literal
+/// "cmd.exe" when even that is unset).
 /// Probes are injected so the policy is unit-testable without touching the machine's PATH.
 /// </summary>
 public class ShellResolverTests
 {
     private static string? NoWhich(string _) => null;
+
+    private const string WindowsPowerShell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 
     [Fact]
     public void Configured_shell_wins_verbatim()
@@ -29,6 +32,31 @@ public class ShellResolverTests
         var shell = ShellResolver.Resolve(
             configured,
             which: name => name == "pwsh.exe" ? "C:\\Program Files\\PowerShell\\7\\pwsh.exe" : null,
+            env: _ => null);
+        Assert.Equal("C:\\Program Files\\PowerShell\\7\\pwsh.exe", shell);
+    }
+
+    [Fact]
+    public void Without_pwsh_prefers_windows_powershell_over_comspec()
+    {
+        var shell = ShellResolver.Resolve(
+            configured: null,
+            which: name => name == "powershell.exe" ? WindowsPowerShell : null,
+            env: name => name == "COMSPEC" ? "C:\\Windows\\system32\\cmd.exe" : null);
+        Assert.Equal(WindowsPowerShell, shell);
+    }
+
+    [Fact]
+    public void Pwsh_wins_over_windows_powershell()
+    {
+        var shell = ShellResolver.Resolve(
+            configured: null,
+            which: name => name switch
+            {
+                "pwsh.exe" => "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+                "powershell.exe" => WindowsPowerShell,
+                _ => null,
+            },
             env: _ => null);
         Assert.Equal("C:\\Program Files\\PowerShell\\7\\pwsh.exe", shell);
     }

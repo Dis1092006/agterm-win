@@ -41,7 +41,7 @@ public sealed record LiveControlHostOptions
 
     public string? HomeDirectory { get; init; }
 
-    /// <summary>The configured default shell; null = the ShellResolver policy (pwsh → cmd).</summary>
+    /// <summary>The configured default shell; null = the ShellResolver policy (pwsh → powershell → cmd).</summary>
     public string? DefaultShell { get; init; }
 
     /// <summary>

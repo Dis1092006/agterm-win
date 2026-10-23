@@ -116,8 +116,13 @@ available in the headless host"` (после резолюции цели — `no
 
 - **Дефолтный шелл вместо login-shell.** На Windows нет `$SHELL` и login-shell-семантики
   (upstream спавнит login-шелл пользователя). Политика порта (`ShellResolver`): явная
-  настройка → вербатим; иначе PowerShell 7 (`pwsh.exe` с PATH); иначе `%COMSPEC%`;
-  иначе литеральный `cmd.exe`. На wire не влияет.
+  настройка → вербатим; иначе PowerShell 7 (`pwsh.exe` с PATH); иначе Windows PowerShell
+  (`powershell.exe` с PATH, есть в каждой поддерживаемой Windows); иначе `%COMSPEC%`;
+  иначе литеральный `cmd.exe`. Без pwsh панель раньше открывала `cmd.exe`, где нет поиска по
+  истории (Ctrl+R) и интеграции PSReadLine; Windows PowerShell 5.1 даёт и то, и другое.
+  Custom-команды этот шаг пропускают (`ShellResolver.ResolveCommandLineShell`: pwsh →
+  `%COMSPEC%`): строка, написанная для pwsh или cmd, может содержать `&&`, а 5.1 его не
+  принимает. На wire не влияет.
 
 - **Токенизация `session.new --command`.** Upstream отдаёт строку конфиг-парсеру libghostty.
   Здесь токенайзер свой (`CommandTokenizer`), контракт §6 сохранён (кавычко-aware split,
@@ -236,7 +241,8 @@ available in the headless host"` (после резолюции цели — `no
 - **Custom-command shell and chord adaptation.** Upstream executes each custom command as an
   opaque `/bin/sh -c` line. Windows resolves `pwsh.exe` from `PATH` first and runs
   `-NoLogo -NoProfile -NonInteractive -Command <line>`; when PowerShell 7 is unavailable it
-  falls back to `%COMSPEC% /d /c "<line>"`. The cmd fallback uses its command-string quoting
+  falls back to `%COMSPEC% /d /c "<line>"`, skipping Windows PowerShell even though an interactive
+  pane uses it. The cmd fallback uses its command-string quoting
   rule so quotes already written by the command author around Windows paths remain part of the
   shell line. The runtime does not tokenize the line or add quotes around `{AGT_X}` expansions.
   It exports the same ten `AGT_*` values, with `AGT_SOCKET` containing the literal named-pipe
@@ -395,13 +401,15 @@ Without a report `Session.CurrentCwd` stays null forever, `EffectiveCwd` falls b
 
 | Shell | Script | Attached as | Reports |
 | --- | --- | --- | --- |
-| `pwsh.exe`, `powershell.exe` | `integration.ps1` | `-NoExit -Command ". '<script>'"` | OSC 9;9, OSC 7777 (readline marker) |
+| `pwsh.exe`, `powershell.exe` | `integration.ps1` | `-NoExit -Command ". ([scriptblock]::Create([IO.File]::ReadAllText('<script>')))"` | OSC 9;9, OSC 7777 (readline marker) |
 | `cmd.exe` | `integration.cmd` | `/k call "<script>"` | OSC 9;9 |
 | `bash.exe` (Git Bash) | `integration.bash` | `--rcfile <script> -i` | OSC 7 |
 
 `wsl.exe` is excluded deliberately: it runs another OS, where a Windows script path does not exist and a reported path would be a `/mnt/c` location this side cannot spawn in. Any other shell is `ShellKind.Unsupported` — spawned exactly as before, with no cwd tracking rather than an error.
 
 Constraints the implementation is pinned to, each of which was a real failure first:
+
+- **The PowerShell script is loaded as text, not as a file.** Windows PowerShell 5.1 on a client Windows treats an undefined execution policy as `Restricted` and refuses `. '<script>'` with `PSSecurityException`; pwsh 7 treats it as `RemoteSigned`, which is why the file form only ever failed in 5.1. Execution policy checks script files only, so `[scriptblock]::Create` over the file's text runs under any policy. `-ExecutionPolicy Bypass` would also work, but it would lift the policy for everything the user runs in that shell. `PowerShellReadlineIntegrationTests` starts the shells with the same command.
 
 - **Only a bare shell argv is rewritten.** `LiveControlHost.CaptureRequest` puts a user's own program in the same `argv` for `session.new --command`. Injecting there would replace that program with a shell and break restore, so `ShellIntegration.Inject` rewrites a single-element argv naming a known shell and returns everything else untouched.
 - **The existing prompt is wrapped, not replaced.** `$function:prompt` is captured as a value (resolving it by name inside the wrapper would recurse), and the user's prompt still renders. Verified against a live Oh My Posh profile. `integration.bash` appends to `PROMPT_COMMAND` for the same reason, and re-sources `~/.bashrc` because `--rcfile` replaces it.
