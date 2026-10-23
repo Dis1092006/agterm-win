@@ -1560,11 +1560,15 @@ public sealed partial class MainWindow : Window
     private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen) return;
+        if (PhysicalFromKey(e.Key) is not { } physical) return;
         // A focused plain-text control (e.g. the sidebar's inline rename box) must receive every
         // keystroke as text; letting single-letter chords (e.g. "n", "r") pre-empt it here would
-        // silently eat characters before they ever reach the TextBox.
-        if (IsTextInputFocused()) return;
-        if (PhysicalFromKey(e.Key) is { } physical && HandleChord(physical)) e.Handled = true;
+        // silently eat characters before they ever reach the TextBox. The palette's query box is the
+        // exception, but not for a pick: upstream keeps a pending pick modal for window actions.
+        if (IsTextInputFocused() &&
+            !(PaletteOverlay.IsOpen && _shownPickId is null && PaletteKeys.PassesToWindow(physical)))
+            return;
+        if (HandleChord(physical)) e.Handled = true;
     }
 
     // The window's root ScrollViewer takes the focus on a pointer release that reaches it unhandled,
@@ -1701,9 +1705,23 @@ public sealed partial class MainWindow : Window
             return false;
 
         ObserveTaskFault(
-            router.ExecuteAsync(action),
+            PaletteOverlay.IsOpen && _shownPickId is null && PaletteKeys.ClosesPaletteFirst(action)
+                ? ClosePaletteThenExecuteAsync(router, action)
+                : router.ExecuteAsync(action),
             $"Hotkey action {action} failed");
         return true;
+    }
+
+    private async Task ClosePaletteThenExecuteAsync(WindowCommandRouter router, BuiltinAction action)
+    {
+        await _paletteTransitions.RunAsync(async () =>
+        {
+            if (!PaletteOverlay.IsOpen)
+                return;
+            PaletteOverlay.Close();
+            await FinishPaletteCloseAsync();
+        });
+        await router.ExecuteAsync(action);
     }
 
     private async Task OpenDirectoryIntoActiveAsync()

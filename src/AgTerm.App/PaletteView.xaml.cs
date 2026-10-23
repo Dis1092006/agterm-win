@@ -183,6 +183,8 @@ public sealed partial class PaletteView : UserControl
             e.Handled = true;
             return;
         }
+        if (PaletteKeys.LeavesToWindow((int)e.Key, IsDown(VirtualKey.Control), IsDown(VirtualKey.Menu), IsDown(VirtualKey.Shift)))
+            return;
 
         switch (e.Key)
         {
