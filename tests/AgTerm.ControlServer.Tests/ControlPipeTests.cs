@@ -99,6 +99,10 @@ public class ControlPipeServerTests
         return server;
     }
 
+    private static Task<ControlResponse> SendAsync(ControlPipeClient client, ControlRequest request) =>
+        Task.Factory.StartNew(() => client.Send(request), CancellationToken.None,
+            TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
     [Fact]
     public async Task RoundTripsOneRequestPerConnection()
     {
@@ -107,7 +111,7 @@ public class ControlPipeServerTests
             new ControlResponse { Ok = true, Result = new ControlResult { Id = request.Target } }));
         var client = new ControlPipeClient(pipe);
 
-        var response = client.Send(new ControlRequest { Cmd = Command.SessionSelect, Target = "abc" });
+        var response = await SendAsync(client, new ControlRequest { Cmd = Command.SessionSelect, Target = "abc" });
 
         Assert.True(response.Ok);
         Assert.Equal("abc", response.Result?.Id);
@@ -128,9 +132,9 @@ public class ControlPipeServerTests
         });
         var client = new ControlPipeClient(pipe);
 
-        var first = client.Send(new ControlRequest { Cmd = Command.Tree });
-        var second = client.Send(new ControlRequest { Cmd = Command.Tree });
-        var third = client.Send(new ControlRequest { Cmd = Command.Tree });
+        var first = await SendAsync(client, new ControlRequest { Cmd = Command.Tree });
+        var second = await SendAsync(client, new ControlRequest { Cmd = Command.Tree });
+        var third = await SendAsync(client, new ControlRequest { Cmd = Command.Tree });
 
         Assert.Equal(1, first.Result?.Count);
         Assert.Equal(2, second.Result?.Count);
@@ -164,7 +168,7 @@ public class ControlPipeServerTests
 
         // and the server is still alive for the next connection.
         var client = new ControlPipeClient(pipe);
-        Assert.True(client.Send(new ControlRequest { Cmd = Command.Tree }).Ok);
+        Assert.True((await SendAsync(client, new ControlRequest { Cmd = Command.Tree })).Ok);
     }
 
     [Fact]
@@ -205,7 +209,7 @@ public class ControlPipeServerTests
         using var server = StartEcho(pipe, _ => Task.FromResult<ControlResponse?>(null));
         var client = new ControlPipeClient(pipe);
 
-        var response = client.Send(new ControlRequest { Cmd = Command.DebugAppearance });
+        var response = await SendAsync(client, new ControlRequest { Cmd = Command.DebugAppearance });
 
         Assert.False(response.Ok);
         Assert.Equal("debug.appearance is a UI-test-only seam", response.Error);
@@ -242,17 +246,18 @@ public class ControlPipeServerTests
     }
 
     [Fact]
-    public void StartIsIdempotentAndStopUnbinds()
+    public async Task StartIsIdempotentAndStopUnbinds()
     {
         var pipe = FreshPipe();
         var server = StartEcho(pipe);
         server.Start(); // second start must be a no-op, not a second bind
         var client = new ControlPipeClient(pipe);
-        Assert.True(client.Send(new ControlRequest { Cmd = Command.Tree }).Ok);
+        Assert.True((await SendAsync(client, new ControlRequest { Cmd = Command.Tree })).Ok);
 
         server.Stop();
         var afterStop = new ControlPipeClient(pipe, connectTimeoutMs: 300);
-        Assert.Throws<PipeClientException>(() => afterStop.Send(new ControlRequest { Cmd = Command.Tree }));
+        await Assert.ThrowsAsync<PipeClientException>(
+            () => SendAsync(afterStop, new ControlRequest { Cmd = Command.Tree }));
     }
 
     /// <summary>Writes raw bytes over a fresh pipe connection and reads the single response line.

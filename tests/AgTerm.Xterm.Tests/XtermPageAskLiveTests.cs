@@ -78,7 +78,7 @@ public class XtermPageAskLiveTests
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
         var data = new System.Collections.Concurrent.ConcurrentQueue<string>();
         terminal.DataReceived += data.Enqueue;
-        var intents = new List<string>();
+        var intents = new EventRecorder<string>();
         page.AskIntentReceived += (askId, intent) => intents.Add(intent.GetType().Name + (intent is AskIntent.Hotkey h ? ":" + h.Letter : ""));
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
             (() => {

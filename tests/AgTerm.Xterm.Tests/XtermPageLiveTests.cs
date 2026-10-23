@@ -218,8 +218,8 @@ public class XtermPageLiveTests
         Assert.True(one.Cols > 0 && one.Rows > 0, $"p1 grid: {one.Cols}x{one.Rows}");
         Assert.True(two.Cols > 0 && two.Rows > 0, $"p2 grid: {two.Cols}x{two.Rows}");
 
-        var oneTitles = new List<string>();
-        var twoTitles = new List<string>();
+        var oneTitles = new EventRecorder<string>();
+        var twoTitles = new EventRecorder<string>();
         one.TitleChanged += oneTitles.Add;
         two.TitleChanged += twoTitles.Add;
 
@@ -268,8 +268,8 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var one = await _webView.RunAsync(_ => page.OpenTerminalAsync("live-s33"));
-        var data = new List<string>();
-        var chords = new List<(string PaneId, PhysicalChord Chord)>();
+        var data = new EventRecorder<string>();
+        var chords = new EventRecorder<(string PaneId, PhysicalChord Chord)>();
         one.DataReceived += data.Add;
         page.ChordPressed += (paneId, chord) => chords.Add((paneId, chord));
 
@@ -433,7 +433,7 @@ public class XtermPageLiveTests
         await _webView.RunAsync(_ => page.OpenTerminalAsync("rapid-p1"));
         await _webView.RunAsync(_ => page.OpenTerminalAsync("rapid-p2"));
 
-        var accepted = new List<TerminalLayout>();
+        var accepted = new EventRecorder<TerminalLayout>();
 
         async Task<bool> Sink(TerminalLayout layout) =>
             await _webView.RunAsync(_ => page.ApplyLayoutAsync(layout));
@@ -665,7 +665,7 @@ public class XtermPageLiveTests
         var (page, view) = await BootPageAsync();
         _ = await _webView.RunAsync(_ => page.OpenTerminalAsync("settings-paste"));
 
-        var pasted = new List<string>();
+        var pasted = new EventRecorder<string>();
         page.PasteRequested += pasted.Add;
 
         var snapshotOn = RendererSettingsSnapshot.From(
@@ -831,7 +831,7 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("compo-p1"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
 
         // Focus the xterm helper textarea and dispatch a realistic IME composition sequence for CJK text.
@@ -871,7 +871,7 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("kitty-kbd"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
 
         async Task DispatchAsync(bool shift) => await _webView.RunAsync(
@@ -920,7 +920,7 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("kitty-code"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
 
         // an app asks for the protocol, the way Claude Code does on entry
@@ -967,7 +967,7 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("kitty-both"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
 
         await _webView.RunAsync(_ =>
@@ -1016,8 +1016,8 @@ public class XtermPageLiveTests
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-route"));
 
-        var copied = new List<string>();
-        var pasted = new List<string>();
+        var copied = new EventRecorder<string>();
+        var pasted = new EventRecorder<string>();
         page.CopyRequested += (_, text) => copied.Add(text);
         page.PasteRequested += pasted.Add;
 
@@ -1057,10 +1057,10 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-cyrillic"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
-        var copied = new List<string>();
-        var pasted = new List<string>();
+        var copied = new EventRecorder<string>();
+        var pasted = new EventRecorder<string>();
         page.CopyRequested += (_, text) => copied.Add(text);
         page.PasteRequested += pasted.Add;
 
@@ -1098,10 +1098,10 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-altgr"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
-        var copied = new List<string>();
-        var pasted = new List<string>();
+        var copied = new EventRecorder<string>();
+        var pasted = new EventRecorder<string>();
         page.CopyRequested += (_, text) => copied.Add(text);
         page.PasteRequested += pasted.Add;
 
@@ -1148,8 +1148,8 @@ public class XtermPageLiveTests
         var (page, view) = await BootPageAsync();
         var latin = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-latin-mode"));
         var cyrillic = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-cyrillic-mode"));
-        var latinData = new List<string>();
-        var cyrillicData = new List<string>();
+        var latinData = new EventRecorder<string>();
+        var cyrillicData = new EventRecorder<string>();
         latin.DataReceived += latinData.Add;
         cyrillic.DataReceived += cyrillicData.Add;
 
@@ -1184,8 +1184,8 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-chords"));
-        var data = new List<string>();
-        var hits = new List<PhysicalChord>();
+        var data = new EventRecorder<string>();
+        var hits = new EventRecorder<PhysicalChord>();
         terminal.DataReceived += data.Add;
         page.ChordPressed += (_, chord) => hits.Add(chord);
         await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
@@ -1222,8 +1222,8 @@ public class XtermPageLiveTests
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-custom"));
         var single = Guid.NewGuid();
         var leader = Guid.NewGuid();
-        var hits = new List<CustomHotkeyEvent>();
-        var data = new List<string>();
+        var hits = new EventRecorder<CustomHotkeyEvent>();
+        var data = new EventRecorder<string>();
         page.CustomCommandPressed += hits.Add;
         terminal.DataReceived += data.Add;
         await _webView.RunAsync(_ => page.SetHotkeyManifestAsync(new HotkeyManifest(
@@ -1263,8 +1263,8 @@ public class XtermPageLiveTests
         var (page, view) = await BootPageAsync();
         var latin = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-latin"));
         var cyrillic = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-cyrillic"));
-        var latinData = new List<string>();
-        var cyrillicData = new List<string>();
+        var latinData = new EventRecorder<string>();
+        var cyrillicData = new EventRecorder<string>();
         latin.DataReceived += latinData.Add;
         cyrillic.DataReceived += cyrillicData.Add;
         if (mode.Length > 0) await _webView.RunAsync(_ =>
@@ -1298,8 +1298,8 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-typing"));
-        var data = new List<string>();
-        var hits = new List<PhysicalChord>();
+        var data = new EventRecorder<string>();
+        var hits = new EventRecorder<PhysicalChord>();
         terminal.DataReceived += data.Add;
         page.ChordPressed += (_, chord) => hits.Add(chord);
         await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
@@ -1339,8 +1339,8 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-dvorak"));
-        var hits = new List<PhysicalChord>();
-        var data = new List<string>();
+        var hits = new EventRecorder<PhysicalChord>();
+        var data = new EventRecorder<string>();
         page.ChordPressed += (_, chord) => hits.Add(chord);
         terminal.DataReceived += data.Add;
         await _webView.RunAsync(_ => page.SetInterceptChordsAsync(
@@ -1371,9 +1371,9 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-empty"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
-        var copied = new List<string>();
+        var copied = new EventRecorder<string>();
         page.CopyRequested += (_, text) => copied.Add(text);
 
         if (kitty) await _webView.RunAsync(_ =>
@@ -1411,9 +1411,9 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-cyrillic-empty"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
-        var copied = new List<string>();
+        var copied = new EventRecorder<string>();
         page.CopyRequested += (_, text) => copied.Add(text);
 
         if (kitty) await _webView.RunAsync(_ =>
@@ -1449,11 +1449,11 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-bound"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
-        var copied = new List<string>();
+        var copied = new EventRecorder<string>();
         page.CopyRequested += (_, text) => copied.Add(text);
-        var chords = new List<PhysicalChord>();
+        var chords = new EventRecorder<PhysicalChord>();
         page.ChordPressed += (_, chord) => chords.Add(chord);
         var binding = new PhysicalChord(true, false, true, "c");
 
@@ -1481,9 +1481,9 @@ public class XtermPageLiveTests
     {
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("clip-sigint"));
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         terminal.DataReceived += data.Add;
-        var copied = new List<string>();
+        var copied = new EventRecorder<string>();
         page.CopyRequested += (_, text) => copied.Add(text);
 
         await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(

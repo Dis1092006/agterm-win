@@ -46,10 +46,11 @@ public sealed class LiveShellIntegrationWiringTests : IDisposable
     /// The argv of the surface for a specific session. Indexing by position would be wrong: the
     /// host bootstraps its own default session, whose plain-shell surface is requested first.
     /// </summary>
-    private async Task<IReadOnlyList<string>> ArgvOfSessionAsync(Guid sessionId)
+    private async Task<IReadOnlyList<string>> ArgvOfSessionAsync(Guid sessionId, TimeSpan? waitBudget = null)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        var budget = waitBudget ?? TimeSpan.FromSeconds(10);
+        while (true)
         {
             lock (_requests)
             {
@@ -57,6 +58,8 @@ public sealed class LiveShellIntegrationWiringTests : IDisposable
                     return request.Options.Argv;
             }
 
+            // A delayed continuation must read the result before treating its deadline as a failure.
+            if (elapsed.Elapsed >= budget) break;
             await Task.Delay(25);
         }
 
@@ -64,13 +67,45 @@ public sealed class LiveShellIntegrationWiringTests : IDisposable
         return Array.Empty<string>();
     }
 
+    private async Task<Guid> AddRealizedSessionAsync(LiveControlHost host, string? command = null)
+    {
+        Guid sessionId = default;
+        PendingTerminalSurface? pending = null;
+        host.Host.RunLocked(() =>
+        {
+            var session = host.Host.Store.AddSession(
+                host.Host.Store.Workspaces[0].Id, _stateDir, command: command)!;
+            sessionId = session.Id;
+            pending = Assert.IsType<PendingTerminalSurface>(session.Surface);
+        });
+        Assert.NotNull(pending);
+        try
+        {
+            Assert.NotNull(await pending.Ready.WaitAsync(TimeSpan.FromSeconds(30)));
+        }
+        catch (TimeoutException ex) when (!pending.Ready.IsCompleted)
+        {
+            throw new TimeoutException(
+                $"surface realization did not complete for session {sessionId} within 30 seconds", ex);
+        }
+
+        return sessionId;
+    }
+
+    [Fact]
+    public async Task A_recorded_request_is_returned_even_when_the_wait_budget_has_elapsed()
+    {
+        var host = StartHost(integrationDirectory: null);
+        var sessionId = await AddRealizedSessionAsync(host);
+
+        Assert.Equal([Cmd], await ArgvOfSessionAsync(sessionId, TimeSpan.Zero));
+    }
+
     [Fact]
     public async Task A_plain_shell_session_is_spawned_with_the_integration_attached()
     {
         var host = StartHost(@"C:\app\integration");
-        Guid sessionId = default;
-        host.Host.RunLocked(() => sessionId = host.Host.Store.AddSession(
-            host.Host.Store.Workspaces[0].Id, _stateDir)!.Id);
+        var sessionId = await AddRealizedSessionAsync(host);
 
         var argv = await ArgvOfSessionAsync(sessionId);
 
@@ -83,9 +118,7 @@ public sealed class LiveShellIntegrationWiringTests : IDisposable
         // A published layout that is missing its integration resources must still open a working
         // terminal — just one that does not report its cwd.
         var host = StartHost(integrationDirectory: null);
-        Guid sessionId = default;
-        host.Host.RunLocked(() => sessionId = host.Host.Store.AddSession(
-            host.Host.Store.Workspaces[0].Id, _stateDir)!.Id);
+        var sessionId = await AddRealizedSessionAsync(host);
 
         Assert.Equal([Cmd], await ArgvOfSessionAsync(sessionId));
     }
@@ -96,9 +129,7 @@ public sealed class LiveShellIntegrationWiringTests : IDisposable
         // THE regression guard. A session carrying an InitialCommand puts the user's program in
         // argv instead of the shell; attaching /k call <script> would run cmd instead of it.
         var host = StartHost(@"C:\app\integration");
-        Guid sessionId = default;
-        host.Host.RunLocked(() => sessionId = host.Host.Store.AddSession(
-            host.Host.Store.Workspaces[0].Id, _stateDir, command: "npm run dev")!.Id);
+        var sessionId = await AddRealizedSessionAsync(host, command: "npm run dev");
 
         var argv = await ArgvOfSessionAsync(sessionId);
 

@@ -69,7 +69,7 @@ public sealed class LiveSessionSwitcherKeysTests
         Assert.Equal([SessionSwitcherKey.Tab], keys);
     }
 
-    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View, List<SessionSwitcherKey> Keys)> BootAsync(string paneId)
+    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View, EventRecorder<SessionSwitcherKey> Keys)> BootAsync(string paneId)
     {
         var view = await _webView.CreateWebViewAsync();
         var page = await _webView.RunAsync(async _ =>
@@ -79,8 +79,8 @@ public sealed class LiveSessionSwitcherKeysTests
             return created;
         });
         await _webView.RunAsync(_ => page.OpenTerminalAsync(paneId));
-        var keys = new List<SessionSwitcherKey>();
-        page.SwitcherKeyPressed += key => { lock (keys) keys.Add(key); };
+        var keys = new EventRecorder<SessionSwitcherKey>();
+        page.SwitcherKeyPressed += keys.Add;
         return (page, view, keys);
     }
 

@@ -1124,8 +1124,15 @@ public sealed class LiveWindowRegistryTests : IDisposable
         try
         {
             await dispatchEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await Task.Run(window.StopDispatching)
-                .WaitAsync(TimeSpan.FromMilliseconds(500));
+            var stopStarted = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var stop = Task.Factory.StartNew(() =>
+            {
+                stopStarted.SetResult();
+                window.StopDispatching();
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            await stopStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await stop.WaitAsync(TimeSpan.FromMilliseconds(500));
         }
         finally
         {

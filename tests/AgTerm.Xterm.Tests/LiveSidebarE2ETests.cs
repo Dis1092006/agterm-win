@@ -127,7 +127,7 @@ public sealed class LiveSidebarE2ETests : IDisposable
         var s2 = CtlOk("session", "new", "--workspace", w2, "--no-select").Trim();
 
         // the UI seam observes through the SAME store the socket mutates
-        var snapshots = new List<SidebarSnapshot>();
+        var snapshots = new EventRecorder<SidebarSnapshot>();
         using var storeCoordinator = new LiveStoreCoordinator(
             _host.Host,
             isUiThread: () => false,

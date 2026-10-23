@@ -22,7 +22,7 @@ public sealed class LiveCustomCommandTests
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("shortcuts"));
         var hits = 0;
-        var data = new List<string>();
+        var data = new EventRecorder<string>();
         page.KeyboardShortcutsRequested += () => Interlocked.Increment(ref hits);
         terminal.DataReceived += data.Add;
 
@@ -45,7 +45,7 @@ public sealed class LiveCustomCommandTests
         await _webView.RunAsync(_ => page.OpenTerminalAsync("custom-live"));
         var singleId = Guid.NewGuid();
         var leaderId = Guid.NewGuid();
-        var observed = new List<CustomHotkeyEvent>();
+        var observed = new EventRecorder<CustomHotkeyEvent>();
         page.CustomCommandPressed += observed.Add;
 
         await _webView.RunAsync<object?>(async _ =>
@@ -88,7 +88,7 @@ public sealed class LiveCustomCommandTests
         await _webView.RunAsync(_ => page.OpenTerminalAsync("custom-reload"));
         var oldId = Guid.NewGuid();
         var newId = Guid.NewGuid();
-        var observed = new List<CustomHotkeyEvent>();
+        var observed = new EventRecorder<CustomHotkeyEvent>();
         page.CustomCommandPressed += observed.Add;
 
         await SetManifestAsync(page, new HotkeyManifest(
@@ -118,8 +118,8 @@ public sealed class LiveCustomCommandTests
         var (page, view) = await BootPageAsync();
         var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("custom-timeout"));
         var commandId = Guid.NewGuid();
-        var observed = new List<CustomHotkeyEvent>();
-        var data = new List<string>();
+        var observed = new EventRecorder<CustomHotkeyEvent>();
+        var data = new EventRecorder<string>();
         page.CustomCommandPressed += observed.Add;
         terminal.DataReceived += data.Add;
 
@@ -142,8 +142,8 @@ public sealed class LiveCustomCommandTests
         var (page, view) = await BootPageAsync();
         await _webView.RunAsync(_ => page.OpenTerminalAsync("custom-priority"));
         var commandId = Guid.NewGuid();
-        var custom = new List<CustomHotkeyEvent>();
-        var builtins = new List<PhysicalChord>();
+        var custom = new EventRecorder<CustomHotkeyEvent>();
+        var builtins = new EventRecorder<PhysicalChord>();
         page.CustomCommandPressed += custom.Add;
         page.ChordPressed += (_, chord) => builtins.Add(chord);
 

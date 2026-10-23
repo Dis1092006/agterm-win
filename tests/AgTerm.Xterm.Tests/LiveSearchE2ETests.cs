@@ -257,14 +257,8 @@ public sealed class LiveSearchE2ETests : IDisposable
         WaitForText(">");
         var sessionId = ReadSessionField(session => session.Id);
         var paneId = MainPaneToken();
-        var presentationGate = new object();
-        Task presentation = Task.CompletedTask;
-        var previous = new LiveSelectionSnapshot(null, null);
-        long generation = 0;
-
-        async Task PresentAsync(Task pending, LiveSelectionSnapshot before, LiveSelectionSnapshot current, long next)
+        var presentation = new SelectionPresentationQueue(async (before, current, next) =>
         {
-            await pending;
             await _webView.RunAsync(async _ =>
             {
                 Assert.True(await page.ApplyLayoutAsync(current.ToTerminalLayout(next)));
@@ -280,42 +274,46 @@ public sealed class LiveSearchE2ETests : IDisposable
                         break;
                 }
             });
-        }
+        });
 
-        void OnSelectionChanged(LiveSelectionSnapshot current)
+        async Task<string> CtlAndPresentAsync(
+            Func<LiveSelectionSnapshot, bool> expected,
+            params string[] argv)
         {
-            lock (presentationGate)
-            {
-                presentation = PresentAsync(presentation, previous, current, ++generation);
-                previous = current;
-            }
+            var presented = presentation.WaitForAsync(expected);
+            var output = CtlOk(argv);
+            await presented;
+            return output;
         }
 
-        Task FlushPresentationAsync()
-        {
-            lock (presentationGate) return presentation.WaitAsync(TimeSpan.FromSeconds(15));
-        }
-
-        _host.StoreCoordinator.SelectionSnapshotChanged += OnSelectionChanged;
+        _host.StoreCoordinator.SelectionSnapshotChanged += presentation.Record;
         try
         {
-            CtlOk("session", "search", "login");
-            await FlushPresentationAsync();
+            await CtlAndPresentAsync(
+                snapshot => snapshot.SessionId == sessionId && snapshot.SearchActive
+                    && snapshot.SearchNeedle == "login" && snapshot.SearchOwnerPaneId == paneId,
+                "session", "search", "login");
             Assert.True(ReadSessionField(session => session.SearchActive));
             Assert.False((await SearchBarStateAsync(page)).GetProperty("hidden").GetBoolean());
             Assert.Equal(paneId, (await SearchBarStateAsync(page)).GetProperty("ownerPaneId").GetString());
 
-            var other = CtlOk("session", "new").Trim();
-            await FlushPresentationAsync();
-            Assert.NotEqual(sessionId, Guid.Parse(other));
+            var other = (await CtlAndPresentAsync(
+                snapshot => snapshot.SessionId is { } id && id != sessionId,
+                "session", "new")).Trim();
+            var otherId = Guid.Parse(other);
+            Assert.NotEqual(sessionId, otherId);
             Assert.True(ReadSessionField(session => session.SearchActive));
             var target = new TerminalSurfaceId(sessionId, TerminalZoomSurface.Primary).RawValue;
-            CtlOk("surface", "zoom", "show", "--target", target);
-            await FlushPresentationAsync();
-            CtlOk("surface", "zoom", "hide");
-            await FlushPresentationAsync();
-            CtlOk("session", "select", "--target", sessionId.ToString("D"));
-            await FlushPresentationAsync();
+            await CtlAndPresentAsync(
+                snapshot => snapshot.SessionId == otherId && snapshot.ZoomPaneId == paneId,
+                "surface", "zoom", "show", "--target", target);
+            await CtlAndPresentAsync(
+                snapshot => snapshot.SessionId == otherId && snapshot.ZoomPaneId is null,
+                "surface", "zoom", "hide");
+            await CtlAndPresentAsync(
+                snapshot => snapshot.SessionId == sessionId && !snapshot.SearchActive
+                    && snapshot.SearchOwnerPaneId is null,
+                "session", "select", "--target", sessionId.ToString("D"));
 
             Assert.False(ReadSessionField(session => session.SearchActive));
             Assert.Null(ReadSessionField(session => session.SearchSurface));
@@ -325,8 +323,8 @@ public sealed class LiveSearchE2ETests : IDisposable
         }
         finally
         {
-            _host.StoreCoordinator.SelectionSnapshotChanged -= OnSelectionChanged;
-            await FlushPresentationAsync();
+            _host.StoreCoordinator.SelectionSnapshotChanged -= presentation.Record;
+            await presentation.FlushAsync();
         }
     }
 

@@ -6,6 +6,10 @@ using AgTerm.Xterm;
 
 namespace AgTerm.Xterm.Tests;
 
+[CollectionDefinition("sidebar-workflows", DisableParallelization = true)]
+public sealed class SidebarWorkflowCollection;
+
+[Collection("sidebar-workflows")]
 public sealed class SidebarWorkflowTests : IDisposable
 {
     private readonly string _stateDir = Directory.CreateTempSubdirectory("agterm-workflow-").FullName;
@@ -20,7 +24,13 @@ public sealed class SidebarWorkflowTests : IDisposable
             PipeName = "agterm-workflow-" + Guid.NewGuid().ToString("N"),
             HomeDirectory = _stateDir,
         });
-        _coordinator = new LiveStoreCoordinator(_host, isUiThread: () => false);
+        _coordinator = new LiveStoreCoordinator(_host, isUiThread: () => false,
+            scheduler: (work, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                work();
+                return Task.CompletedTask;
+            });
     }
 
     public void Dispose()
@@ -43,8 +53,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         await _coordinator.MutateAsync(store => store.RenameSession(sessionId, "build"));
         var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = new SidebarController(
             _coordinator,
             runOnUi: work => work(),
@@ -98,8 +107,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         var sessionId = await _coordinator.ReadAsync(store => store.SelectedSessionId!.Value);
         var promptStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(_ =>
         {
             promptStarted.SetResult();
@@ -110,8 +118,9 @@ public sealed class SidebarWorkflowTests : IDisposable
             new[] { sessionId },
             new SidebarCloseOptions(Confirm: true, GraceUndo: true));
         await promptStarted.Task;
-        var response = await Task.Run(() => new ControlPipeClient(_host.PipeName).Send(
-                new ControlRequest { Cmd = Command.Tree }))
+        var response = await Task.Factory.StartNew(
+                () => new ControlPipeClient(_host.PipeName).Send(new ControlRequest { Cmd = Command.Tree }),
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)
             .WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.True(response.Ok, response.Error);
@@ -162,8 +171,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         var sessionId = await _coordinator.ReadAsync(store => store.SelectedSessionId!.Value);
         var promptStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(_ =>
         {
             promptStarted.SetResult();
@@ -193,8 +201,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         });
         var promptStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(_ =>
         {
             promptStarted.SetResult();
@@ -254,8 +261,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         });
         var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(request =>
         {
             promptStarted.SetResult(request);
@@ -301,8 +307,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         });
         var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(request =>
         {
             promptStarted.SetResult(request);
@@ -356,8 +361,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         });
         var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(request =>
         {
             promptStarted.SetResult(request);
@@ -453,8 +457,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         });
         var promptStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(_ =>
         {
             promptStarted.SetResult();
@@ -485,8 +488,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         });
         var promptStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(_ =>
         {
             promptStarted.SetResult();
@@ -517,8 +519,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         });
         var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var releasePrompt = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releasePrompt = ConfirmationGate();
         using var controller = CreateController(request =>
         {
             promptStarted.SetResult(request);
@@ -785,6 +786,35 @@ public sealed class SidebarWorkflowTests : IDisposable
         Assert.Contains("ReopenLatestRecentClosedAsync(_windowId)", mainWindow, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ReopenRecent] = true", router, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task A_manual_confirmation_resumes_model_work_on_the_releasing_thread()
+    {
+        await Task.Factory.StartNew(async () =>
+        {
+            Guid workspaceId = default;
+            await _coordinator.MutateAsync(store =>
+            {
+                workspaceId = store.CurrentWorkspaceId!.Value;
+                store.AddWorkspace("survivor", clearFocus: false);
+            });
+            var releasePrompt = ConfirmationGate();
+            using var controller = CreateController(_ => releasePrompt.Task);
+            var delete = controller.DeleteWorkspaceAsync(workspaceId, graceUndo: true);
+            var mutationThread = 0;
+            _host.Store.SidebarChanged += () =>
+                Volatile.Write(ref mutationThread, Environment.CurrentManagedThreadId);
+            var releasingThread = Environment.CurrentManagedThreadId;
+
+            releasePrompt.SetResult(true);
+
+            await delete;
+            Assert.Equal(releasingThread, Volatile.Read(ref mutationThread));
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+    }
+
+    private static TaskCompletionSource<bool> ConfirmationGate() =>
+        new();
 
     private SidebarController CreateController(Func<SidebarConfirmationRequest, Task<bool>> confirm) =>
         new(_coordinator, runOnUi: work => work(), confirm: confirm);

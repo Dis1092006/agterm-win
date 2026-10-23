@@ -110,7 +110,7 @@ dotnet build "publish.proj" "-p:RunnableOutDir=C:\tools\agterm-win" # somewhere 
 
 Native AOT publishing requires Visual Studio 2022 or later with the **Desktop development with C++** workload, the Windows SDK, and the C++ x64/x86 tools. ARM64 AOT is built and tested in CI. Local ARM64 publishing also requires the **C++ ARM64/ARM64EC build tools** component. Ordinary managed builds and tests do not need the native toolchain. `publish.proj` adds the Visual Studio Installer directory to the CLI publish process's PATH so the SDK can find `vswhere.exe`. It works from ordinary PowerShell without a Developer PowerShell or a manual PATH change.
 
-CI publishes and runs the CLI behavior tests on both x64 and ARM64. To run those tests against a local native publish:
+Pushes to `main` and manual workflow runs publish the CLI and run its behavior tests on x64 and ARM64. Pull requests run the build and test job without publishing the CLI. To run those tests against a local native publish:
 
 ```powershell
 dotnet build "publish.proj"

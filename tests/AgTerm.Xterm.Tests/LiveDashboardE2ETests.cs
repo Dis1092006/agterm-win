@@ -748,7 +748,7 @@ public sealed class LiveDashboardPageTests(WebView2Fixture webView)
     public async Task Dashboard_keyboard_and_click_report_highlight_activation_and_close()
     {
         var page = await webView.CreatePageAsync();
-        var terminalData = new List<string>();
+        var terminalData = new EventRecorder<string>();
         foreach (var paneId in new[] { "nav-one", "nav-two", "nav-three" })
         {
             var terminal = await webView.RunAsync(_ => page.OpenTerminalAsync(paneId));
@@ -760,12 +760,12 @@ public sealed class LiveDashboardPageTests(WebView2Fixture webView)
             new TerminalDashboardCell("nav-two", "A:right"),
             new TerminalDashboardCell("nav-three", "B:left"),
         };
-        var highlights = new List<string>();
+        var highlights = new EventRecorder<string>();
         var activated = new TaskCompletionSource<string>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var closed = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        var builtinHits = new List<PhysicalChord>();
+        var builtinHits = new EventRecorder<PhysicalChord>();
         page.DashboardHighlighted += highlights.Add;
         page.DashboardActivated += controlRef => activated.TrySetResult(controlRef);
         page.DashboardClosed += () => closed.TrySetResult();

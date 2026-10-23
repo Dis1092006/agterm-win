@@ -3,28 +3,34 @@ using AgTerm.Core.Model;
 namespace AgTerm.Xterm.Tests;
 
 // upstream WindowContentView title bar buttons: the state each one draws, read from the window's store
-public sealed class TitleBarStateTests : IDisposable
+public sealed class TitleBarStateTests
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("agterm-titlebar-").FullName;
-    private readonly AppStore _store;
-    private readonly Guid _workspace;
+    private readonly AppStore _store = TestStores.Scratch();
+    private readonly Workspace _workspace = new("main");
 
     public TitleBarStateTests()
     {
-        _store = new AppStore(
-            persistence: new PersistenceStore(_dir),
-            recentClosedStore: new RecentClosedStore(_dir),
-            stateDirectory: _dir);
-        _workspace = _store.AddWorkspace("main").Id;
+        _store.Workspaces.Add(_workspace);
     }
 
-    public void Dispose()
+    private Session Add(string cwd, Workspace? workspace = null)
     {
-        _store.CancelPendingSave();
-        Directory.Delete(_dir, recursive: true);
+        var session = new Session(cwd);
+        (workspace ?? _workspace).Sessions.Add(session);
+        _store.SelectedSessionId = session.Id;
+        _store.SessionRecency.Push(session.Id);
+        return session;
     }
 
-    private Session Add(string cwd) => _store.AddSession(_workspace, cwd)!;
+    [Fact]
+    public void Projecting_recent_sessions_does_not_write_state_files()
+    {
+        Add(@"C:\first");
+        Add(@"C:\second");
+
+        Assert.Single(TitleBarState.Project(_store).RecentSessions);
+        Assert.False(Directory.Exists(_store.StateDirectory));
+    }
 
     [Fact]
     public void A_window_without_a_session_disables_the_session_buttons()
@@ -64,10 +70,11 @@ public sealed class TitleBarStateTests : IDisposable
     public void Recent_sessions_stay_inside_the_focused_workspace()
     {
         var inside = Add(@"C:\in");
-        var other = _store.AddWorkspace("other", clearFocus: false).Id;
-        _store.AddSession(other, @"C:\out");
-        _store.SelectSession(_store.AddSession(_workspace, @"C:\active")!.Id);
-        _store.SetFocusedWorkspace(_workspace);
+        var other = new Workspace("other");
+        _store.Workspaces.Add(other);
+        Add(@"C:\out", other);
+        Add(@"C:\active");
+        _store.FocusedWorkspaceId = _workspace.Id;
 
         Assert.Equal(new[] { inside.Id }, TitleBarState.Project(_store).RecentSessions.Select(r => r.Id));
     }
@@ -97,7 +104,7 @@ public sealed class TitleBarStateTests : IDisposable
     public void Scratch_follows_the_active_session()
     {
         var session = Add(@"C:\a");
-        _store.ToggleScratch(session.Id);
+        session.ScratchActive = true;
 
         var state = TitleBarState.Project(_store);
 
@@ -109,10 +116,12 @@ public sealed class TitleBarStateTests : IDisposable
     public void Split_reports_which_panes_are_up()
     {
         var session = Add(@"C:\a");
-        _store.ToggleSplit(session.Id);
+        session.HasSplit = true;
+        session.IsSplit = true;
+        session.SplitFocused = true;
         Assert.Equal(TitleBarSplit.Both, TitleBarState.Project(_store).Split);
 
-        _store.ToggleSplit(session.Id); // hidden, the new right pane still focused
+        session.IsSplit = false;
         Assert.Equal(TitleBarSplit.Right, TitleBarState.Project(_store).Split);
 
         session.SplitFocused = false;
@@ -124,10 +133,10 @@ public sealed class TitleBarStateTests : IDisposable
     {
         var active = Add(@"C:\a");
         var blocked = Add(@"C:\b");
-        _store.SetAgentIndicator(new AgentIndicator(AgentStatus.Active), active.Id);
+        active.AgentIndicator = new AgentIndicator(AgentStatus.Active);
         Assert.Equal(TitleBarAttention.Attention, TitleBarState.Project(_store).Attention);
 
-        _store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked), blocked.Id);
+        blocked.AgentIndicator = new AgentIndicator(AgentStatus.Blocked);
         Assert.Equal(TitleBarAttention.Blocked, TitleBarState.Project(_store).Attention);
     }
 }
