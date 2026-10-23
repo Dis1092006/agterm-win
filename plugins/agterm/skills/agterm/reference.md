@@ -1010,6 +1010,8 @@ and run `agtermctl config reload`. Fields this reference names: `fontFamily`, `f
 `restoreRunningCommand`, `newSessionDirectory` and `closeGraceUndoEnabled`. An omitted field keeps its
 default.
 
+Windows-only `overlayOpacity` controls the background of Keyboard Shortcuts, palettes, the session switcher and session questions. Absent or `null` keeps the current theme look. An explicit number from `0` (transparent) to `1` (opaque) applies that opacity to an opaque light/dark theme base color; text, controls and scrims are unchanged. Finite out-of-range numbers are clamped when applied, without changing the saved value. A wrong JSON type, an overflowing number or malformed JSON triggers the existing whole-file recovery to default settings. Windows Settings > Personalization > Colors > Transparency effects off forces opaque panel backgrounds regardless of this setting; switching it on restores the configured opacity or the current theme look. Windows switch changes apply while the app runs. After editing `settings.json`, run `agtermctl config reload` to update all windows, including panels already open. For example, `"overlayOpacity": 1` makes panels opaque even when Windows transparency effects are on.
+
 ## theme
 
 The app's out-of-the-box default theme is the bundled **agterm** theme (a fresh install opens on it).

@@ -14,6 +14,14 @@ public sealed partial class KeybindingsView : UserControl
     public bool IsOpen => _controller.IsOpen;
     public event Action? CloseRequested;
 
+    public void SetPanelBackground(Brush? background)
+    {
+        if (background is null)
+            KeybindingsPanel.ClearValue(Border.BackgroundProperty);
+        else
+            KeybindingsPanel.Background = background;
+    }
+
     public void Open(IReadOnlyList<KeybindingGroup> groups)
     {
         _controller.Open(groups);

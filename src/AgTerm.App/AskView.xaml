@@ -11,7 +11,7 @@
     <Canvas x:Name="Root" Background="Transparent">
         <Border x:Name="Scrim" Background="#33000000" />
         <Border x:Name="Panel"
-                Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}"
+                Style="{StaticResource OverlayPanelStyle}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="12"

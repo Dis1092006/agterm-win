@@ -12,8 +12,8 @@
         <CollectionViewSource x:Name="GroupedRows" IsSourceGrouped="True" ItemsPath="Items" />
     </UserControl.Resources>
     <Grid Background="#66000000">
-        <Border MaxWidth="840" MaxHeight="700" Margin="24,48,24,24" Padding="20"
-                Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}"
+        <Border x:Name="KeybindingsPanel" MaxWidth="840" MaxHeight="700" Margin="24,48,24,24" Padding="20"
+                Style="{StaticResource OverlayPanelStyle}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="1" CornerRadius="8">
             <Grid RowSpacing="12">

@@ -2,6 +2,7 @@ using AgTerm.Xterm;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace AgTerm.App;
 
@@ -13,6 +14,14 @@ public sealed partial class SessionSwitcherView : UserControl
     {
         InitializeComponent();
         SizeChanged += (_, e) => SwitcherPanel.Margin = new Thickness(24, e.NewSize.Height * 0.12, 24, 24);
+    }
+
+    public void SetPanelBackground(Brush? background)
+    {
+        if (background is null)
+            SwitcherPanel.ClearValue(Border.BackgroundProperty);
+        else
+            SwitcherPanel.Background = background;
     }
 
     public void Show(IReadOnlyList<TitleBarRecentSession> candidates, int index)

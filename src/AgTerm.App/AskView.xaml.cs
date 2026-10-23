@@ -37,6 +37,14 @@ public sealed partial class AskView : UserControl
 
     public string? AskId => _ask?.Id;
 
+    public void SetPanelBackground(Brush? background)
+    {
+        if (background is null)
+            Panel.ClearValue(Border.BackgroundProperty);
+        else
+            Panel.Background = background;
+    }
+
     /// <summary>takeFocus is false for a question sent to a background window: focusing would
     /// activate the window. The host calls FocusPanel when the user activates it.</summary>
     public void Open(PendingAsk ask, double terminalFontSize, bool takeFocus)

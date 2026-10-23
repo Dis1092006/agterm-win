@@ -25,7 +25,7 @@
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top"
                 x:Name="SwitcherPanel"
-                Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}"
+                Style="{StaticResource OverlayPanelStyle}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="12"

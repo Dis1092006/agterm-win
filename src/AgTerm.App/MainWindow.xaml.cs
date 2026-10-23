@@ -135,9 +135,11 @@ public sealed partial class MainWindow : Window
         _notificationPresenter = new WindowsAppNotificationPresenter(
             message => System.Diagnostics.Trace.TraceWarning(message));
         ApplyThemeChrome(initialTheme.UseDarkChrome);
+        ApplyOverlayPanelBackground(_settings);
         if (ThemeCatalogFailureNotice.From(_themeCatalog.Errors) is { } themeFilesFailure)
             ShowFailure(themeFilesFailure);
         _uiSettings.ColorValuesChanged += OnSystemColorValuesChanged;
+        _uiSettings.AdvancedEffectsEnabledChanged += OnAdvancedEffectsEnabledChanged;
         var themePreviewScheduler = new DispatcherThemePreviewScheduler(
             DispatcherQueue,
             task => ObserveTaskFault(task, "Theme preview failed"));
@@ -255,6 +257,7 @@ public sealed partial class MainWindow : Window
             _appWindow.Changed -= OnAppWindowChanged;
             Activated -= OnWindowActivated;
             _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
+            _uiSettings.AdvancedEffectsEnabledChanged -= OnAdvancedEffectsEnabledChanged;
             PaletteOverlay.SelectionChanged -= OnPaletteSelectionChanged;
             _themePreview.Abandon();
             _workspaceThemePreview.Abandon();
@@ -2740,6 +2743,7 @@ public sealed partial class MainWindow : Window
         ApplyInterfaceElements(settings);
         ApplyComposition(presentation.RendererSettings);
         ApplyThemeChrome(presentation.UseDarkChrome);
+        ApplyOverlayPanelBackground(settings);
     }
 
     private async Task ShowThemePreviewAsync(string? themeName, Func<bool> isCurrent)
@@ -2832,6 +2836,30 @@ public sealed partial class MainWindow : Window
         {
             preview.Select(themeName);
         }
+    }
+
+    private void ApplyOverlayPanelBackground(AppSettings settings)
+    {
+        Brush? background = null;
+        if (settings.EffectiveOverlayOpacity(_uiSettings.AdvancedEffectsEnabled) is { } opacity)
+        {
+            var brush = (SolidColorBrush)RootGrid.Resources["OverlayOpaqueBackgroundBrush"];
+            brush.Opacity = opacity;
+            background = brush;
+        }
+        KeybindingsOverlay.SetPanelBackground(background);
+        PaletteOverlay.SetPanelBackground(background);
+        SwitcherOverlay.SetPanelBackground(background);
+        AskOverlay.SetPanelBackground(background);
+    }
+
+    private void OnAdvancedEffectsEnabledChanged(UISettings sender, object args)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_closedCompletion.Task.IsCompleted)
+                ApplyOverlayPanelBackground(_settings);
+        });
     }
 
     private void OnSystemColorValuesChanged(UISettings sender, object args)

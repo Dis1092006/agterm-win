@@ -7,6 +7,9 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="OverlayPanelStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

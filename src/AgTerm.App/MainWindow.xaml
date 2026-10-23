@@ -16,6 +16,7 @@
         </Grid.RowDefinitions>
 
         <Grid.Resources>
+            <SolidColorBrush x:Key="OverlayOpaqueBackgroundBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
             <Style x:Key="TitleBarActionButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.System;
 
 namespace AgTerm.App;
@@ -29,6 +30,14 @@ public sealed partial class PaletteView : UserControl
     public event Action<PaletteItemViewModel?>? SelectionChanged;
 
     public bool IsOpen => _controller.IsOpen;
+
+    public void SetPanelBackground(Brush? background)
+    {
+        if (background is null)
+            PalettePanel.ClearValue(Border.BackgroundProperty);
+        else
+            PalettePanel.Background = background;
+    }
 
     public void Open(string placeholder, IReadOnlyList<PaletteItemViewModel> items)
     {

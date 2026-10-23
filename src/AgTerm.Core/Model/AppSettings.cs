@@ -78,8 +78,16 @@ public sealed record AppSettings
     /// <summary>Windows-only (not in the upstream surface): re-render each main/split pane's saved
     /// output after a relaunch. Absent means on; see docs/PLATFORM-NOTES.md.</summary>
     [JsonPropertyName("restoreScrollback")] public bool? RestoreScrollback { get; init; }
+    // Windows-only: absent keeps the theme brush rather than choosing a numeric default.
+    [JsonPropertyName("overlayOpacity"), JsonConverter(typeof(Protocol.FiniteDoubleConverter))]
+    public double? OverlayOpacity { get; init; }
 
     [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
+
+    /// <summary>Null keeps the theme brush; a number selects the opaque theme base at that opacity.</summary>
+    public double? EffectiveOverlayOpacity(bool advancedEffectsEnabled) =>
+        !advancedEffectsEnabled ? 1 :
+        OverlayOpacity is { } opacity && double.IsFinite(opacity) ? Math.Clamp(opacity, 0, 1) : null;
 
     /// <summary>Records compare by value; a list property needs an explicit sequence comparison.</summary>
     public bool Equals(AppSettings? other) =>
@@ -102,11 +110,11 @@ public sealed record AppSettings
          other.BlockedStatusSoundName, other.RightClickPaste) &&
         (NewSessionDirectory, NewSessionCustomDirectory, ConfirmCloseSession, CloseGraceUndoEnabled,
          AutoFollowAttention, AutoFollowStayOnActive, SidebarFontSize,
-         AutoHideSidebarInactiveWindows, SidebarThemeColors, SidebarThemeStyle, RestoreScrollback) ==
+         AutoHideSidebarInactiveWindows, SidebarThemeColors, SidebarThemeStyle, RestoreScrollback, OverlayOpacity) ==
         (other.NewSessionDirectory, other.NewSessionCustomDirectory, other.ConfirmCloseSession,
          other.CloseGraceUndoEnabled, other.AutoFollowAttention, other.AutoFollowStayOnActive,
          other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors,
-         other.SidebarThemeStyle, other.RestoreScrollback) &&
+         other.SidebarThemeStyle, other.RestoreScrollback, other.OverlayOpacity) &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&

@@ -21,7 +21,7 @@
                 Margin="24,64,24,24"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Top"
-                Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}"
+                Style="{StaticResource OverlayPanelStyle}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8">
