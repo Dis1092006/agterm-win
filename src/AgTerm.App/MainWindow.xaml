@@ -7,6 +7,7 @@
     <Grid x:Name="RootGrid"
           Background="Transparent"
           KeyDown="OnRootKeyDown"
+          PointerReleased="OnRootPointerReleased"
           PreviewKeyDown="OnRootPreviewKeyDown"
           PreviewKeyUp="OnRootPreviewKeyUp">
         <Grid.RowDefinitions>

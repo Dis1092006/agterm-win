@@ -1524,6 +1524,13 @@ public sealed partial class MainWindow : Window
         if (PhysicalFromKey(e.Key) is { } physical && HandleChord(physical)) e.Handled = true;
     }
 
+    // The window's root ScrollViewer takes the focus on a pointer release that reaches it unhandled,
+    // so a click on an empty part of the title bar moved the keyboard focus out of the terminal.
+    private void OnRootPointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+    }
+
     // MARK: - Ctrl-Tab session switcher
 
     // the terminal page reports these keys itself; the window's own key events cover the rest of the
