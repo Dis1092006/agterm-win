@@ -2592,6 +2592,26 @@ function terminalLineLinks(term, y, activate, hover, leave) {
   });
 }
 
+function terminalLinkAtPointer(pane, ev) {
+  const term = pane.term;
+  const screen = term.element.querySelector(".xterm-screen");
+  const rect = screen.getBoundingClientRect();
+  if (ev.clientX < rect.left || ev.clientX >= rect.right
+      || ev.clientY < rect.top || ev.clientY >= rect.bottom) return null;
+  const x = Math.floor((ev.clientX - rect.left) * term.cols / rect.width) + 1;
+  const y = Math.floor((ev.clientY - rect.top) * term.rows / rect.height)
+    + term.buffer.active.viewportY + 1;
+  const cell = term.buffer.active.getLine(y - 1)?.getCell(x - 1);
+  const urlId = cell?.extended?.urlId;
+  // The pinned xterm exposes OSC 8 IDs on cells, but its target registry is internal.
+  const target = urlId
+    ? term._core._oscLinkService.getLinkData(urlId)?.uri
+    : terminalLineLinks(term, y).find(link =>
+        (y > link.range.start.y || x >= link.range.start.x)
+        && (y < link.range.end.y || x <= link.range.end.x))?.text;
+  return target ? { target, x, y } : null;
+}
+
 function installTerminalLinks(paneId, pane) {
   const activate = (ev, target) => activateTerminalLink(paneId, ev, target);
   const hover = (ev, target, link) => {
@@ -2616,9 +2636,10 @@ function installTerminalLinks(paneId, pane) {
   pane.el.addEventListener("mousedown", ev => {
     press = null;
     consumed = false;
-    if (ev.button !== 0 || !terminalLinkModifier(ev) || !pane.hoveredLink
+    if (ev.button !== 0 || !terminalLinkModifier(ev)
         || !ev.target.closest(".xterm-screen")) return;
-    press = { target: pane.hoveredLink, x: ev.clientX, y: ev.clientY };
+    press = terminalLinkAtPointer(pane, ev);
+    if (!press) return;
     consumed = true;
     ev.preventDefault();
     ev.stopImmediatePropagation();
@@ -2629,8 +2650,9 @@ function installTerminalLinks(paneId, pane) {
     press = null;
     ev.preventDefault();
     ev.stopImmediatePropagation();
-    if (previous.target === pane.hoveredLink
-        && previous.x === ev.clientX && previous.y === ev.clientY)
+    const current = terminalLinkAtPointer(pane, ev);
+    if (current && previous.target === current.target
+        && previous.x === current.x && previous.y === current.y)
       activate(ev, previous.target);
   }, true);
   pane.el.addEventListener("click", ev => {

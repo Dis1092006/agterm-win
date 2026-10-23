@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.Json;
 using AgTerm.Xterm;
 using Microsoft.Web.WebView2.WinForms;
@@ -6,7 +7,7 @@ using Microsoft.Web.WebView2.WinForms;
 namespace AgTerm.Xterm.Tests;
 
 [Collection("webview2")]
-public class XtermPageLinkLiveTests(WebView2Fixture webView) : IAsyncLifetime
+public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.ITestOutputHelper output) : IAsyncLifetime
 {
     private WebView2? _view;
 
@@ -204,11 +205,335 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView) : IAsyncLifetime
     [Fact]
     public async Task The_test_case_disposes_its_WebView_before_releasing_the_shared_fixture()
     {
-        var testCase = new XtermPageLinkLiveTests(webView);
+        var testCase = new XtermPageLinkLiveTests(webView, output);
         var lifecycle = Assert.IsAssignableFrom<IAsyncLifetime>(testCase);
         var (_, view) = await testCase.BootAsync("view lifecycle");
         await lifecycle.DisposeAsync();
         Assert.True(await webView.RunAsync(_ => Task.FromResult(view.IsDisposed)));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Ctrl_click_survives_redrawing_the_link_and_other_rows(bool mouseTracking, bool jitter)
+    {
+        const string target = @"C:\Windows\System32";
+        var (page, view) = await BootAsync("! terraform -chdir=\"" + target + "\" apply \"prod-destroy.tfplan\""
+            + (mouseTracking ? "\x1b[?1000h\x1b[?1006h" : ""));
+        var seen = new ConcurrentQueue<string>();
+        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        await EvalAsync(view, """
+            window.linkMouseInput = [];
+            panes.get('links').term.onData(data => window.linkMouseInput.push(data));
+            """);
+        var coordinates = await EvalAsync(view, """
+            (() => {
+              const term = panes.get('links').term;
+              const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+              return {x:rect.left + rect.width / term.cols * 25.5,
+                y:rect.top + rect.height / term.rows * 0.5};
+            })()
+            """);
+        using var json = JsonDocument.Parse(coordinates);
+        var x = json.RootElement.GetProperty("x").GetDouble();
+        var y = json.RootElement.GetProperty("y").GetDouble();
+        await MouseAsync(view, "mouseMoved", x, y, 2);
+        await WaitAsync(view, "!!panes.get('links').hoveredLink");
+        await MouseAsync(view, "mousePressed", x, y, 2, "left");
+        await EvalAsync(view, """
+            window.redraws = 0;
+            window.redrawTimer = setInterval(() => {
+              panes.get('links').term.write(
+                '\x1b[1;1H\x1b[2K! terraform -chdir="C:\\Windows\\System32" apply "prod-destroy.tfplan"'
+                + '\x1b[3;1H\x1b[2Kworking ' + ++window.redraws);
+            }, 16);
+            """);
+        try
+        {
+            await WaitAsync(view, "window.redraws >= 5");
+            output.WriteLine("Hover after redraw: " + await EvalAsync(view, "panes.get('links').hoveredLink"));
+            await MouseAsync(view, "mouseReleased", x + (jitter ? 1 : 0), y, 2, "left");
+            await Task.Delay(250);
+            Assert.Equal(new[] { target }, seen.ToArray());
+            Assert.Equal("[]", await EvalAsync(view, "window.linkMouseInput"));
+        }
+        finally
+        {
+            await EvalAsync(view, "clearInterval(window.redrawTimer)");
+        }
+    }
+
+    [Fact]
+    public async Task Ten_live_shells_do_not_delay_the_message_worker_or_existence_probe()
+    {
+        var (page, view) = await BootAsync(@"C:\Windows\System32");
+        var shells = new List<TerminalPane>();
+        var timer = Stopwatch.StartNew();
+        var launched = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var times = new ConcurrentQueue<string>();
+        page.TerminalLinkRequested += (paneId, target) =>
+        {
+            times.Enqueue($"message={timer.Elapsed.TotalMilliseconds:F1}ms");
+            _ = Task.Run(() =>
+            {
+                times.Enqueue($"worker={timer.Elapsed.TotalMilliseconds:F1}ms");
+                new TerminalLinkOpener(info =>
+                {
+                    times.Enqueue($"start={timer.Elapsed.TotalMilliseconds:F1}ms, shell={info.UseShellExecute}");
+                    launched.TrySetResult();
+                }, path =>
+                {
+                    var exists = File.Exists(path) || Directory.Exists(path);
+                    times.Enqueue($"exists={timer.Elapsed.TotalMilliseconds:F1}ms");
+                    return exists;
+                }).Open(target);
+            });
+        };
+        try
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                var id = "timing-" + i;
+                shells.Add(await webView.RunAsync(_ => TerminalPane.OpenAsync(page, id, new TerminalPaneOptions
+                {
+                    Argv = ["pwsh.exe", "-NoLogo", "-NoProfile", "-Command",
+                        "while ($true) { [Console]::Write(\"`e[3;1Hworking\"); Start-Sleep -Milliseconds 100 }"],
+                })));
+            }
+
+            await Task.Delay(1000);
+            await EvalAsync(view, """
+                for (const [id, pane] of panes) pane.el.style.display = id === 'links' ? '' : 'none';
+                """);
+            var coordinates = await EvalAsync(view, """
+                (() => {
+                  const term = panes.get('links').term;
+                  const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+                  return {x:rect.left + rect.width / term.cols * 3.5,
+                    y:rect.top + rect.height / term.rows * 0.5};
+                })()
+                """);
+            using var json = JsonDocument.Parse(coordinates);
+            var x = json.RootElement.GetProperty("x").GetDouble();
+            var y = json.RootElement.GetProperty("y").GetDouble();
+            await MouseAsync(view, "mouseMoved", x, y, 2);
+            await WaitAsync(view, "!!panes.get('links').hoveredLink");
+            timer.Restart();
+            await MouseAsync(view, "mousePressed", x, y, 2, "left");
+            await MouseAsync(view, "mouseReleased", x, y, 2, "left");
+            await launched.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            output.WriteLine(string.Join("; ", times));
+            Assert.True(timer.Elapsed < TimeSpan.FromSeconds(2), string.Join("; ", times));
+        }
+        finally
+        {
+            foreach (var shell in shells)
+                await webView.RunAsync(_ => { shell.Dispose(); return Task.CompletedTask; });
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Ctrl_click_resolves_a_link_redrawn_under_the_pointer_after_hover_leaves(bool mouseTracking)
+    {
+        var (page, view) = await BootAsync(@"C:\Windows\System32"
+            + (mouseTracking ? "\x1b[?1000h\x1b[?1006h" : ""));
+        var seen = new ConcurrentQueue<string>();
+        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        var coordinates = await EvalAsync(view, """
+            (() => {
+              const term = panes.get('links').term;
+              const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+              return {x:rect.left + rect.width / term.cols * 3.5,
+                y:rect.top + rect.height / term.rows * 0.5};
+            })()
+            """);
+        using var json = JsonDocument.Parse(coordinates);
+        var x = json.RootElement.GetProperty("x").GetDouble();
+        var y = json.RootElement.GetProperty("y").GetDouble();
+        await MouseAsync(view, "mouseMoved", x, y, 2);
+        await WaitAsync(view, "!!panes.get('links').hoveredLink");
+        await EvalAsync(view, """
+            window.linkOutputWritten = false;
+            panes.get('links').term.write('\x1b[1;1H\x1b[2K', () => window.linkOutputWritten = true);
+            """);
+        await WaitAsync(view, "window.linkOutputWritten");
+        await MouseAsync(view, "mouseMoved", x + 1, y, 2);
+        await WaitAsync(view, "!panes.get('links').hoveredLink");
+        await EvalAsync(view, """
+            window.linkOutputWritten = false;
+            panes.get('links').term.write('\x1b[1;1HC:\\Windows\\System32', () => window.linkOutputWritten = true);
+            """);
+        await WaitAsync(view, "window.linkOutputWritten");
+        output.WriteLine("Hover after restoring link: " + await EvalAsync(view, "panes.get('links').hoveredLink"));
+        await MouseAsync(view, "mousePressed", x + 1, y, 2, "left");
+        await MouseAsync(view, "mouseReleased", x + 1, y, 2, "left");
+        await Task.Delay(250);
+        Assert.Equal(new[] { @"C:\Windows\System32" }, seen.ToArray());
+    }
+
+    [Fact]
+    public async Task A_replaced_link_cannot_activate_the_old_hover_target()
+    {
+        var (page, view) = await BootAsync(@"C:\Windows\System32");
+        var seen = new ConcurrentQueue<string>();
+        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        var coordinates = await EvalAsync(view, """
+            (() => {
+              const term = panes.get('links').term;
+              const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+              return {x:rect.left + rect.width / term.cols * 3.5,
+                y:rect.top + rect.height / term.rows * 0.5};
+            })()
+            """);
+        using var json = JsonDocument.Parse(coordinates);
+        var x = json.RootElement.GetProperty("x").GetDouble();
+        var y = json.RootElement.GetProperty("y").GetDouble();
+        await MouseAsync(view, "mouseMoved", x, y, 2);
+        await WaitAsync(view, "!!panes.get('links').hoveredLink");
+        await MouseAsync(view, "mousePressed", x, y, 2, "left");
+        await EvalAsync(view, """
+            window.linkOutputWritten = false;
+            panes.get('links').term.write('\x1b[1;1H\x1b[2KC:\\Windows\\notepad.exe',
+              () => window.linkOutputWritten = true);
+            """);
+        await WaitAsync(view, "window.linkOutputWritten");
+        await MouseAsync(view, "mouseReleased", x, y, 2, "left");
+        await Task.Delay(250);
+        Assert.Empty(seen);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task A_live_tui_can_redraw_during_a_link_gesture(bool mouseTracking, bool osc8)
+    {
+        var (page, view) = await BootAsync("");
+        var seen = new ConcurrentQueue<string>();
+        page.TerminalLinkRequested += (_, target) => seen.Enqueue(target);
+        var label = @"! terraform -chdir=""C:\Windows\System32"" apply ""prod-destroy.tfplan""";
+        var line = osc8 ? "\x1b]8;;file:///C:/safe.txt\x1b\\" + label + "\x1b]8;;\x1b\\" : label;
+        var prefix = "\x1b[?1049h" + (mouseTracking ? "\x1b[?1000h\x1b[?1006h" : "");
+        var frame = "\x1b[1;1H\x1b[2K" + line + "\x1b[3;1H\x1b[2Kworking ";
+        var script = $"[Console]::Write('{prefix}'); $i=0; while ($true) {{ [Console]::Write('{frame}' + (++$i)); Start-Sleep -Milliseconds 16 }}";
+        using var shell = await webView.RunAsync(_ => TerminalPane.OpenAsync(page, "tui", new TerminalPaneOptions
+        {
+            Argv = ["pwsh.exe", "-NoLogo", "-NoProfile", "-EncodedCommand",
+                Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script))],
+        }));
+        await webView.RunAsync(_ => page.ShowPaneAsync("tui"));
+        await EvalAsync(view, """
+            panes.get('links').el.style.display = 'none';
+            window.tuiMouseInput = [];
+            panes.get('tui').term.onData(data => window.tuiMouseInput.push(data));
+            """);
+        await WaitAsync(view, "panes.get('tui').term.buffer.active.type === 'alternate'"
+            + " && panes.get('tui').term.buffer.active.getLine(0)?.translateToString().includes('terraform')");
+        var coordinates = await EvalAsync(view, """
+            (() => {
+              const term = panes.get('tui').term;
+              const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+              return {x:rect.left + rect.width / term.cols * 25.5,
+                y:rect.top + rect.height / term.rows * 0.5};
+            })()
+            """);
+        using var json = JsonDocument.Parse(coordinates);
+        var x = json.RootElement.GetProperty("x").GetDouble();
+        var y = json.RootElement.GetProperty("y").GetDouble();
+        await MouseAsync(view, "mouseMoved", x, y, 2);
+        await WaitAsync(view, "!!panes.get('tui').hoveredLink");
+        await MouseAsync(view, "mousePressed", x, y, 2, "left");
+        var before = await EvalAsync(view, "panes.get('tui').term.buffer.active.getLine(2).translateToString()");
+        await WaitAsync(view, $"panes.get('tui').term.buffer.active.getLine(2).translateToString() !== {before}");
+        await MouseAsync(view, "mouseReleased", x + 1, y, 2, "left");
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (seen.IsEmpty && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        Assert.Equal(new[] { osc8 ? "file:///C:/safe.txt" : @"C:\Windows\System32" }, seen.ToArray());
+        var input = JsonSerializer.Deserialize<string[]>(await EvalAsync(view, "window.tuiMouseInput"))!;
+        Assert.DoesNotContain(input, data => data.StartsWith("\x1b[<", StringComparison.Ordinal)
+            || data.StartsWith("\x1b[M", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Moving_to_another_cell_cancels_the_link_without_sending_mouse_reports(bool removeLink)
+    {
+        var (page, view) = await BootAsync("https://example.com\x1b[?1000h\x1b[?1006h");
+        var seen = new ConcurrentQueue<string>();
+        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        await EvalAsync(view, """
+            window.linkMouseInput = [];
+            panes.get('links').term.onData(data => window.linkMouseInput.push(data));
+            """);
+        var coordinates = await EvalAsync(view, """
+            (() => {
+              const term = panes.get('links').term;
+              const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+              const width = rect.width / term.cols;
+              return {x:rect.left + width * 3.5, width, y:rect.top + rect.height / term.rows * 0.5};
+            })()
+            """);
+        using var json = JsonDocument.Parse(coordinates);
+        var x = json.RootElement.GetProperty("x").GetDouble();
+        var y = json.RootElement.GetProperty("y").GetDouble();
+        var width = json.RootElement.GetProperty("width").GetDouble();
+        await MouseAsync(view, "mouseMoved", x, y, 2);
+        await WaitAsync(view, "!!panes.get('links').hoveredLink");
+        await MouseAsync(view, "mousePressed", x, y, 2, "left");
+        if (removeLink)
+        {
+            await EvalAsync(view, """
+                window.linkOutputWritten = false;
+                panes.get('links').term.write('\x1b[1;1H\x1b[2K', () => window.linkOutputWritten = true);
+                """);
+            await WaitAsync(view, "window.linkOutputWritten");
+        }
+        await MouseAsync(view, "mouseMoved", x + width, y, 2, "left");
+        await MouseAsync(view, "mouseReleased", x + width, y, 2, "left");
+        await Task.Delay(100);
+        Assert.Empty(seen);
+        Assert.Equal("[]", await EvalAsync(view, "window.linkMouseInput"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Hit_testing_follows_wrapped_cells_in_a_scrolled_buffer(bool osc8)
+    {
+        const string target = "https://example.com/long/path";
+        var label = "界e\u0301 " + target;
+        var line = osc8 ? "\x1b]8;;file:///C:/safe.txt\x1b\\" + label + "\x1b]8;;\x1b\\" : label;
+        var (page, view) = await BootAsync(string.Concat(Enumerable.Repeat("filler\r\n", 5))
+            + line + string.Concat(Enumerable.Repeat("\r\nother", 30)), 20);
+        var seen = new ConcurrentQueue<string>();
+        page.TerminalLinkRequested += (_, link) => seen.Enqueue(link);
+        await EvalAsync(view, "panes.get('links').term.scrollToLine(5)");
+        await WaitAsync(view, "panes.get('links').term.buffer.active.viewportY === 5");
+        var coordinates = await EvalAsync(view, """
+            (() => {
+              const term = panes.get('links').term;
+              const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+              return {x:rect.left + rect.width / term.cols * 3.5,
+                y:rect.top + rect.height / term.rows * 1.5};
+            })()
+            """);
+        using var json = JsonDocument.Parse(coordinates);
+        var x = json.RootElement.GetProperty("x").GetDouble();
+        var y = json.RootElement.GetProperty("y").GetDouble();
+        await MouseAsync(view, "mouseMoved", x, y, 2);
+        await MouseAsync(view, "mousePressed", x, y, 2, "left");
+        await MouseAsync(view, "mouseReleased", x, y, 2, "left");
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (seen.IsEmpty && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        Assert.Equal(new[] { osc8 ? "file:///C:/safe.txt" : target }, seen.ToArray());
     }
 
     [Theory]
