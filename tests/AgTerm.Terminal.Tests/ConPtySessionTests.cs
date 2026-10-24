@@ -93,6 +93,22 @@ public class ConPtySessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Dispose_after_a_write_to_a_closed_console_does_not_throw()
+    {
+        // The page can answer a pty query after the child is gone, as xterm does for ConPTY's
+        // cursor position request. The failed write must leave nothing behind for Dispose to
+        // flush into the closed pipe (CI: IOException "The pipe is being closed" from Dispose).
+        var pty = Start(Cmd, "/c", "exit 0");
+        await pty.Exited.WaitAsync(ChildBudget);
+        await pty.OutputCompleted.WaitAsync(ChildBudget);
+
+        pty.WriteText("\x1b[1;1R");
+
+        _pty = null;
+        pty.Dispose();
+    }
+
+    [Fact]
     public async Task Exit_code_propagates()
     {
         var pty = Start(Cmd, "/c", "exit 3");

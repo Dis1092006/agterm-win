@@ -139,7 +139,9 @@ public sealed class ConPtySession : IDisposable
             }
             ConPtyNative.CloseHandle(processInfo.Thread);
 
-            var input = new FileStream(ourInputWrite, FileAccess.Write);
+            // unbuffered: a write that fails once the console is closed must not leave its bytes
+            // in a buffer that Dispose would flush into the closed pipe, and Write flushes anyway
+            var input = new FileStream(ourInputWrite, FileAccess.Write, bufferSize: 0);
             var session = new ConPtySession(console, processInfo.Process, input);
             session.StartReader(ourOutputRead, info.OnOutput);
             session.StartExitWatcher();
