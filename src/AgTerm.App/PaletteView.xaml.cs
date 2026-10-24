@@ -143,11 +143,21 @@ public sealed partial class PaletteView : UserControl
 
     public void FocusQuery()
     {
-        FocusQueryBox();
-        DispatcherQueue.TryEnqueue(FocusQueryBox);
+        FocusQueryUnlessContentDialogOpen();
+        DispatcherQueue.TryEnqueue(FocusQueryUnlessContentDialogOpen);
     }
 
-    private void FocusQueryBox() => QueryBox.Focus(FocusState.Programmatic);
+    private void FocusQueryUnlessContentDialogOpen()
+    {
+        // programmatic focus leaves the modal dialog, and the query box under its backdrop then takes
+        // the keys typed for the dialog; the host focuses the query again when the dialog closes
+        if (!IsContentDialogOpen())
+            QueryBox.Focus(FocusState.Programmatic);
+    }
+
+    private bool IsContentDialogOpen() =>
+        XamlRoot is not null
+        && VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Any(popup => popup.Child is ContentDialog);
 
     private void ApplyAvailableHeight(double availableHeight)
     {

@@ -333,6 +333,23 @@ public sealed class PaletteViewSourceTests
     }
 
     [Fact]
+    public void The_query_box_leaves_focus_in_an_open_content_dialog()
+    {
+        var code = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "PaletteView.xaml.cs"));
+
+        // Open(takeFocus: true) and window activation both focus through FocusQuery, now and on the dispatcher
+        Assert.Matches(
+            @"public void FocusQuery\(\)\s*\{\s*FocusQueryUnlessContentDialogOpen\(\);\s*DispatcherQueue\.TryEnqueue\(FocusQueryUnlessContentDialogOpen\);\s*\}",
+            code);
+        Assert.Matches(
+            @"private void FocusQueryUnlessContentDialogOpen\(\)\s*\{(?:\s*//[^\n]*)*\s*if \(!IsContentDialogOpen\(\)\)\s*QueryBox\.Focus\(FocusState\.Programmatic\);\s*\}",
+            code);
+        Assert.Matches(
+            @"private bool IsContentDialogOpen\(\) =>\s*XamlRoot is not null\s*&& VisualTreeHelper\.GetOpenPopupsForXamlRoot\(XamlRoot\)\.Any\(popup => popup\.Child is ContentDialog\);",
+            code);
+    }
+
+    [Fact]
     public void Scrim_ignores_the_tap_of_a_press_that_activated_the_window()
     {
         var root = FindRepoRoot();

@@ -152,12 +152,13 @@ public sealed class AskViewSourceTests
     }
 
     [Fact]
-    public void The_window_focuses_the_question_after_any_content_dialog_closes()
+    public void The_window_focuses_the_open_modal_after_any_content_dialog_closes()
     {
         var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
-        Assert.Contains("_contentDialogs.DialogClosed += FocusAskAfterContentDialog;", source, StringComparison.Ordinal);
+        Assert.Contains("_contentDialogs.DialogClosed += FocusModalAfterContentDialog;", source, StringComparison.Ordinal);
+        // a pick or the command palette shown under the dialog gets the keys back too
         Assert.Matches(new Regex(
-            @"private void FocusAskAfterContentDialog\(\)\s*\{\s*if \(AskOverlay\.IsOpen && _windowIsActive\)\s*AskOverlay\.FocusPanel\(\);\s*\}"),
+            @"private void FocusModalAfterContentDialog\(\)\s*\{\s*if \(!_windowIsActive\)\s*return;\s*if \(AskOverlay\.IsOpen\)\s*AskOverlay\.FocusPanel\(\);\s*else if \(PaletteOverlay\.IsOpen\)\s*PaletteOverlay\.FocusQuery\(\);\s*\}"),
             source);
         // all three dialogs (confirmation, rename, installer result) go through the coordinator, so its event covers each of them
         Assert.Equal(3, Regex.Matches(source, @"await ShowDialogAsync\(dialog\)").Count);

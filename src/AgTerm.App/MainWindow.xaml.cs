@@ -163,7 +163,7 @@ public sealed partial class MainWindow : Window
             _paletteTransitions.RunAsync(() => CloseKeybindingsAsync()), "Keyboard shortcuts close failed");
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
         AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
-        _contentDialogs.DialogClosed += FocusAskAfterContentDialog;
+        _contentDialogs.DialogClosed += FocusModalAfterContentDialog;
         TerminalView.SizeChanged += OnTerminalViewSizeChanged;
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
             load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
@@ -1119,12 +1119,16 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    // a closing ContentDialog gives focus back to the element it took it from, which is the terminal
-    // when the question arrived while the dialog was open
-    private void FocusAskAfterContentDialog()
+    // a closing ContentDialog gives focus back to the element it took it from, not to a question or a
+    // pick that arrived while the dialog was open
+    private void FocusModalAfterContentDialog()
     {
-        if (AskOverlay.IsOpen && _windowIsActive)
+        if (!_windowIsActive)
+            return;
+        if (AskOverlay.IsOpen)
             AskOverlay.FocusPanel();
+        else if (PaletteOverlay.IsOpen)
+            PaletteOverlay.FocusQuery();
     }
 
     private static void EnsureWindowCommandSucceeded(ControlResponse response)
