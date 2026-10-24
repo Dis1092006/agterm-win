@@ -70,6 +70,11 @@ a pin is sticky and persisted, so `claude --resume ` with an empty argument woul
 launch until cleared. The id is UUID-shaped and safe to interpolate; never build the pinned line from
 untrusted or secret values.
 
+On Windows, `cookbook/claude-session-resume` in the agterm-win repository does this in PowerShell. It
+also clears the pin from a `SessionEnd` hook when the user leaves Claude (`reason` `prompt_input_exit`
+or `logout`), so that pane restarts as a plain shell. A pane closed by an app quit ends Claude with
+`reason` `other`, which keeps the pin. `install.ps1` registers both hooks in `~/.claude/settings.json`.
+
 ## Create a session and type into it
 
 `session new` returns the new id and focuses the session. Capture the id, then type. The session is
