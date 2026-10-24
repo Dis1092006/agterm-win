@@ -257,6 +257,11 @@
       .xterm {
         padding: 2px;
       }
+      /* xterm.css still scrolls the viewport natively, and xterm draws its own bar 2 px inside it:
+         the native bar showed through that padding as a white bracket at the right edge */
+      .xterm .xterm-viewport {
+        scrollbar-width: none;
+      }
     </style>
   </head>
   <body>

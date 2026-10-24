@@ -247,6 +247,19 @@ public class XtermPageLiveTests
     }
 
     [Fact]
+    public async Task The_viewport_draws_no_native_scrollbar_beside_the_xterm_one()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("live-native-scrollbar"));
+
+        // xterm.css scrolls the viewport natively; its light 15 px bar showed through the pane's
+        // 2 px padding as a white bracket at the right edge
+        var width = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            "(() => { const v = document.querySelector('.xterm-viewport'); return v.offsetWidth - v.clientWidth; })()"));
+        Assert.Equal("0", width);
+    }
+
+    [Fact]
     public async Task ShowPane_refits_the_shown_pane_and_reports_its_resize()
     {
         var (page, _) = await BootPageAsync();
