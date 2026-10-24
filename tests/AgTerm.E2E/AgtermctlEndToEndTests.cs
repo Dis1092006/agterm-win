@@ -174,7 +174,7 @@ public class AgtermctlEndToEndTests : ControlApiTestCase
         return (process.ExitCode, stdout, stderr);
     }
 
-    private static string LocateAgtermctlExe()
+    internal static string LocateAgtermctlExe()
     {
         var dir = AppContext.BaseDirectory;
         while (dir is not null && !File.Exists(Path.Combine(dir, "AgTerm.slnx")))

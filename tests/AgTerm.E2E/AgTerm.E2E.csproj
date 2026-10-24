@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\AgTerm.Core\AgTerm.Core.csproj" />
     <ProjectReference Include="..\..\src\AgTerm.ControlServer\AgTerm.ControlServer.csproj" />
     <ProjectReference Include="..\..\src\AgTerm.Cli\AgTerm.Cli.csproj" />
+    <ProjectReference Include="..\..\src\AgTerm.Terminal\AgTerm.Terminal.csproj" />
   </ItemGroup>
 
 </Project>

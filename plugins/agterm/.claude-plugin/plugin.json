@@ -1,6 +1,6 @@
 {
   "name": "agterm",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Drive agterm-win, a native Windows terminal, programmatically via its agtermctl CLI and local control named pipe.",
   "author": {
     "name": "Dis1092006"

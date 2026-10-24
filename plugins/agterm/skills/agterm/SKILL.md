@@ -117,7 +117,10 @@ $choice = ConvertTo-Json -InputObject $items -Compress | agtermctl pick --prompt
 
 Windows PowerShell 5.1 pipes text to native programs as ASCII (`$OutputEncoding` is `us-ascii`), so
 non-ASCII labels arrive as `?`. Set `$OutputEncoding = [System.Text.UTF8Encoding]::new($false)` first.
-PowerShell 7 already pipes UTF-8. agtermctl drops a leading UTF-8 BOM from stdin. Do not use the
+PowerShell 7 already pipes UTF-8. agtermctl drops a leading UTF-8 BOM from stdin. Captured or piped
+agtermctl output is UTF-8, and both PowerShell versions decode it with `[Console]::OutputEncoding`,
+the console code page: set `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)` too,
+or non-ASCII names come back garbled. Output shown on the console needs nothing. Do not use the
 backtick line continuation inside an agtermctl line; keep each agtermctl call on one line.
 
 To start a long-lived daemon without the session's values, remove them first. This also clears them
