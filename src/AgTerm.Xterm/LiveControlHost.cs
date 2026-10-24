@@ -1825,26 +1825,30 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             Host.Store.Save();
         });
 
-        foreach (var surface in surfacesToShutdown)
-        {
-            try
-            {
-                if (surface is ILiveShutdownSurface liveShutdownSurface)
-                {
-                    await liveShutdownSurface.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
-                }
-                else
-                {
-                    surface.Teardown();
-                }
-            }
-            catch (Exception ex)
-            {
-                _options.Log?.Invoke($"LiveControlHost shutdown teardown failure: {ex}");
-            }
-        }
+        // A shell's child program (an agent CLI) can take half a second to exit after its console
+        // closes; waiting for each pane in turn adds those waits up.
+        await Task.WhenAll(surfacesToShutdown.Select(ShutdownSurfaceAsync)).ConfigureAwait(false);
 
         Host.DetachLive();
+    }
+
+    private async Task ShutdownSurfaceAsync(ITerminalSurface surface)
+    {
+        try
+        {
+            if (surface is ILiveShutdownSurface liveShutdownSurface)
+            {
+                await liveShutdownSurface.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            else
+            {
+                surface.Teardown();
+            }
+        }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"LiveControlHost shutdown teardown failure: {ex}");
+        }
     }
 
     /// <summary>Write each realized main/split pane's output for the next launch (Windows-only, see

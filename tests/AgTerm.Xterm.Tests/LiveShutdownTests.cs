@@ -251,6 +251,7 @@ public sealed class LiveShutdownTests : IDisposable
 
         public Action? OnStopOutput { get; set; }
         public Action? OnShutdownAsync { get; set; } = () => { };
+        public Task ShutdownCompletion { get; set; } = Task.CompletedTask;
 
         public string? PaneToken => null;
         public bool Inject(string text) => false;
@@ -276,7 +277,7 @@ public sealed class LiveShutdownTests : IDisposable
         {
             if (Interlocked.CompareExchange(ref _shutdownAsyncCount, 1, 0) == 0)
                 OnShutdownAsync?.Invoke();
-            return Task.CompletedTask;
+            return ShutdownCompletion;
         }
     }
 
@@ -360,6 +361,46 @@ public sealed class LiveShutdownTests : IDisposable
         }
         finally
         {
+            try { Directory.Delete(dir, recursive: true); } catch (Exception) { }
+        }
+    }
+
+    [Fact]
+    public async Task ShutdownAsync_starts_every_surface_shutdown_before_any_completes()
+    {
+        var dir = Directory.CreateTempSubdirectory("agterm-l3-par-").FullName;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var surfaces = new List<RecordingSurface>();
+            var host = BuildLiveHost(dir, surfaces,
+                () => new RecordingSurface { ShutdownCompletion = release.Task });
+
+            await host.StoreCoordinator.MutateAsync(store =>
+            {
+                var wsId = store.CurrentWorkspaceId!.Value;
+                for (var i = 0; i < 2; i++)
+                    store.AddSession(wsId, dir, select: false);
+            });
+            await WaitForCommittedRecordingSurfaceCountAsync(host, 3);
+
+            RecordingSurface[] snapshot;
+            lock (surfaces) snapshot = surfaces.ToArray();
+            var shutdown = host.ShutdownAsync();
+
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTime.UtcNow < deadline && snapshot.Any(s => s.ShutdownAsyncCount == 0))
+                await Task.Delay(10);
+
+            Assert.All(snapshot, s => Assert.Equal(1, s.ShutdownAsyncCount));
+            Assert.False(shutdown.IsCompleted, "host shutdown must wait for every surface");
+
+            release.TrySetResult();
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            release.TrySetResult();
             try { Directory.Delete(dir, recursive: true); } catch (Exception) { }
         }
     }
