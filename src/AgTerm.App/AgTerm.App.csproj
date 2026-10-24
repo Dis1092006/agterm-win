@@ -21,6 +21,8 @@
     <!-- unpackaged + self-contained WindowsAppSDK: runs anywhere, no MSIX / framework package -->
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- Program.cs checks for a running instance before XAML starts -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

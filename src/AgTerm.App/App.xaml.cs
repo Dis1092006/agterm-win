@@ -149,6 +149,17 @@ public partial class App : Application, ILiveWindowController
         _windows.Remove(windowId);
     }
 
+    /// <summary>A second launch on the same state directory handed its activation here; AppInstance
+    /// raises it on a background thread.</summary>
+    internal void ActivateFrontmostWindow() =>
+        _dispatcherQueue?.TryEnqueue(() =>
+        {
+            var window = _applicationHost?.FrontmostWindowId is { } id && _windows.TryGetValue(id, out var frontmost)
+                ? frontmost
+                : _windows.Values.FirstOrDefault();
+            window?.ActivateWindow();
+        });
+
     private Task RunOnUiAsync(Func<Task> work, CancellationToken cancellationToken) =>
         RunOnUiAsync(async () =>
         {

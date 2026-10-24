@@ -611,6 +611,12 @@ The WinUI app reaches WebView2 through the Windows App SDK projection, which exp
 
 Windows refuses that call while another application is in front, for example when `agtermctl` runs in a separate terminal and agterm is behind it. Then the window's taskbar button flashes until the user switches to it. Upstream brings agterm in front of other applications, which macOS allows. The routing side does not depend on it: the window is frontmost for routing either way.
 
+## One instance per state directory
+
+macOS keeps one agterm process: a second launch from the Dock, Finder or `open -a agterm` activates the running app. Upstream adds no check of its own; a second process started from the binary takes over the control socket (`ControlServer.start` unlinks and binds it again), and the first one keeps running without it. Windows starts a new process on every launch, and two processes on one state directory overwrite each other's saved workspaces, windows and pane output.
+
+The port registers a Windows App SDK `AppInstance` key derived from the state directory (`SingleInstanceKey`) before XAML starts (`Program.Main`). A second launch on the same directory allows the running process to take the foreground, hands its activation to it, and exits; the running process brings its frontmost window to the front. A process on another `AGTERM_STATE_DIR` has another key and runs beside it. A launch during the seconds a closing last window takes to shut down is handed to that process too, and no window opens; the next launch after it exits starts normally.
+
 ## Window position and size after a relaunch
 
 Upstream saves each window's frame when the window closes, under its window id in UserDefaults (`agterm-frame-<uuid>`, `WindowAccessor.swift`), and applies it once when that window opens again, fitted to the displays attached now (`WindowGeometry.bestDisplayIndex` and `constrain`). The port does the same, with three differences:
