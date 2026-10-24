@@ -15,6 +15,14 @@ public class CiTestGuardTests
     }
 
     [Fact]
+    public void Ci_runs_one_test_project_at_a_time()
+    {
+        // the live ConPTY and WebView2 suites starve the runner's thread pool when they run side by side,
+        // and their 5 second waits time out
+        Assert.Contains("run: dotnet test AgTerm.slnx -m:1 --no-build", ReadWorkflow(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Cli_publish_runs_on_main_and_manual_runs_but_not_pull_requests()
     {
         var workflow = ReadWorkflow().Replace("\r\n", "\n", StringComparison.Ordinal);

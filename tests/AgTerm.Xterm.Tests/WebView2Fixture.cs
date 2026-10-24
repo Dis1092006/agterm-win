@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.WinForms;
@@ -11,7 +12,12 @@ namespace AgTerm.Xterm.Tests;
 /// </summary>
 public sealed class WebView2Fixture : IDisposable
 {
+    private static readonly TimeSpan StartupBudget = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan UiCallBudget = TimeSpan.FromSeconds(60);
+    private static readonly ConcurrentDictionary<WebView2Fixture, byte> LiveFixtures = new();
     private readonly Thread _uiThread;
+    // UI thread only
+    private readonly List<WebView2> _testViews = new();
     private readonly TaskCompletionSource<(Form, WebView2)> _started =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly string _userDataFolder =
@@ -25,6 +31,7 @@ public sealed class WebView2Fixture : IDisposable
 
     internal WebView2Fixture(Func<WebView2, Task>? beforeInitialize)
     {
+        LiveFixtures.TryAdd(this, 0);
         _uiThread = new Thread(() =>
         {
             try
@@ -88,25 +95,37 @@ public sealed class WebView2Fixture : IDisposable
 
     /// <summary>A FRESH WebView2 control on the same hidden form (its own page instance) — one per
     /// realized surface, the way the app hosts one WebView2 per session pane.</summary>
-    public async Task<WebView2> CreateWebViewAsync()
-    {
-        var (form, first) = await WaitForStartupAsync(TimeSpan.FromSeconds(60)).ConfigureAwait(false);
-        var done = new TaskCompletionSource<WebView2>(TaskCreationOptions.RunContinuationsAsynchronously);
-        form.BeginInvoke(async () =>
+    public Task<WebView2> CreateWebViewAsync() => CreateWebViewAsync(UiCallBudget);
+
+    internal Task<WebView2> CreateWebViewAsync(TimeSpan budget) =>
+        InvokeAsync(async (form, first) =>
         {
-            try
-            {
-                var webView = new WebView2 { Dock = DockStyle.Fill };
-                form.Controls.Add(webView);
-                await webView.EnsureCoreWebView2Async(first.CoreWebView2.Environment);
-                done.TrySetResult(webView);
-            }
-            catch (Exception ex)
-            {
-                done.TrySetException(ex);
-            }
-        });
-        return await done.Task.ConfigureAwait(false);
+            var webView = new WebView2 { Dock = DockStyle.Fill };
+            form.Controls.Add(webView);
+            _testViews.Add(webView);
+            await webView.EnsureCoreWebView2Async(first.CoreWebView2.Environment);
+            return webView;
+        }, budget);
+
+    /// <summary>Disposes the controls CreateWebViewAsync made. Each one has its own renderer process:
+    /// a full run that kept them all ended with over 300 renderers.</summary>
+    internal Task ReleaseTestViewsAsync()
+    {
+        if (!_started.Task.IsCompletedSuccessfully)
+            return Task.CompletedTask;
+        return InvokeAsync((_, _) =>
+        {
+            foreach (var view in _testViews)
+                view.Dispose();
+            _testViews.Clear();
+            return Task.FromResult(true);
+        }, UiCallBudget);
+    }
+
+    internal static void ReleaseTestViewsOfLiveFixtures()
+    {
+        foreach (var fixture in LiveFixtures.Keys)
+            fixture.ReleaseTestViewsAsync().GetAwaiter().GetResult();
     }
 
     /// <summary>A fresh WebView2 with a booted XtermPage on it — the app's one-page-per-window
@@ -123,22 +142,42 @@ public sealed class WebView2Fixture : IDisposable
     }
 
     /// <summary>Run work on the WebView2 UI thread; the WebView2 is initialized when this returns.</summary>
-    public async Task<T> RunAsync<T>(Func<WebView2, Task<T>> work)
+    public Task<T> RunAsync<T>(Func<WebView2, Task<T>> work) => RunAsync(work, UiCallBudget);
+
+    internal Task<T> RunAsync<T>(Func<WebView2, Task<T>> work, TimeSpan budget) =>
+        InvokeAsync((_, webView) => work(webView), budget);
+
+    // a page answer that never comes otherwise hangs the whole testhost until the blame timeout,
+    // and the hang dump names no test
+    private async Task<T> InvokeAsync<T>(Func<Form, WebView2, Task<T>> work, TimeSpan budget)
     {
-        var (form, webView) = await WaitForStartupAsync(TimeSpan.FromSeconds(60)).ConfigureAwait(false);
+        var (form, webView) = await WaitForStartupAsync(StartupBudget).ConfigureAwait(false);
+        var started = 0;
         var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         form.BeginInvoke(async () =>
         {
+            Volatile.Write(ref started, 1);
             try
             {
-                done.TrySetResult(await work(webView));
+                done.TrySetResult(await work(form, webView));
             }
             catch (Exception ex)
             {
                 done.TrySetException(ex);
             }
         });
-        return await done.Task.ConfigureAwait(false);
+        try
+        {
+            return await done.Task.WaitAsync(budget).ConfigureAwait(false);
+        }
+        catch (TimeoutException ex) when (!done.Task.IsCompleted)
+        {
+            var state = Volatile.Read(ref started) == 1
+                ? "The work is running on the UI thread and has not finished"
+                : "The UI thread has not started the work";
+            throw new TimeoutException(
+                $"WebView2 UI call did not finish within {budget}. {state}. {StartupDiagnostics()}", ex);
+        }
     }
 
     /// <summary>Run work that has no result on the WebView2 UI thread.</summary>
@@ -194,6 +233,7 @@ public sealed class WebView2Fixture : IDisposable
     {
         if (Interlocked.Exchange(ref _disposeRequested, 1) != 0)
             return;
+        LiveFixtures.TryRemove(this, out _);
         try
         {
             var form = Volatile.Read(ref _form);
@@ -226,4 +266,5 @@ public sealed class WebView2Fixture : IDisposable
 }
 
 [CollectionDefinition("webview2")]
+[ReleaseWebViewsAfterTest]
 public class WebView2Collection : ICollectionFixture<WebView2Fixture>;
