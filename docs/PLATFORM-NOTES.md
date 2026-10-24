@@ -792,6 +792,10 @@ Upstream's Help menu has *Install Command Line Tool…*, *Install Agent Skill…
 
 These three ports use component-level policy checks and the application host. They do not automate OS activation events, Settings clicks, or rendered XAML. Separate guards cover covered-pane activation, the `window.select` readback, and a busy store gate. The six WinUI keyboard/click placeholders and six platform-only placeholders remain skipped.
 
+The activation and PowerShell readline regressions also run in isolated child test processes with one thread-pool worker. The activation test uses dedicated holder and caller threads with direct signals while the store gate is held. The readline tests wait for shell exit and output drain on a dedicated thread under one 60-second deadline. A real timeout reports the captured terminal output and both task states. These test-only changes leave production scheduling and suite parallelism unchanged.
+
+Each WebView2 test fixture uses its own temporary user-data folder and browser process group, so the nonparallel environment collection does not wait on the previous collection's browser shutdown. Asynchronous Load errors and an early UI-loop exit fault startup; the unchanged 60-second startup deadline reports the initialization stage, profile, and STA thread state. Shutdown failures are logged, not thrown. A fixture deletes only its own profile, after verifying that its browser process has exited; otherwise it retains the folder and reports why.
+
 ## Agent skill
 
 The skill in `plugins/agterm/skills/agterm` is this repository's copy of upstream's skill, adapted to Windows. Design: `docs/superpowers/specs/2026-10-13-agent-skill-design.md`.

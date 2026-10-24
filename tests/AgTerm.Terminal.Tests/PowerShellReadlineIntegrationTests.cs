@@ -71,6 +71,9 @@ public class PowerShellReadlineIntegrationTests : IDisposable
         lock (_output) return _output.ToString();
     }
 
+    private Task<int> WaitForExitAsync(ConPtySession pty) =>
+        ShellCompletionWait.WaitAsync(pty.Exited, pty.OutputCompleted, ChildBudget, Snapshot);
+
     /// <summary>Waits for <paramref name="pattern"/> at or after <paramref name="from"/> and
     /// returns the index just past the match.</summary>
     private int WaitFor(string pattern, int from = 0)
@@ -116,7 +119,7 @@ public class PowerShellReadlineIntegrationTests : IDisposable
         WaitFor(Marker("agterm-readline=1"), at);
 
         pty.WriteText("[Environment]::Exit(0)\r");
-        Assert.Equal(0, await pty.Exited.WaitAsync(ChildBudget));
+        Assert.Equal(0, await WaitForExitAsync(pty));
     }
 
     [Theory]
@@ -136,12 +139,11 @@ public class PowerShellReadlineIntegrationTests : IDisposable
         // the output after the next prompt's marker, so the second output line ends the wait.
         at = WaitFor(Marker("agterm-readline=0"), at);
         var end = WaitFor("end-of-test", at);
+        pty.WriteText("[Environment]::Exit(0)\r");
+        Assert.Equal(0, await WaitForExitAsync(pty));
         var result = Snapshot()[at..end];
         Assert.Contains("undo-1234", result);
         Assert.DoesNotContain("undo-12345", result);
-
-        pty.WriteText("[Environment]::Exit(0)\r");
-        Assert.Equal(0, await pty.Exited.WaitAsync(ChildBudget));
     }
 
     [Theory]
@@ -160,7 +162,7 @@ public class PowerShellReadlineIntegrationTests : IDisposable
             "[Console]::Write('status=' + $s + ';'); " +
             "$global:agtLines[$global:agtNext++] }; ");
 
-        Assert.Equal(0, await pty.Exited.WaitAsync(ChildBudget));
+        Assert.Equal(0, await WaitForExitAsync(pty));
         var text = Snapshot();
 
         // the stub ran inside the wrapper

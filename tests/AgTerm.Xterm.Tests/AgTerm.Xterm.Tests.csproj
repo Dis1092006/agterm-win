@@ -9,6 +9,8 @@
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Isolated regressions use the test assembly's own entry point. -->
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +23,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\TestInfrastructure\IsolatedTestProcess.cs" Link="IsolatedTestProcess.cs" />
   </ItemGroup>
 
   <ItemGroup>

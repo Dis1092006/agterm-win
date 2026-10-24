@@ -333,37 +333,52 @@ public sealed class LiveWindowControlE2ETests : IDisposable
             Target = sessionId.ToString("D"),
             Args = new ControlArgs { Body = "unseen" },
         }).Ok);
-        var acquired = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var returned = new TaskCompletionSource<Task>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var acquired = new ManualResetEventSlim();
+        using var returned = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
-        var holder = Task.Run(() => window.RunLocked(() =>
+        var holder = Task.Factory.StartNew(() => window.RunLocked(() =>
         {
-            acquired.SetResult();
+            acquired.Set();
             Assert.True(release.Wait(TimeSpan.FromSeconds(10)), "Store gate was not released.");
-        }));
+        }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         Task? caller = null;
         Task? activation = null;
+        Exception? primaryFailure = null;
         try
         {
-            await acquired.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            caller = Task.Run(() =>
+            Assert.True(acquired.Wait(TimeSpan.FromSeconds(5)), "Store gate was not acquired.");
+            caller = Task.Factory.StartNew(() =>
             {
                 var pending = application.ReportActivatedAsync(windowId);
-                returned.SetResult(pending);
-            });
-            activation = await returned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                activation = pending;
+                returned.Set();
+                return pending;
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+            Assert.True(returned.Wait(TimeSpan.FromSeconds(5)),
+                "Activation did not return while the store gate was held.");
+            Assert.NotNull(activation);
             Assert.False(activation.IsCompleted);
             if (layoutChanges)
                 application.ReportAcceptedPane(windowId, "overlay");
         }
+        catch (Exception error)
+        {
+            primaryFailure = error;
+            throw;
+        }
         finally
         {
             release.Set();
-            await holder.WaitAsync(TimeSpan.FromSeconds(5));
-            if (caller is not null)
-                await caller.WaitAsync(TimeSpan.FromSeconds(5));
-            if (activation is not null)
-                await activation.WaitAsync(TimeSpan.FromSeconds(5));
+            try
+            {
+                await Task.WhenAll(holder, caller ?? Task.CompletedTask)
+                    .WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (Exception cleanupFailure) when (primaryFailure is not null)
+            {
+                throw new AggregateException("Activation test and cleanup both failed.",
+                    primaryFailure, cleanupFailure);
+            }
         }
         Assert.Equal(layoutChanges ? 1 : (int?)null, BadgeSession(client, windowId, sessionId).Unseen);
     }
