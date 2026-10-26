@@ -35,6 +35,10 @@ public sealed class TerminalPane : IDisposable
     /// <summary>The dim line written between restored output and the new child's output.</summary>
     public const string RestoredBannerText = "-- saved output, new shell below --";
 
+    /// <summary>The line written under the output of a pane held open after its child exited.</summary>
+    public static string ExitedBannerText(int exitCode) =>
+        $"[process exited with code {exitCode}; press any key to close]";
+
     private readonly SynchronizationContext _ui;
     private int _disposed;
     private int _outputStopped;
@@ -186,6 +190,29 @@ public sealed class TerminalPane : IDisposable
             }
         }, null);
         return done.Task;
+    }
+
+    /// <summary>Writes the exit banner and completes on the next keystroke the pane passes to xterm.
+    /// Mouse input, focus reports and terminal replies are not keystrokes and do not complete it.</summary>
+    public async Task ShowExitAndWaitForKeystrokeAsync(int exitCode)
+    {
+        var pressed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnKeystroke(bool _) => pressed.TrySetResult();
+        Terminal.UserKeystroke += OnKeystroke;
+        try
+        {
+            await RunOnUiAsync<object?>(() =>
+            {
+                Terminal.FeedOutput(System.Text.Encoding.UTF8.GetBytes(
+                    "\x1b[0m\r\n\x1b[2m" + ExitedBannerText(exitCode) + "\x1b[0m\r\n"));
+                return Task.FromResult<object?>(null);
+            }).ConfigureAwait(false);
+            await pressed.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            Terminal.UserKeystroke -= OnKeystroke;
+        }
     }
 
     public void Dispose()

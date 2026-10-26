@@ -155,7 +155,8 @@ available in the headless host"` (после резолюции цели — `no
   потоков: UI-поток НИКОГДА не берёт хост-гейт (иначе дедлок против блокирующей
   реализации) — колбэки поверхностей (OSC title/cwd, exit) прыгают в пул и мутируют
   сессию под `RunLocked`. Выход шелла главного пейна → `ClosePrimaryPane` (upstream-путь);
-  сессия с `--command --wait` остаётся открытой. quick/scratch/split/overlay-поверхности
+  сессия с `--command --wait` остаётся открытой (позже добавлен `closeOnShellExit`, см. «A shell
+  pane stays open when its shell fails»). quick/scratch/split/overlay-поверхности
   в фазе 3 не реализуются — армы отвечают закреплёнными ошибками. Снапшот пишется на
   выходе (Dispose → Save + teardown всех панелей).
 
@@ -677,6 +678,16 @@ Upstream has no analogue: a restored session starts with an empty screen, and th
 - On realize, `TerminalPane` writes the saved text into xterm, then a dim `-- saved output, new shell below --` line, and only then starts ConPTY. A new pseudoconsole clears the screen at start (`ESC[2J`), which would wipe the restored text. ConPTY is therefore created with `PSEUDOCONSOLE_INHERIT_CURSOR`: it asks for the cursor position (`ESC[6n`), xterm answers through the input pipe, and the shell starts below the restored text without a clear.
 - The banner line is part of the buffer at the next shutdown, so each relaunch adds one. The shell process is new: variables, the current command and the PSReadLine state are not restored; PSReadLine history works as before.
 
+## A shell pane stays open when its shell fails
+
+Upstream closes a session as soon as its main shell exits, with any exit code. On Windows a shell is also stopped from outside: an installer that updates PowerShell 7 stops every running `pwsh.exe` first, and every session of every window then closes at once, as if the user had closed them. The port keeps such a pane open, so the user sees that the shell ended and with which code.
+
+- The setting is `closeOnShellExit` in `settings.json`, a Windows-only field. `graceful` (also when absent or any other value) closes the pane when the shell exits with code 0 and keeps it open with any other code. `always` closes it with any code, as upstream does. `never` keeps it open with any code. `config.reload` applies a change to the shells that exit after it.
+- It covers the main pane and the split pane, also a split pane promoted to the main pane. Scratch, overlay and quick panes close as before. A session created with `session.new --command` is not a shell pane: it closes or holds by `--wait`, as upstream, so no command, wire field or error string changes.
+- A held pane shows a dim `[process exited with code N; press any key to close]` line under its output. The next key the pane passes to xterm closes it the same way the exit would have: a main pane closes the session, or promotes the split; a split pane closes the split. A chord the keymap takes, a mouse click, a focus report and `session.type` do not close it. The session goes to the recently closed list as before, so `reopen_recent` (Ctrl+Shift+T) brings it back.
+- An exit code says how the shell ended, not who ended it. In `pwsh`, `exit` exits with 0 also after a failed command, so the user's own `exit` closes the pane. In `cmd.exe`, `exit` without a number exits with the last `ERRORLEVEL`, so after a failed command it keeps the pane open. A process stopped from outside gets the code its stopper chooses; `taskkill /F` gives 1.
+- A held pane is saved and restored like any other: after a relaunch it starts a new shell, and with `restoreScrollback` its saved output ends with the banner line.
+
 ## Upstream behavior adopted beyond the pin
 
 The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.
@@ -771,6 +782,7 @@ Commands and fields that upstream does not have. `parity/windows-only.json` list
   - `sidebarThemeStyle` picks how a row shows the colors. `row` (also when absent or any other value) colors the whole row as described above. `label` keeps the row default and puts the name in a block in the theme colors. In `label` the selection is the default one, without the frame. A selected session row is bold in every style, and also on a row without theme colors. `config.reload` applies a change at once.
   - A long row name ends with an ellipsis in every style.
 - Restored pane output: the setting `restoreScrollback` in `settings.json`, listed under `settings` in `parity/windows-only.json`. Described in "Pane output is restored after a relaunch" above.
+- A shell pane held open after its shell fails: the setting `closeOnShellExit` in `settings.json`, listed under `settings` in `parity/windows-only.json`. Described in "A shell pane stays open when its shell fails" above.
 
 ## Help menu: installing the command line tool, agent skill and status hooks
 

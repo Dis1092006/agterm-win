@@ -1512,18 +1512,47 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private bool OwnsQuickPane(XtermPaneSurface surface) =>
         ReferenceEquals(Host.Actions.Quick.Surface, surface);
 
-    private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
+    /// <summary>Whether a shell pane stays open after its shell exited with this code. A --command
+    /// pane is not a shell pane: it closes or holds by --wait, as upstream.</summary>
+    private bool HoldsAfterShellExit(Guid sessionId, XtermPaneSurface surface, int exitCode)
     {
+        var holds = false;
+        Host.RunLocked(() =>
+        {
+            var live = Host.Store.SessionWithId(sessionId);
+            var shellPane = OwnsSplitPane(live, surface)
+                || (OwnsMainPane(live, surface) && live!.InitialCommand is null);
+            holds = shellPane && !Volatile.Read(ref _notificationSettings).ClosesPaneOnShellExit(exitCode);
+        });
+        return holds;
+    }
+
+    /// <summary>Completes when the pane's shell has exited and, for a held pane, the user pressed a
+    /// key in it. False when the pane was torn down or the host shuts down: nothing to close then.</summary>
+    private async Task<bool> ShellExitedAndReleasedAsync(Guid sessionId, XtermPaneSurface surface)
+    {
+        int exitCode;
         try
         {
-            await surface.Pane.Exited.ConfigureAwait(false);
+            exitCode = await surface.Pane.Exited.ConfigureAwait(false);
         }
         catch (Exception)
         {
-            return; // a torn-down pane may fault the exit task; nothing to close then
+            return false; // a torn-down pane may fault the exit task
         }
 
-        if (Volatile.Read(ref _shutdownStarted) != 0)
+        if (Volatile.Read(ref _shutdownStarted) != 0) return false;
+        if (HoldsAfterShellExit(sessionId, surface, exitCode))
+        {
+            await surface.Pane.ShowExitAndWaitForKeystrokeAsync(exitCode).ConfigureAwait(false);
+        }
+
+        return Volatile.Read(ref _shutdownStarted) == 0;
+    }
+
+    private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
+    {
+        if (!await ShellExitedAndReleasedAsync(sessionId, surface).ConfigureAwait(false))
         {
             return;
         }
@@ -1546,16 +1575,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private async Task CloseSplitOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
-        try
-        {
-            await surface.Pane.Exited.ConfigureAwait(false);
-        }
-        catch (Exception)
-        {
-            return; // a torn-down pane may fault the exit task; nothing to close then
-        }
-
-        if (Volatile.Read(ref _shutdownStarted) != 0)
+        if (!await ShellExitedAndReleasedAsync(sessionId, surface).ConfigureAwait(false))
         {
             return;
         }

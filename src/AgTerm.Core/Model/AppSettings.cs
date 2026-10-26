@@ -81,8 +81,20 @@ public sealed record AppSettings
     // Windows-only: absent keeps the theme brush rather than choosing a numeric default.
     [JsonPropertyName("overlayOpacity"), JsonConverter(typeof(Protocol.FiniteDoubleConverter))]
     public double? OverlayOpacity { get; init; }
+    /// <summary>Windows-only: whether a shell pane closes when its shell exits, "always", "graceful"
+    /// (on exit code 0 only) or "never". Absent means graceful; see docs/PLATFORM-NOTES.md.</summary>
+    [JsonPropertyName("closeOnShellExit")] public string? CloseOnShellExit { get; init; }
 
     [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
+
+    /// <summary>Whether a shell pane closes when its shell exits with this code. A value is matched
+    /// exactly, like upstream's enum decode of other settings; an unknown one reads as graceful.</summary>
+    public bool ClosesPaneOnShellExit(int exitCode) => CloseOnShellExit switch
+    {
+        "always" => true,
+        "never" => false,
+        _ => exitCode == 0,
+    };
 
     /// <summary>Null keeps the theme brush; a number selects the opaque theme base at that opacity.</summary>
     public double? EffectiveOverlayOpacity(bool advancedEffectsEnabled) =>
@@ -110,11 +122,13 @@ public sealed record AppSettings
          other.BlockedStatusSoundName, other.RightClickPaste) &&
         (NewSessionDirectory, NewSessionCustomDirectory, ConfirmCloseSession, CloseGraceUndoEnabled,
          AutoFollowAttention, AutoFollowStayOnActive, SidebarFontSize,
-         AutoHideSidebarInactiveWindows, SidebarThemeColors, SidebarThemeStyle, RestoreScrollback, OverlayOpacity) ==
+         AutoHideSidebarInactiveWindows, SidebarThemeColors, SidebarThemeStyle, RestoreScrollback, OverlayOpacity,
+         CloseOnShellExit) ==
         (other.NewSessionDirectory, other.NewSessionCustomDirectory, other.ConfirmCloseSession,
          other.CloseGraceUndoEnabled, other.AutoFollowAttention, other.AutoFollowStayOnActive,
          other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors,
-         other.SidebarThemeStyle, other.RestoreScrollback, other.OverlayOpacity) &&
+         other.SidebarThemeStyle, other.RestoreScrollback, other.OverlayOpacity,
+         other.CloseOnShellExit) &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&
