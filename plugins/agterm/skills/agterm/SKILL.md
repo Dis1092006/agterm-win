@@ -477,6 +477,10 @@ file moved), the custom commands and the diagnostics ·
 `keymap run NAME [--target T] [--window W]` — start the custom command named NAME against a session, as the custom command palette
 does. The reply means the process started; its exit status and output are not reported.
 
+Custom commands opt into a failure panel with `command "Build" [chord] --error-hud .\build.ps1`, placed
+with `--error-position POS` and `--error-pane left|right`; see
+[keymap.conf format](reference.md#keymapconf-format) for the parsing rules and defaults.
+
 **config** - `config reload` - re-read and apply `settings.json` from the state directory, and reset every
 session's font size to the configured base size (prints `ok`; the diagnostic count is always 0).
 

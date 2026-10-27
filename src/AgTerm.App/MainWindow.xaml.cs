@@ -2178,10 +2178,38 @@ public sealed partial class MainWindow : Window
         catch (Exception ex) when (ex is CustomCommandNotStartedException or Win32Exception)
         {
             QueueFailureNotice(CustomCommandFailureNotice.NotStarted(invocation.Name, ex.Message), fatal: false);
+            ObserveTaskFault(
+                OpenFailurePanelAsync(invocation, CustomCommandFailureReporter.ForNotStarted(invocation, ex.Message)),
+                $"Custom command '{invocation.Name}' failure panel failed");
             return ex.Message;
         }
         ObserveTaskFault(handle.Exited, $"Custom command '{invocation.Name}' exit wait failed");
+        ObserveTaskFault(
+            OpenFailurePanelAfterExitAsync(invocation, handle),
+            $"Custom command '{invocation.Name}' failure panel failed");
         return null;
+    }
+
+    private async Task OpenFailurePanelAfterExitAsync(CustomCommandInvocation invocation, CustomCommandProcessHandle handle)
+    {
+        var exit = await handle.Finished.ConfigureAwait(false);
+        await OpenFailurePanelAsync(invocation, CustomCommandFailureReporter.ForExit(invocation, exit)).ConfigureAwait(false);
+    }
+
+    /// <summary>Opens on a pool thread because the caller may hold the host gate, which the store
+    /// coordinator takes from its own thread.</summary>
+    private Task OpenFailurePanelAsync(CustomCommandInvocation invocation, CustomCommandFailurePanel? panel)
+    {
+        if (panel is null || _host is not { } host)
+            return Task.CompletedTask;
+        return Task.Run(() => host.StoreCoordinator.MutateAsync(_ =>
+        {
+            var result = host.Host.Actions.OpenCommandFailureHud(panel.SessionId, panel.Spec, panel.Pane);
+            if (result.Response.Error is { } refusal)
+                System.Diagnostics.Debug.WriteLine($"Custom command '{invocation.Name}' failure panel not shown: {refusal}");
+            else if (result.Fallback is { } fallback)
+                System.Diagnostics.Debug.WriteLine($"Custom command '{invocation.Name}' failure panel moved to the whole session: {fallback}");
+        }));
     }
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session

@@ -939,7 +939,7 @@ public class XtermPageLiveTests
         // an app asks for the protocol, the way Claude Code does on entry
         await _webView.RunAsync(_ =>
         {
-            terminal.FeedOutput(Encoding.UTF8.GetBytes("[>1u"));
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("\u001b[>1u"));
             return Task.FromResult(0);
         });
         await Task.Delay(200);

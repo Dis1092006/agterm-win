@@ -72,6 +72,40 @@ public class ControlKeymapTests
     }
 
     [Fact]
+    public void Commands_read_back_their_error_options()
+    {
+        var list = Project("command \"quiet\" echo q\ncommand \"loud\" --error-hud --error-position bottom --error-pane right echo l\n");
+
+        var quiet = list.Commands[0];
+        Assert.False(quiet.ErrorHud);
+        Assert.Equal("center", quiet.ErrorPosition);
+        Assert.Null(quiet.ErrorPane);
+
+        var loud = list.Commands[1];
+        Assert.True(loud.ErrorHud);
+        Assert.Equal("bottom-center", loud.ErrorPosition);
+        Assert.Equal("right", loud.ErrorPane);
+    }
+
+    [Fact]
+    public void Command_fields_serialize_in_upstream_order()
+    {
+        var response = new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult
+            {
+                Keymap = Project("command \"quiet\" echo q\ncommand \"loud\" --error-hud --error-pane left echo l"),
+            },
+        };
+
+        var json = ControlJson.Serialize(response);
+
+        Assert.Contains("{\"name\":\"quiet\",\"errorHud\":false,\"errorPosition\":\"center\",\"repeats\":false}", json);
+        Assert.Contains("{\"name\":\"loud\",\"errorHud\":true,\"errorPosition\":\"center\",\"errorPane\":\"left\",\"repeats\":false}", json);
+    }
+
+    [Fact]
     public void Diagnostics_list_the_parser_ones_then_the_windows_shadowing_ones()
     {
         var empty = Project("");

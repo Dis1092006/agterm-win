@@ -12,6 +12,9 @@ internal static class ConPtyNative
     internal static readonly IntPtr ProcThreadAttributePseudoConsole = new(0x00020016);
     internal const uint Infinite = 0xFFFFFFFF;
     internal const int StartfUseStdHandles = 0x00000100;
+    internal const uint CreateNoWindow = 0x08000000;
+    internal const uint HandleFlagInherit = 0x1;
+    internal static readonly IntPtr ProcThreadAttributeHandleList = new(0x00020002);
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Coord
@@ -104,4 +107,7 @@ internal static class ConPtyNative
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
 }

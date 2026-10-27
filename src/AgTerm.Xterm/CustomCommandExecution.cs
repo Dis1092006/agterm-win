@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using AgTerm.ControlServer;
 using AgTerm.Core.Install;
@@ -32,7 +33,11 @@ public sealed record CustomCommandInvocation(
     string Name,
     string ShellLine,
     string WorkingDirectory,
-    IReadOnlyDictionary<string, string> Environment);
+    IReadOnlyDictionary<string, string> Environment,
+    Guid? SessionId = null,
+    bool ErrorHud = false,
+    HudPosition ErrorPosition = HudPositions.Default,
+    OverlayPane? ErrorPane = null);
 
 public static class CustomCommandInvocationResolver
 {
@@ -73,7 +78,8 @@ public static class CustomCommandInvocationResolver
                     WindowId = Upper(window.WindowId),
                     WindowName = window.WindowName,
                     Socket = window.PipeName,
-                });
+                },
+                sessionId: null);
         }
 
         var (session, pane) = resolved.Value;
@@ -92,7 +98,8 @@ public static class CustomCommandInvocationResolver
                 FocusedPane = pane,
                 Selection = request.Selection,
                 Socket = window.PipeName,
-            });
+            },
+            session.Id);
     }
 
     private static (Session Session, CommandContext.Pane Pane)? ResolveSession(
@@ -132,16 +139,25 @@ public static class CustomCommandInvocationResolver
 
     private static CustomCommandInvocation CreateInvocation(
         CustomCommand command,
-        CommandContext context) =>
+        CommandContext context,
+        Guid? sessionId) =>
         new(
             command.Id,
             command.Name,
             context.Expand(command.Command),
             context.SessionPwd,
-            new Dictionary<string, string>(context.Environment(), StringComparer.Ordinal));
+            new Dictionary<string, string>(context.Environment(), StringComparer.Ordinal),
+            sessionId,
+            command.ErrorHud,
+            command.ErrorPosition,
+            command.ErrorPane);
 
     private static string Upper(Guid value) => value.ToString("D").ToUpperInvariant();
 }
+
+/// <summary>How a custom command ended. Detail is the last stderr line, and only a command that opted
+/// into a failure panel has its stderr captured.</summary>
+public sealed record CustomCommandExit(int ExitCode, string? Detail);
 
 public sealed class CustomCommandProcessHandle
 {
@@ -149,22 +165,42 @@ public sealed class CustomCommandProcessHandle
     {
         ArgumentNullException.ThrowIfNull(process);
         ProcessId = process.Id;
-        Exited = WaitForExitAndDisposeAsync(process);
+        Finished = WaitForExitAndDisposeAsync(process);
+        Exited = Finished;
+    }
+
+    public CustomCommandProcessHandle(StderrCapturingProcess process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ProcessId = process.ProcessId;
+        Finished = ExitOfAsync(process);
+        Exited = Finished;
     }
 
     public int ProcessId { get; }
+
+    /// <summary>Completes when the process exits; faults the same way as <see cref="Finished"/>.</summary>
     public Task Exited { get; }
 
-    private static async Task WaitForExitAndDisposeAsync(Process process)
+    public Task<CustomCommandExit> Finished { get; }
+
+    private static async Task<CustomCommandExit> WaitForExitAndDisposeAsync(Process process)
     {
         try
         {
             await process.WaitForExitAsync().ConfigureAwait(false);
+            return new CustomCommandExit(process.ExitCode, null);
         }
         finally
         {
             process.Dispose();
         }
+    }
+
+    private static async Task<CustomCommandExit> ExitOfAsync(StderrCapturingProcess process)
+    {
+        var captured = await process.Exited.ConfigureAwait(false);
+        return new CustomCommandExit(captured.ExitCode, CommandFailure.Detail(captured.StderrTail));
     }
 }
 
@@ -207,10 +243,35 @@ public sealed class CustomCommandProcessRunner
         if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory) && !Path.Exists(invocation.WorkingDirectory))
             throw new CustomCommandNotStartedException(
                 $"session directory {TerminalText.Sanitized(invocation.WorkingDirectory)} no longer exists");
-        var process = Process.Start(CreateStartInfo(invocation, _which, _env));
-        if (process is null)
-            throw new InvalidOperationException($"Failed to start custom command '{invocation.Name}'.");
-        return new CustomCommandProcessHandle(process);
+        var startInfo = CreateStartInfo(invocation, _which, _env);
+        try
+        {
+            if (invocation.ErrorHud && TryStartCapturing(startInfo, invocation.Name) is { } captured)
+                return new CustomCommandProcessHandle(captured);
+            var process = Process.Start(startInfo);
+            if (process is null)
+                throw new InvalidOperationException($"Failed to start custom command '{invocation.Name}'.");
+            return new CustomCommandProcessHandle(process);
+        }
+        catch (Win32Exception ex)
+        {
+            throw new CustomCommandNotStartedException(ex.Message);
+        }
+    }
+
+    /// <summary>A full or read-only TEMP must cost the failure panel, not the command: upstream runs it
+    /// without capture too.</summary>
+    private static StderrCapturingProcess? TryStartCapturing(ProcessStartInfo startInfo, string name)
+    {
+        try
+        {
+            return StderrCapturingProcess.Start(startInfo);
+        }
+        catch (StderrCaptureUnavailableException ex)
+        {
+            Debug.WriteLine($"custom command '{name}': stderr capture unavailable: {ex.InnerException?.Message}");
+            return null;
+        }
     }
 
     public static ProcessStartInfo CreateStartInfo(

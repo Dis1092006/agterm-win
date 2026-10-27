@@ -1,3 +1,5 @@
+using AgTerm.Core.Model;
+
 namespace AgTerm.Core.Keymap;
 
 /// <summary>
@@ -26,6 +28,14 @@ public sealed class CustomCommand
 
     /// <summary>The keybind string (e.g. cmd+shift+e or ctrl+a&gt;b); empty means palette-only.</summary>
     public string Shortcut { get; set; }
+
+    /// <summary>Opt-in: a non-zero exit shows a failure panel with the command's stderr tail.</summary>
+    public bool ErrorHud { get; set; }
+
+    public HudPosition ErrorPosition { get; set; } = HudPositions.Default;
+
+    /// <summary>The pane the panel covers; null covers the whole session.</summary>
+    public OverlayPane? ErrorPane { get; set; }
 }
 
 /// <summary>

@@ -98,7 +98,7 @@ internal static class ClientOutput
         {
             lines.Add("");
             lines.Add("commands:");
-            lines.AddRange(keymap.Commands.Select(c => $"    {c.Name}  {c.Shortcut ?? "(palette only)"}"));
+            lines.AddRange(keymap.Commands.Select(CommandRow));
         }
         if (keymap.Diagnostics.Length > 0)
         {
@@ -108,6 +108,17 @@ internal static class ClientOutput
             lines.AddRange(keymap.Diagnostics.Select(d => d.Line > 0 ? $"    line {d.Line}: {d.Message}" : $"    {d.Message}"));
         }
         return string.Join("\n", lines);
+    }
+
+    private static string CommandRow(ControlKeymapCommand command)
+    {
+        var row = $"    {command.Name}  {command.Shortcut ?? "(palette only)"}";
+        if (!command.ErrorHud)
+        {
+            return row;
+        }
+        row += $"  --error-hud --error-position {command.ErrorPosition}";
+        return command.ErrorPane is null ? row : row + $" --error-pane {command.ErrorPane}";
     }
 
     /// <summary>Render the theme.list payload as one theme name per line, the active theme(s)

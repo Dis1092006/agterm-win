@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using AgTerm.Core.Install;
 using AgTerm.Core.Model;
+using AgTerm.Terminal;
 
 namespace AgTerm.Xterm.Tests;
 
@@ -104,5 +105,56 @@ public class CustomCommandEnvironmentTests
             processPath: Path.Join(directory, "agterm-win.exe"));
 
         Assert.DoesNotContain(directory, startInfo.Environment["PATH"]!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static CustomCommandProcessRunner CmdRunner() =>
+        new(which: _ => null, env: key => key == "COMSPEC" ? Cmd : null);
+
+    private static CustomCommandInvocation Run(string shellLine, bool errorHud) =>
+        new(Guid.NewGuid(), "Build", shellLine, "", new Dictionary<string, string>(),
+            Guid.NewGuid(), errorHud);
+
+    [Fact]
+    public async Task An_opted_in_command_reports_its_exit_code_and_last_stderr_line()
+    {
+        var handle = CmdRunner().Start(Run("echo first 1>&2 & echo build broke 1>&2 & exit /b 3", errorHud: true));
+
+        var exit = await handle.Finished.WaitAsync(TimeSpan.FromSeconds(60));
+
+        Assert.Equal(3, exit.ExitCode);
+        Assert.Equal("build broke", exit.Detail);
+        await handle.Exited.WaitAsync(TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
+    public async Task An_opted_in_command_still_runs_without_capture_when_the_stderr_file_cannot_be_created()
+    {
+        var original = StderrCapturingProcess.StderrDirectory;
+        StderrCapturingProcess.StderrDirectory = () => Path.Join(Path.GetTempPath(), $"agterm-no-dir-{Guid.NewGuid():N}");
+        try
+        {
+            var handle = CmdRunner().Start(Run("echo oops 1>&2 & exit /b 5", errorHud: true));
+
+            var exit = await handle.Finished.WaitAsync(TimeSpan.FromSeconds(60));
+
+            Assert.Equal(5, exit.ExitCode);
+            Assert.Null(exit.Detail);
+        }
+        finally
+        {
+            StderrCapturingProcess.StderrDirectory = original;
+        }
+    }
+
+    [Fact]
+    public async Task A_plain_command_reports_its_exit_code_without_detail()
+    {
+        var handle = CmdRunner().Start(Run("echo oops 1>&2 & exit /b 4", errorHud: false));
+
+        var exit = await handle.Finished.WaitAsync(TimeSpan.FromSeconds(60));
+
+        Assert.Equal(4, exit.ExitCode);
+        Assert.Null(exit.Detail);
+        await handle.Exited.WaitAsync(TimeSpan.FromSeconds(60));
     }
 }

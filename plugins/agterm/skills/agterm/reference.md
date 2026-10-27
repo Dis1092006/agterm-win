@@ -956,8 +956,8 @@ later, so right after `keymap reload` the list already shows the new file. `--js
     { "action": "rename_session" }
   ],
   "commands": [
-    { "name": "Build", "shortcut": "ctrl+shift+b", "repeats": false },
-    { "name": "Notes", "repeats": false }
+    { "name": "Build", "shortcut": "ctrl+shift+b", "errorHud": true, "errorPosition": "top-right", "errorPane": "left", "repeats": false },
+    { "name": "Notes", "errorHud": false, "errorPosition": "center", "repeats": false }
   ],
   "diagnostics": [ { "line": 4, "message": "unknown verb 'mapp'" } ]
 }
@@ -971,7 +971,10 @@ later, so right after `keymap reload` the list already shows the new file. `--js
   differs from its shipped Windows default, so `map ctrl+alt+n new_window` is not an override. Otherwise it is
   left out.
 - `commands[]` has the custom commands in file order. `shortcut` is written as it is in the file and is left out
-  for a palette-only command. `repeats` is always `false`: agterm-win has no `--repeat`.
+  for a palette-only command. `repeats` is always `false`: agterm-win has no `--repeat`. `errorHud` is `true` when
+  the line has `--error-hud`. `errorPosition` is the panel position, `center` unless `--error-position` set another.
+  `errorPane` is `left` or `right` and is left out when `--error-pane` is not given. All three are described under
+  `keymap.conf format` below.
 - `diagnostics[]` has the parser diagnostics, the same ones `keymap reload` counts, and then the Windows
   shadowing diagnostics that the Keyboard Shortcuts view shows, for example a chord that resolves to another
   built-in so that this one never fires. `line` 0 means the whole file. The count `keymap reload` prints
@@ -988,15 +991,17 @@ actions:
     rename_session  -
 
 commands:
-    Build  ctrl+shift+b
+    Build  ctrl+shift+b  --error-hud --error-position top-right --error-pane left
     Notes  (palette only)
 
 diagnostics:
     line 4: unknown verb 'mapp'
 ```
 
-`*` marks an overridden action and `-` an action with no chord. The `commands:` and `diagnostics:` blocks are
-left out when empty. A diagnostic on line 0 prints without `line 0:`.
+`*` marks an overridden action and `-` an action with no chord. A command with `--error-hud` ends its row with
+`--error-hud --error-position POS`, and with ` --error-pane PANE` when a pane is set. A command without
+`--error-hud` shows no error options. The `commands:` and `diagnostics:` blocks are left out when empty.
+A diagnostic on line 0 prints without `line 0:`.
 
 Upstream also reports `menu[]` (the macOS menu key equivalents), chord alternatives and `--repeat`. agterm-win
 has no macOS menu, alternatives or `--repeat`, so none of them is written.
@@ -1009,7 +1014,8 @@ pane's working directory, selection and `AGT_*` values. The selection comes from
 briefly on the window, the same as `session copy`; if the pane does not answer, the command runs with an empty
 selection. The session does not have to be the active one, and
 running the command does not select it. Returns `result.id`, the session's id (the human output is `ok`).
-The reply means the process started. Its exit status and output are not reported. Errors:
+The reply means the process started. Its exit status and output are not reported, though a command with
+`--error-hud` still shows its failure panel in the window. Errors:
 `keymap.run requires a command name`, `no custom command named NAME`, `custom commands are not available`
 (the headless host cannot run them), `no such session: TARGET` and `ambiguous session prefix 'TARGET' → …` for a
 bad `--target`, and `NAME did not start: REASON`, for example `session directory <path> no longer exists` or
@@ -1027,11 +1033,35 @@ The file lives at `<config dir>\keymap.conf` (the config dir is settings.json `c
 `~\.agterm-win`). Two verbs, line-based; blank lines and `#` comments ignored:
 
 - `map <chord> <action>` — rebind a built-in action to a single chord (no leaders for built-ins).
-- `command "<name>" [chord] <shell...>` — define a custom shell command, listed in the separate custom
+- `command "<name>" [chord] [error options] <shell...>` — define a custom shell command, listed in the separate custom
   command palette (`Ctrl+Shift+O`). The quoted name may contain spaces. The post-name token is the chord only if it
   parses AND carries a modifier (a bare modifier-less key is rejected). A custom chord may be a leader
   sequence (chords joined by `>`, e.g. `ctrl+a>g`); the next chord must follow within 1.5 s, and Escape
-  abandons the prefix. No chord → palette-only.
+  abandons the prefix. No chord → palette-only. The error options are described below.
+
+A command without `--error-hud` reports only a start failure, through the `Command failed` bar. A command that
+exits non-zero shows nothing. To add a ten-second failure panel, put `--error-hud` after the optional chord,
+before the shell body:
+
+```text
+command "Build" ctrl+a>b --error-hud .\build.ps1
+command "Deploy" --error-position top-right --error-pane left --error-hud .\deploy.ps1
+```
+
+The panel shows over the session when the command exits non-zero or does not start. It has the command name with
+the exit status (`Build: exit 1`) or the start error, and the last usable line of stderr if there is one. Only
+commands with `--error-hud` capture stderr. A command that exits 0 shows nothing. The panel is `center` over the
+whole session by default. `--error-position POS` takes the same nine positions as `session hud --position`,
+including the `top` and `bottom` aliases. `--error-pane left|right` puts the panel over that pane. If that pane is
+not shown, the panel covers the whole session at the same position. Any overlay or HUD already open on the session keeps
+its slot, and no panel opens over it. A command that does not start also shows the `Command failed` bar.
+
+The options may come in any order. `--error-position` and `--error-pane` need `--error-hud`. A missing or invalid
+value, a repeated option, an unknown option that starts with `--error-`, or an empty shell body gives a
+diagnostic and skips the command. The first token that does not start with `--error-` ends the options and starts
+the shell body, so `--error-hud .\script.ps1 --error-pane right` passes `--error-pane right` to the script. `--`
+ends the options explicitly, for example before a shell body that starts with `--error-`. A palette-only command
+puts the options right after the quoted name. A chord is never looked for after the options.
 
 A **chord** is modifier words joined by `+` then a base key: modifiers `ctrl`, `cmd`, `opt`, `shift`
 (also `control`, `command`, `option`, `alt`). On Windows `cmd` and `ctrl` are both Ctrl, `opt`/`alt` is

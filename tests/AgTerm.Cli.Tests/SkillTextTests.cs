@@ -464,7 +464,7 @@ public class SkillTextTests
 
     private static string SkillDirectory() => Path.Combine(FindRepoRoot(), "plugins", "agterm", "skills", "agterm");
 
-    private static string FindRepoRoot()
+    internal static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "AgTerm.slnx"))) dir = dir.Parent;

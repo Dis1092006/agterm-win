@@ -253,6 +253,48 @@ public sealed class CustomCommandInvocationTests
     }
 
     [Fact]
+    public void The_resolver_carries_the_session_and_the_error_options()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Workspace");
+        var session = store.AddSession(workspace.Id, @"C:\work")!;
+        session.Surface = new FakeSurface("left-pane", "");
+        var command = new CustomCommand("Build", "make", "ctrl+k", Guid.NewGuid())
+        {
+            ErrorHud = true,
+            ErrorPosition = HudPosition.TopRight,
+            ErrorPane = OverlayPane.Right,
+        };
+        var keymap = new Keymap(new Dictionary<BuiltinAction, Chord>(), [command]);
+        var window = new CustomCommandWindowContext(Guid.NewGuid(), "main", "pipe", 1);
+
+        var invocation = CustomCommandInvocationResolver.Resolve(
+            store, keymap, new CustomCommandExecutionRequest(command.Id, CustomCommandSource.Palette), window);
+
+        Assert.Equal(session.Id, invocation!.SessionId);
+        Assert.True(invocation.ErrorHud);
+        Assert.Equal(HudPosition.TopRight, invocation.ErrorPosition);
+        Assert.Equal(OverlayPane.Right, invocation.ErrorPane);
+    }
+
+    [Fact]
+    public void A_sessionless_keybind_carries_no_session()
+    {
+        var store = TestStores.Scratch();
+        var command = new CustomCommand("Build", "make", "ctrl+k", Guid.NewGuid()) { ErrorHud = true };
+        var keymap = new Keymap(new Dictionary<BuiltinAction, Chord>(), [command]);
+        var window = new CustomCommandWindowContext(Guid.NewGuid(), "main", "pipe", 1);
+
+        var invocation = CustomCommandInvocationResolver.Resolve(
+            store, keymap,
+            new CustomCommandExecutionRequest(command.Id, CustomCommandSource.Hotkey, HotkeyGeneration: 1),
+            window);
+
+        Assert.Null(invocation!.SessionId);
+        Assert.True(invocation.ErrorHud);
+    }
+
+    [Fact]
     public void Hotkey_from_the_split_pane_exports_the_split_working_directory()
     {
         var store = TestStores.Scratch();

@@ -766,7 +766,15 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The list is the keymap last loaded from `keymap.conf`, the one every window arms, not a second parse of the file. A window applies a reload a moment later, so `keymap list` and `keymap run` already see the new file when `keymap reload` returns.
   - `keymap.run` runs in the window that owns the target session, as the custom command palette would, in the focused primary or split pane. The target session need not be the active one and is not selected. The reply comes after the process started or failed to start. A start failure answers `NAME did not start: REASON` and also queues the `Command failed` InfoBar.
   - The headless host answers `keymap.list` from its own last load and `keymap.run` of a known name with `custom commands are not available` (an unknown name gets `no custom command named X` first).
-  - Not adopted with these verbs: `errorHud`, `errorPosition` and `errorPane` on commands.
+  - `commands[]` also carries `errorHud`, `errorPosition` and `errorPane`, see the next entry.
+- `--error-hud`, `--error-position` and `--error-pane` on a `command` line of `keymap.conf` (upstream `9247b96f`, `17e37f38`): a failure panel for a custom command.
+  - `keymap list` reads the options back: `errorHud` and `errorPosition` are always written, `errorPane` only when set. The human row adds `--error-hud --error-position POS` and ` --error-pane PANE` for a command with `--error-hud`.
+  - Only a command with `--error-hud` captures stderr. It goes to a temp file, not a pipe, so a background process that the command started cannot hold the report back. The file is made with `CreateProcessW` and an explicit list of inherited handles. The last 16 KiB are read after the exit and the file is deleted. The stderr line is read as UTF-8, or as the console OEM code page when it is not valid UTF-8; upstream reads UTF-8 only. When the temp file cannot be created, the command runs without capture and the panel shows no stderr line, as upstream does.
+  - On a non-zero exit, or when the command does not start, the panel is a HUD over the session for 10 seconds. Its text is `NAME: exit CODE` or `NAME: START ERROR`, then the last usable stderr line. A command that does not start also shows the `Command failed` bar, as before.
+  - `keymap.run` of a command with `--error-hud` shows the panel too. The reply still says only that the process started.
+  - Any overlay or HUD already open on the session keeps its slot, and no panel opens over it (the HUD open is refused with `overlay already open`).
+  - A command without `--error-hud` that exits non-zero shows nothing. Upstream posts a macOS notification banner for it.
+  - `--repeat` is not adopted, so it is not among the options.
 
 ## Windows-only extensions
 

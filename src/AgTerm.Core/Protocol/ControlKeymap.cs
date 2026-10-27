@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using AgTerm.Core.Keymap;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Core.Protocol;
 
@@ -23,6 +24,19 @@ public sealed record ControlKeymapCommand
 
     [JsonPropertyName("shortcut")]
     public string? Shortcut { get; init; }
+
+    // Upstream encodes errorHud and errorPosition as non-optional fields, so both are written even
+    // at their defaults.
+    [JsonPropertyName("errorHud")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public bool ErrorHud { get; init; }
+
+    [JsonPropertyName("errorPosition")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string ErrorPosition { get; init; } = HudPositions.Wire(HudPositions.Default);
+
+    [JsonPropertyName("errorPane")]
+    public string? ErrorPane { get; init; }
 
     // Upstream encodes this as a non-optional Bool, so it is written even when false.
     [JsonPropertyName("repeats")]
@@ -71,6 +85,9 @@ public static class ControlKeymapProjection
                 {
                     Name = c.Name,
                     Shortcut = c.Shortcut.Length == 0 ? null : c.Shortcut,
+                    ErrorHud = c.ErrorHud,
+                    ErrorPosition = HudPositions.Wire(c.ErrorPosition),
+                    ErrorPane = c.ErrorPane is { } pane ? OverlayPanes.Wire(pane) : null,
                 })
                 .ToArray(),
             Diagnostics = parserDiagnostics

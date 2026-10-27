@@ -101,14 +101,14 @@
 
 ## 7. Keymap (keymap.list и keymap.run реализованы 2026-10-26)
 
-`keymap.list`, `keymap.run` и пропуск повторного имени `command` реализованы, см. `docs/PLATFORM-NOTES.md`. Не взяты: `menu[]`, альтернативы через `|`, `--repeat`, запуск из сессии HTML-страницы и `--error-*`.
+`keymap.list`, `keymap.run` и пропуск повторного имени `command` реализованы, см. `docs/PLATFORM-NOTES.md`. Не взяты: `menu[]`, альтернативы через `|`, `--repeat`, запуск из сессии HTML-страницы. `--error-*` взяты.
 
 - F1–F20 с модификаторами и без, как leader, как `global-hotkey` #619.
 - Альтернативы через `|` в одной строке `map` или `command`; leader-последовательности для builtin #420.
 - `--repeat` для leader (как tmux `bind -r`), `repeats` в `keymap list` #682.
 - `global-hotkey` #441.
 - `keymap.list` – во что реально разрешились биндинги, меню, диагностика #301. `keymap.run NAME` #694. Реализованы: `chord` в написании Windows, без `menu[]`.
-- `--error-hud`, `--error-position`, `--error-pane` у custom-команд #613, #622.
+- `--error-hud`, `--error-position`, `--error-pane` у custom-команд #613, #622. Реализовано.
 - Аккорды разрешаются по раскладке: на не-латинской раскладке биндинг по физической клавише #310. ctrl+j и ctrl+k в палитрах работают на кириллице #705.
 - Две строки на один аккорд больше не решаются порядком в файле #444.
 - Повтор имени `command` пропускается с диагностикой #582. Реализовано.

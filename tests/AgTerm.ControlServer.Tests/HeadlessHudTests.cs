@@ -173,6 +173,52 @@ public sealed class HeadlessHudTests : IDisposable
         Assert.Equal("no hud", (await Send(Hud(Command.SessionHudUpdate, id))).Error);
     }
 
+    private CommandFailureHudResult OpenFailurePanel(string id, OverlayPane? pane)
+    {
+        CommandFailureHudResult result = null!;
+        var spec = new HudSpec("Command 'build' failed: exit 2", "boom", Position: HudPosition.Center, HideAfter: 10);
+        _host.RunLocked(() => result = _host.Actions.OpenCommandFailureHud(Guid.Parse(id), spec, pane));
+        return result;
+    }
+
+    [Fact]
+    public async Task A_failure_panel_opens_over_the_session_with_its_auto_hide()
+    {
+        var id = await SelectedSession();
+
+        var result = OpenFailurePanel(id, pane: null);
+
+        Assert.True(result.Response.Ok, result.Response.Error);
+        Assert.Null(result.Fallback);
+        var hud = (await SessionNode(id)).Hud!;
+        Assert.Equal("Command 'build' failed: exit 2", hud.Message);
+        Assert.Equal(10, hud.HideAfter);
+    }
+
+    [Fact]
+    public async Task A_failure_panel_for_a_hidden_pane_falls_back_to_the_whole_session()
+    {
+        var id = await SelectedSession();
+
+        var result = OpenFailurePanel(id, OverlayPane.Right);
+
+        Assert.True(result.Response.Ok, result.Response.Error);
+        Assert.Equal("pane not visible", result.Fallback);
+        Assert.Null((await SessionNode(id)).Hud!.Pane);
+    }
+
+    [Fact]
+    public async Task A_failure_panel_does_not_replace_a_program_overlay()
+    {
+        var id = await SelectedSession();
+        Assert.True((await Send(OverlayOpen(id))).Ok);
+
+        var result = OpenFailurePanel(id, pane: null);
+
+        Assert.Equal("overlay already open", result.Response.Error);
+        Assert.Null((await SessionNode(id)).Hud);
+    }
+
     [Fact]
     public async Task AProgramOverlayRefusesAHudAndHudCommandsLeaveItRunning()
     {

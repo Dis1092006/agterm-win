@@ -1536,6 +1536,20 @@ public sealed class HeadlessControlActions : IControlActions
             return store.OpenHud(id, spec, resolved.Identity) ? OkId(id) : Err("overlay already open");
         });
 
+    /// <summary>Opens a failed custom command's panel over its session. An explicit pane the HUD
+    /// would refuse falls back to the whole session, since the message matters more than its place.
+    /// Runs under the host gate.</summary>
+    public CommandFailureHudResult OpenCommandFailureHud(Guid sessionId, HudSpec spec, OverlayPane? pane)
+    {
+        if (_store.SessionWithId(sessionId) is not { } session)
+            return new CommandFailureHudResult(Err("no such session"), null);
+        // a rejection leaves `resolved` session-wide, which is the fallback
+        PanePlacement.TryResolve(pane, null, session, requireVisible: true,
+            HudErrors.InvalidPane, out var resolved, out var rejection);
+        var response = _store.OpenHud(sessionId, spec, resolved.Identity) ? OkId(sessionId) : Err("overlay already open");
+        return new CommandFailureHudResult(response, rejection);
+    }
+
     public ControlResponse UpdateHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
         ResolveSession(target, window, (store, id) =>
         {
@@ -2029,3 +2043,7 @@ public sealed class HeadlessControlActions : IControlActions
     public ControlResponse WindowFullscreen(string? target) =>
         ResolveWindowId(target, _ => Err(WindowManagementUnavailable));
 }
+
+/// <summary>The outcome of opening a command failure panel; <see cref="Fallback"/> is the
+/// placement rejection text when the panel went over the whole session instead.</summary>
+public sealed record CommandFailureHudResult(ControlResponse Response, string? Fallback);

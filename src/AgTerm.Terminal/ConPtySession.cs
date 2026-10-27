@@ -102,7 +102,7 @@ public sealed class ConPtySession : IDisposable
                     console, new IntPtr(IntPtr.Size), IntPtr.Zero, IntPtr.Zero))
                 throw new Win32Exception();
 
-            var environmentBlock = BuildEnvironmentBlock(info.ExtraEnvironment, info.RemoveEnvironment);
+            var environmentBlock = EnvironmentBlock.Build(info.ExtraEnvironment, info.RemoveEnvironment);
             var startup = new ConPtyNative.StartupInfoEx
             {
                 // STARTF_USESTDHANDLES with null handles: without it CreateProcessW duplicates the
@@ -155,32 +155,6 @@ public sealed class ConPtySession : IDisposable
                 Marshal.FreeHGlobal(attributeList);
             }
         }
-    }
-
-    /// <summary>A CREATE_UNICODE_ENVIRONMENT block: the inherited process environment with the
-    /// removals applied and the extras overlaid (case-insensitive keys, like the environment
-    /// itself), sorted per the CreateProcessW contract, double-NUL-terminated. Zero when there is
-    /// nothing to change (null = plain inheritance, cheaper and identical).</summary>
-    private static IntPtr BuildEnvironmentBlock(
-        IReadOnlyDictionary<string, string>? extra, IReadOnlyList<string>? remove)
-    {
-        if ((extra is null || extra.Count == 0) && (remove is null || remove.Count == 0))
-            return IntPtr.Zero;
-        var merged = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
-            merged[(string)entry.Key] = (string?)entry.Value ?? "";
-        // removal first: an explicit extra of the same name is a declaration, and wins
-        if (remove is not null)
-            foreach (var key in remove)
-                merged.Remove(key);
-        if (extra is not null)
-            foreach (var (key, value) in extra)
-                merged[key] = value;
-        var block = new StringBuilder();
-        foreach (var (key, value) in merged)
-            block.Append(key).Append('=').Append(value).Append('\0');
-        block.Append('\0');
-        return Marshal.StringToHGlobalUni(block.ToString());
     }
 
     private void StartReader(SafeFileHandle outputRead, Action<byte[]>? onOutput)

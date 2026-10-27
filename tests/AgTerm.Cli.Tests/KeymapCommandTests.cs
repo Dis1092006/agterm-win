@@ -87,6 +87,32 @@ public class KeymapCommandTests
     }
 
     [Fact]
+    public void FormatKeymap_appends_the_error_options_for_an_opted_in_command_only()
+    {
+        var keymap = new ControlKeymap
+        {
+            Path = "p",
+            Actions = [],
+            Commands =
+            [
+                new ControlKeymapCommand
+                {
+                    Name = "loud", ErrorHud = true, ErrorPosition = "bottom-center", ErrorPane = "right",
+                },
+                new ControlKeymapCommand { Name = "whole", ErrorHud = true, ErrorPosition = "center" },
+                new ControlKeymapCommand { Name = "quiet", ErrorPosition = "center" },
+            ],
+            Diagnostics = [],
+        };
+
+        var text = ClientOutput.FormatKeymap(keymap);
+
+        Assert.Contains("\n    loud  (palette only)  --error-hud --error-position bottom-center --error-pane right\n", text);
+        Assert.Contains("\n    whole  (palette only)  --error-hud --error-position center\n", text);
+        Assert.EndsWith("\n    quiet  (palette only)", text);
+    }
+
+    [Fact]
     public void FormatKeymap_leaves_out_empty_blocks()
     {
         var keymap = new ControlKeymap

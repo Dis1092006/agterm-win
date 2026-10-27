@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="AgTerm.Terminal.Tests" />
+    <InternalsVisibleTo Include="AgTerm.Xterm.Tests" />
   </ItemGroup>
 
   <ItemGroup>

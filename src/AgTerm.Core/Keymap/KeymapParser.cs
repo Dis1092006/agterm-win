@@ -1,4 +1,5 @@
 using System.Text;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Core.Keymap;
 
@@ -12,8 +13,10 @@ namespace AgTerm.Core.Keymap;
 /// (single or double). Verbs:
 /// - map &lt;chord&gt; &lt;action&gt; — rebind a built-in (single chord only). Conflict resolution is
 ///   order-INDEPENDENT against the FINAL resolved built-in set.
-/// - command "&lt;name&gt;" [chord] &lt;shell...&gt; — a custom command; the token after the closing quote
-///   is the chord iff it parses AND carries a modifier; the shell line keeps {AGT_X} tokens verbatim.
+/// - command "&lt;name&gt;" [chord] [error options] &lt;shell...&gt; — a custom command; the token after the
+///   closing quote is the chord iff it parses AND carries a modifier; the error options
+///   (--error-hud, --error-position POS, --error-pane left|right) are a prefix of the shell line;
+///   the shell line keeps {AGT_X} tokens verbatim.
 /// After all lines, a single cross-section validation pass drops custom keybinds that collide with
 /// an active built-in chord, a reserved monitor chord, or each other (the command stays palette-only).
 /// </summary>
@@ -327,12 +330,8 @@ public static class KeymapParser
             }
         }
 
-        // an empty shell line (just a name, or a name + chord with no command) is a no-op binding.
-        if (shellLine.Trim().Length == 0)
-        {
-            diagnostics.Add(new KeymapDiagnostic(line, $"command '{name}' has no shell line"));
-            return;
-        }
+        var command = ParseCommandOptions(shellLine, name, shortcut, line, diagnostics);
+        if (command is null) return;
 
         // a name addresses at most one command, because `keymap run` looks commands up by name
         if (commands.Exists(c => string.Equals(c.Name, name, StringComparison.Ordinal)))
@@ -341,6 +340,75 @@ public static class KeymapParser
             return;
         }
 
-        commands.Add(new CustomCommand(name, shellLine, shortcut));
+        commands.Add(command);
+    }
+
+    private static readonly string[] ErrorOptions = { "--error-hud", "--error-position", "--error-pane" };
+
+    /// <summary>Consume the contiguous --error-* prefix of the shell line. The first other token (or a
+    /// "--" terminator, which is consumed) ends it, so later text, quoting and spacing stay the shell's.
+    /// Returns null after adding a diagnostic when the line must be skipped.</summary>
+    private static CustomCommand? ParseCommandOptions(string body, string name, string shortcut, int line,
+        List<KeymapDiagnostic> diagnostics)
+    {
+        var command = new CustomCommand(name, "", shortcut);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var rest = body;
+
+        CustomCommand? Reject(string reason)
+        {
+            diagnostics.Add(new KeymapDiagnostic(line, $"command '{name}' {reason}"));
+            return null;
+        }
+
+        string TakeToken()
+        {
+            var end = 0;
+            while (end < rest.Length && !char.IsWhiteSpace(rest[end])) end++;
+            var token = rest[..end];
+            rest = rest[end..].TrimStart();
+            return token;
+        }
+
+        while (rest.Length > 0)
+        {
+            var end = 0;
+            while (end < rest.Length && !char.IsWhiteSpace(rest[end])) end++;
+            var option = rest[..end];
+            if (option == "--")
+            {
+                TakeToken();
+                break;
+            }
+            if (!option.StartsWith("--error-", StringComparison.Ordinal)) break;
+            if (Array.IndexOf(ErrorOptions, option) < 0) return Reject($"has unknown option '{option}'");
+            if (!seen.Add(option)) return Reject($"repeats option '{option}'");
+            TakeToken();
+            switch (option)
+            {
+                case "--error-hud":
+                    command.ErrorHud = true;
+                    break;
+                case "--error-position":
+                    if (HudPositions.Parse(TakeToken()) is not { } position)
+                        return Reject("requires a valid HUD position after --error-position");
+                    command.ErrorPosition = position;
+                    break;
+                default:
+                    command.ErrorPane = TakeToken() switch
+                    {
+                        "left" => OverlayPane.Left,
+                        "right" => OverlayPane.Right,
+                        _ => null,
+                    };
+                    if (command.ErrorPane is null) return Reject("requires left or right after --error-pane");
+                    break;
+            }
+        }
+
+        if (!command.ErrorHud && seen.Count > 0) return Reject("requires --error-hud for error placement options");
+        if (rest.Length == 0) return Reject("has no shell line");
+        command.Command = rest;
+        return command;
     }
 }
