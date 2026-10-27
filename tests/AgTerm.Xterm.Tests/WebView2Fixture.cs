@@ -267,4 +267,5 @@ public sealed class WebView2Fixture : IDisposable
 
 [CollectionDefinition("webview2")]
 [ReleaseWebViewsAfterTest]
+[OneLiveTestPerMachine]
 public class WebView2Collection : ICollectionFixture<WebView2Fixture>;
