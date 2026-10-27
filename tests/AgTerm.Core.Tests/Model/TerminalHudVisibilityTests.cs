@@ -3,8 +3,7 @@ using AgTerm.Core.Tests.Ported;
 
 namespace AgTerm.Core.Tests.Model;
 
-// Which HUD the window draws: spec docs/superpowers/specs/2026-10-13-hud-design.md section 4.1,
-// after upstream hudCanMount (ed831ab, WindowContentView+Detail.swift).
+// Which HUD the window draws: after upstream hudCanMount (ed831ab, WindowContentView+Detail.swift).
 public class TerminalHudVisibilityTests
 {
     private static readonly HudPanelSize Unmeasured = new(HudLayout.MaxSizePercent, 10);

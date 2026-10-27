@@ -34,6 +34,7 @@ Current parity pin: agterm `7df70fe` (66 commands, 41 builtin actions). Machine 
   structs, `null`/absent optionals **omitted** from output (never emitted as `null`).
 - Wire error strings are part of the contract — copy them verbatim from the spec/Swift source.
 - The agent skill (`plugins/agterm/skills/agterm`) describes the control surface. A change to a wire command, a CLI flag or an `AGTERM_*` variable updates the skill in the same PR. The tests in `tests/AgTerm.Cli.Tests/SkillTextTests.cs` enforce it.
+- Plans and design specs are written in English and committed to `docs/plans/`, not `docs/superpowers/`. When the work is merged, the plan moves to `docs/plans/completed/`.
 - Every PR raises the app version, `<Version>` in `Directory.Build.props`, whatever it changes.
 - A change to the skill raises the plugin version: the `version` in `plugins/agterm/.claude-plugin/plugin.json`, `plugins/agterm/.codex-plugin/plugin.json` and the plugin entry of `.claude-plugin/marketplace.json`. Claude Code does not update an installed plugin while that string stays the same. The plugin version is separate from the app version, so a PR that leaves the skill alone leaves it alone too. `SkillTextTests` checks that the three are equal.
 
@@ -51,6 +52,8 @@ tests/*/                    xUnit suites per project; AgTerm.E2E = headless wire
                             AgTerm.Xterm.Tests hosts the LIVE (ConPTY+WebView2) integration/E2E
 docs/agterm-windows-spec.md the spec (ТЗ)
 docs/PLATFORM-NOTES.md      documented adaptations/divergences
+docs/upstream/              upstream changes after the parity pin
+docs/plans/                 plans and specs; finished ones in docs/plans/completed/
 parity/surface.json         extracted upstream surface (pin 7df70fe)
 tools/extract_surface.py    surface extractor
 ```

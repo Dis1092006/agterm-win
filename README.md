@@ -1,15 +1,10 @@
 # agterm-win
 
-A Windows-native companion to [umputun/agterm](https://github.com/umputun/agterm) — the two-level
-`Workspace → Session` model and the agent **control API**, on a Windows stack (ConPTY + WinUI/Avalonia,
-CLI on System.CommandLine). Rendering/chrome are re-implemented natively; the drivable surface stays in
-**strict API parity** so existing agterm scripts work here unchanged. The agent skill is this repository's own copy of upstream's skill, adapted to Windows (see [Agent skill](#agent-skill)).
+An unofficial Windows port of [umputun/agterm](https://github.com/umputun/agterm), a macOS terminal for coding agents. It keeps agterm's `Workspace → Session` model and its control API. `agtermctl`, the `AGTERM_*` environment variables and the `keymap.conf` format are the same as upstream, so a script written for agterm runs here unchanged. The app runs on ConPTY, WinUI 3 and xterm.js in WebView2; the CLI is built on System.CommandLine. The agent skill is this repository's own copy of upstream's skill, adapted to Windows (see [Agent skill](#agent-skill)).
 
+This is not a fork. agterm is a native macOS app in Swift; this repository re-implements its design and its wire contract in .NET. It is not maintained by the agterm author: report Windows bugs and requests in [this repository's issues](https://github.com/Dis1092006/agterm-win/issues), not in umputun/agterm.
 **Status:** Phases 1-5 are complete. The Core model, control plane, live ConPTY/WebView2 renderer,
 Windows shell, Phase 5 workflows, and x64/ARM64 release gates are implemented and validated.
-
-> This is an independent product inspired by agterm, **not** a fork of its macOS code. agterm is
-> deliberately a native macOS app; this reuses its _design + wire contract_, not its Swift/SwiftUI/libghostty.
 
 ## Parity policy (strict)
 
@@ -44,18 +39,16 @@ python tools/extract_surface.py --agterm C:\git\github\umputun\agterm --out pari
 
 `surface.json` captures, per agterm git revision:
 
-- `control.commands` — 49 commands (swift case → wire string)
+- `control.commands` — 66 commands (swift case → wire string)
 - `control.args` / `result` / `sessionNode` / `workspaceNode` / `windowNode` — field lists
-- `keymap.actions` — 35 `BuiltinAction`s + default chords; `keymap.tokens` — the `{AGT_X}` set
+- `keymap.actions` — 41 `BuiltinAction`s + default chords; `keymap.tokens` — the `{AGT_X}` set
 - `settings` — `AppSettings` fields; `persistence` — `Snapshot`/`SessionSnapshot` fields
 
-### The drift gate (CI)
+### The drift check
 
-1. **Surface diff** — re-extract on a new agterm pin and diff against the committed `parity/surface.json`.
-   Any new command/arg/action/field is a parity task (implement) or an explicit skip. **Blocking.**
-2. **Golden wire tests** — request→response fixtures (snapshot them from a live agterm via `agtermctl`),
-   asserted field-for-field. Catches _semantics_ the name-level diff can't see.
-3. **CLI snapshot tests** — `agtermctl <cmd>` human and `--json` output vs recorded baselines.
+The test suites read the committed `parity/surface.json` and check the code against it: builtin actions, settings, snapshot and tree fields, and the agent skill text. CI runs them on every pull request.
+
+Moving to a new upstream pin is a manual step. Re-extract `surface.json` from the new revision and diff it against the committed one. Each new command, argument, action or field is then implemented or recorded as a skip in `parity/windows-only.json` or `docs/PLATFORM-NOTES.md`.
 
 Bump the parity version in this README when you re-pin: **current parity target — agterm
 `7df70fe` (post-v0.16.1; 66 commands, 41 actions).**
@@ -68,12 +61,18 @@ Bump the parity version in this README when you re-pin: **current parity target 
 ## Layout
 
 ```
-tools/extract_surface.py   surface extractor (the drift-gate input)
+src/                       the app, the control server, agtermctl and the terminal backend
+tests/                     xUnit suites per project; AgTerm.E2E drives agtermctl end to end
+tools/extract_surface.py   surface extractor (the drift-check input)
 parity/surface.json        latest extracted upstream surface snapshot
-docs/                       (planned) agterm-windows-spec.md — the portable data/protocol/keymap spec
+docs/agterm-windows-spec.md  the portable data/protocol/keymap spec
+docs/PLATFORM-NOTES.md     where and why this port differs from upstream
+docs/upstream/             upstream changes after the parity pin
+docs/plans/                implementation plans; finished ones move to docs/plans/completed/
+plugins/agterm/            the agent skill, packaged as a plugin
 ```
 
-See the portable spec (`agterm-windows-spec.md`) for the full data model, protocol, and keymap format
+See the portable spec (`docs/agterm-windows-spec.md`) for the full data model, protocol, and keymap format
 that drive the implementation.
 
 ## Running
@@ -159,8 +158,6 @@ Install it in one of two ways:
 
 Use one of them, not both. With both, the agent loads two copies of the skill.
 
-The repository is private. The plugin commands work only for a user who has access to it: git must be able to clone `https://github.com/Dis1092006/agterm-win` with that user's credentials.
-
 ## Hotkeys on Windows
 
 Keymap modifiers map as `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift (spec §9 leaves the
@@ -198,3 +195,9 @@ interpretation wins — `⌃⌥↑↓` lose to `⌘⌥↑↓`; `map` them to fre
 (e.g. `map ctrl+shift+down next_attention_session`). Both carry Alt, so the shell is unaffected.
 F2 additionally renames the selected sidebar row (a UI gesture, not a keymap bind). Palettes/split/scratch/zoom/fullscreen/quick/
 dashboard hotkeys are implemented in the live app.
+
+## License
+
+MIT, Copyright (c) 2026 Dmitry Samsonov ([Dis1092006](https://github.com/Dis1092006)). See [LICENSE](LICENSE).
+
+The repository includes material from agterm, xterm.js and iTerm2-Color-Schemes, all under the MIT License. [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists what comes from where and holds their notices.

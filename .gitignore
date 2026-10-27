@@ -23,3 +23,11 @@ packages/
 # OS
 Thumbs.db
 .DS_Store
+
+# Local agent state: personal settings and brainstorm scratch. Path-scoped rules in
+# .claude/rules/ are shared, the rest of .claude/ is not.
+.claude/*
+!.claude/rules/
+.superpowers/
+# Plans go to docs/plans/ (see CLAUDE.md), so a skill default must not land here.
+docs/superpowers/

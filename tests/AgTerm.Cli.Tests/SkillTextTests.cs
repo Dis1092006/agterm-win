@@ -8,7 +8,7 @@ namespace AgTerm.Cli.Tests;
 /// <summary>
 /// The agent skill in plugins/agterm/skills/agterm is a contract surface: an agent runs what it says.
 /// These tests catch drift between the skill text and the CLI, the parity surface and the session
-/// environment (docs/superpowers/specs/2026-10-13-agent-skill-design.md, section 3).
+/// environment.
 /// </summary>
 public class SkillTextTests
 {
