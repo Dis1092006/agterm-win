@@ -43,10 +43,11 @@ public sealed class ControlDispatcher
                 or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme:
                 return DispatchWorkspaceCommand(request);
             case Command.Quick or Command.FontInc or Command.FontDec or Command.FontReset
-                or Command.KeymapReload or Command.ConfigReload or Command.Notify
+                or Command.KeymapReload or Command.KeymapList or Command.KeymapRun
+                or Command.ConfigReload or Command.Notify
                 or Command.ThemeSet or Command.ThemeList or Command.Sidebar or Command.SidebarMode
                 or Command.SidebarExpand or Command.SidebarCollapse or Command.RestoreClear:
-                return DispatchAppCommand(request);
+                return await DispatchAppCommand(request);
             case Command.QuickType or Command.QuickText:
                 return await DispatchQuickCommand(request);
             case Command.WindowNew or Command.WindowList or Command.WindowSelect or Command.WindowClose
@@ -693,7 +694,7 @@ public sealed class ControlDispatcher
         }
     }
 
-    private ControlResponse DispatchAppCommand(ControlRequest request)
+    private async Task<ControlResponse> DispatchAppCommand(ControlRequest request)
     {
         switch (request.Cmd)
         {
@@ -707,6 +708,12 @@ public sealed class ControlDispatcher
                 return _actions.SetQuickTerminal(request.Args?.Mode);
             case Command.KeymapReload:
                 return _actions.ReloadKeymap();
+            case Command.KeymapList:
+                return _actions.ListKeymap();
+            case Command.KeymapRun:
+                return request.Args?.Name is { Length: > 0 } name
+                    ? await _actions.RunCustomCommand(name, request.Target, request.Args.Window)
+                    : Err("keymap.run requires a command name");
             case Command.ConfigReload:
                 return _actions.ReloadGhosttyConfig();
             case Command.Notify:

@@ -49,6 +49,10 @@ internal static class ClientOutput
                 sync: response.Result?.Sync ?? false,
                 light: response.Result?.Light, dark: response.Result?.Dark);
         }
+        if (response.Result?.Keymap is { } keymap)
+        {
+            return FormatKeymap(keymap);
+        }
         if (response.Result?.Text is { } text)
         {
             return text;
@@ -76,6 +80,34 @@ internal static class ClientOutput
             return id;
         }
         return "ok";
+    }
+
+    /// <summary>Render the keymap.list payload: the file path, one row per action with its chord
+    /// (`*` marks one the keymap file moved), then the custom commands and the diagnostics, each block
+    /// left out when empty (no trailing newline).</summary>
+    public static string FormatKeymap(ControlKeymap keymap)
+    {
+        var lines = new List<string> { $"keymap: {keymap.Path}", "", "actions:" };
+        var width = keymap.Actions.Select(a => a.Action.Length).DefaultIfEmpty(0).Max();
+        foreach (var action in keymap.Actions)
+        {
+            var mark = action.Overridden == true ? "*" : " ";
+            lines.Add($"  {mark} {action.Action.PadRight(width)}  {action.Chord ?? "-"}");
+        }
+        if (keymap.Commands.Length > 0)
+        {
+            lines.Add("");
+            lines.Add("commands:");
+            lines.AddRange(keymap.Commands.Select(c => $"    {c.Name}  {c.Shortcut ?? "(palette only)"}"));
+        }
+        if (keymap.Diagnostics.Length > 0)
+        {
+            lines.Add("");
+            lines.Add("diagnostics:");
+            // Line 0 stands for the whole file, not a real line, so no number is printed for it.
+            lines.AddRange(keymap.Diagnostics.Select(d => d.Line > 0 ? $"    line {d.Line}: {d.Message}" : $"    {d.Message}"));
+        }
+        return string.Join("\n", lines);
     }
 
     /// <summary>Render the theme.list payload as one theme name per line, the active theme(s)

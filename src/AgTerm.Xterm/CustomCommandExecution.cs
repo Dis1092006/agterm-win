@@ -18,7 +18,8 @@ public sealed record CustomCommandExecutionRequest(
     CustomCommandSource Source,
     string? PaneId = null,
     long? HotkeyGeneration = null,
-    string Selection = "");
+    string Selection = "",
+    Guid? SessionId = null);
 
 public sealed record CustomCommandWindowContext(
     Guid WindowId,
@@ -98,6 +99,13 @@ public static class CustomCommandInvocationResolver
         AppStore store,
         CustomCommandExecutionRequest request)
     {
+        if (request.SessionId is { } sessionId)
+        {
+            if (store.SessionWithId(sessionId) is not { } requested)
+                return null;
+            return (requested, FocusedPrimaryOrSplit(requested));
+        }
+
         if (request.Source == CustomCommandSource.Hotkey && request.PaneId is { } paneId)
         {
             foreach (var session in store.Workspaces.SelectMany(workspace => workspace.Sessions))
@@ -114,11 +122,13 @@ public static class CustomCommandInvocationResolver
         if (store.ActiveSession is not { } active)
             return null;
 
-        var onSplit = active.SplitFocused && active.SplitSurface is not null;
-        return onSplit
-            ? (active, CommandContext.Pane.Right)
-            : (active, CommandContext.Pane.Left);
+        return (active, FocusedPrimaryOrSplit(active));
     }
+
+    private static CommandContext.Pane FocusedPrimaryOrSplit(Session session) =>
+        session.SplitFocused && session.SplitSurface is not null
+            ? CommandContext.Pane.Right
+            : CommandContext.Pane.Left;
 
     private static CustomCommandInvocation CreateInvocation(
         CustomCommand command,
@@ -186,15 +196,22 @@ public sealed class CustomCommandProcessRunner
         Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            // Process.Start would refuse it too, with "The directory name is invalid" and no path.
-            if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory) && !Path.Exists(invocation.WorkingDirectory))
-                throw new CustomCommandNotStartedException(
-                    $"session directory {TerminalText.Sanitized(invocation.WorkingDirectory)} no longer exists");
-            var process = Process.Start(CreateStartInfo(invocation, _which, _env));
-            if (process is null)
-                throw new InvalidOperationException($"Failed to start custom command '{invocation.Name}'.");
-            return new CustomCommandProcessHandle(process);
+            return Start(invocation);
         }, cancellationToken);
+
+    /// <summary>Starts the process on the calling thread, for a caller that cannot wait on another
+    /// thread (keymap.run runs inside the host gate).</summary>
+    public CustomCommandProcessHandle Start(CustomCommandInvocation invocation)
+    {
+        // Process.Start would refuse it too, with "The directory name is invalid" and no path.
+        if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory) && !Path.Exists(invocation.WorkingDirectory))
+            throw new CustomCommandNotStartedException(
+                $"session directory {TerminalText.Sanitized(invocation.WorkingDirectory)} no longer exists");
+        var process = Process.Start(CreateStartInfo(invocation, _which, _env));
+        if (process is null)
+            throw new InvalidOperationException($"Failed to start custom command '{invocation.Name}'.");
+        return new CustomCommandProcessHandle(process);
+    }
 
     public static ProcessStartInfo CreateStartInfo(
         CustomCommandInvocation invocation,

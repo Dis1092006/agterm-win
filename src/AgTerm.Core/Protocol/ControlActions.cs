@@ -51,6 +51,8 @@ public interface IControlActions
                                  DashboardFontMode fontMode, bool mru);
     ControlResponse Font(string? target, string? window, string? pane, string action);
     ControlResponse ReloadKeymap();
+    ControlResponse ListKeymap();
+    Task<ControlResponse> RunCustomCommand(string name, string? target, string? window);
     ControlResponse ReloadGhosttyConfig();
     ControlResponse SendNotification(string? target, string? window, string? title, string body);
     ControlResponse SetTheme(ControlArgs? args);

@@ -16,7 +16,7 @@ when_to_use: >
   Trigger on: agterm, agterm-win, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.scratch, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
   session.flag, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.move, workspace.focus, window.new, window.list,
-  window.select, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, config.reload,
+  window.select, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, select theme, edit keymap,
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
   keymap chord does nothing, custom action / custom command not working, agterm diagnostics, file an agterm
@@ -196,7 +196,7 @@ focus, but the newline and shared-buffer hazards of `type`-as-launcher remain �
 rule.) After `--command`, confirm with `session text --target <new-id>` that your program is running,
 not a bare shell prompt. agterm-win does not report a pane's foreground process in `tree`.
 
-## Command summary (65 commands)
+## Command summary (67 commands)
 
 Run `agtermctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -471,7 +471,11 @@ Visibility/mode act on the frontmost window; `expand`/`collapse` default to the 
 
 **font** — `font inc|dec|reset [--pane left|right|scratch]` — change a session pane's font size (omitted/`left` = main pane, `right` = the split pane, `scratch` = the scratch terminal). The wire format has `fontSize`/`splitFontSize`/`scratchFontSize` per pane, but agterm-win always omits them from `tree`.
 
-**keymap** — `keymap reload` — re-read `keymap.conf` (`~\.agterm-win\keymap.conf` by default; prints the parse-diagnostic count).
+**keymap** — `keymap reload` — re-read `keymap.conf` (`~\.agterm-win\keymap.conf` by default; prints the parse-diagnostic count) ·
+`keymap list [--json]` — print what the keymap resolved to: every built-in action with its Windows chord (`*` marks one the
+file moved), the custom commands and the diagnostics ·
+`keymap run NAME [--target T] [--window W]` — start the custom command named NAME against a session, as the custom command palette
+does. The reply means the process started; its exit status and output are not reported.
 
 **config** - `config reload` - re-read and apply `settings.json` from the state directory, and reset every
 session's font size to the configured base size (prints `ok`; the diagnostic count is always 0).

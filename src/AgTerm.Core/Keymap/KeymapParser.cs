@@ -334,6 +334,13 @@ public static class KeymapParser
             return;
         }
 
+        // a name addresses at most one command, because `keymap run` looks commands up by name
+        if (commands.Exists(c => string.Equals(c.Name, name, StringComparison.Ordinal)))
+        {
+            diagnostics.Add(new KeymapDiagnostic(line, $"command '{name}' is already defined; command skipped"));
+            return;
+        }
+
         commands.Add(new CustomCommand(name, shellLine, shortcut));
     }
 }

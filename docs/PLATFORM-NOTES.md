@@ -716,6 +716,7 @@ The pin stays `7df70fe`. The entries below are upstream behavior changes to comm
 - Every palette moves the selection with Ctrl+J and Ctrl+K, with Control as the only modifier (upstream `2fb0ca72`). The letter keys are matched by virtual key, so on a non-Latin layout they follow the physical QWERTY positions.
 - Palettes accept blank ids, whitespace-only labels and an empty placeholder, because pick sends them.
 - While a HUD holds a session's overlay slot, `session.overlay.open` replaces it with the program, `session.overlay.close` closes it and answers ok, `session.overlay.resize --size-percent N` sets its width and keeps that width through re-measures until the next open or update, `session.overlay.resize --full` answers `a hud is always floating: pass --size-percent, not --full`, and `session.overlay.result` answers `no overlay result: the slot holds a hud` (upstream `d0bec154`, `3ac149e6`). Beside a HUD, `tree` reads `overlay: false` and lists no overlay surface.
+- A second `command` line whose name is already taken is skipped with `command '<name>' is already defined; command skipped`, so a name addresses at most one command (upstream `68e17937`). The first definition stays, with its shortcut. `keymap run NAME` relies on it.
 
 ## Upstream features adopted beyond the pin
 
@@ -758,6 +759,14 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Markdown is parsed with Markdig (CommonMark, pipe tables and strikethrough), not Foundation `AttributedString(markdown:)`. A raw HTML block inside a quote or a list item keeps the quote bar and the item indent; upstream draws it with neither, because Foundation gives an HTML block no block context.
   - Markdig refuses block nesting deeper than 128 containers (about 127 nested quotes or 63 list levels) and inline nesting past about 12000 unmatched brackets. Past those limits upstream lays the message out; the port shows it as plain rows.
   - A `file://` link with a colon after the drive (an NTFS stream such as `C:/x:stream`) or a drive-relative path (`C:x`) is drawn as a link and does nothing on Ctrl+click.
+- `keymap.list` and `keymap.run` (`result.keymap`, `args.name`): the resolved keymap a script reads through `agtermctl keymap list`, and a custom command it starts through `agtermctl keymap run NAME` (upstream `f4b7a4aa` and `49628f8a`).
+  - `chord` is the Windows spelling of the `keymap.conf` syntax: `ctrl`, `alt`, `shift`, then the key, with `cmd` and `ctrl` both shown as `ctrl`. `new_window` shows `ctrl+alt+n` where upstream shows `cmd+opt+n`, and an unmoved action shows its Windows default. `overridden` compares the Windows keys, so `map ctrl+alt+n new_window` is not an override. A command's `shortcut` is shown as written in the file, as upstream does.
+  - `diagnostics[]` holds the parser diagnostics and then the Windows shadowing diagnostics that the Keyboard Shortcuts view shows. Upstream has only the parser's. `keymap.reload` still counts the parser's.
+  - Left out: `menu[]` (the port has no macOS menu with key equivalents), chord alternatives and `--repeat` (the port has neither, so `alternates` is never written and a command's `repeats` is always `false`), and running from the session of an HTML page (no HTML overlays).
+  - The list is the keymap last loaded from `keymap.conf`, the one every window arms, not a second parse of the file. A window applies a reload a moment later, so `keymap list` and `keymap run` already see the new file when `keymap reload` returns.
+  - `keymap.run` runs in the window that owns the target session, as the custom command palette would, in the focused primary or split pane. The target session need not be the active one and is not selected. The reply comes after the process started or failed to start. A start failure answers `NAME did not start: REASON` and also queues the `Command failed` InfoBar.
+  - The headless host answers `keymap.list` from its own last load and `keymap.run` of a known name with `custom commands are not available` (an unknown name gets `no custom command named X` first).
+  - Not adopted with these verbs: `errorHud`, `errorPosition` and `errorPane` on commands.
 
 ## Windows-only extensions
 

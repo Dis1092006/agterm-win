@@ -64,6 +64,8 @@ public sealed class MockControlActions : IControlActions
         }
         public sealed record Font(string? Target, string? Window, string? Pane, string Action) : Call;
         public sealed record KeymapReload : Call;
+        public sealed record KeymapList : Call;
+        public sealed record KeymapRun(string Name, string? Target, string? Window) : Call;
         public sealed record ConfigReload : Call;
         public sealed record Notify(string? Target, string? Window, string? Title, string Body) : Call;
         public sealed record ThemeSet(string? Name) : Call;
@@ -121,6 +123,8 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextFontResponse = new() { Ok = true };
     public ControlResponse NextNotifyResponse = new() { Ok = true };
     public ControlResponse NextKeymapResponse = new() { Ok = true };
+    public ControlResponse NextKeymapListResponse = new() { Ok = true };
+    public ControlResponse NextKeymapRunResponse = new() { Ok = true };
     public ControlResponse NextConfigResponse = new() { Ok = true };
     public ControlResponse NextThemeSetResponse = new() { Ok = true };
     public ControlResponse NextThemeListResponse = new() { Ok = true };
@@ -347,6 +351,18 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.Font(target, window, pane, action));
         return NextFontResponse;
+    }
+
+    public ControlResponse ListKeymap()
+    {
+        Calls.Add(new Call.KeymapList());
+        return NextKeymapListResponse;
+    }
+
+    public Task<ControlResponse> RunCustomCommand(string name, string? target, string? window)
+    {
+        Calls.Add(new Call.KeymapRun(name, target, window));
+        return Task.FromResult(NextKeymapRunResponse);
     }
 
     public ControlResponse ReloadKeymap()

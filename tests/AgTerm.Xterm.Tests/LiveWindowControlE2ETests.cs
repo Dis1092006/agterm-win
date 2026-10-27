@@ -302,6 +302,43 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Null(BadgeSession(client, firstId, sessionId).Unseen);
     }
 
+    [Fact]
+    public void Keymap_run_reaches_the_runner_of_the_window_that_owns_the_session_without_selecting_it()
+    {
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var firstId = Assert.Single(application.Windows).Id;
+        var secondResponse = client.Send(new ControlRequest { Cmd = Command.WindowNew });
+        Assert.True(secondResponse.Ok, secondResponse.Error);
+        var secondId = application.Windows.Single(window => window.Id != firstId).Id;
+        var first = application.GetOpenWindow(firstId);
+        var second = application.GetOpenWindow(secondId);
+        var firstCalls = new List<Guid>();
+        var secondCalls = new List<Guid>();
+        File.WriteAllText(Path.Combine(_stateDir, "keymap.conf"), "command \"Mark\" ctrl+m echo ok\n");
+        first.Actions.LoadKeymap();
+        second.Actions.LoadKeymap();
+        first.Actions.CustomCommandRunner = (_, id, _) => { firstCalls.Add(id); return null; };
+        second.Actions.CustomCommandRunner = (_, id, _) => { secondCalls.Add(id); return null; };
+        var target = second.Store.ActiveSession!.Id;
+        var firstSelected = first.Store.ActiveSession!.Id;
+
+        var response = client.Send(new ControlRequest
+        {
+            Cmd = Command.KeymapRun,
+            Target = target.ToString("D"),
+            Args = new ControlArgs { Name = "Mark" },
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal(target.ToString("D").ToUpperInvariant(), response.Result!.Id!.ToUpperInvariant());
+        Assert.Equal([target], secondCalls);
+        Assert.Empty(firstCalls);
+        Assert.Equal(target, second.Store.ActiveSession!.Id);
+        Assert.Equal(firstSelected, first.Store.ActiveSession!.Id);
+    }
+
     private static ControlSessionNode BadgeSession(ControlPipeClient client, Guid windowId, Guid sessionId)
     {
         var response = client.Send(new ControlRequest

@@ -131,6 +131,25 @@ public class AgtermctlEndToEndTests : ControlApiTestCase
     }
 
     [Fact]
+    public void KeymapListOverThePipeCarriesTheActions()
+    {
+        var result = SendOk("""{"cmd":"keymap.list"}""");
+
+        var keymap = result["keymap"]!.AsObject();
+        Assert.Equal(41, keymap["actions"]!.AsArray().Count);
+        Assert.Equal(Path.Combine(StateDir, "keymap.conf"), keymap["path"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void KeymapRunOverThePipeNamesAnUnknownCommand()
+    {
+        var response = SendCommand("""{"cmd":"keymap.run","args":{"name":"Nope"}}""");
+
+        Assert.False(response["ok"]!.GetValue<bool>());
+        Assert.Equal("no custom command named Nope", response["error"]!.GetValue<string>());
+    }
+
+    [Fact]
     public void FailedResolutionExitsOneWithThePinnedError()
     {
         var missing = RunCtl("session", "select", "--target", "zzzz");

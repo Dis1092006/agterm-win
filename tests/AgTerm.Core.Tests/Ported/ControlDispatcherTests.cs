@@ -1378,6 +1378,56 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task KeymapListReachesTheActions()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest { Cmd = Command.KeymapList });
+
+        ExpectResponse(Ok(), response);
+        Assert.Equal(new MockControlActions.Call[] { new MockControlActions.Call.KeymapList() }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task KeymapRunPassesTheNameTargetAndWindow()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.KeymapRun,
+            Target = "s1",
+            Args = new ControlArgs { Name = "git status", Window = "w1" },
+        });
+
+        ExpectResponse(Ok(), response);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.KeymapRun("git status", "s1", "w1"),
+        }, actions.Calls);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task KeymapRunRequiresACommandName(string? name)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.KeymapRun,
+            Args = new ControlArgs { Name = name },
+        });
+
+        ExpectResponse(Err("keymap.run requires a command name"), response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
     public async Task KeymapAndConfigReloadWrapDiagnosticCounts()
     {
         var actions = new MockControlActions();

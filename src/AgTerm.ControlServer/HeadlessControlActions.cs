@@ -1588,23 +1588,61 @@ public sealed class HeadlessControlActions : IControlActions
     /// live window re-arms its hotkey router from it (headless has no key handling).</summary>
     public event Action<Keymap>? KeymapReloaded;
 
+    private sealed record LoadedKeymap(Keymap Keymap, IReadOnlyList<KeymapDiagnostic> Diagnostics);
+
+    // Written by the window thread at bootstrap and by the dispatch gate on reload, read under
+    // the gate: one immutable snapshot keeps the keymap and its diagnostics from tearing apart.
+    private volatile LoadedKeymap _loadedKeymap = new(Keymap.Empty, []);
+
+    /// <summary>Starts a custom command in a session and returns null, or the reason it did not
+    /// start. Runs inside the dispatch gate: it must not wait on UI or store-coordinator work,
+    /// which would deadlock.</summary>
+    public Func<AppStore, Guid, CustomCommand, string?>? CustomCommandRunner { get; set; }
+
     /// <summary>The current keymap for the window's hotkey bootstrap (same file the reload arm
     /// reads; diagnostics are the arm's concern).</summary>
-    internal IReadOnlyList<KeymapDiagnostic> KeymapDiagnostics { get; private set; } = [];
+    internal IReadOnlyList<KeymapDiagnostic> KeymapDiagnostics => _loadedKeymap.Diagnostics;
 
-    public Keymap LoadKeymap()
+    public Keymap LoadKeymap() => Load().Keymap;
+
+    private LoadedKeymap Load()
     {
         var (keymap, diagnostics) = _keymap.Load();
-        KeymapDiagnostics = diagnostics.AsReadOnly();
-        return keymap;
+        return _loadedKeymap = new LoadedKeymap(keymap, diagnostics.AsReadOnly());
+    }
+
+    public ControlResponse ListKeymap()
+    {
+        var loaded = _loadedKeymap;
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult
+            {
+                Keymap = ControlKeymapProjection.Project(loaded.Keymap, loaded.Diagnostics, _keymap.Path),
+            },
+        };
+    }
+
+    public Task<ControlResponse> RunCustomCommand(string name, string? target, string? window)
+    {
+        if (_loadedKeymap.Keymap.Commands.FirstOrDefault(c => c.Name == name) is not { } command)
+            return Task.FromResult(Err($"no custom command named {name}"));
+        if (CustomCommandRunner is not { } runner)
+            return Task.FromResult(Err("custom commands are not available"));
+
+        var response = ResolveSession(target, window, (store, id) =>
+            runner(store, id, command) is { } reason
+                ? Err($"{name} did not start: {reason}")
+                : OkId(id));
+        return Task.FromResult(response);
     }
 
     public ControlResponse ReloadKeymap()
     {
-        var (keymap, diagnostics) = _keymap.Load();
-        KeymapDiagnostics = diagnostics.AsReadOnly();
-        KeymapReloaded?.Invoke(keymap);
-        return new ControlResponse { Ok = true, Result = new ControlResult { Count = diagnostics.Count } };
+        var loaded = Load();
+        KeymapReloaded?.Invoke(loaded.Keymap);
+        return new ControlResponse { Ok = true, Result = new ControlResult { Count = loaded.Diagnostics.Count } };
     }
 
     public ControlResponse ReloadGhosttyConfig() =>

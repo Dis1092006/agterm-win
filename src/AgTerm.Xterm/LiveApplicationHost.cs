@@ -1262,6 +1262,7 @@ public sealed class LiveApplicationHost : IDisposable
 
     private static bool UsesSingleSessionTarget(Command command) => command is
         Command.SessionDuplicate
+        or Command.KeymapRun
         or Command.AskOpen
         or Command.SessionHudOpen
         or Command.SessionHudUpdate

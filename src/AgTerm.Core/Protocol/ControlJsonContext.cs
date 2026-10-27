@@ -10,6 +10,7 @@ namespace AgTerm.Core.Protocol;
 [JsonSerializable(typeof(ControlResponse))]
 [JsonSerializable(typeof(ControlPickItem[]))]
 [JsonSerializable(typeof(ControlEvent[]))]
+[JsonSerializable(typeof(ControlKeymap))]
 [JsonSerializable(typeof(Snapshot))]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(RecentClosedState))]

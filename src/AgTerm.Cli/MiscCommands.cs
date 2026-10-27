@@ -23,10 +23,35 @@ internal static class KeymapCommands
         public ControlRequest MakeRequest() => new() { Cmd = WireCommand.KeymapReload };
     }
 
+    internal sealed class List : IRequestCommand
+    {
+        public required BasicOptions Basic { get; init; }
+        public IConnectionOptions Options => Basic;
+
+        public ControlRequest MakeRequest() => new() { Cmd = WireCommand.KeymapList };
+    }
+
+    internal sealed class Run : IRequestCommand
+    {
+        public required string Name { get; init; }
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.KeymapRun,
+            Target = Target.Target,
+            Args = Client.WithWindow(new ControlArgs { Name = Name }),
+        };
+    }
+
     public static System.CommandLine.Command Build(CommandBindings bindings)
     {
         var keymap = new System.CommandLine.Command("keymap", "Keymap commands.");
         keymap.Subcommands.Add(BuildReload(bindings));
+        keymap.Subcommands.Add(BuildList(bindings));
+        keymap.Subcommands.Add(BuildRun(bindings));
         return keymap;
     }
 
@@ -37,6 +62,43 @@ internal static class KeymapCommands
         var options = new BasicOptions.Binder();
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Reload { Basic = options.Read(result) });
+        return cmd;
+    }
+
+    private static System.CommandLine.Command BuildList(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("list",
+            "Print the resolved keymap: every action's chord, the custom commands and the diagnostics.");
+        var options = new BasicOptions.Binder();
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new List { Basic = options.Read(result) });
+        return cmd;
+    }
+
+    private static System.CommandLine.Command BuildRun(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("run",
+            "Run one of your custom commands by name against a session.\n\n"
+            + "NAME is a custom command's name exactly as `keymap list` prints it. The command runs as it does "
+            + "from the custom command palette, with the target session's focused pane, primary or split and "
+            + "never its scratch or an overlay, supplying the working directory, the selection and the context "
+            + "tokens. A name no command carries is refused.\n\n"
+            + "The reply says the command started. Its exit status and output are not reported.");
+        var name = new Argument<string>("name")
+        {
+            Description = "Custom command name, from `keymap list`.",
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(name);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Run
+        {
+            Name = result.GetValue(name)!,
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
         return cmd;
     }
 }

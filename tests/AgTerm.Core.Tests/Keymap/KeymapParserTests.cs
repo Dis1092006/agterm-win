@@ -291,6 +291,29 @@ public class KeymapParserTests
     }
 
     [Fact]
+    public void A_second_command_with_a_taken_name_is_skipped()
+    {
+        var (keymap, diagnostics) = Parse(
+            "command \"Build\" cmd+shift+b echo one\n" +
+            "command \"Build\" cmd+shift+k echo two\n");
+        var command = Assert.Single(keymap.Commands);
+        Assert.Equal("echo one", command.Command);
+        Assert.Equal("cmd+shift+b", command.Shortcut);
+        Assert.Equal(new KeymapDiagnostic(2, "command 'Build' is already defined; command skipped"),
+            Assert.Single(diagnostics));
+    }
+
+    [Fact]
+    public void Names_differing_only_in_case_are_distinct()
+    {
+        var (keymap, diagnostics) = Parse(
+            "command \"build\" echo one\n" +
+            "command \"Build\" echo two\n");
+        Assert.Equal(2, keymap.Commands.Count);
+        Assert.Empty(diagnostics);
+    }
+
+    [Fact]
     public void CustomPrefixConflictDropsBothKeybinds()
     {
         var (keymap, _) = Parse(

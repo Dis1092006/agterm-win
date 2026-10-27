@@ -282,6 +282,105 @@ public sealed class CustomCommandInvocationTests
         Assert.Equal(@"C:\left", left.WorkingDirectory);
     }
 
+    private static (CustomCommand Command, Keymap Keymap, CustomCommandWindowContext Window) SessionRunSetup()
+    {
+        var command = new CustomCommand("Run", "echo {AGT_SESSION_PWD}", "", Guid.NewGuid());
+        return (
+            command,
+            new Keymap(new Dictionary<BuiltinAction, Chord>(), [command]),
+            new CustomCommandWindowContext(Guid.NewGuid(), "main", "pipe", 1));
+    }
+
+    [Fact]
+    public void A_request_for_a_session_runs_against_it_not_the_active_one()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Workspace");
+        var active = store.AddSession(workspace.Id, @"C:\active")!;
+        var other = store.AddSession(workspace.Id, @"C:\other")!;
+        store.SelectSession(active.Id);
+        var (command, keymap, window) = SessionRunSetup();
+
+        var invocation = CustomCommandInvocationResolver.Resolve(
+            store, keymap,
+            new(command.Id, CustomCommandSource.Palette, Selection: "picked", SessionId: other.Id),
+            window)!;
+
+        Assert.Equal(@"C:\other", invocation.WorkingDirectory);
+        Assert.Equal(other.Id.ToString("D").ToUpperInvariant(), invocation.Environment["AGT_SESSION_ID"]);
+        Assert.Equal("left", invocation.Environment["AGT_PANE"]);
+        Assert.Equal("picked", invocation.Environment["AGT_SELECTION"]);
+    }
+
+    [Fact]
+    public void A_request_for_a_split_focused_session_takes_the_split()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Workspace");
+        var active = store.AddSession(workspace.Id, @"C:\active")!;
+        var other = store.AddSession(workspace.Id, @"C:\left")!;
+        store.SelectSession(active.Id);
+        other.SplitSurface = new FakeSurface("right-pane", "");
+        other.SplitCwd = @"D:\logs";
+        other.SplitFocused = true;
+        var (command, keymap, window) = SessionRunSetup();
+
+        var invocation = CustomCommandInvocationResolver.Resolve(
+            store, keymap, new(command.Id, CustomCommandSource.Palette, SessionId: other.Id), window)!;
+
+        Assert.Equal("right", invocation.Environment["AGT_PANE"]);
+        Assert.Equal(@"D:\logs", invocation.WorkingDirectory);
+    }
+
+    [Fact]
+    public void A_session_with_its_scratch_shown_still_runs_on_primary_or_split()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Workspace");
+        var session = store.AddSession(workspace.Id, @"C:\left")!;
+        session.ScratchSurface = new FakeSurface("scratch-pane", "");
+        session.ScratchActive = true;
+        var (command, keymap, window) = SessionRunSetup();
+
+        var invocation = CustomCommandInvocationResolver.Resolve(
+            store, keymap, new(command.Id, CustomCommandSource.Palette, SessionId: session.Id), window)!;
+
+        Assert.Equal("left", invocation.Environment["AGT_PANE"]);
+        Assert.Equal(@"C:\left", invocation.WorkingDirectory);
+    }
+
+    [Fact]
+    public void The_selection_pane_is_the_surface_the_resolver_picks_even_after_a_split_is_promoted()
+    {
+        var store = TestStores.Scratch();
+        var session = store.AddSession(store.AddWorkspace("Workspace").Id, @"C:\left")!;
+        var left = new FakeSurface("left-pane", "");
+        var right = new FakeSurface("right-pane", "");
+        session.Surface = left;
+        session.SplitSurface = right;
+        session.SplitFocused = true;
+        Assert.Same(right, session.ActiveSurface);
+
+        session.Surface = right;
+        session.SplitSurface = null;
+        Assert.Same(right, session.ActiveSurface);
+        var (command, keymap, window) = SessionRunSetup();
+        var invocation = CustomCommandInvocationResolver.Resolve(
+            store, keymap, new(command.Id, CustomCommandSource.Palette, SessionId: session.Id), window)!;
+        Assert.Equal("left", invocation.Environment["AGT_PANE"]);
+    }
+
+    [Fact]
+    public void A_request_for_an_unknown_session_resolves_to_null_even_with_an_active_one()
+    {
+        var store = TestStores.Scratch();
+        store.AddSession(store.AddWorkspace("Workspace").Id, @"C:\active");
+        var (command, keymap, window) = SessionRunSetup();
+
+        Assert.Null(CustomCommandInvocationResolver.Resolve(
+            store, keymap, new(command.Id, CustomCommandSource.Palette, SessionId: Guid.NewGuid()), window));
+    }
+
     [Fact]
     public void Stale_hotkey_generation_and_missing_command_are_ignored()
     {
@@ -532,9 +631,9 @@ public sealed class MainWindowCustomCommandWiringTests
         Assert.Contains("CustomCommandSource.Palette", source, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);
         Assert.Contains("CustomCommandInvocationResolver.Resolve", source, StringComparison.Ordinal);
-        Assert.Contains("customCommandProcess = await _customCommandRunner.StartAsync", source,
+        Assert.Contains("await Task.Run(() => StartCustomCommand(invocation), cancellationToken)", source,
             StringComparison.Ordinal);
-        Assert.Contains("ObserveTaskFault(customCommandProcess.Exited,", source, StringComparison.Ordinal);
+        Assert.Contains("ObserveTaskFault(handle.Exited,", source, StringComparison.Ordinal);
     }
 
     private static string FindRepoRoot()

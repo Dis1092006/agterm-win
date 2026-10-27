@@ -943,6 +943,82 @@ isn't realized.
 parse diagnostics (0 = clean; the human output prints `ok` for 0, else `N diagnostic(s)`). Wire:
 `keymap.reload`. App-global (no `--window`). The reply carries only the count, not the diagnostic texts.
 
+`agtermctl keymap list [--json]` — print the keymap last loaded from `keymap.conf`, the one every window arms.
+Wire: `keymap.list`. App-global: no target, and `--window` is not accepted. A window applies a reload a moment
+later, so right after `keymap reload` the list already shows the new file. `--json` gives `result.keymap`:
+
+```json
+{
+  "path": "C:\\Users\\me\\.agterm-win\\keymap.conf",
+  "actions": [
+    { "action": "new_window", "chord": "ctrl+alt+n" },
+    { "action": "toggle_split", "chord": "ctrl+shift+d", "overridden": true },
+    { "action": "rename_session" }
+  ],
+  "commands": [
+    { "name": "Build", "shortcut": "ctrl+shift+b", "repeats": false },
+    { "name": "Notes", "repeats": false }
+  ],
+  "diagnostics": [ { "line": 4, "message": "unknown verb 'mapp'" } ]
+}
+```
+
+- `path` is the `keymap.conf` the keymap was loaded from, the file `keymap reload` reads.
+- `actions[]` has every one of the 41 built-in actions, bound or not, in the app's order. `chord` is the Windows
+  spelling of the `keymap.conf` syntax: the modifiers `ctrl`, `alt`, `shift` in that order, then the key.
+  `cmd` and `ctrl` both mean Ctrl, so `new_window` shows `ctrl+alt+n`. The string can be pasted into a `map` line.
+  `chord` is left out for an action with no chord. `overridden` is `true` only when the action's Windows key
+  differs from its shipped Windows default, so `map ctrl+alt+n new_window` is not an override. Otherwise it is
+  left out.
+- `commands[]` has the custom commands in file order. `shortcut` is written as it is in the file and is left out
+  for a palette-only command. `repeats` is always `false`: agterm-win has no `--repeat`.
+- `diagnostics[]` has the parser diagnostics, the same ones `keymap reload` counts, and then the Windows
+  shadowing diagnostics that the Keyboard Shortcuts view shows, for example a chord that resolves to another
+  built-in so that this one never fires. `line` 0 means the whole file. The count `keymap reload` prints
+  stays parser-only.
+
+The human output, without `--json`:
+
+```text
+keymap: C:\Users\me\.agterm-win\keymap.conf
+
+actions:
+    new_window      ctrl+alt+n
+  * toggle_split    ctrl+shift+d
+    rename_session  -
+
+commands:
+    Build  ctrl+shift+b
+    Notes  (palette only)
+
+diagnostics:
+    line 4: unknown verb 'mapp'
+```
+
+`*` marks an overridden action and `-` an action with no chord. The `commands:` and `diagnostics:` blocks are
+left out when empty. A diagnostic on line 0 prints without `line 0:`.
+
+Upstream also reports `menu[]` (the macOS menu key equivalents), chord alternatives and `--repeat`. agterm-win
+has no macOS menu, alternatives or `--repeat`, so none of them is written.
+
+`agtermctl keymap run NAME [--target T] [--window W]` — start a custom command from `keymap.conf` by name.
+Wire: `keymap.run`, with `args.name`. `--target` defaults to `active`. `NAME` is matched exactly, with no
+trimming; copy it from `keymap list`. The command runs as it does from the custom command palette for that
+session: in the session's focused pane, primary or split, never the scratch terminal or an overlay. It gets that
+pane's working directory, selection and `AGT_*` values. The selection comes from the pane, and reading it can wait
+briefly on the window, the same as `session copy`; if the pane does not answer, the command runs with an empty
+selection. The session does not have to be the active one, and
+running the command does not select it. Returns `result.id`, the session's id (the human output is `ok`).
+The reply means the process started. Its exit status and output are not reported. Errors:
+`keymap.run requires a command name`, `no custom command named NAME`, `custom commands are not available`
+(the headless host cannot run them), `no such session: TARGET` and `ambiguous session prefix 'TARGET' → …` for a
+bad `--target`, and `NAME did not start: REASON`, for example `session directory <path> no longer exists` or
+`session is no longer available`. A start failure also shows the `Command failed` bar in the window.
+A command cannot run from the session of an HTML page, because agterm-win has no HTML overlays.
+
+A second `command` line with a name that is already taken is skipped with the diagnostic
+`command '<name>' is already defined; command skipped`, so a name addresses at most one command.
+
 **Help > Keyboard Shortcuts** (or **Ctrl+Shift+F1**) opens a read-only, searchable list of effective Windows bindings, grouped by action category and custom commands. It includes unbound actions, shortcut conflicts and keymap diagnostics. An open list updates after `agtermctl keymap reload` and keeps its search text. Esc closes it and returns focus to the terminal. The opener chord is fixed and is not in `keymap.conf`; it cannot be rebound or unbound there. The list is a Windows UI addition, not a control command or a new builtin action.
 
 ### keymap.conf format

@@ -82,6 +82,11 @@ public class ControlPickTests
             Windows = Array.Empty<ControlWindowNode>(), ExitCode = 1, Count = 1, Affected = 1, Theme = "s",
             Themes = new[] { "a" }, Ratio = 0.5, Pane = "s", Sync = true, Light = "s", Dark = "s",
             Events = new ControlEventBatch { Run = Guid.NewGuid(), Next = 1, Items = Array.Empty<ControlEvent>() },
+            Keymap = new ControlKeymap
+            {
+                Path = "s", Actions = Array.Empty<ControlKeymapAction>(),
+                Commands = Array.Empty<ControlKeymapCommand>(), Diagnostics = Array.Empty<ControlKeymapDiagnostic>(),
+            },
             Pick = ControlPickResult.Pending(),
             Ask = ControlAskResult.Pending(),
         };

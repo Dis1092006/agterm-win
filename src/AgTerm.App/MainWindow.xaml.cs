@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using AgTerm.Core.Install;
@@ -1342,6 +1343,7 @@ public sealed partial class MainWindow : Window
                 hit.PaneId,
                 hit.Generation)),
             $"Custom command {hit.CommandId} failed"));
+        host.Host.Actions.CustomCommandRunner = (store, sessionId, command) => RunCustomCommandFromPipe(host, store, sessionId, command);
         host.Host.Actions.KeymapReloaded += keymap =>
         {
             var diagnostics = host.Host.Actions.KeymapDiagnostics;
@@ -2129,20 +2131,57 @@ public sealed partial class MainWindow : Window
                 window),
             cancellationToken);
         if (invocation is not null)
+            await Task.Run(() => StartCustomCommand(invocation), cancellationToken);
+    }
+
+    /// <summary>keymap.run, called inside the host gate on the dispatch thread. The selection read is
+    /// a bounded UI round-trip, like session.copy's: a UI thread waiting for the gate delays it up to
+    /// the surface's UI budget, and the command then runs with an empty selection. Everything else
+    /// here must not wait on another thread: the store coordinator takes this same gate.</summary>
+    private string? RunCustomCommandFromPipe(
+        LiveControlHost host, AppStore store, Guid sessionId, CustomCommand command)
+    {
+        // The command comes from the actions' last load, which the window arms a moment later, so the
+        // resolver gets a keymap holding just that command; a palette request ignores the generation.
+        var session = store.SessionWithId(sessionId);
+        var invocation = session is null
+            ? null
+            : CustomCommandInvocationResolver.Resolve(
+                store,
+                new Keymap(new Dictionary<BuiltinAction, Chord>(), [command]),
+                new CustomCommandExecutionRequest(
+                    command.Id,
+                    CustomCommandSource.Palette,
+                    Selection: PaneSelection(session),
+                    SessionId: sessionId),
+                new CustomCommandWindowContext(
+                    host.Host.WindowId, host.Host.WindowName, host.PipeName, HotkeyGeneration: 0));
+        if (invocation is null)
+            return "session is no longer available";
+        return StartCustomCommand(invocation);
+    }
+
+    // ActiveSurface is the focused primary-or-split pane, the one the resolver reports as AGT_PANE;
+    // a promoted split survivor sits in the primary slot, so it needs no special case.
+    private static string PaneSelection(Session session) =>
+        (session.ActiveSurface as IHeadlessSurface)?.SelectedText ?? string.Empty;
+
+    /// <summary>Starts the process on the calling thread; returns null once it runs, else the reason
+    /// it did not, which has also been queued as an InfoBar.</summary>
+    private string? StartCustomCommand(CustomCommandInvocation invocation)
+    {
+        CustomCommandProcessHandle handle;
+        try
         {
-            CustomCommandProcessHandle customCommandProcess;
-            try
-            {
-                customCommandProcess = await _customCommandRunner.StartAsync(invocation, cancellationToken);
-            }
-            catch (CustomCommandNotStartedException notStarted)
-            {
-                QueueFailureNotice(CustomCommandFailureNotice.NotStarted(invocation.Name, notStarted.Message), fatal: false);
-                return;
-            }
-            ObserveTaskFault(customCommandProcess.Exited,
-                $"Custom command '{invocation.Name}' exit wait failed");
+            handle = _customCommandRunner.Start(invocation);
         }
+        catch (Exception ex) when (ex is CustomCommandNotStartedException or Win32Exception)
+        {
+            QueueFailureNotice(CustomCommandFailureNotice.NotStarted(invocation.Name, ex.Message), fatal: false);
+            return ex.Message;
+        }
+        ObserveTaskFault(handle.Exited, $"Custom command '{invocation.Name}' exit wait failed");
+        return null;
     }
 
     /// <summary>The UI half of surface realization: open a pane on the shared page for the session

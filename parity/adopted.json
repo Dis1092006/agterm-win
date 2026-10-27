@@ -9,7 +9,9 @@
     { "wire": "ask.cancel", "upstream": "32ec288d" },
     { "wire": "session.hud.open", "upstream": "d0bec154" },
     { "wire": "session.hud.update", "upstream": "d0bec154" },
-    { "wire": "session.hud.close", "upstream": "d0bec154" }
+    { "wire": "session.hud.close", "upstream": "d0bec154" },
+    { "wire": "keymap.list", "upstream": "f4b7a4aa" },
+    { "wire": "keymap.run", "upstream": "49628f8a" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -34,7 +36,8 @@
   "result": [
     { "name": "pick", "upstream": "6b6323ed" },
     { "name": "pane", "upstream": "1b765e69" },
-    { "name": "ask", "upstream": "32ec288d" }
+    { "name": "ask", "upstream": "32ec288d" },
+    { "name": "keymap", "upstream": "f4b7a4aa" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },
