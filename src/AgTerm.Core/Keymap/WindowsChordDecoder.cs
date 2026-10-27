@@ -18,13 +18,36 @@ public readonly record struct PhysicalChord(bool Ctrl, bool Alt, bool Shift, str
 /// </summary>
 public static class WindowsChordDecoder
 {
+    private const string PlusKey = "+";
+    private const string EqualsKey = "=";
+
     /// <summary>The keymap chords a physical press may mean, most-preferred first. A press with
     /// neither Ctrl nor Alt is not a hotkey (bare/shifted keys belong to the terminal and text
-    /// fields) and yields no candidates.</summary>
+    /// fields) and yields no candidates. An equals-key press also means plus, after its own
+    /// binds: the keymap writes the character, which is the shifted equals key, and upstream's
+    /// cmd++ fires from cmd+= as well, so a Windows user expects Alt+= for alt++.</summary>
     public static IReadOnlyList<Chord> Candidates(PhysicalChord physical)
     {
         if (!physical.Ctrl && !physical.Alt) return Array.Empty<Chord>();
 
+        var candidates = ExactCandidates(physical);
+        if (physical.Key == EqualsKey)
+            candidates.AddRange(ExactCandidates(physical with { Key = PlusKey, Shift = false }));
+        return candidates;
+    }
+
+    /// <summary>Every physical press a keymap chord answers to, its <see cref="Effective"/> press
+    /// first: a chord on plus without Shift is also the equals key, with or without Shift (see
+    /// <see cref="Candidates"/>); the effective press is the numpad plus.</summary>
+    public static IReadOnlyList<PhysicalChord> Presses(Chord chord)
+    {
+        var effective = Effective(chord);
+        if (chord.Key != PlusKey || effective.Shift) return [effective];
+        return [effective, effective with { Key = EqualsKey }, effective with { Key = EqualsKey, Shift = true }];
+    }
+
+    private static List<Chord> ExactCandidates(PhysicalChord physical)
+    {
         var shift = physical.Shift ? Modifiers.Shift : Modifiers.None;
         var opt = physical.Alt ? Modifiers.Option : Modifiers.None;
         var candidates = new List<Chord>();

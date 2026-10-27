@@ -1761,23 +1761,7 @@ public sealed partial class MainWindow : Window
         static bool Down(VirtualKey k) =>
             Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(k)
                 .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-        var name = key switch
-        {
-            >= VirtualKey.A and <= VirtualKey.Z => char.ToLowerInvariant((char)key).ToString(),
-            >= VirtualKey.Number0 and <= VirtualKey.Number9 => ((char)('0' + (key - VirtualKey.Number0))).ToString(),
-            VirtualKey.Tab => "tab",
-            VirtualKey.Space => "space",
-            VirtualKey.Enter => "return",
-            VirtualKey.Back => "delete",
-            VirtualKey.Left => "left",
-            VirtualKey.Right => "right",
-            VirtualKey.Up => "up",
-            VirtualKey.Down => "down",
-            (VirtualKey)0xBB => "+",   // VK_OEM_PLUS
-            (VirtualKey)0xBD => "-",   // VK_OEM_MINUS
-            (VirtualKey)0xC0 => "`",   // VK_OEM_3
-            _ => null,
-        };
+        var name = WindowsVirtualKeyNames.KeyName((int)key);
         if (name is null) return null;
         return new PhysicalChord(Down(VirtualKey.Control), Down(VirtualKey.Menu),
             Down(VirtualKey.Shift), name);

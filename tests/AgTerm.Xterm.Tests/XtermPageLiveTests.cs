@@ -1334,6 +1334,66 @@ public class XtermPageLiveTests
     }
 
     [Fact]
+    public async Task A_punctuation_key_a_layout_moved_matches_its_position_and_a_typed_letter_still_wins()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("moved-punctuation"));
+        var slash = Guid.NewGuid();
+        var letter = Guid.NewGuid();
+        var hits = new EventRecorder<CustomHotkeyEvent>();
+        var data = new EventRecorder<string>();
+        page.CustomCommandPressed += hits.Add;
+        terminal.DataReceived += data.Add;
+        await _webView.RunAsync(_ => page.SetHotkeyManifestAsync(new HotkeyManifest(
+            1, 2000, [],
+            [
+                new(slash, [new(true, false, false, "/")]),
+                new(letter, [new(true, false, false, "z")]),
+            ])));
+
+        // the Russian layout types "." on the slash key; Dvorak types "z" there
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("moved-punctuation", {key:".", code:"Slash", ctrlKey:true});
+              agterm.dispatchKey("moved-punctuation", {key:"z", code:"Slash", ctrlKey:true});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (hits.Count < 2 && Environment.TickCount64 < deadline) await Task.Delay(25);
+
+        Assert.Equal([slash, letter], hits.Select(h => h.CommandId));
+        Assert.Empty(data);
+    }
+
+    [Fact]
+    public async Task The_default_font_increase_chord_is_intercepted_from_the_equals_key()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("plus-key"));
+        var builtin = new EventRecorder<PhysicalChord>();
+        var data = new EventRecorder<string>();
+        page.ChordPressed += (_, chord) => builtin.Add(chord);
+        terminal.DataReceived += data.Add;
+        var router = new HotkeyRouter(AgTerm.Core.Keymap.Keymap.Empty);
+        await _webView.RunAsync(_ => page.SetHotkeyManifestAsync(router.CreateManifest(1, _ => true)));
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("plus-key", {key:"=", code:"Equal", altKey:true});
+              agterm.dispatchKey("plus-key", {key:"+", code:"Equal", altKey:true, shiftKey:true});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (builtin.Count < 2 && Environment.TickCount64 < deadline) await Task.Delay(25);
+
+        Assert.Equal([new PhysicalChord(false, true, false, "="), new PhysicalChord(false, true, true, "=")], builtin);
+        Assert.All(builtin, chord => Assert.Equal(BuiltinAction.IncreaseFontSize, router.Handle(chord)));
+        Assert.Empty(data);
+    }
+
+    [Fact]
     public async Task Altgr_characters_and_the_numpad_plus_keep_their_own_key()
     {
         var (page, view) = await BootPageAsync();

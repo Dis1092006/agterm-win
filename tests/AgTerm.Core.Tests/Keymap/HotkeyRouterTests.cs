@@ -170,4 +170,58 @@ public class HotkeyRouterTests
         var binding = Assert.Single(manifest.CustomBindings);
         Assert.Equal(first.Id, binding.CommandId);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Plus_fires_from_the_equals_key_with_or_without_shift(bool shift)
+    {
+        var router = new HotkeyRouter(KeymapTable.Empty);
+
+        Assert.Equal(BuiltinAction.IncreaseFontSize, router.Handle(Press("=", alt: true, shift: shift)));
+    }
+
+    [Fact]
+    public void Plus_fires_from_the_numpad_plus()
+    {
+        var router = new HotkeyRouter(KeymapTable.Empty);
+
+        Assert.Equal(BuiltinAction.IncreaseFontSize, router.Handle(Press("+", alt: true)));
+        Assert.Equal(BuiltinAction.DecreaseFontSize, router.Handle(Press("-", alt: true)));
+    }
+
+    [Fact]
+    public void A_map_on_the_equals_key_wins_over_plus()
+    {
+        var (keymap, _) = KeymapParser.Parse("map alt+= toggle_split");
+        var router = new HotkeyRouter(keymap);
+
+        Assert.Equal(BuiltinAction.ToggleSplit, router.Handle(Press("=", alt: true)));
+        Assert.Equal(BuiltinAction.IncreaseFontSize, router.Handle(Press("=", alt: true, shift: true)));
+    }
+
+    [Fact]
+    public void The_page_intercepts_every_press_plus_stands_for()
+    {
+        var manifest = new HotkeyRouter(KeymapTable.Empty).CreateManifest(1, _ => true);
+
+        Assert.Contains(Press("=", alt: true), manifest.BuiltinSingles);
+        Assert.Contains(Press("=", alt: true, shift: true), manifest.BuiltinSingles);
+        Assert.Contains(Press("+", alt: true), manifest.BuiltinSingles);
+    }
+
+    [Fact]
+    public void A_custom_command_on_the_equals_key_keeps_it_from_plus()
+    {
+        var (keymap, _) = KeymapParser.Parse("command \"Probe\" alt+= echo probe");
+        var command = Assert.Single(keymap.Commands);
+
+        var manifest = new HotkeyRouter(keymap).CreateManifest(1, _ => true);
+
+        var binding = Assert.Single(manifest.CustomBindings);
+        Assert.Equal(command.Id, binding.CommandId);
+        Assert.Equal([Press("=", alt: true)], binding.Chords);
+        Assert.DoesNotContain(Press("=", alt: true), manifest.BuiltinSingles);
+        Assert.Contains(Press("=", alt: true, shift: true), manifest.BuiltinSingles);
+    }
 }

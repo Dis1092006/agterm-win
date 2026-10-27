@@ -57,7 +57,7 @@ public sealed class HotkeyRouter
     /// <summary>The distinct physical chords the terminal page must intercept (keydown must NOT
     /// reach the shell, it must come back as a chord message). cmd/ctrl folds dedupe here.</summary>
     public IReadOnlyList<PhysicalChord> InterceptChords =>
-        _binds.Keys.Select(WindowsChordDecoder.Effective).Distinct().ToList();
+        _binds.Keys.SelectMany(WindowsChordDecoder.Presses).Distinct().ToList();
 
     public HotkeyManifest CreateManifest(
         long generation,
@@ -70,12 +70,8 @@ public sealed class HotkeyRouter
         if (leaderTimeoutMs <= 0)
             throw new ArgumentOutOfRangeException(nameof(leaderTimeoutMs));
 
-        var builtinSingles = _binds
-            .Where(pair => canExecute(pair.Value))
-            .Select(pair => WindowsChordDecoder.Effective(pair.Key))
-            .Distinct()
-            .ToArray();
-        var builtinSet = builtinSingles.ToHashSet();
+        var executable = _binds.Where(pair => canExecute(pair.Value)).Select(pair => pair.Key).ToArray();
+        var builtinSet = executable.Select(WindowsChordDecoder.Effective).ToHashSet();
         var customBindings = new List<CustomHotkeyBinding>();
 
         foreach (var command in _commands)
@@ -95,6 +91,15 @@ public sealed class HotkeyRouter
 
             customBindings.Add(new CustomHotkeyBinding(command.Id, physical));
         }
+
+        // a press a chord only stands for (plus on the equals key) never takes one a command names
+        var customFirsts = customBindings.Select(binding => binding.Chords[0]).ToHashSet();
+        var builtinSingles = builtinSet
+            .Concat(executable
+                .SelectMany(WindowsChordDecoder.Presses)
+                .Where(press => !customFirsts.Contains(press)))
+            .Distinct()
+            .ToArray();
 
         return new HotkeyManifest(
             generation,

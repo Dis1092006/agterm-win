@@ -1613,10 +1613,12 @@ function keymapKey(ev) {
   const key = normalizeKey(ev.key);
   // Ctrl+Alt is AltGr on European layouts: the character it gives is text, not the key under it
   if (typeof ev.key !== "string" || ev.key.length !== 1 || (ev.ctrlKey && ev.altKey)) return key;
-  const nonLatin = !/^[\x00-\x7f]$/.test(ev.key);
+  // a typed Latin letter wins over the position, as on Dvorak, where the slash key types "z"
+  if (/^[a-zA-Z]$/.test(ev.key)) return key;
+  // a layout can also move ASCII punctuation: the Russian slash key types "."
   const base = BASE_KEY_BY_CODE[ev.code];
-  if (base !== undefined && (ev.shiftKey || nonLatin)) return base;
-  if (nonLatin && /^Key[A-Z]$/.test(ev.code || "")) return ev.code.slice(3).toLowerCase();
+  if (base !== undefined) return base;
+  if (!/^[\x00-\x7f]$/.test(ev.key) && /^Key[A-Z]$/.test(ev.code || "")) return ev.code.slice(3).toLowerCase();
   return key;
 }
 
