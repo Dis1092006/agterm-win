@@ -19,7 +19,7 @@ public static class CommandFailure
     /// <summary>Text longer than this is cut at a text element before the exact cap runs. NFC composes
     /// several UTF-16 units into one, but not eight to one, so what is cut here would not have fit anyway;
     /// the exact loop then only trims what is left, instead of re-measuring a whole tail per element.</summary>
-    private const int CutBeforeCapping = 8 * HudSpec.MaxTextLength;
+    internal const int CutBeforeCapping = 8 * HudSpec.MaxTextLength;
 
     private const int MaxLeadingContinuationBytes = 3;
 
@@ -96,7 +96,7 @@ public static class CommandFailure
         return text;
     }
 
-    private static string Bounded(string text)
+    internal static string Bounded(string text)
     {
         if (text.Length <= CutBeforeCapping) return text;
         var starts = StringInfo.ParseCombiningCharacters(text);

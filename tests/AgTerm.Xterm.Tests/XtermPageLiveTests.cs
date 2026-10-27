@@ -1262,6 +1262,107 @@ public class XtermPageLiveTests
         Assert.Empty(data);
     }
 
+    [Fact]
+    public async Task Shifted_digit_and_punctuation_custom_chords_match_the_base_key()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("shifted-custom"));
+        var digit = Guid.NewGuid();
+        var slash = Guid.NewGuid();
+        var altDigit = Guid.NewGuid();
+        var hits = new EventRecorder<CustomHotkeyEvent>();
+        var data = new EventRecorder<string>();
+        page.CustomCommandPressed += hits.Add;
+        terminal.DataReceived += data.Add;
+        await _webView.RunAsync(_ => page.SetHotkeyManifestAsync(new HotkeyManifest(
+            1, 2000, [],
+            [
+                new(digit, [new(true, false, true, "9")]),
+                new(slash, [new(true, false, true, "/")]),
+                new(altDigit, [new(false, true, true, "1")]),
+            ])));
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("shifted-custom", {key:"(", code:"Digit9", ctrlKey:true, shiftKey:true});
+              agterm.dispatchKey("shifted-custom", {key:"?", code:"Slash", ctrlKey:true, shiftKey:true});
+              agterm.dispatchKey("shifted-custom", {key:"!", code:"Digit1", altKey:true, shiftKey:true});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (hits.Count < 3 && Environment.TickCount64 < deadline) await Task.Delay(25);
+
+        Assert.Equal([digit, slash, altDigit], hits.Select(h => h.CommandId));
+        Assert.Empty(data);
+    }
+
+    [Fact]
+    public async Task Cyrillic_punctuation_and_shifted_digit_chords_match_the_base_key()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("layout-punctuation"));
+        var period = Guid.NewGuid();
+        var digit = Guid.NewGuid();
+        var hits = new EventRecorder<CustomHotkeyEvent>();
+        var builtin = new EventRecorder<PhysicalChord>();
+        var data = new EventRecorder<string>();
+        page.CustomCommandPressed += hits.Add;
+        page.ChordPressed += (_, chord) => builtin.Add(chord);
+        terminal.DataReceived += data.Add;
+        await _webView.RunAsync(_ => page.SetHotkeyManifestAsync(new HotkeyManifest(
+            1, 2000, [new(true, false, true, "0")],
+            [
+                new(period, [new(false, true, false, ".")]),
+                new(digit, [new(true, false, true, "2")]),
+            ])));
+
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("layout-punctuation", {key:"ю", code:"Period", altKey:true});
+              agterm.dispatchKey("layout-punctuation", {key:"\"", code:"Digit2", ctrlKey:true, shiftKey:true});
+              agterm.dispatchKey("layout-punctuation", {key:")", code:"Digit0", ctrlKey:true, shiftKey:true});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while ((hits.Count < 2 || builtin.Count < 1) && Environment.TickCount64 < deadline) await Task.Delay(25);
+
+        Assert.Equal([period, digit], hits.Select(h => h.CommandId));
+        Assert.Equal([new PhysicalChord(true, false, true, "0")], builtin);
+        Assert.Empty(data);
+    }
+
+    [Fact]
+    public async Task Altgr_characters_and_the_numpad_plus_keep_their_own_key()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("altgr-numpad"));
+        var altGrDigit = Guid.NewGuid();
+        var hits = new EventRecorder<CustomHotkeyEvent>();
+        var builtin = new EventRecorder<PhysicalChord>();
+        page.CustomCommandPressed += hits.Add;
+        page.ChordPressed += (_, chord) => builtin.Add(chord);
+        await _webView.RunAsync(_ => page.SetHotkeyManifestAsync(new HotkeyManifest(
+            1, 2000, [new(false, true, false, "+")],
+            [new(altGrDigit, [new(true, true, false, "7")])])));
+
+        // AltGr arrives as Ctrl+Alt and types "{" on a German layout: that is text, not the 7 key
+        await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+            """
+            (() => {
+              agterm.dispatchKey("altgr-numpad", {key:"{", code:"Digit7", ctrlKey:true, altKey:true});
+              agterm.dispatchKey("altgr-numpad", {key:"+", code:"NumpadAdd", altKey:true});
+            })()
+            """));
+        var deadline = Environment.TickCount64 + 5000;
+        while (builtin.Count < 1 && Environment.TickCount64 < deadline) await Task.Delay(25);
+        await Task.Delay(200);
+
+        Assert.Equal([new PhysicalChord(false, true, false, "+")], builtin);
+        Assert.Empty(hits);
+    }
+
     [Theory]
     [InlineData("", "f", "а", "KeyF", "\u0006")]
     [InlineData("", "j", "о", "KeyJ", "\u000a")]

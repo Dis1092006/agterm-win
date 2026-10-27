@@ -93,18 +93,34 @@ public class CommandFailureTests
     }
 
     [Fact]
-    public void DetailOfALongSingleLineTailIsIsCappedAndStaysFast()
+    public void DetailOfALongSingleLineTailIsCapped()
     {
         var line = new string('a', CommandFailure.TailLimit - 3) + "END";
-        var watch = System.Diagnostics.Stopwatch.StartNew();
 
         var detail = CommandFailure.Detail(Bytes(line));
 
-        watch.Stop();
         Assert.NotNull(detail);
         Assert.True(HudLayout.TextLength(detail) <= HudSpec.MaxTextLength);
         Assert.StartsWith("aaa", detail);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"took {watch.Elapsed}");
+    }
+
+    // the exact cap re-measures the whole string per removed element, so a full tail must reach it
+    // already cut; a wall-clock bound here failed under a parallel test run
+    [Fact]
+    public void ALongLineIsCutToTheBoundBeforeTheExactCap()
+    {
+        var line = new string('a', CommandFailure.TailLimit);
+
+        Assert.Equal(CommandFailure.CutBeforeCapping, CommandFailure.Bounded(line).Length);
+    }
+
+    [Fact]
+    public void TheCutBeforeTheCapKeepsAGraphemeWhole()
+    {
+        var family = "👨‍👩‍👧";
+        var line = new string('a', CommandFailure.CutBeforeCapping - 2) + family + new string('b', 100);
+
+        Assert.Equal(new string('a', CommandFailure.CutBeforeCapping - 2), CommandFailure.Bounded(line));
     }
 
     [Fact]

@@ -1600,17 +1600,23 @@ function normalizeKey(key) {
   }
 }
 
+// keymap.conf names the unshifted US key (shift+9, not "("), so a chord is matched on the key's
+// position wherever Shift or the layout changes the character it types
+const BASE_KEY_BY_CODE = {
+  Digit0: "0", Digit1: "1", Digit2: "2", Digit3: "3", Digit4: "4",
+  Digit5: "5", Digit6: "6", Digit7: "7", Digit8: "8", Digit9: "9",
+  Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\",
+  Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Backquote: "`",
+};
+
 function keymapKey(ev) {
   const key = normalizeKey(ev.key);
-  if (
-    typeof ev.key === "string" &&
-    ev.key.length === 1 &&
-    !/^[\x00-\x7f]$/.test(ev.key) &&
-    !(ev.ctrlKey && ev.altKey) &&
-    /^Key[A-Z]$/.test(ev.code || "")
-  ) {
-    return ev.code.slice(3).toLowerCase();
-  }
+  // Ctrl+Alt is AltGr on European layouts: the character it gives is text, not the key under it
+  if (typeof ev.key !== "string" || ev.key.length !== 1 || (ev.ctrlKey && ev.altKey)) return key;
+  const nonLatin = !/^[\x00-\x7f]$/.test(ev.key);
+  const base = BASE_KEY_BY_CODE[ev.code];
+  if (base !== undefined && (ev.shiftKey || nonLatin)) return base;
+  if (nonLatin && /^Key[A-Z]$/.test(ev.code || "")) return ev.code.slice(3).toLowerCase();
   return key;
 }
 
