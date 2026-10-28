@@ -67,6 +67,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
+Two addons carry their own copyright line under the same license: `addon-fit` is Copyright (c) 2019, The xterm.js authors, and `addon-search` is Copyright (c) 2017, The xterm.js authors. `addon-serialize` has no notice of its own and is covered by the notice above.
+
 ## iTerm2-Color-Schemes
 
 Source: https://github.com/mbadolato/iTerm2-Color-Schemes

@@ -82,6 +82,8 @@ that drive the implementation. The spec and the upstream catalog in `docs/upstre
 `WindowsAppSDKSelfContained=true`): a plain exe, no MSIX and no Windows App SDK runtime install
 (WebView2 Evergreen ships with Windows 11).
 
+**SDK.** The build needs the .NET SDK 10.0.400 or a later feature band of .NET 10: `global.json` pins `10.0.400` with `rollForward: latestFeature`.
+
 **Build.** The app declares `Platforms=x64;ARM64` (no AnyCPU), which is a trap for direct builds:
 
 ```powershell
