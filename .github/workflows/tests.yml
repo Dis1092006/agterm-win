@@ -86,6 +86,7 @@ jobs:
         run: |
           $env:Path = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer;$env:Path"
           dotnet publish "src\AgTerm.Cli\AgTerm.Cli.csproj" -c Release -r "${{ matrix.rid }}" --self-contained true "-p:DebugType=none" -o "artifacts\publish\agtermctl\${{ matrix.rid }}"
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md "artifacts\publish\agtermctl\${{ matrix.rid }}"
 
       - name: Test the published executable
         shell: pwsh

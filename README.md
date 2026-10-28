@@ -3,8 +3,8 @@
 An unofficial Windows port of [umputun/agterm](https://github.com/umputun/agterm), a macOS terminal for coding agents. It keeps agterm's `Workspace → Session` model and its control API. `agtermctl`, the `AGTERM_*` environment variables and the `keymap.conf` format are the same as upstream, so a script written for agterm runs here unchanged. The app runs on ConPTY, WinUI 3 and xterm.js in WebView2; the CLI is built on System.CommandLine. The agent skill is this repository's own copy of upstream's skill, adapted to Windows (see [Agent skill](#agent-skill)).
 
 This is not a fork. agterm is a native macOS app in Swift; this repository re-implements its design and its wire contract in .NET. It is not maintained by the agterm author: report Windows bugs and requests in [this repository's issues](https://github.com/Dis1092006/agterm-win/issues), not in umputun/agterm.
-**Status:** Phases 1-5 are complete. The Core model, control plane, live ConPTY/WebView2 renderer,
-Windows shell, Phase 5 workflows, and x64/ARM64 release gates are implemented and validated.
+
+**Status:** used daily by the author. There are no binary releases yet: build it from source (see [Running](#running)).
 
 ## Parity policy (strict)
 
@@ -18,14 +18,17 @@ what scripts and the agent-skill (`Bash(agtermctl:*)`) actually call. Explicitly
   `agtermctl --socket`); anything with no Windows analogue (foreground-pid for `tree.foreground` /
   restore-running-command; kitty-graphics image display). These return a well-formed
   `{"ok":false,"error":…}` — never a crash or garbage — so a foreign script gets a protocol-shaped answer.
-- **Skip:** rendering, visual chrome, macOS installers. Recorded as intentional in the parity manifest so
-  the drift gate stops flagging them.
+- **Skip:** rendering, visual chrome, macOS installers.
 
-## Staying current with upstream
+## Following upstream
 
-Track **releases (`v*` tags) + `CHANGELOG.md`**, not `main`. The best human-readable diff of the drivable
-surface between releases is upstream's `agterm/Resources/agent-skill/` (a HARD keep-in-sync doc mirror of
-the control API). The machine gate is here:
+The parity pin is upstream `7df70fe` (after v0.16.1), and `parity/surface.json` is its snapshot. The pin does not move. Features that upstream added after it are taken one at a time:
+
+- `docs/upstream/delta-7df70fe-to-v0.36.0.md` lists what upstream added after the pin, and `docs/upstream/surface-v0.36.0.json` is the upstream snapshot at `ed831ab`.
+- A command, argument or field taken from upstream goes into `parity/adopted.json` with its upstream sha.
+- A command or field that upstream does not have goes into `parity/windows-only.json`.
+
+The test suites read these files and check the code against them: builtin actions, settings, snapshot and tree fields, and the agent skill text. CI runs them on every pull request.
 
 ### `tools/extract_surface.py`
 
@@ -37,35 +40,21 @@ declarative sources (`ControlProtocol.swift`, `BuiltinAction.swift`, `CustomComm
 python tools/extract_surface.py --agterm <agterm-clone> --out parity/surface.json
 ```
 
-`surface.json` captures, per agterm git revision:
+`--ref <rev>` reads another upstream revision without checking it out. A snapshot captures:
 
-- `control.commands` — 66 commands (swift case → wire string)
+- `control.commands` — commands (swift case → wire string); 66 at the pin
 - `control.args` / `result` / `sessionNode` / `workspaceNode` / `windowNode` — field lists
-- `keymap.actions` — 41 `BuiltinAction`s + default chords; `keymap.tokens` — the `{AGT_X}` set
+- `keymap.actions` — `BuiltinAction`s + default chords, 41 at the pin; `keymap.tokens` — the `{AGT_X}` set
 - `settings` — `AppSettings` fields; `persistence` — `Snapshot`/`SessionSnapshot` fields
-
-### The drift check
-
-The test suites read the committed `parity/surface.json` and check the code against it: builtin actions, settings, snapshot and tree fields, and the agent skill text. CI runs them on every pull request.
-
-Moving to a new upstream pin is a manual step. Re-extract `surface.json` from the new revision and diff it against the committed one. Each new command, argument, action or field is then implemented or recorded as a skip in `parity/windows-only.json` or `docs/PLATFORM-NOTES.md`.
-
-Bump the parity version in this README when you re-pin: **current parity target — agterm
-`7df70fe` (post-v0.16.1; 66 commands, 41 actions).**
-
-> Drift history: `d32dbbf` → `7df70fe` (3 weeks, 240 commits): +17 commands (incl. the new
-> `events.read` subscription subsystem — a cursor+ring poll, which retires the old "no events by
-> design" note), +6 builtin actions, +21 settings fields, arrow keys became expressible in keymap
-> chords (#291). `docs/agterm-windows-spec.md` sections 5–7, 9, 11 are updated to this pin.
 
 ## Layout
 
 ```
 src/                       the app, the control server, agtermctl and the terminal backend
 tests/                     xUnit suites per project; AgTerm.E2E drives agtermctl end to end
-tools/extract_surface.py   surface extractor (the drift-check input)
+tools/extract_surface.py   surface extractor (snapshots an upstream revision)
 tools/app_icon.py          draws src/AgTerm.App/Assets/AppIcon.ico
-parity/surface.json        latest extracted upstream surface snapshot
+parity/                    surface.json (the pin), adopted.json, windows-only.json
 docs/agterm-windows-spec.md  the portable data/protocol/keymap spec
 docs/PLATFORM-NOTES.md     where and why this port differs from upstream
 docs/upstream/             upstream changes after the parity pin

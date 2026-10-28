@@ -8,7 +8,7 @@
 
 **Tech Stack:** .NET 10, System.Text.Json source generation (`ControlJsonContext`), System.CommandLine, xUnit 2, WinUI 3 app shell.
 
-**Spec:** `docs/plans/completed/2026-10-26-keymap-list-and-run-design.md`. Upstream reference: `git -C C:/git/github/umputun/agterm show <sha>:<path>` with `ed831ab` for `ControlKeymap.swift`, `SocketClient.swift` (`formatKeymap`), `ControlServer+AppCommands.swift`, `ControlDispatcher.swift`, and `68e17937` for the duplicate-name rule.
+**Spec:** `docs/plans/completed/2026-10-26-keymap-list-and-run-design.md`. Upstream reference: `git -C <agterm-clone> show <sha>:<path>` with `ed831ab` for `ControlKeymap.swift`, `SocketClient.swift` (`formatKeymap`), `ControlServer+AppCommands.swift`, `ControlDispatcher.swift`, and `68e17937` for the duplicate-name rule.
 
 ## Global Constraints
 
