@@ -238,6 +238,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             Host.Actions.Theme.Light = initialTheme.Light;
             Host.Actions.Theme.Dark = initialTheme.Dark;
         }
+        Host.Actions.ThemeUpdateRequested += update => ThemeUpdateRequested?.Invoke(update);
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
@@ -620,6 +621,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public event Action<HeadlessThemeSnapshot>? ThemeChanged;
 
+    /// <summary>Runs under the host gate; subscribers may enqueue work but must not wait on it.</summary>
+    public event Action<HeadlessThemeUpdate>? ThemeUpdateRequested;
+
     public event Action<LiveBannerNotification>? NotificationRequested;
 
     public event Action<string>? StatusNotificationRequested;
@@ -629,6 +633,13 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(settings);
         Volatile.Write(ref _notificationSettings, settings);
     }
+
+    public Task ApplySettingsAsync(SettingsSnapshot snapshot, CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(_ =>
+        {
+            Host.Actions.ApplySettings(snapshot, _options.StateDir ?? PersistenceStore.DefaultDirectory);
+            SetNotificationSettings(snapshot.Settings);
+        }, cancellationToken);
 
     private void QueueZoomActiveChanged(bool active)
     {

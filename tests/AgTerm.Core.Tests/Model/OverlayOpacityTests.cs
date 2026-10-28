@@ -35,13 +35,13 @@ public sealed class OverlayOpacityTests
     }
 
     [Theory]
-    [InlineData("""{"overlayOpacity":null,"fontSize":15}""", null, null, 15.0)]
-    [InlineData("""{"overlayOpacity":-2,"fontSize":15}""", -2.0, 0.0, 15.0)]
-    [InlineData("""{"overlayOpacity":2,"fontSize":15}""", 2.0, 1.0, 15.0)]
-    [InlineData("""{"overlayOpacity":"bad","fontSize":15}""", null, null, null)]
-    [InlineData("""{"overlayOpacity":1e999,"fontSize":15}""", null, null, null)]
-    public void Store_uses_existing_recovery_and_keeps_raw_numbers(
-        string json, double? raw, double? effective, double? fontSize)
+    [InlineData("""{"overlayOpacity":null,"fontSize":15}""", null, null, 15.0, false)]
+    [InlineData("""{"overlayOpacity":-2,"fontSize":15}""", -2.0, 0.0, 15.0, false)]
+    [InlineData("""{"overlayOpacity":2,"fontSize":15}""", 2.0, 1.0, 15.0, false)]
+    [InlineData("""{"overlayOpacity":"bad","fontSize":15}""", null, null, null, true)]
+    [InlineData("""{"overlayOpacity":1e999,"fontSize":15}""", null, null, null, true)]
+    public void Store_keeps_startup_recovery_and_raw_numbers_but_does_not_overwrite_invalid_files(
+        string json, double? raw, double? effective, double? fontSize, bool invalid)
     {
         var directory = Directory.CreateTempSubdirectory("agterm-overlay-").FullName;
         try
@@ -52,7 +52,13 @@ public sealed class OverlayOpacityTests
             Assert.Equal(raw, settings.OverlayOpacity);
             Assert.Equal(effective, settings.EffectiveOverlayOpacity(true));
             Assert.Equal(fontSize, settings.FontSize);
-            store.Save(settings);
+            if (invalid)
+            {
+                Assert.ThrowsAny<System.Text.Json.JsonException>(() => store.Save(settings));
+                Assert.Equal(json, File.ReadAllText(Path.Combine(directory, "settings.json")));
+            }
+            else
+                store.Save(settings);
             Assert.Equal(settings, store.Load());
         }
         finally

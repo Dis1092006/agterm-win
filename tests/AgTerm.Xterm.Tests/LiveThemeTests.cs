@@ -268,7 +268,7 @@ public sealed class LiveThemeTests
     }
 
     [Fact]
-    public void Main_window_applies_an_accepted_theme_before_best_effort_persistence()
+    public void Main_window_routes_theme_intent_through_the_shared_settings_writer()
     {
         var source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
@@ -276,10 +276,10 @@ public sealed class LiveThemeTests
         var end = source.IndexOf("private async Task ApplySystemAppearanceAsync", start, StringComparison.Ordinal);
         var method = source[start..end];
 
-        var apply = method.IndexOf("await ApplyThemePresentationAsync(settings, presentation);", StringComparison.Ordinal);
-        var save = method.IndexOf("await Task.Run(() => _settingsStore.Save(settings));", StringComparison.Ordinal);
-        Assert.True(apply >= 0 && save > apply);
-        Assert.Contains("Theme settings save failed", method, StringComparison.Ordinal);
+        Assert.Contains("_applicationHost.Settings.UpdateCurrentAsync(", method, StringComparison.Ordinal);
+        Assert.Contains("LiveThemeSettings.ApplyChange(settings, change)", method, StringComparison.Ordinal);
+        Assert.DoesNotContain("_settingsStore.Save", method, StringComparison.Ordinal);
+        Assert.Contains("Theme could not be applied", method, StringComparison.Ordinal);
     }
 
     [Fact]

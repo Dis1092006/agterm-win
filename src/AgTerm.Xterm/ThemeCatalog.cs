@@ -15,6 +15,9 @@ public sealed record ThemeCatalogError(string Theme, int Line, string Message);
 
 public static class LiveThemeSettings
 {
+    public static AppSettings ApplyChange(AppSettings settings, HeadlessThemeUpdate change) =>
+        Apply(settings, change.Apply(From(settings)));
+
     public static HeadlessThemeSnapshot From(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

@@ -11,7 +11,7 @@
 - The taskbar follows the Windows mode, `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\SystemUsesLightTheme`, not the app mode (`AppsUseLightTheme`, which `UISettings` reflects). `1` is a light taskbar. `0` or a missing value is a dark taskbar: Windows 10 1809, the minimum version, has no light taskbar and no value.
 - The exe's `ApplicationIcon` stays `Assets\AppIcon.ico`. Explorer, Start and a pinned button of a closed app show it whatever the theme.
 - Icon frame choice: the exact size, else the smallest larger frame, else the largest frame. An .ico entry width of 0 means 256.
-- Every PR raises `<Version>` in `Directory.Build.props` (main is 0.1.39). The skill does not change, so the plugin version stays.
+- Every PR raises `<Version>` in `Directory.Build.props` (main is 0.1.41). The skill does not change, so the plugin version stays.
 - TDD, each test seen failing first. Comments say why, not what. Warnings are errors.
 
 ## Review Focus

@@ -9,6 +9,7 @@ public sealed class SettingsReloadCoordinator : IDisposable
     private readonly Func<AppSettings, Task> apply;
     private readonly Action<Exception>? error;
     private readonly CancellationTokenSource disposeCts = new();
+    private readonly CancellationToken disposeToken;
     private readonly SemaphoreSlim applyGate = new(1, 1);
     private long latestGeneration;
     private int disposed;
@@ -19,6 +20,7 @@ public sealed class SettingsReloadCoordinator : IDisposable
         Func<AppSettings, Task> apply,
         Action<Exception>? error = null)
     {
+        disposeToken = disposeCts.Token;
         this.load = load ?? throw new ArgumentNullException(nameof(load));
         this.runOnUi = runOnUi ?? throw new ArgumentNullException(nameof(runOnUi));
         this.apply = apply ?? throw new ArgumentNullException(nameof(apply));
@@ -34,6 +36,20 @@ public sealed class SettingsReloadCoordinator : IDisposable
 
         var generation = Interlocked.Increment(ref latestGeneration);
         _ = ProcessRequestAsync(generation);
+    }
+
+    public Task ApplyAsync(AppSettings settings) => RunOnUiAsync(() => apply(settings));
+
+    public async Task RunOnUiAsync(Func<Task> work)
+    {
+        await applyGate.WaitAsync(disposeToken).ConfigureAwait(false);
+        try
+        {
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            runOnUi(() => StartWorkOnUi(work, completion));
+            await completion.Task.WaitAsync(disposeToken).ConfigureAwait(false);
+        }
+        finally { applyGate.Release(); }
     }
 
     public void Dispose()
@@ -65,7 +81,7 @@ public sealed class SettingsReloadCoordinator : IDisposable
     {
         try
         {
-            var settings = await load(disposeCts.Token).ConfigureAwait(false);
+            var settings = await load(disposeToken).ConfigureAwait(false);
             if (IsDisposedOrStale(generation))
             {
                 return;
@@ -73,7 +89,7 @@ public sealed class SettingsReloadCoordinator : IDisposable
 
             try
             {
-                await applyGate.WaitAsync(disposeCts.Token).ConfigureAwait(false);
+                await applyGate.WaitAsync(disposeToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
             {
@@ -99,7 +115,7 @@ public sealed class SettingsReloadCoordinator : IDisposable
 
                 try
                 {
-                    await completion.Task.WaitAsync(disposeCts.Token).ConfigureAwait(false);
+                    await completion.Task.WaitAsync(disposeToken).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
                 {
@@ -122,11 +138,19 @@ public sealed class SettingsReloadCoordinator : IDisposable
     }
 
     private void StartApplyOnUi(AppSettings settings, TaskCompletionSource completion)
+        => StartWorkOnUi(() => apply(settings), completion);
+
+    private void StartWorkOnUi(Func<Task> work, TaskCompletionSource completion)
     {
+        if (IsDisposed)
+        {
+            completion.TrySetCanceled(disposeToken);
+            return;
+        }
         Task applyTask;
         try
         {
-            applyTask = apply(settings);
+            applyTask = work();
         }
         catch (OperationCanceledException) when (disposeCts.IsCancellationRequested)
         {

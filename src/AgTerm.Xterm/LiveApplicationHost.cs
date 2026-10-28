@@ -56,6 +56,7 @@ public sealed class LiveApplicationHost : IDisposable
         options ??= new LiveApplicationHostOptions();
         _treeEventTimeProvider = options.TreeEventTimeProvider;
         _stateDirectory = options.StateDir ?? PersistenceStore.DefaultDirectory;
+        Settings = new SettingsCoordinator(new SettingsStore(_stateDirectory));
         _homeDirectory = options.HomeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _windowController = options.WindowController;
@@ -150,6 +151,7 @@ public sealed class LiveApplicationHost : IDisposable
     }
 
     public ControlEventRing Ring { get; }
+    public SettingsCoordinator Settings { get; }
 
     public IReadOnlyList<RecentClosedItem> RecentClosedItems => _recentClosedStore.Load();
 
@@ -1225,6 +1227,12 @@ public sealed class LiveApplicationHost : IDisposable
                 .OrderBy(window => window.WindowId == activeWindowId ? 0 : 1)
                 .ToArray();
         }
+        if (request.Cmd == Command.ConfigReload && Settings.HasSubscribers && windows.Length > 0)
+        {
+            _ = ReloadSettingsAsync();
+            ResetSessionFontSizes(cancellationToken);
+            return new ControlResponse { Ok = true, Result = new ControlResult { Count = 0 } };
+        }
         ControlResponse? firstResponse = null;
         foreach (var window in windows)
         {
@@ -1240,6 +1248,16 @@ public sealed class LiveApplicationHost : IDisposable
             Ok = false,
             Error = "no such window: active",
         };
+    }
+
+    private async Task ReloadSettingsAsync()
+    {
+        try { await Settings.ReloadAsync().ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            // The coordinator also publishes the failure to each window and the Settings UI.
+            System.Diagnostics.Trace.TraceError($"Settings reload failed: {ex}");
+        }
     }
 
     private static bool IsAppGlobalMutation(Command command) => command is

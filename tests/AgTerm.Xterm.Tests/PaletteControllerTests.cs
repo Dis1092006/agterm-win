@@ -369,7 +369,7 @@ public sealed class PaletteViewSourceTests
         var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
 
         var subscribe = source.IndexOf(".Pick.Changed +=", StringComparison.Ordinal);
-        var arm = source.IndexOf("ObserveTaskFault(ArmHotkeysAsync(host)", StringComparison.Ordinal);
+        var arm = source.IndexOf("await ArmHotkeysAsync(host)", StringComparison.Ordinal);
         var armMethod = source.IndexOf("private async Task ArmHotkeysAsync", StringComparison.Ordinal);
         Assert.True(subscribe >= 0 && arm >= 0 && subscribe < arm, "the pick subscription must come before ArmHotkeysAsync is started.");
         Assert.True(subscribe < armMethod);
