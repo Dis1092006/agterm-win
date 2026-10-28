@@ -112,7 +112,8 @@ public static class SkillInstaller
         var targets = SkillInstall.InstallTargets(
             home,
             claudeExists: fs.Exists(Path.Join(home, ".claude")),
-            codexExists: fs.Exists(Path.Join(home, ".codex")));
+            codexExists: fs.Exists(Path.Join(home, ".codex")),
+            copilotExists: fs.Exists(Path.Join(home, ".copilot")));
         var report = new SkillInstallReport();
         foreach (var target in targets)
         {

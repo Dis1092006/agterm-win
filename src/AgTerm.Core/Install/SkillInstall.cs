@@ -1,8 +1,9 @@
 namespace AgTerm.Core.Install;
 
 /// <summary>Host-free helpers for installing the bundled agent skill (<c>agterm</c>) into the skills
-/// directories of Claude Code (<c>~/.claude/skills</c>) and Codex (<c>~/.codex/skills</c>). Port of
-/// agtermCore SkillInstall.swift (v0.36.0). The copy itself is <see cref="SkillInstaller"/>.</summary>
+/// directories of Claude Code (<c>~/.claude/skills</c>), Codex (<c>~/.codex/skills</c>) and, as a
+/// Windows-only extension, GitHub Copilot CLI (<c>~/.copilot/skills</c>). Port of agtermCore
+/// SkillInstall.swift (v0.36.0). The copy itself is <see cref="SkillInstaller"/>.</summary>
 public static class SkillInstall
 {
     /// <summary>The skill's directory name under each agent's <c>skills</c>, also its command name.</summary>
@@ -16,18 +17,25 @@ public static class SkillInstall
     public sealed record Target(string Agent, string SkillDirectory);
 
     /// <summary><c>&lt;home&gt;\&lt;base&gt;\skills\agterm</c>, where <paramref name="base"/> is the dotted
-    /// agent directory name (<c>.claude</c> or <c>.codex</c>).</summary>
+    /// agent directory name (<c>.claude</c>, <c>.codex</c> or <c>.copilot</c>).</summary>
     public static string SkillDirectory(string home, string @base) => Path.Join(home, @base, "skills", SkillName);
 
     /// <summary>Each agent whose base directory exists, Claude Code first. When neither exists, Claude
     /// Code's, so the install is never a no-op.</summary>
     public static IReadOnlyList<Target> InstallTargets(string home, bool claudeExists, bool codexExists)
+        => InstallTargets(home, claudeExists, codexExists, copilotExists: false);
+
+    /// <summary>As the upstream overload, plus Copilot CLI (<c>~/.copilot/skills</c>) last when its base
+    /// directory exists. Copilot CLI does not read <c>~/.claude/skills</c>. Windows-only extension.</summary>
+    public static IReadOnlyList<Target> InstallTargets(string home, bool claudeExists, bool codexExists, bool copilotExists)
     {
         var targets = new List<Target>();
         if (claudeExists)
             targets.Add(new Target("Claude Code", SkillDirectory(home, ".claude")));
         if (codexExists)
             targets.Add(new Target("Codex", SkillDirectory(home, ".codex")));
+        if (copilotExists)
+            targets.Add(new Target("Copilot CLI", SkillDirectory(home, ".copilot")));
         if (targets.Count == 0)
             targets.Add(new Target("Claude Code", SkillDirectory(home, ".claude")));
         return targets;

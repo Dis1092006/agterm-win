@@ -11,6 +11,8 @@ public sealed class SkillInstallerTests
     private static readonly string CodexSkills = @"C:\h\.codex\skills";
     private static readonly string ClaudeDest = @"C:\h\.claude\skills\agterm";
     private static readonly string CodexDest = @"C:\h\.codex\skills\agterm";
+    private static readonly string CopilotBase = @"C:\h\.copilot";
+    private static readonly string CopilotDest = @"C:\h\.copilot\skills\agterm";
 
     private static readonly SkillFile[] Files =
     {
@@ -135,6 +137,51 @@ public sealed class SkillInstallerTests
         var report = SkillInstaller.Install(Home, Files, fs);
         Assert.Equal(new[] { new SkillInstallReport.Entry("Codex", CodexDest) }, report.Installed);
         Assert.True(report.FreshSkillsDirectory);
+    }
+
+    [Fact]
+    public void CopilotTargetFollowsClaudeAndCodex()
+    {
+        var t = SkillInstall.InstallTargets(Home, claudeExists: true, codexExists: true, copilotExists: true);
+        Assert.Equal(
+            new[]
+            {
+                new SkillInstall.Target("Claude Code", ClaudeDest),
+                new SkillInstall.Target("Codex", CodexDest),
+                new SkillInstall.Target("Copilot CLI", CopilotDest),
+            },
+            t);
+    }
+
+    [Fact]
+    public void CopilotOnlyTargetsCopilotWithoutTheClaudeFallback()
+    {
+        var t = SkillInstall.InstallTargets(Home, claudeExists: false, codexExists: false, copilotExists: true);
+        Assert.Equal(new[] { new SkillInstall.Target("Copilot CLI", CopilotDest) }, t);
+    }
+
+    [Fact]
+    public void NoAgentPresentStillFallsBackToClaudeOnly()
+    {
+        var t = SkillInstall.InstallTargets(Home, claudeExists: false, codexExists: false, copilotExists: false);
+        Assert.Equal(new[] { new SkillInstall.Target("Claude Code", ClaudeDest) }, t);
+    }
+
+    [Fact]
+    public void CopilotPresentInstallsIntoItsSkillsDirectory()
+    {
+        var fs = new FakeFileSystem();
+        foreach (var dir in new[] { ClaudeBase, ClaudeSkills, CopilotBase })
+            fs.AddDirectory(dir);
+
+        var report = SkillInstaller.Install(Home, Files, fs);
+
+        Assert.Equal(
+            new[] { new SkillInstallReport.Entry("Claude Code", ClaudeDest), new SkillInstallReport.Entry("Copilot CLI", CopilotDest) },
+            report.Installed);
+        Assert.True(report.FreshSkillsDirectory);
+        Assert.Contains($@"write {CopilotDest}\SKILL.md", fs.Log);
+        Assert.Contains($@"write {CopilotDest}\scripts\show-image.sh", fs.Log);
     }
 
     [Fact]
