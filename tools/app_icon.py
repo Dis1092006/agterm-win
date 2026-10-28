@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-app_icon.py: draw the application icon, `src/AgTerm.App/Assets/AppIcon.ico`.
+app_icon.py: draw the application icons in `src/AgTerm.App/Assets`.
 
-The icon is a dark window: a sidebar with three agent status dots (blocked, completed, active, in the
-default status colors of `AppSettings`) and a light pane with a cursor.
+The icon is a window: a sidebar with three agent status dots (blocked, completed, active, in the
+default status colors of `AppSettings`) and a pane with a cursor. Two palettes:
+
+  AppIcon.ico               dark frame, light pane. The exe's own icon, and the window icon on a light taskbar.
+  AppIcon-dark-taskbar.ico  light frame, dark pane. The window icon on a dark taskbar.
 
 16, 20, 24 and 32 px each have their own drawing on a whole-pixel grid. Shrinking the 256 px drawing to
 those sizes blurs the dots and the cursor. 40, 48, 64, 128 and 256 px are rendered from the 256 px drawing.
 
 Usage:
     python -m pip install pillow resvg-py
-    python tools/app_icon.py [--out <path.ico>] [--png-dir <dir>]
+    python tools/app_icon.py [--out-dir <dir>] [--png-dir <dir>]
 
-`--png-dir` also writes every frame as a PNG, for checking pixels.
+`--png-dir` also writes every frame of both icons as a PNG, for checking pixels.
 """
 from __future__ import annotations
 
@@ -26,11 +29,18 @@ from PIL import Image
 ORANGE = "#FF9500"   # AppSettings.DefaultBlockedStatusColorHex
 GREEN = "#28CD41"    # AppSettings.DefaultCompletedStatusColorHex
 LIGHT = "#DBD9E6"    # AppSettings.DefaultActiveStatusColorHex
-FRAME = "#2B2B30"
-PANE = "#F4F4F7"
+DARK_GREY = "#2B2B30"
+LIGHT_GREY = "#F4F4F7"
+
+# The cursor takes the frame color. On the light frame the active dot is mid grey, because LIGHT
+# disappears there.
+PALETTES = {
+    "AppIcon": dict(frame=DARK_GREY, pane=LIGHT_GREY, dots=(ORANGE, GREEN, LIGHT)),
+    "AppIcon-dark-taskbar": dict(frame=LIGHT_GREY, pane=DARK_GREY, dots=(ORANGE, GREEN, "#8E8C9C")),
+}
 
 ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
-DEFAULT_OUT = pathlib.Path(__file__).resolve().parent.parent / "src" / "AgTerm.App" / "Assets" / "AppIcon.ico"
+DEFAULT_OUT_DIR = pathlib.Path(__file__).resolve().parent.parent / "src" / "AgTerm.App" / "Assets"
 
 # Per grid size: the frame (x, y, w, h, radius), the pane (x, y, w, h, radius), the dot column x,
 # the three dot centers y, the dot radius and the cursor (x, y, w, h, radius). The 16 px grid draws
@@ -61,36 +71,41 @@ def dot(g, cy, fill):
     return f'<circle cx="{x}" cy="{cy}" r="{r}" fill="{fill}"/>'
 
 
-def svg(grid):
+def svg(grid, palette):
     g = GRIDS[grid]
-    body = (rect(g["frame"], FRAME) + rect(g["pane"], PANE)
-            + "".join(dot(g, y, c) for y, c in zip(g["dot_y"], (ORANGE, GREEN, LIGHT)))
-            + rect(g["cursor"], FRAME))
+    body = (rect(g["frame"], palette["frame"]) + rect(g["pane"], palette["pane"])
+            + "".join(dot(g, y, c) for y, c in zip(g["dot_y"], palette["dots"]))
+            + rect(g["cursor"], palette["frame"]))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{grid}" height="{grid}" '
             f'viewBox="0 0 {grid} {grid}">{body}</svg>')
 
 
-def frame(size):
+def frame(size, palette):
     grid = size if size in GRIDS else 256
-    png = resvg_py.svg_to_bytes(svg_string=svg(grid), width=size, height=size)
+    png = resvg_py.svg_to_bytes(svg_string=svg(grid, palette), width=size, height=size)
     return Image.open(io.BytesIO(bytes(png))).convert("RGBA")
+
+
+def write_icon(name, palette, out_dir, png_dir):
+    frames = {s: frame(s, palette) for s in ICO_SIZES}
+    out = out_dir / f"{name}.ico"
+    # without append_images Pillow would shrink the 256 frame into every size
+    frames[256].save(out, format="ICO", sizes=[(s, s) for s in ICO_SIZES],
+                     append_images=[frames[s] for s in ICO_SIZES if s != 256])
+    if png_dir:
+        png_dir.mkdir(parents=True, exist_ok=True)
+        for s, im in frames.items():
+            im.save(png_dir / f"{name}-{s}.png")
+    print(f"wrote {out} ({', '.join(map(str, ICO_SIZES))})")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    parser.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUT)
+    parser.add_argument("--out-dir", type=pathlib.Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--png-dir", type=pathlib.Path)
     args = parser.parse_args()
-
-    frames = {s: frame(s) for s in ICO_SIZES}
-    # without append_images Pillow would shrink the 256 frame into every size
-    frames[256].save(args.out, format="ICO", sizes=[(s, s) for s in ICO_SIZES],
-                     append_images=[frames[s] for s in ICO_SIZES if s != 256])
-    if args.png_dir:
-        args.png_dir.mkdir(parents=True, exist_ok=True)
-        for s, im in frames.items():
-            im.save(args.png_dir / f"AppIcon-{s}.png")
-    print(f"wrote {args.out} ({', '.join(map(str, ICO_SIZES))})")
+    for name, palette in PALETTES.items():
+        write_icon(name, palette, args.out_dir, args.png_dir)
 
 
 if __name__ == "__main__":

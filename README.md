@@ -53,7 +53,7 @@ python tools/extract_surface.py --agterm <agterm-clone> --out parity/surface.jso
 src/                       the app, the control server, agtermctl and the terminal backend
 tests/                     xUnit suites per project; AgTerm.E2E drives agtermctl end to end
 tools/extract_surface.py   surface extractor (snapshots an upstream revision)
-tools/app_icon.py          draws src/AgTerm.App/Assets/AppIcon.ico
+tools/app_icon.py          draws the app icons in src/AgTerm.App/Assets
 parity/                    surface.json (the pin), adopted.json, windows-only.json
 docs/agterm-windows-spec.md  the portable data/protocol/keymap spec
 docs/PLATFORM-NOTES.md     where and why this port differs from upstream

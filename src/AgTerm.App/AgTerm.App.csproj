@@ -31,6 +31,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- the window icons, by taskbar color (TaskbarAppIcon); ApplicationIcon above only sets the exe's own -->
+    <EmbeddedResource Include="Assets\AppIcon.ico;Assets\AppIcon-dark-taskbar.ico" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AgTerm.Xterm\AgTerm.Xterm.csproj" />
     <ProjectReference Include="..\AgTerm.ControlServer\AgTerm.ControlServer.csproj" />
   </ItemGroup>
