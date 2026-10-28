@@ -18,7 +18,6 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
     // workspace rows
     public bool Collapsed { get; init; }
     public bool Focused { get; init; }
-    public bool ActiveWorkspace { get; init; }
 
     // session rows
     public bool Selected { get; init; }
@@ -57,14 +56,12 @@ public static class SidebarProjection
             return rows;
         }
 
-        var current = store.CurrentWorkspaceId;
         foreach (var workspace in store.VisibleWorkspaces)
         {
             rows.Add(new SidebarRow(SidebarRowKind.Workspace, workspace.Id, workspace.Name)
             {
                 Collapsed = !workspace.IsExpanded,
                 Focused = store.FocusedWorkspaceId == workspace.Id,
-                ActiveWorkspace = current == workspace.Id,
                 Unseen = workspace.UnseenCount,
                 WorkspaceId = workspace.Id,
                 ThemeName = workspace.ThemeName,
