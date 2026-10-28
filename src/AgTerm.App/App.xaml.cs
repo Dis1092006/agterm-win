@@ -1,4 +1,5 @@
 using AgTerm.ControlServer;
+using AgTerm.Core.Protocol;
 using AgTerm.Xterm;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
@@ -11,6 +12,26 @@ public partial class App : Application, ILiveWindowController
     private readonly Dictionary<Guid, MainWindow> _windows = new();
     private LiveApplicationHost? _applicationHost;
     private DispatcherQueue? _dispatcherQueue;
+    private SettingsWindow? _settingsWindow;
+
+    internal void OpenSettings()
+    {
+        var applicationHost = _applicationHost ?? throw new InvalidOperationException("Application host is not initialized.");
+        _settingsWindow ??= new SettingsWindow(
+            applicationHost.Settings,
+            () => _windows.Values.First().ReadSettingsShortcutsAsync(),
+            async () =>
+            {
+                var response = await Task.Run(() => new ControlPipeClient(applicationHost.PipeName)
+                    .Send(new ControlRequest { Cmd = Command.KeymapReload }));
+                if (!response.Ok) throw new IOException(response.Error);
+            });
+        _settingsWindow.Closed -= OnSettingsClosed;
+        _settingsWindow.Closed += OnSettingsClosed;
+        _settingsWindow.ShowGeneral();
+    }
+
+    private void OnSettingsClosed(object sender, WindowEventArgs args) => _settingsWindow = null;
 
     public App()
     {
@@ -147,6 +168,8 @@ public partial class App : Application, ILiveWindowController
     private void OnWindowClosed(Guid windowId)
     {
         _windows.Remove(windowId);
+        if (_windows.Count == 0)
+            _settingsWindow?.Close();
     }
 
     /// <summary>A second launch on the same state directory handed its activation here; AppInstance

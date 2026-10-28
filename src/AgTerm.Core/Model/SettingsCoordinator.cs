@@ -34,6 +34,7 @@ public sealed class SettingsCoordinator
     }
 
     public SettingsApplicationState State => Volatile.Read(ref state);
+    internal SettingsSnapshot ReadStrict() => store.ReadStrict();
     public event Action<SettingsApplicationState>? Changed;
     public bool HasSubscribers { get { lock (subscribersGate) return subscribers.Count > 0; } }
 

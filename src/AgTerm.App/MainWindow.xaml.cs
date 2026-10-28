@@ -1652,6 +1652,7 @@ public sealed partial class MainWindow : Window
                 pending.Generation,
                 action => WindowCommandRouter.ActionImplementations.TryGetValue(action, out var implemented) &&
                     implemented);
+            manifest = SettingsShortcuts.AddToManifest(keymap, manifest);
             var zoomPassthroughSingles = pending.Router.InterceptChords
                 .Where(chord => pending.Router.Handle(chord) is { } action && IsPaletteAction(action))
                 .ToArray();
@@ -1816,6 +1817,11 @@ public sealed partial class MainWindow : Window
         var hotkeyState = generation is { } value
             ? _hotkeyStates.Resolve(value)
             : _hotkeyStates.Active;
+        if (hotkeyState is not null && SettingsShortcuts.Opens(hotkeyState.Keymap, physical))
+        {
+            OpenSettings();
+            return true;
+        }
         if (hotkeyState?.Router.Handle(physical) is not { } action)
             return false;
 
@@ -1851,6 +1857,17 @@ public sealed partial class MainWindow : Window
             WinRT.Interop.WindowNative.GetWindowHandle(this));
         if (await picker.PickSingleFolderAsync() is { } folder)
             _sidebar?.NewSessionInActiveWorkspace(folder.Path);
+    }
+
+    private void OnSettingsClick(object sender, RoutedEventArgs args) => OpenSettings();
+
+    private void OpenSettings() => ((App)Application.Current).OpenSettings();
+
+    internal async Task<IReadOnlyList<KeybindingGroup>> ReadSettingsShortcutsAsync()
+    {
+        var host = await _hostReady.Task;
+        return await host.StoreCoordinator.ReadAsync(_ => KeybindingsCatalog.Create(
+            host.Host.Actions.LoadKeymap(), host.Host.Actions.KeymapDiagnostics));
     }
 
     private async Task OpenPaletteAsync(
