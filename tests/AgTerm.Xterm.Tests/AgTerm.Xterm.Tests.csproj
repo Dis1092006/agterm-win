@@ -60,6 +60,7 @@
     <Compile Include="..\..\src\AgTerm.App\FullscreenController.cs" Link="App\FullscreenController.cs" />
     <Compile Include="..\..\src\AgTerm.App\DeferredTerminalFocus.cs" Link="App\DeferredTerminalFocus.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowsNotificationSound.cs" Link="App\WindowsNotificationSound.cs" />
+    <Compile Include="..\..\src\AgTerm.App\InstalledFonts.cs" Link="App\InstalledFonts.cs" />
     <Compile Include="..\..\src\AgTerm.App\IconDirectory.cs" Link="App\IconDirectory.cs" />
     <Compile Include="..\..\src\AgTerm.App\TaskbarAppIcon.cs" Link="App\TaskbarAppIcon.cs" />
   </ItemGroup>

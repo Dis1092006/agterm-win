@@ -8,6 +8,19 @@ namespace AgTerm.Xterm.Tests;
 
 public sealed class LiveThemeTests
 {
+    [Theory]
+    [InlineData("Dracula", null, false, false, true)]
+    [InlineData("Builtin Light", null, false, true, false)]
+    [InlineData("Dracula", "Builtin Light", true, false, true)]
+    [InlineData("Dracula", "Builtin Light", true, true, false)]
+    public void Global_chrome_follows_the_active_theme_not_windows_appearance(
+        string light, string? dark, bool follow, bool systemDark, bool expectedDark)
+    {
+        var settings = new AppSettings { Theme = light, DarkTheme = dark, FollowSystemAppearance = follow };
+        var presentation = LiveThemeSettings.Resolve(settings, ThemeCatalog.Default, systemDark);
+        Assert.Equal(expectedDark, presentation.UseDarkChrome);
+    }
+
     [Fact]
     public void Default_catalog_resolves_bundled_agterm_palette()
     {

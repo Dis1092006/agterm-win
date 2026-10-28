@@ -137,6 +137,13 @@
                             <Rectangle x:Name="QuickTerminalOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
                         </Grid>
                     </Button>
+                    <Button Style="{StaticResource TitleBarActionButtonStyle}"
+                            AutomationProperties.Name="Settings"
+                            AutomationProperties.AutomationId="settings-button"
+                            ToolTipService.ToolTip="Settings (Alt+, or Ctrl+,)"
+                            Click="OnSettingsClick">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE713;" FontSize="14" />
+                    </Button>
                     <!-- upstream's Help menu installers; always shown. MainWindow sets the item texts from
                          InstallerCommands, which the palette and the skill text also use -->
                     <Button x:Name="HelpButton"
@@ -147,6 +154,8 @@
                         <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE897;" FontSize="14" />
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                <MenuFlyoutItem Text="Settings" Click="OnSettingsClick"
+                                                KeyboardAcceleratorTextOverride="Alt+, / Ctrl+," />
                                 <MenuFlyoutItem Text="Keyboard Shortcuts"
                                                 KeyboardAcceleratorTextOverride="Ctrl+Shift+F1"
                                                 AutomationProperties.AutomationId="keyboard-shortcuts"

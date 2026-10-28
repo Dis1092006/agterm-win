@@ -97,7 +97,9 @@ dotnet test AgTerm.slnx -m:1
 
 `-m:1` runs test projects one at a time so the live ConPTY and WebView2 suites do not contend for CPU.
 
-**Settings.** Edit `settings.json` in the state directory and run `agtermctl config reload`. A shared settings sequence applies the file to every open window and existing or future pane without restarting shells. Malformed or unreadable files leave the applied settings unchanged and show an error in the app. A theme change preserves unrelated file edits and reports save failures instead of replacing the file with defaults. `restoreRunningCommand` still requires an app restart. There is no Settings window yet.
+**Settings.** Open the title-bar Settings button, Help > Settings, **Alt+,**, or **Ctrl+,**. An explicit user keymap binding on either chord takes priority, including a leader prefix. One app-owned window contains General, Appearance, Interface, Notifications, Agent Status, and Key Mapping. Opening it again raises the same window and selects General. Changes save automatically to `settings.json` and apply to every open window and existing or future pane without restarting shells. `restoreRunningCommand` still requires an app restart, as its control notes.
+
+The window merges unrelated external file edits and preserves unknown or deferred settings. A conflicting edit keeps the draft unsaved and shows an error; Reload from file discards it, while Retry unsaved changes tries saving it again. Malformed or unreadable files are never replaced with defaults. A saved change that fails to apply is reported separately; reload retries application. You can still edit the file directly and run `agtermctl config reload`. Key Mapping reuses the searchable shortcut catalog and supports choosing a different keymap directory. Settings uses the global agterm theme's light/dark chrome, not workspace colors or the Windows app theme.
 
 **Publish (for daily use).** `publish.proj` puts the app, its runtime files, and the companion CLI into one directory:
 
