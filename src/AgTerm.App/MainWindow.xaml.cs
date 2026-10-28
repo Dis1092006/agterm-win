@@ -196,7 +196,7 @@ public sealed partial class MainWindow : Window
         var nativeWindowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
         _appWindow = AppWindow.GetFromWindowId(nativeWindowId);
-        ApplyExeIcon();
+        ApplyAppIcon();
         _fullscreen = new FullscreenController(ApplyFullscreen);
         _appWindow.Changed += OnAppWindowChanged;
         RestoreWindowFrame();
@@ -532,20 +532,11 @@ public sealed partial class MainWindow : Window
         args.Cancel = _closeCoordinator.ShouldCancelClose();
     }
 
-    private void ApplyExeIcon()
+    private void ApplyAppIcon()
     {
-        // WinUI 3 windows don't pick up the exe's embedded ApplicationIcon on their own; the
-        // taskbar/title-bar icon needs an explicit SetIcon. Extracting it from the running exe's
-        // own resources (rather than a loose .ico beside it) works unchanged under
-        // PublishSingleFile, which does not guarantee loose content files survive next to the exe.
-        var largeIcons = new IntPtr[1];
-        var exePath = Environment.ProcessPath;
-        if (exePath is null
-            || ShellIconNative.ExtractIconEx(exePath, 0, largeIcons, null, 1) == 0
-            || largeIcons[0] == IntPtr.Zero)
-            return;
-
-        _appWindow.SetIcon(Microsoft.UI.Win32Interop.GetIconIdFromIcon(largeIcons[0]));
+        var icon = WindowAppIcon.For(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        if (icon != IntPtr.Zero)
+            _appWindow.SetIcon(Microsoft.UI.Win32Interop.GetIconIdFromIcon(icon));
     }
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
@@ -3057,7 +3048,11 @@ public sealed partial class MainWindow : Window
     private void OnSystemColorValuesChanged(UISettings sender, object args)
     {
         DispatcherQueue.TryEnqueue(() =>
-            ObserveTaskFault(ApplySystemAppearanceAsync(), "System theme apply failed"));
+        {
+            if (!_closedCompletion.Task.IsCompleted)
+                ApplyAppIcon();
+            ObserveTaskFault(ApplySystemAppearanceAsync(), "System theme apply failed");
+        });
     }
 
     private bool IsSystemAppearanceDark()
