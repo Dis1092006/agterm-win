@@ -64,7 +64,7 @@ Bump the parity version in this README when you re-pin: **current parity target 
 src/                       the app, the control server, agtermctl and the terminal backend
 tests/                     xUnit suites per project; AgTerm.E2E drives agtermctl end to end
 tools/extract_surface.py   surface extractor (the drift-check input)
-tools/app_icon.py          draws src/AgTerm.App/Assets/AppIcon.ico
+tools/app_icon.py          draws the app icons in src/AgTerm.App/Assets
 parity/surface.json        latest extracted upstream surface snapshot
 docs/agterm-windows-spec.md  the portable data/protocol/keymap spec
 docs/PLATFORM-NOTES.md     where and why this port differs from upstream
