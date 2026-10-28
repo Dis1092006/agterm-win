@@ -60,8 +60,10 @@ tools/extract_surface.py    surface extractor
 
 ```
 dotnet build AgTerm.slnx
-dotnet test AgTerm.slnx                          # WinUI app builds separately:
+dotnet test AgTerm.slnx -m:1                     # WinUI app builds separately:
 dotnet build src/AgTerm.App -p:Platform=x64
 ```
 
 Both builds treat warnings as errors; use `--no-incremental` to check all warnings after a local build.
+
+Run test projects one at a time with `-m:1`, as CI does. Parallel projects make the live ConPTY and WebView2 suites contend for CPU.

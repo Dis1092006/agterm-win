@@ -61,6 +61,8 @@ public sealed partial class MainWindow : Window
     private readonly SemaphoreSlim _hotkeyManifestGate = new(1, 1);
     private readonly SettingsStore _settingsStore;
     private readonly SettingsReloadCoordinator _settingsReloadCoordinator;
+    private readonly SemaphoreSlim _settingsSubscriptionGate = new(1, 1);
+    private IDisposable? _settingsSubscription;
     private readonly ThemeCatalog _themeCatalog = ThemeCatalog.Default;
     private readonly UISettings _uiSettings = new();
     private readonly WindowsAppNotificationPresenter _notificationPresenter;
@@ -76,6 +78,8 @@ public sealed partial class MainWindow : Window
     // the armed keymap, for the shortcut each chrome button's tooltip names
     private Keymap _keymap = Keymap.Empty;
     private IReadOnlyList<KeymapDiagnostic> _keymapDiagnostics = [];
+    private Task _keymapReloadApplication = Task.CompletedTask;
+    private Action<Keymap>? _keymapReloadHandler;
     private HotkeyManifest? _keybindingsManifest;
     private readonly PaletteAutoFollowLease _keybindingsAutoFollow = new();
     // the Ctrl-Tab switcher; the page's switch flag mirrors IsActive once a key has been handled
@@ -123,7 +127,7 @@ public sealed partial class MainWindow : Window
         _applicationHost = applicationHost;
         _windowId = windowId;
         _settingsStore = new SettingsStore();
-        _settings = _settingsStore.Load();
+        _settings = _applicationHost.Settings.State.Snapshot.Settings;
         _systemDark = IsSystemAppearanceDark();
         var initialTheme = LiveThemeSettings.Resolve(_settings, _themeCatalog, _systemDark);
         _rendererSettings = initialTheme.RendererSettings;
@@ -167,14 +171,15 @@ public sealed partial class MainWindow : Window
         _contentDialogs.DialogClosed += FocusModalAfterContentDialog;
         TerminalView.SizeChanged += OnTerminalViewSizeChanged;
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
-            load: cancellationToken => Task.Run(() => _settingsStore.Load(), cancellationToken),
+            load: cancellationToken => Task.Run(() => _settingsStore.ReadStrict().Settings, cancellationToken),
             runOnUi: work =>
             {
                 if (!DispatcherQueue.TryEnqueue(() => work()))
                     throw new InvalidOperationException("Failed to enqueue settings reload.");
             },
-            apply: ApplySettingsAsync,
+            apply: settings => ApplySettingsAsync(settings),
             error: ReportSettingsReloadFailure);
+        _applicationHost.Settings.Changed += OnSettingsChanged;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppTitleBar.Loaded += (_, _) => ApplyShortcutHints();
@@ -273,6 +278,8 @@ public sealed partial class MainWindow : Window
             _notificationPresenter.Dispose();
             _contentDialogs.Dispose();
             _settingsReloadCoordinator.Dispose();
+            _settingsSubscription?.Dispose();
+            _applicationHost.Settings.Changed -= OnSettingsChanged;
             _layoutCoordinator.Dispose();
             ObserveTaskFault(
                 Task.Run(() => _host?.Dispose()),
@@ -687,6 +694,8 @@ public sealed partial class MainWindow : Window
             _paneThemes.Update(PaneThemeTable.Empty, true);
             PresentPaneThemes(_selection);
             await host.ReloadSurfacesAsync(_bootstrapCancellation.Token);
+            if (_settingsSubscription is null)
+                await SubscribeToSettingsAsync(host);
             SubmitLayout();
             SubmitSearchPresentation(new LiveSelectionSnapshot(null, null), _selection);
             ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed");
@@ -788,8 +797,8 @@ public sealed partial class MainWindow : Window
         };
         host.ZoomActiveChanged += _ => DispatcherQueue.TryEnqueue(() =>
             ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed"));
-        host.ThemeChanged += state => DispatcherQueue.TryEnqueue(() =>
-            ObserveTaskFault(ApplyLiveThemeWithFailureAsync(state), "Theme apply failed"));
+        host.ThemeUpdateRequested += change =>
+            ObserveTaskFault(ApplyLiveThemeWithFailureAsync(change), "Theme apply failed");
         host.NotificationRequested += notification => DispatcherQueue.TryEnqueue(() =>
             ShowNotification(notification));
         host.StatusNotificationRequested += soundName => DispatcherQueue.TryEnqueue(() =>
@@ -1056,7 +1065,43 @@ public sealed partial class MainWindow : Window
         PaletteOverlay.CancelChord = IsCloseSessionChord;
         AskOverlay.CancelChord = IsCloseSessionChord;
         ObserveTaskFault(_paletteTransitions.RunAsync(SyncModalAsync), "Modal presentation failed");
-        ObserveTaskFault(ArmHotkeysAsync(host), "Arm hotkeys failed");
+        try
+        {
+            await SubscribeToSettingsAsync(host);
+        }
+        catch (Exception ex)
+        {
+            if (!_bootstrapCancellation.IsCancellationRequested)
+                ReportSettingsReloadFailure(ex);
+            throw;
+        }
+    }
+
+    private async Task SubscribeToSettingsAsync(LiveControlHost host)
+    {
+        await _settingsSubscriptionGate.WaitAsync(_bootstrapCancellation.Token);
+        try
+        {
+            if (_settingsSubscription is not null) return;
+            await ArmHotkeysAsync(host);
+            _settingsSubscription = await _applicationHost.Settings.SubscribeAsync(
+                async (snapshot, kind) =>
+                {
+                    if (_bootstrapCancellation.IsCancellationRequested) return;
+                    try
+                    {
+                        await host.ApplySettingsAsync(snapshot);
+                        if (Volatile.Read(ref _keymapReloadApplication).IsFaulted)
+                            await host.StoreCoordinator.MutateAsync(_ => host.Host.Actions.ReloadKeymap());
+                        await Volatile.Read(ref _keymapReloadApplication);
+                        await _settingsReloadCoordinator.RunOnUiAsync(
+                            () => ApplySettingsAsync(snapshot.Settings, kind));
+                    }
+                    catch (OperationCanceledException) when (_bootstrapCancellation.IsCancellationRequested) { }
+                },
+                _bootstrapCancellation.Token);
+        }
+        finally { _settingsSubscriptionGate.Release(); }
     }
 
     private async Task RenameCurrentWindowAsync()
@@ -1344,12 +1389,16 @@ public sealed partial class MainWindow : Window
                 hit.Generation)),
             $"Custom command {hit.CommandId} failed"));
         host.Host.Actions.CustomCommandRunner = (store, sessionId, command) => RunCustomCommandFromPipe(host, store, sessionId, command);
-        host.Host.Actions.KeymapReloaded += keymap =>
+        if (_keymapReloadHandler is not null)
+            host.Host.Actions.KeymapReloaded -= _keymapReloadHandler;
+        _keymapReloadHandler = keymap =>
         {
             var diagnostics = host.Host.Actions.KeymapDiagnostics;
-            DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
-                ArmAsync(keymap, diagnostics), "Set reloaded hotkey manifest failed"));
+            var application = _settingsReloadCoordinator.RunOnUiAsync(() => ArmAsync(keymap, diagnostics));
+            Volatile.Write(ref _keymapReloadApplication, application);
+            ObserveTaskFault(application, "Set reloaded hotkey manifest failed");
         };
+        host.Host.Actions.KeymapReloaded += _keymapReloadHandler;
     }
 
     /// <summary>Makes the palette match the window's pick: show a newly pending pick, close one that was
@@ -2506,23 +2555,26 @@ public sealed partial class MainWindow : Window
 
     private int OnConfigReload()
     {
-        _settingsReloadCoordinator.Request();
+        ObserveTaskFault(_applicationHost.Settings.ReloadAsync(), "Settings reload failed");
         return 0;
     }
 
-    private async Task ApplySettingsAsync(AppSettings settings)
+    private async Task ApplySettingsAsync(AppSettings settings, SettingsApplyKind kind = SettingsApplyKind.Reload)
     {
         await _themeApplyGate.WaitAsync();
         try
         {
-            var presentation = LiveThemeSettings.Resolve(settings, _themeCatalog, _systemDark);
+            var preservePaneFontSizes = kind is SettingsApplyKind.Startup or SettingsApplyKind.Theme;
+            var presentation = LiveThemeSettings.Resolve(
+                settings, _themeCatalog, _systemDark, preservePaneFontSizes);
 
             if (_host is { } host)
             {
                 host.SetNotificationSettings(settings);
                 // Upstream's explicit config reload clears per-session zoom even when the configured
                 // base font is unchanged; only automatic appearance flips preserve zoom.
-                await host.ApplyBaseFontSizeAsync(presentation.RendererSettings.FontSize);
+                if (!preservePaneFontSizes)
+                    await host.ApplyBaseFontSizeAsync(presentation.RendererSettings.FontSize);
             }
 
             await ApplyThemePresentationAsync(settings, presentation);
@@ -2533,43 +2585,21 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async Task ApplyLiveThemeAsync(HeadlessThemeSnapshot state)
+    private async Task ApplyLiveThemeAsync(HeadlessThemeUpdate change)
     {
-        await _themeApplyGate.WaitAsync();
-        try
-        {
-            var settings = LiveThemeSettings.Apply(_settings, state);
-            var presentation = LiveThemeSettings.Resolve(
-                settings,
-                _themeCatalog,
-                _systemDark,
-                preservePaneFontSizes: true);
-            await ApplyThemePresentationAsync(settings, presentation);
-            try
-            {
-                await Task.Run(() => _settingsStore.Save(settings));
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError(
-                    $"Theme settings save failed: {ex.GetBaseException().Message}");
-            }
-        }
-        finally
-        {
-            _themeApplyGate.Release();
-        }
+        await _applicationHost.Settings.UpdateCurrentAsync(
+            settings => LiveThemeSettings.ApplyChange(settings, change), SettingsApplyKind.Theme);
     }
 
-    private async Task ApplyLiveThemeWithFailureAsync(HeadlessThemeSnapshot state)
+    private async Task ApplyLiveThemeWithFailureAsync(HeadlessThemeUpdate change)
     {
         try
         {
-            await ApplyLiveThemeAsync(state);
+            await ApplyLiveThemeAsync(change);
         }
         catch (Exception ex)
         {
-            ShowFailure(new LiveFailureNotice(
+            QueueFailureNotice(new LiveFailureNotice(
                 "Theme could not be applied",
                 ex.GetBaseException().Message));
             throw;
@@ -3070,6 +3100,12 @@ public sealed partial class MainWindow : Window
         var message = exception.GetBaseException().Message;
         System.Diagnostics.Trace.TraceError($"Settings reload failed: {message}");
         QueueFailureNotice(new LiveFailureNotice("Config reload failed", message));
+    }
+
+    private void OnSettingsChanged(SettingsApplicationState state)
+    {
+        if (state.Error is { } error)
+            ReportSettingsReloadFailure(error);
     }
 
     private void QueueFailureNotice(LiveFailureNotice notice) =>
