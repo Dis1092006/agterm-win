@@ -12,7 +12,6 @@ Used in this repository:
 - Tests ported from agterm, in the `Ported` folders under `tests/`.
 - The agent skill in `plugins/agterm/skills/agterm`, adapted to Windows.
 - The `agterm` terminal theme in `src/AgTerm.Xterm/Themes/agterm`.
-- The application icon in `src/AgTerm.App/Assets/AppIcon.ico`, converted from agterm's icon.
 
 ```
 MIT License
