@@ -9,7 +9,7 @@ Windows shell, Phase 5 workflows, and x64/ARM64 release gates are implemented an
 ## Parity policy (strict)
 
 The contract we must match byte-for-byte is the **`agtermctl` CLI + the JSON wire protocol** — that is
-what scripts and the agent-skill (`Bash(agtermctl *)`) actually call. Explicitly:
+what scripts and the agent-skill (`Bash(agtermctl:*)`) actually call. Explicitly:
 
 - **Match:** command names, args, results, error semantics; `agtermctl` subcommands/flags and both its
   human and `--json` output; keymap grammar + `BuiltinAction` names/default chords; `{AGT_X}` tokens;
@@ -150,7 +150,7 @@ The agent skill in `plugins/agterm/skills/agterm` teaches a coding agent to driv
 
 Install it in one of two ways:
 
-- From the app: Help ▸ Install Agent Skill… in the title bar. It copies the skill to `~\.claude\skills\agterm` and `~\.codex\skills\agterm`. Copilot CLI does not read these directories, so Copilot CLI needs the plugin.
+- From the app: Help ▸ Install Agent Skill… in the title bar. It copies the skill to `~\.claude\skills\agterm` and `~\.codex\skills\agterm`, and to `~\.copilot\skills\agterm` when Copilot CLI is installed.
 - As a plugin from the marketplace in this repository:
   - Claude Code: `/plugin marketplace add Dis1092006/agterm-win`, then `/plugin install agterm@agterm-win`.
   - Codex: `codex plugin marketplace add Dis1092006/agterm-win`, then `codex plugin add agterm@agterm-win`.

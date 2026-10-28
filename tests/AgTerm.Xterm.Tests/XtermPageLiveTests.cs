@@ -923,6 +923,69 @@ public class XtermPageLiveTests
     }
 
     /// <summary>
+    /// Copilot CLI asks for modifyOtherKeys (CSI > 4 ; 2 m) and never pushes the kitty protocol
+    /// through ConPTY, so xterm.js, which has no modifyOtherKeys support, sends Shift+Enter as the
+    /// plain win32 Enter record and Copilot submits the prompt instead of inserting a newline. While
+    /// the mode is on and kitty is not pushed, the page sends xterm's modifyOtherKeys form instead.
+    /// </summary>
+    [Fact]
+    public async Task Shift_enter_reports_modify_other_keys_form_while_the_mode_is_on()
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("mok"));
+        var data = new EventRecorder<string>();
+        terminal.DataReceived += data.Add;
+
+        async Task FeedAsync(string vt)
+        {
+            await _webView.RunAsync(_ =>
+            {
+                terminal.FeedOutput(Encoding.UTF8.GetBytes(vt));
+                return Task.FromResult(0);
+            });
+            await Task.Delay(200);
+        }
+
+        async Task<string> PressAsync(bool shift)
+        {
+            var before = data.Count;
+            await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                $$"""
+                (() => {
+                  const ev = new KeyboardEvent("keydown", {
+                    key: "Enter", code: "Enter", shiftKey: {{(shift ? "true" : "false")}}, cancelable: true });
+                  Object.defineProperty(ev, "keyCode", { value: 13, configurable: true });
+                  Object.defineProperty(ev, "which", { value: 13, configurable: true });
+                  agterm.textareaFor("mok").dispatchEvent(ev);
+                  return true;
+                })()
+                """));
+            var deadline = Environment.TickCount64 + 5000;
+            while (data.Count <= before && Environment.TickCount64 < deadline)
+                await Task.Delay(25);
+            Assert.True(data.Count > before, "no input reached the pty");
+            return data[before];
+        }
+
+        // conhost turns win32-input-mode on for every ConPTY pane
+        await FeedAsync("\u001b[?9001h");
+        Assert.EndsWith("_", await PressAsync(shift: true));
+
+        // what Copilot CLI writes on entry
+        await FeedAsync("\u001b[>4;2m");
+        Assert.Equal("\u001b[27;2;13~", await PressAsync(shift: true));
+        Assert.EndsWith("_", await PressAsync(shift: false));
+
+        // and on exit
+        await FeedAsync("\u001b[>4;0m");
+        Assert.EndsWith("_", await PressAsync(shift: true));
+
+        // a pushed kitty protocol still decides the encoding
+        await FeedAsync("\u001b[>4;2m\u001b[>1u");
+        Assert.Equal("\u001b[13;2u", await PressAsync(shift: true));
+    }
+
+    /// <summary>
     /// A real Shift+Enter carries event.code "Enter"; the engine's win32-input-mode encoder keys
     /// off code and is checked BEFORE the kitty path, so with both extensions on it decides the
     /// encoding whenever mode 9001 is active. Pins what the pty actually receives for a keydown

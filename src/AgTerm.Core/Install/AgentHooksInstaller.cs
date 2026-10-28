@@ -20,6 +20,60 @@ public static class AgentHooksInstaller
         ("Notification", "permission_prompt", "blocked", null),
     ];
 
+    /// <summary>The Copilot CLI hooks file agterm-win owns, in <c>~/.copilot/hooks</c>. Windows-only extension.</summary>
+    public const string CopilotHooksName = "agterm-win-status.json";
+
+    // permissionRequest is left out: Copilot CLI fires it for auto-approved tool calls too.
+    private static readonly (string Event, string? Matcher, string State, string? Flag)[] CopilotEvents =
+    [
+        ("userPromptSubmitted", null, "active", "--blink"),
+        ("postToolUse", null, "active", "--blink"),
+        ("postToolUseFailure", null, "active", "--blink"),
+        ("agentStop", null, "completed", "--auto-reset"),
+        ("notification", "permission_prompt", "blocked", null),
+        ("notification", "elicitation_dialog", "blocked", null),
+    ];
+
+    private static JsonArray StatusArgs(string wrapperPath, string state, string? flag)
+    {
+        var args = new JsonArray("/d", "/v:on", "/c", "call", wrapperPath, state);
+        if (flag is not null) args.Add(flag);
+        args.Add("agterm-win");
+        return args;
+    }
+
+    /// <summary>The full contents of the owned Copilot CLI hooks file for <paramref name="wrapperPath"/>.</summary>
+    public static string BuildCopilot(string wrapperPath)
+    {
+        var hooks = new JsonObject();
+        foreach (var (eventName, matcher, state, flag) in CopilotEvents)
+        {
+            var entry = new JsonObject
+            {
+                ["type"] = "command",
+                ["exec"] = "cmd.exe",
+                ["args"] = StatusArgs(wrapperPath, state, flag),
+                ["timeoutSec"] = 10,
+            };
+            if (matcher is not null) entry["matcher"] = matcher;
+            if (hooks[eventName] is not JsonArray entries) hooks[eventName] = entries = new JsonArray();
+            entries.Add(entry);
+        }
+        var root = new JsonObject { ["version"] = 1, ["hooks"] = hooks };
+        return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
+    }
+
+    private static bool IsOwnedCopilot(string contents)
+    {
+        JsonNode? root;
+        try { root = JsonNode.Parse(contents); }
+        catch (JsonException) { return false; }
+        if (root is not JsonObject file || file["hooks"] is not JsonObject hooks) return false;
+        return hooks.All(property => property.Value is JsonArray entries && entries.All(entry =>
+            entry is JsonObject handler && handler["type"]?.ToString() == "command" &&
+            handler["exec"]?.ToString() == "cmd.exe" && handler["args"] is JsonArray args && IsOwnedArgs(args)));
+    }
+
     public static (string Contents, bool Changed) MergeClaude(string? existing, string wrapperPath)
     {
         JsonObject root;
@@ -48,9 +102,7 @@ public static class AgentHooksInstaller
         foreach (var (eventName, matcher, state, flag) in ClaudeEvents)
         {
             var entries = hooks[eventName] as JsonArray ?? new JsonArray();
-            var args = new JsonArray("/d", "/v:on", "/c", "call", wrapperPath, state);
-            if (flag is not null) args.Add(flag);
-            args.Add("agterm-win");
+            var args = StatusArgs(wrapperPath, state, flag);
             var entry = new JsonObject
             {
                 ["hooks"] = new JsonArray(new JsonObject { ["type"] = "command", ["command"] = "cmd.exe", ["args"] = args }),
@@ -87,9 +139,14 @@ public static class AgentHooksInstaller
         if (entry is not JsonObject group || group["hooks"] is not JsonArray handlers || handlers.Count != 1 ||
             handlers[0] is not JsonObject handler || handler["args"] is not JsonArray args)
             return false;
-        var values = args.Select(arg => arg is JsonValue value && value.TryGetValue<string>(out var text) ? text : null).ToArray();
         return handler["type"]?.ToString() == "command" && handler["command"]?.ToString() == "cmd.exe" &&
-            values.Length is 7 or 8 && values[0] == "/d" && values[1] == "/v:on" &&
+            IsOwnedArgs(args);
+    }
+
+    private static bool IsOwnedArgs(JsonArray args)
+    {
+        var values = args.Select(arg => arg is JsonValue value && value.TryGetValue<string>(out var text) ? text : null).ToArray();
+        return values.Length is 7 or 8 && values[0] == "/d" && values[1] == "/v:on" &&
             values[2] == "/c" && values[3] == "call" &&
             Path.GetFileName(values[4]) == WrapperName && values[^1] == "agterm-win";
     }
@@ -134,6 +191,28 @@ public static class AgentHooksInstaller
             skipped.Add($"Claude Code: {ex.Message}");
         }
 
+        if (Directory.Exists(Path.Join(home, ".copilot")))
+        {
+            var copilotHooks = Path.Join(home, ".copilot", "hooks", CopilotHooksName);
+            try
+            {
+                var existing = File.Exists(copilotHooks)
+                    ? File.ReadAllText(copilotHooks, new UTF8Encoding(false, true))
+                    : null;
+                if (existing is not null && !IsOwnedCopilot(existing))
+                    throw new InvalidDataException($"'{copilotHooks}' is not an agterm-win file; left untouched.");
+                var contents = BuildCopilot(wrapper);
+                if (existing != contents) WriteConfig(copilotHooks, existing, contents);
+                installed.Add($"Copilot CLI: {copilotHooks}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException
+                or DecoderFallbackException)
+            {
+                skipped.Add($"Copilot CLI: {ex.Message}");
+            }
+        }
+        else skipped.Add("Copilot CLI: not installed (no .copilot directory)");
+
         var piAgent = Path.Join(home, ".pi", "agent");
         if (Directory.Exists(piAgent))
         {
@@ -152,7 +231,8 @@ public static class AgentHooksInstaller
         }
         else skipped.Add("Pi: not installed (no .pi\\agent directory)");
 
-        var warning = skipped.Any(line => !line.StartsWith("Pi: not installed", StringComparison.Ordinal));
+        var warning = skipped.Any(line => !line.StartsWith("Pi: not installed", StringComparison.Ordinal) &&
+            !line.StartsWith("Copilot CLI: not installed", StringComparison.Ordinal));
         return new InstallOutcome(warning ? "Agent Status Hooks Installed — with a warning" : "Agent Status Hooks Installed",
             string.Join("\n", installed.Concat(skipped)), warning);
     }

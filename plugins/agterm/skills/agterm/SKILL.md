@@ -21,7 +21,7 @@ when_to_use: >
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
   keymap chord does nothing, custom action / custom command not working, agterm diagnostics, file an agterm
   bug, report an agterm issue, ask an agterm question / feature request.
-allowed-tools: Bash(agtermctl *)
+allowed-tools: Bash(agtermctl:*)
 ---
 
 <!-- agterm-skill -->

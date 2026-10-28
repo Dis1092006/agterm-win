@@ -2744,6 +2744,8 @@ function openPane(paneId, opts) {
     readline: false,
     readlinePaste: null,
     rewrittenKeys: new Map(),
+    // modifyOtherKeys level the program set with CSI > 4 ; level m (0 = off)
+    modifyOtherKeys: 0,
   };
   panes.set(paneId, pane);
   installTerminalLinks(paneId, pane);
@@ -2832,6 +2834,18 @@ function openPane(paneId, opts) {
     if (typeof ev.key !== "string" || ev.key.length !== 1 || /^[a-zA-Z]$/.test(ev.key)) return false;
     pane.term.input(win32CtrlLetter(ev.code, true), true);
     pane.rewrittenKeys.set(ev.code, win32CtrlLetter(ev.code, false));
+    return true;
+  };
+
+  // xterm.js has no modifyOtherKeys, so a program that turned it on (Copilot CLI sends
+  // CSI > 4 ; 2 m and gets no kitty answer through ConPTY) would get Shift+Enter as plain Enter
+  // and submit instead of inserting a newline. The page sends xterm's form for that one key.
+  // A pushed kitty protocol keeps deciding the encoding.
+  const rewriteModifiedEnter = (ev) => {
+    if (pane.modifyOtherKeys < 1 || kittyFlags() > 0) return false;
+    if (ev.key !== "Enter" || !ev.shiftKey || ev.ctrlKey || ev.altKey || ev.metaKey) return false;
+    pane.term.input("\x1b[27;2;13~", true);
+    if (ev.code) pane.rewrittenKeys.set(ev.code, "");
     return true;
   };
 
@@ -2950,6 +2964,11 @@ function openPane(paneId, opts) {
       handled = processCustomChord(paneId, chord, true);
     }
     if (!handled) handled = routeClipboardChord(ev);
+    if (!handled && rewriteModifiedEnter(ev)) {
+      forwardUserKeystroke(ev);
+      if (ev.preventDefault) ev.preventDefault();
+      return false;
+    }
     if (!handled && rewriteCtrlLetter(ev)) {
       forwardUserKeystroke(ev);
       if (ev.preventDefault) ev.preventDefault();
@@ -3009,6 +3028,15 @@ function openPane(paneId, opts) {
   });
   term.parser.registerCsiHandler({ prefix: "<", final: "u" }, () => {
     queueMicrotask(syncKeyboardPrecedence);
+    return false;
+  });
+  // CSI > 4 ; level m sets modifyOtherKeys, CSI > 4 m or level 0 turns it off (see
+  // rewriteModifiedEnter). Other resources of CSI > m are ignored.
+  term.parser.registerCsiHandler({ prefix: ">", final: "m" }, (params) => {
+    if (params[0] === 4) {
+      const level = params.length > 1 ? params[1] : 0;
+      pane.modifyOtherKeys = typeof level === "number" ? level : 0;
+    }
     return false;
   });
 

@@ -272,6 +272,129 @@ public sealed class AgentHooksInstallerTests : IDisposable
         Assert.Equal(expected, File.ReadAllText(capture).Trim());
     }
 
+    private const string WrapperTemplate = "rem agterm-win-status-hook\n";
+    private const string PiTemplate = "// agterm-win-pi-status-extension\n";
+
+    private string CopilotHooksFile => Path.Join(_home, ".copilot", "hooks", AgentHooksInstaller.CopilotHooksName);
+
+    [Fact]
+    public void CopilotHooksGoIntoAnOwnedFileWhenCopilotIsInstalled()
+    {
+        Directory.CreateDirectory(Path.Join(_home, ".copilot"));
+
+        var outcome = AgentHooksInstaller.Run(_home, WrapperTemplate, PiTemplate, Path.Join(_home, "agtermctl.exe"));
+
+        Assert.False(outcome.IsWarning);
+        Assert.Contains($"Copilot CLI: {CopilotHooksFile}", outcome.Message);
+        using var json = JsonDocument.Parse(File.ReadAllText(CopilotHooksFile));
+        Assert.Equal(1, json.RootElement.GetProperty("version").GetInt32());
+        var hooks = json.RootElement.GetProperty("hooks");
+        Assert.Equal(
+            new[] { "userPromptSubmitted", "postToolUse", "postToolUseFailure", "agentStop", "notification" },
+            hooks.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "permission_prompt", "elicitation_dialog" },
+            hooks.GetProperty("notification").EnumerateArray().Select(entry => entry.GetProperty("matcher").GetString()));
+        var wrapper = Path.Join(_home, ".config", "agterm", "agent-status", AgentHooksInstaller.WrapperName);
+        foreach (var handler in hooks.EnumerateObject().SelectMany(property => property.Value.EnumerateArray()))
+        {
+            Assert.Equal("command", handler.GetProperty("type").GetString());
+            Assert.Equal("cmd.exe", handler.GetProperty("exec").GetString());
+            Assert.Contains(wrapper, handler.GetProperty("args").EnumerateArray().Select(arg => arg.GetString()));
+        }
+    }
+
+    [Fact]
+    public void CopilotHooksAreSkippedWithoutWarningWhenCopilotIsMissing()
+    {
+        var outcome = AgentHooksInstaller.Run(_home, WrapperTemplate, PiTemplate, Path.Join(_home, "agtermctl.exe"));
+
+        Assert.False(outcome.IsWarning);
+        Assert.Contains("Copilot CLI: not installed (no .copilot directory)", outcome.Message);
+        Assert.False(Directory.Exists(Path.Join(_home, ".copilot")));
+    }
+
+    [Fact]
+    public void CopilotRerunIsIdempotentAndAChangedOwnedFileIsRefreshedWithBackup()
+    {
+        Directory.CreateDirectory(Path.Join(_home, ".copilot"));
+        var tool = Path.Join(_home, "agtermctl.exe");
+        AgentHooksInstaller.Run(_home, WrapperTemplate, PiTemplate, tool);
+        var bytes = File.ReadAllBytes(CopilotHooksFile);
+
+        var second = AgentHooksInstaller.Run(_home, WrapperTemplate, PiTemplate, tool);
+        Assert.False(second.IsWarning);
+        Assert.Equal(bytes, File.ReadAllBytes(CopilotHooksFile));
+        Assert.False(File.Exists(CopilotHooksFile + ".bak"));
+
+        var edited = File.ReadAllText(CopilotHooksFile).Replace("\"timeoutSec\": 10", "\"timeoutSec\": 99", StringComparison.Ordinal);
+        File.WriteAllText(CopilotHooksFile, edited);
+        var third = AgentHooksInstaller.Run(_home, WrapperTemplate, PiTemplate, tool);
+        Assert.False(third.IsWarning);
+        Assert.Equal(bytes, File.ReadAllBytes(CopilotHooksFile));
+        Assert.Equal(edited, File.ReadAllText(CopilotHooksFile + ".bak"));
+    }
+
+    [Theory]
+    [InlineData("{broken")]
+    [InlineData("[]")]
+    [InlineData("""{"version":1,"hooks":{"agentStop":[{"type":"command","bash":"./mine.sh"}]}}""")]
+    [InlineData("""{"version":1,"hooks":{"agentStop":[{"type":"command","exec":"cmd.exe","args":["/d","/v:on","/c","call","C:\\x\\agterm-agent-status.cmd","completed","mine"]}]}}""")]
+    [InlineData("""{"version":1,"hooks":{"agentStop":"wrong"}}""")]
+    public void ForeignOrInvalidCopilotHooksFileStaysUntouched(string existing)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(CopilotHooksFile)!);
+        File.WriteAllText(CopilotHooksFile, existing);
+
+        var outcome = AgentHooksInstaller.Run(_home, WrapperTemplate, PiTemplate, Path.Join(_home, "agtermctl.exe"));
+
+        Assert.True(outcome.IsWarning);
+        Assert.Contains("Copilot CLI:", outcome.Message);
+        Assert.Equal(existing, File.ReadAllText(CopilotHooksFile));
+        Assert.False(File.Exists(CopilotHooksFile + ".bak"));
+    }
+
+    [Theory]
+    [InlineData("userPromptSubmitted", 0, "active", "--blink")]
+    [InlineData("postToolUse", 0, "active", "--blink")]
+    [InlineData("postToolUseFailure", 0, "active", "--blink")]
+    [InlineData("agentStop", 0, "completed", "--auto-reset")]
+    [InlineData("notification", 0, "blocked", "")]
+    [InlineData("notification", 1, "blocked", "")]
+    public void EveryCopilotHookForwardsOnlyItsStatusArguments(string eventName, int index, string state, string flag)
+    {
+        Directory.CreateDirectory(Path.Join(_home, ".copilot"));
+        var template = File.ReadAllText(Path.GetFullPath(Path.Join(AppContext.BaseDirectory, "..", "..", "..", "..",
+            "src", "AgTerm.Xterm", "AgentStatus", AgentHooksInstaller.WrapperName)));
+        var tool = Path.Join(_home, "fake tool.cmd");
+        var capture = Path.Join(_home, "capture.txt");
+        File.WriteAllText(tool, "@echo off\r\necho %*>> \"%AGTERM_CAPTURE%\"\r\nexit /b 9\r\n");
+        AgentHooksInstaller.Run(_home, template, PiTemplate, tool);
+        using var json = JsonDocument.Parse(File.ReadAllText(CopilotHooksFile));
+        var handler = json.RootElement.GetProperty("hooks").GetProperty(eventName)[index];
+        var process = new ProcessStartInfo(handler.GetProperty("exec").GetString()!)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in handler.GetProperty("args").EnumerateArray())
+            process.ArgumentList.Add(arg.GetString()!);
+        process.Environment["AGTERM_CAPTURE"] = capture;
+        process.Environment["AGTERM_SESSION_ID"] = "ABC";
+        process.Environment["AGTERM_SOCKET"] = "pipe name";
+        process.Environment["AGTERM_PANE"] = "right";
+        process.Environment["AGTERM_PANE_ID"] = "token-1";
+        using var child = Process.Start(process)!;
+        Assert.Equal("", child.StandardOutput.ReadToEnd());
+        Assert.Equal("", child.StandardError.ReadToEnd());
+        child.WaitForExit();
+        Assert.Equal(0, child.ExitCode);
+
+        var expected = $"session status \"{state}\" --target \"ABC\" --socket \"pipe name\" --pane \"right\" --pane-id \"token-1\"";
+        if (flag.Length > 0) expected += " " + flag;
+        Assert.Equal(expected, File.ReadAllText(capture).Trim());
+    }
+
     [Theory]
     [InlineData("a b", false)]
     [InlineData("a&b", true)]

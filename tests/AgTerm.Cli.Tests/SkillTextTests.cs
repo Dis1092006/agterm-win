@@ -27,7 +27,7 @@ public class SkillTextTests
         var fields = ParseFrontmatter(lines[1..end]);
         Assert.Equal("agterm", fields["name"]);
         Assert.False(string.IsNullOrWhiteSpace(fields["description"]));
-        Assert.Equal("Bash(agtermctl *)", fields["allowed-tools"]);
+        Assert.Equal("Bash(agtermctl:*)", fields["allowed-tools"]);
 
         Assert.Contains("<!-- agterm-skill -->", string.Join('\n', lines[(end + 1)..]));
     }
