@@ -89,6 +89,20 @@ public sealed class HeadlessThemeSlots
 
 public sealed record HeadlessThemeSnapshot(string? Light, string? Dark, bool Sync);
 
+/// <summary>A validated theme command's intent, replayed against the latest saved slots.</summary>
+public sealed record HeadlessThemeUpdate(string? Light, string? Dark)
+{
+    public HeadlessThemeSnapshot Apply(HeadlessThemeSnapshot current)
+    {
+        if (string.Equals(Dark, "none", StringComparison.OrdinalIgnoreCase))
+            return new(Light ?? current.Light, null, false);
+        if (Dark is not null)
+            return new(Light ?? (string.IsNullOrEmpty(current.Light) ? "Builtin Light" : current.Light), Dark, true);
+        var dark = Light is null ? null : current.Dark;
+        return new(Light, dark, dark is not null);
+    }
+}
+
 public sealed record LiveNotificationRequest(Guid SessionId, string Title, string Body);
 
 public sealed record LiveStatusNotificationRequest(Guid SessionId, AgentStatus Status, string? SoundName);
@@ -127,13 +141,11 @@ public sealed class HeadlessControlActions : IControlActions
     /// <summary>Upstream DashboardLayout.minFontSize — the auto-size floor.</summary>
     public const double DashboardMinFontSize = 6;
 
-    private const string DefaultLightTheme = "Builtin Light";
-
     private const int OnItemIndex = -1; // upstream SidebarDrop.onItemIndex (a drop ON a row)
 
     private readonly AppStore _store;
     private readonly ControlEventRing _ring;
-    private readonly KeymapStore _keymap;
+    private KeymapStore _keymap;
     private readonly Func<int> _configReload;
     private readonly IReadOnlyList<string> _availableThemes;
     private readonly string _homeDirectory;
@@ -1601,6 +1613,22 @@ public sealed class HeadlessControlActions : IControlActions
     /// <summary>The parsed keymap after a keymap.reload (fired under the dispatch gate) — the
     /// live window re-arms its hotkey router from it (headless has no key handling).</summary>
     public event Action<Keymap>? KeymapReloaded;
+    public event Action<HeadlessThemeUpdate>? ThemeUpdateRequested;
+
+    /// <summary>Called under the host gate. Restart-only and deferred settings are not applied here.</summary>
+    public void ApplySettings(SettingsSnapshot snapshot, string defaultConfigDirectory)
+    {
+        var settings = snapshot.Settings;
+        Theme.Light = settings.Theme;
+        Theme.Dark = settings.FollowSystemAppearance == true ? settings.DarkTheme : null;
+        var keymap = new KeymapStore(settings.ConfigDirectory ?? defaultConfigDirectory);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!string.Equals(Path.GetFullPath(_keymap.Path), Path.GetFullPath(keymap.Path), comparison))
+        {
+            _keymap = keymap;
+            ReloadKeymap();
+        }
+    }
 
     private sealed record LoadedKeymap(Keymap Keymap, IReadOnlyList<KeymapDiagnostic> Diagnostics);
 
@@ -1706,26 +1734,12 @@ public sealed class HeadlessControlActions : IControlActions
             if (!_availableThemes.Contains(theme))
                 return Err($"unknown theme: {theme}");
         }
-        if (clearDark)
-        {
-            Theme.Dark = null;
-            if (lightSlot is not null) Theme.Light = lightSlot;
-        }
-        else if (dark is not null)
-        {
-            Theme.Dark = dark;
-            if (lightSlot is not null)
-                Theme.Light = lightSlot;
-            else if (string.IsNullOrEmpty(Theme.Light))
-                Theme.Light = DefaultLightTheme;
-        }
-        else
-        {
-            Theme.Light = lightSlot; // null = bare theme set: reset to the ghostty built-in
-            if (lightSlot is null)
-                Theme.Dark = null;
-        }
-        _themeChanged?.Invoke(new HeadlessThemeSnapshot(Theme.Light, Theme.Dark, Theme.Sync));
+        var update = new HeadlessThemeUpdate(lightSlot, dark);
+        var next = update.Apply(new(Theme.Light, Theme.Dark, Theme.Sync));
+        Theme.Light = next.Light;
+        Theme.Dark = next.Dark;
+        _themeChanged?.Invoke(next);
+        ThemeUpdateRequested?.Invoke(update);
         return ThemeStateResponse(themes: null);
     }
 

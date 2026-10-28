@@ -98,6 +98,16 @@ Build output follows the SDK's [artifacts output layout](https://learn.microsoft
 `bin\`/`obj\` pair per project: `artifacts\bin\<Project>\debug\`, `artifacts\obj\<Project>\`, and
 publish output under `artifacts\publish\`.
 
+**Tests.** Run the full local suite with the same project ordering as CI:
+
+```powershell
+dotnet test AgTerm.slnx -m:1
+```
+
+`-m:1` runs test projects one at a time so the live ConPTY and WebView2 suites do not contend for CPU.
+
+**Settings.** Edit `settings.json` in the state directory and run `agtermctl config reload`. A shared settings sequence applies the file to every open window and existing or future pane without restarting shells. Malformed or unreadable files leave the applied settings unchanged and show an error in the app. A theme change preserves unrelated file edits and reports save failures instead of replacing the file with defaults. `restoreRunningCommand` still requires an app restart. There is no Settings window yet.
+
 **Publish (for daily use).** `publish.proj` puts the app, its runtime files, and the companion CLI into one directory:
 
 ```powershell
