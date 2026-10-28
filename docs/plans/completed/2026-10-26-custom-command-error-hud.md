@@ -8,7 +8,7 @@
 
 **Tech Stack:** .NET 10, xUnit 2, P/Invoke `CreateProcessW` (existing `ConPtyNative`), WinUI 3 app shell.
 
-**Spec:** upstream agterm `9247b96f` (#613, failure panel) and `17e37f38` (#622, opt-in flags). Read with `git -C C:/git/github/umputun/agterm show <sha>`. Behavior text: upstream `plugins/agterm/skills/agterm/reference.md` at `ed831ab`, lines 1563-1582, and `.claude/rules/keymap.md` at `ed831ab`, lines 37-42 and 114-122. Read-back: upstream `17e37f38` `ControlKeymap.swift` (`ControlKeymapCommand`) and `SocketClient.swift` (`formatKeymap`). HUD auto-hide (`hideAfter`), `keymap list` and `keymap run` are already ported (PR #57).
+**Spec:** upstream agterm `9247b96f` (#613, failure panel) and `17e37f38` (#622, opt-in flags). Read with `git -C <agterm-clone> show <sha>`. Behavior text: upstream `plugins/agterm/skills/agterm/reference.md` at `ed831ab`, lines 1563-1582, and `.claude/rules/keymap.md` at `ed831ab`, lines 37-42 and 114-122. Read-back: upstream `17e37f38` `ControlKeymap.swift` (`ControlKeymapCommand`) and `SocketClient.swift` (`formatKeymap`). HUD auto-hide (`hideAfter`), `keymap list` and `keymap run` are already ported (PR #57).
 
 ## Global Constraints
 

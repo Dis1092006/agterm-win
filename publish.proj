@@ -72,6 +72,9 @@
     <Exec Command="dotnet publish &quot;$(MSBuildThisFileDirectory)src\AgTerm.Cli\AgTerm.Cli.csproj&quot; -c &quot;$(RunnableConfiguration)&quot; -r &quot;$(_Rid)&quot; --self-contained true -p:DebugType=none -o &quot;$(_OutDir)\.&quot;"
           EnvironmentVariables="PATH=$([MSBuild]::Escape('$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer;$(PATH)'))" />
 
+    <!-- MIT asks for the notices in every copy, and this directory is the copy people take. -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)LICENSE;$(MSBuildThisFileDirectory)THIRD-PARTY-NOTICES.md" DestinationFolder="$(_OutDir)" />
+
     <ItemGroup>
       <_Published Include="$(_OutDir)\*" />
       <_PublishedExe Include="$(_OutDir)\*.exe" />
