@@ -56,7 +56,7 @@
                             BorderThickness="1"
                             CornerRadius="2"
                             Margin="4,1,4,1" />
-                    <Grid ColumnSpacing="6" Margin="8,0,8,0">
+                    <Grid ColumnSpacing="6" Margin="{x:Bind ContentMargin, Mode=OneWay}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
@@ -99,15 +99,30 @@
                              trimmed -->
                         <Grid Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <!-- the block of the label style. The opacity dims the block together
-                                 with the name, so the name keeps its contrast to the block -->
-                            <Border Background="{x:Bind LabelBlockBackground, Mode=OneWay}"
+                            <!-- workspace icon: upstream's square.grid.2x2, drawn like the session
+                                 icon. A margin, not column spacing, so a session row leaves no gap -->
+                            <Path Data="M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z"
+                                  local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
+                                  StrokeThickness="1"
+                                  Width="16" Height="15"
+                                  Margin="0,0,6,0"
+                                  VerticalAlignment="Center"
+                                  Visibility="{x:Bind WorkspaceVisibility, Mode=OneWay}">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Stroke" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </Style>
+                                </Path.Style>
+                            </Path>
+                            <!-- the block of the label style -->
+                            <Border Grid.Column="1"
+                                    Background="{x:Bind LabelBlockBackground, Mode=OneWay}"
                                     CornerRadius="2"
                                     Padding="{x:Bind LabelBlockPadding, Mode=OneWay}"
-                                    Opacity="{x:Bind LabelOpacity, Mode=OneWay}"
                                     VerticalAlignment="Center"
                                     Visibility="{x:Bind LabelVisibility, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Label, Mode=OneWay}"
@@ -116,7 +131,8 @@
                                            local:SidebarRowBrushes.Foreground="{x:Bind LabelForeground, Mode=OneWay}"
                                            TextTrimming="CharacterEllipsis" />
                             </Border>
-                            <TextBox Text="{x:Bind EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            <TextBox Grid.Column="1"
+                                     Text="{x:Bind EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      Visibility="{x:Bind EditorVisibility, Mode=OneWay}"
                                      MinHeight="22" Padding="4,1,4,1"
                                      FontSize="{x:Bind FontSize, Mode=OneWay}"
@@ -124,7 +140,7 @@
                                      LostFocus="OnRenameLostFocus"
                                      Loaded="OnRenameEditorLoaded" />
                             <!-- a margin, not column spacing, so a hidden icon leaves no gap -->
-                            <FontIcon Grid.Column="1"
+                            <FontIcon Grid.Column="2"
                                       Margin="6,0,0,0"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       Glyph="&#xE72E;"

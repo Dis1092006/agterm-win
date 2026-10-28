@@ -45,8 +45,6 @@ public class SidebarProjectionTests : IDisposable
         Assert.Equal("api", rows[1].Label);       // displayName = cwd basename
         Assert.True(rows[1].Selected);
         Assert.False(rows[2].Selected);
-        Assert.True(rows[0].ActiveWorkspace);
-        Assert.False(rows[3].ActiveWorkspace);
     }
 
     [Fact]

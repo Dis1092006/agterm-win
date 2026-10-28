@@ -18,17 +18,20 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 {
     private SidebarRow _row;
     private AppSettings _settings;
+    private readonly SidebarMode _mode;
     private SidebarSurfaceStatus _surfaceStatus;
     private SidebarRowLook _look;
 
     public SidebarRowViewModel(
         SidebarRow row,
         AppSettings settings,
+        SidebarMode mode,
         SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
         SidebarRowLook? look = null)
     {
         _row = row;
         _settings = settings;
+        _mode = mode;
         _surfaceStatus = surfaceStatus;
         _look = look ?? SidebarRowLook.Default;
     }
@@ -70,7 +73,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public string Chevron => _row.Collapsed ? "" : ""; // ChevronRight / ChevronDown
 
-    public double LabelOpacity => IsWorkspace && !_row.ActiveWorkspace ? 0.75 : 1.0;
+    // a mode change rebuilds the rows, so the mode is fixed for a row's lifetime
+    public Thickness ContentMargin => new(8 + SidebarRowIndent.Of(Kind, _mode), 0, 8, 0);
 
     public FontWeight LabelWeight =>
         IsWorkspace ? Microsoft.UI.Text.FontWeights.SemiBold
@@ -221,7 +225,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _settings = settings;
         _surfaceStatus = surfaceStatus;
         _look = look;
-        Raise(nameof(Label), nameof(Chevron), nameof(LabelOpacity), nameof(LabelWeight),
+        Raise(nameof(Label), nameof(Chevron), nameof(LabelWeight),
               nameof(FontSize), nameof(RowHeight),
               nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),
