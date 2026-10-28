@@ -137,7 +137,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         ? "M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5"
         : "M0.5,2.5 H15.5 V12.5 H0.5 Z";
 
-    public Brush IconFill => _row.Flagged
+    public Brush IconFill => SidebarSessionIcon.IsFilled(_row.Flagged, _mode)
         ? _look.Row is { } colors
             ? BrushFrom(colors.Foreground, alpha: 0x60)
             : new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF))

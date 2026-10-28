@@ -37,6 +37,13 @@ public sealed class SidebarRowNestingSourceTests
         Assert.Contains("<Setter Property=\"Stroke\" Value=\"{ThemeResource TextFillColorSecondaryBrush}\" />", icon, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void The_session_icon_fill_follows_the_sidebar_mode()
+    {
+        Assert.Contains("SidebarSessionIcon.IsFilled(_row.Flagged, _mode)",
+            Between(Source("SidebarRowViewModel.cs"), "public Brush IconFill =>", ";"), StringComparison.Ordinal);
+    }
+
     private const string WorkspaceIconData =
         "M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z";
 
