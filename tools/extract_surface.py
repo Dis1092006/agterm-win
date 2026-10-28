@@ -21,7 +21,6 @@ is a parity task (implement) or an explicit skip.
 Usage:
     python extract_surface.py --agterm <path-to-agterm-checkout> [--ref <git-ref>] [--out surface.json]
 
-Defaults `--agterm` to C:\\git\\github\\umputun\\agterm (the known dev checkout).
 Without `--ref` the working tree is read. With `--ref` (a sha, tag or `origin/master`) the
 sources are read from git objects, so a revision can be snapshotted without checking it out.
 Exits non-zero if a source file is missing or a type block can't be found — a silent
@@ -244,8 +243,7 @@ def extract(source) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Snapshot agterm's drivable surface into surface.json")
-    ap.add_argument("--agterm", default=r"C:\git\github\umputun\agterm",
-                    help="path to the agterm checkout (default: C:\\git\\github\\umputun\\agterm)")
+    ap.add_argument("--agterm", required=True, help="path to the agterm checkout")
     ap.add_argument("--ref", help="read the sources at this git ref instead of the working tree")
     ap.add_argument("--out", default="-", help="output file, or '-' for stdout (default)")
     args = ap.parse_args()

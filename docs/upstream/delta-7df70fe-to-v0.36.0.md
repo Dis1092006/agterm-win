@@ -6,7 +6,7 @@
 
 Источники:
 
-- `C:\git\github\umputun\agterm\CHANGELOG.md`, секции v0.17.0–v0.36.0. Номера `#NNN` ниже – это PR upstream.
+- `CHANGELOG.md` upstream, секции v0.17.0–v0.36.0. Номера `#NNN` ниже – это PR upstream.
 - `docs/upstream/surface-v0.36.0.json` – вывод `tools/extract_surface.py` по `ed831ab`, формат тот же, что у `parity/surface.json`.
 
 ## Объём
@@ -181,14 +181,14 @@
 ## Как пересчитать
 
 ```
-git -C C:\git\github\umputun\agterm fetch origin
-git -C C:\git\github\umputun\agterm log --oneline 7df70fe..origin/master
+git -C <agterm-clone> fetch origin
+git -C <agterm-clone> log --oneline 7df70fe..origin/master
 ```
 
 Снимок поверхности любой ревизии, без checkout:
 
 ```
-python tools/extract_surface.py --agterm "C:\git\github\umputun\agterm" --ref "origin/master" --out "surface-new.json"
+python tools/extract_surface.py --agterm "<agterm-clone>" --ref "origin/master" --out "surface-new.json"
 ```
 
 Скрипт ищет типы во всех файлах `agtermCore`, поэтому перенос типа между файлами его не ломает. Вычисляемые свойства (`effectiveX: T { ... }`) в снимок не попадают. Результат сравнивается с `parity/surface.json`.
