@@ -502,6 +502,14 @@ Upstream's title bar has a trailing button cluster, and the port now draws it in
 
 The workspace menu's `New Session`, the `+` and the `new_session` hotkey open where `newSessionDirectory` says, as upstream's `AppActions.resolvedNewSessionCwd` does: home, the active session's focused-pane cwd, or `newSessionCustomDirectory`. Before this, all three always opened home and `ResolveNewSessionCwd` had no caller. The settings are read on the UI thread when the session is made, so a `config.reload` applies at once. Open Directory and Explorer drops keep the directory they were given. `session.new` over the pipe does not read the setting, as upstream's does not.
 
+## Sidebar workspace icon and session indent
+
+Upstream's sidebar is an `NSOutlineView`: a workspace row has a disclosure triangle and the `square.grid.2x2` icon, and its sessions are indented by `indentationPerLevel = 14`. The port draws the same tree in a flat `ListView`:
+
+- A workspace row shows a four-square icon between the chevron and the name, drawn as a `Path` like the session icons. It takes the row's theme foreground in the `row` style and the secondary text color otherwise.
+- A session row in the tree is indented by 22 px (`SidebarRowIndent`), not 14. The chevron has its own 16 px column with 6 px spacing, so 22 px puts the session icon under the workspace icon. With 14 px the session icon sits between the chevron and the workspace icon. Only the content moves: the colored background of the `row` style still spans the row. The flagged view has no workspace rows and is not indented.
+- Every workspace row is drawn alike, as upstream draws them. An inactive workspace is not dimmed.
+
 ## Ctrl-Tab session switcher
 
 Upstream's Ctrl-Tab switcher is ported. Hold Ctrl and press Tab to walk the window's most-recently-used sessions, and press Shift+Tab to walk back. Releasing Ctrl selects the highlighted session, and Esc abandons the switch. The state is `SessionSwitcher`, a one-to-one port. The list is frozen when the switch begins and capped at ten inside the visible set. It starts on the previous session, wraps both ways, and needs at least two sessions. The candidates come from `TitleBarState.SwitcherSessions`, captured with each sidebar snapshot, so a switch begins without another trip to the store. A commit selects the session the way the session palette does: it notes user activity, selects the session and focuses the terminal.

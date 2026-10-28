@@ -17,9 +17,9 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("<Grid Height=\"{x:Bind RowHeight, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Margin=\"4,1,4,1\"", xaml, StringComparison.Ordinal);
         Assert.Contains("BackgroundSizing=\"OuterBorderEdge\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("<Grid ColumnSpacing=\"6\" Margin=\"8,0,8,0\">", xaml, StringComparison.Ordinal);
-        Assert.True(Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"") >= 4,
-            "label, chevron, session icon and focus icon take the theme foreground");
+        Assert.Contains("<Grid ColumnSpacing=\"6\" Margin=\"{x:Bind ContentMargin, Mode=OneWay}\">", xaml, StringComparison.Ordinal);
+        Assert.True(Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"") >= 5,
+            "label, chevron, session icon, workspace icon and focus icon take the theme foreground");
         Assert.DoesNotContain("Stroke=\"{ThemeResource TextFillColorSecondaryBrush}\"", xaml, StringComparison.Ordinal);
     }
 
@@ -68,17 +68,15 @@ public sealed class SidebarThemeColorsSourceTests
     }
 
     [Fact]
-    public void Label_style_draws_a_block_around_the_name_that_dims_and_hides_with_it()
+    public void Label_style_draws_a_block_around_the_name_that_hides_with_it()
     {
         var xaml = Source("SidebarView.xaml");
         var block = Between(xaml, "Background=\"{x:Bind LabelBlockBackground, Mode=OneWay}\"", "</Border>");
 
         Assert.Contains("CornerRadius=\"2\"", block, StringComparison.Ordinal);
         Assert.Contains("Padding=\"{x:Bind LabelBlockPadding, Mode=OneWay}\"", block, StringComparison.Ordinal);
-        Assert.Contains("Opacity=\"{x:Bind LabelOpacity, Mode=OneWay}\"", block, StringComparison.Ordinal);
         Assert.Contains("Visibility=\"{x:Bind LabelVisibility, Mode=OneWay}\"", block, StringComparison.Ordinal);
         Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind LabelForeground, Mode=OneWay}\"", block, StringComparison.Ordinal);
-        Assert.Equal(1, Count(xaml, "Opacity=\"{x:Bind LabelOpacity, Mode=OneWay}\""));
     }
 
     [Fact]

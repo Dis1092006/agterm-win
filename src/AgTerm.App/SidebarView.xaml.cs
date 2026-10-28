@@ -114,7 +114,7 @@ public sealed partial class SidebarView : UserControl
             CancelRename();
             _items.Clear();
             foreach (var row in snapshot.Rows)
-                _items.Add(new SidebarRowViewModel(row, _settings, SurfaceStatusOf(snapshot, row), LookOf(row)));
+                _items.Add(new SidebarRowViewModel(row, _settings, snapshot.Mode, SurfaceStatusOf(snapshot, row), LookOf(row)));
         }
         else
         {
