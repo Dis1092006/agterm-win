@@ -1,40 +1,37 @@
 # agterm-win
 
-Windows-native companion to [umputun/agterm] with **strict control-API parity**. This repo re-implements
-the design + wire contract on .NET; it is NOT a fork of the macOS Swift code.
+Windows port of [umputun/agterm](https://github.com/umputun/agterm). It re-implements agterm's design and control API on .NET; it is not a fork of the Swift code.
 
 ## Parity policy (binding)
 
-The contract matched byte-for-byte is the `agtermctl` CLI + JSON wire protocol:
+The contract matched byte for byte is the `agtermctl` CLI and the JSON wire protocol:
 
-- **Match:** command names (66, see `parity/surface.json`), args, results, error strings and semantics;
-  keymap grammar + `BuiltinAction` names/default chords; `{AGT_X}` tokens; settings/persistence field names.
-- **Adapt** (document in `docs/PLATFORM-NOTES.md`): transport (unix socket → named pipe); features with no
-  Windows analogue (foreground-pid, kitty graphics) return well-formed `{"ok":false,"error":…}` — never
-  a crash.
-- **Skip:** rendering, visual chrome, macOS installers, `debug.appearance` (test-only, out of parity).
+- **Match:** command names, args, results, error strings and semantics; keymap grammar, `BuiltinAction` names and default chords; `{AGT_X}` tokens; settings and persistence field names.
+- **Adapt** (record in `docs/PLATFORM-NOTES.md`): the transport (unix socket → named pipe); features with no Windows analogue (foreground pid, kitty graphics) return a well-formed `{"ok":false,"error":…}`, never a crash.
+- **Skip:** rendering, visual chrome, macOS installers, `debug.appearance`.
 
-Current parity pin: agterm `7df70fe` (66 commands, 41 builtin actions). Machine snapshot:
-`parity/surface.json`. Human spec: `docs/agterm-windows-spec.md` (авторитетное ТЗ).
+The parity pin is upstream `7df70fe`, and `parity/surface.json` is its snapshot. The pin does not move: upstream features after it are taken one at a time.
 
-## Source of truth & disambiguation order
+- `docs/upstream/delta-7df70fe-to-v0.36.0.md` lists what upstream added after the pin; `docs/upstream/surface-v0.36.0.json` is the upstream snapshot at `ed831ab`.
+- A command, arg or field taken from upstream goes into `parity/adopted.json` with its upstream sha.
+- A command or field upstream does not have goes into `parity/windows-only.json` and the PLATFORM-NOTES section "Windows-only extensions".
+- A change in how upstream answers an already implemented command goes into the PLATFORM-NOTES section "Upstream behavior adopted beyond the pin".
+- Parity tests check that the port equals `surface.json` + `adopted.json` + `windows-only.json`.
 
-1. `docs/agterm-windows-spec.md` — the portable spec (data model §2–3, resolver §4, protocol §5–6,
-   subsystems §7, settings §8, keymap §9, events §11).
-2. `parity/surface.json` — machine-checked field/command lists.
-3. Swift original at `C:\git\github\umputun\agterm` (`agtermCore/Sources/agtermCore` + its tests) —
-   read-only reference for semantics when the spec is ambiguous. Never edit it.
-4. Any divergence forced by the platform → record in `docs/PLATFORM-NOTES.md`.
+## Sources of truth, in order
+
+1. `docs/agterm-windows-spec.md`: the portable spec at the pin (data model §2–3, resolver §4, protocol §5–6, subsystems §7, settings §8, keymap §9, events §11).
+2. `parity/*.json`: the machine-checked lists.
+3. The upstream Swift source (`agtermCore/Sources/agtermCore` and its tests) in a local clone of umputun/agterm: the reference when the spec is ambiguous, and the only one for features after the pin. Read a given revision with `git show <rev>:<path>`. Never edit the clone.
+4. A divergence forced by the platform goes into `docs/PLATFORM-NOTES.md`.
 
 ## Workflow (binding)
 
-- **TDD, strictly:** write the failing test first, watch it fail, then write minimal code to pass
-  (superpowers:test-driven-development). No production code without a failing test.
-- JSON serialization must match Swift `Codable` output: camelCase property names exactly as in the Swift
-  structs, `null`/absent optionals **omitted** from output (never emitted as `null`).
-- Wire error strings are part of the contract — copy them verbatim from the spec/Swift source.
+- **TDD, strictly:** write the failing test first, watch it fail, then write minimal code to pass (superpowers:test-driven-development). No production code without a failing test.
+- JSON serialization must match Swift `Codable` output: camelCase property names exactly as in the Swift structs, `null`/absent optionals **omitted** from output (never emitted as `null`).
+- Wire error strings are part of the contract: copy them verbatim from the spec or the Swift source.
 - The agent skill (`plugins/agterm/skills/agterm`) describes the control surface. A change to a wire command, a CLI flag or an `AGTERM_*` variable updates the skill in the same PR. The tests in `tests/AgTerm.Cli.Tests/SkillTextTests.cs` enforce it.
-- Plans and design specs are written in English and committed to `docs/plans/`, not `docs/superpowers/`. When the work is merged, the plan moves to `docs/plans/completed/`.
+- Plans, specs and other docs are written in English. Plans and design specs are committed to `docs/plans/`, not `docs/superpowers/`. When the work is merged, the plan moves to `docs/plans/completed/`.
 - Every PR raises the app version, `<Version>` in `Directory.Build.props`, whatever it changes.
 - A change to the skill raises the plugin version: the `version` in `plugins/agterm/.claude-plugin/plugin.json`, `plugins/agterm/.codex-plugin/plugin.json` and the plugin entry of `.claude-plugin/marketplace.json`. Claude Code does not update an installed plugin while that string stays the same. The plugin version is separate from the app version, so a PR that leaves the skill alone leaves it alone too. `SkillTextTests` checks that the three are equal.
 
@@ -42,7 +39,7 @@ Current parity pin: agterm `7df70fe` (66 commands, 41 builtin actions). Machine 
 
 ```
 AgTerm.slnx
-src/AgTerm.Core/            host-free core library (net8.0, zero UI deps — analogue of agtermCore)
+src/AgTerm.Core/            host-free core library (net10.0, no UI dependencies; analogue of agtermCore)
 src/AgTerm.ControlServer/   named-pipe control server + headless host (HeadlessControlActions)
 src/AgTerm.Cli/             agtermctl (System.CommandLine)
 src/AgTerm.Terminal/        ConPTY backend (P/Invoke, no UI deps)
@@ -50,11 +47,12 @@ src/AgTerm.Xterm/           WebView2/xterm.js bridge + real surfaces + LiveContr
 src/AgTerm.App/             WinUI 3 app shell (thin; logic lives below)
 tests/*/                    xUnit suites per project; AgTerm.E2E = headless wire E2E;
                             AgTerm.Xterm.Tests hosts the LIVE (ConPTY+WebView2) integration/E2E
-docs/agterm-windows-spec.md the spec (ТЗ)
-docs/PLATFORM-NOTES.md      documented adaptations/divergences
-docs/upstream/              upstream changes after the parity pin
+docs/agterm-windows-spec.md the portable spec at the pin
+docs/PLATFORM-NOTES.md      adaptations, Windows-only extensions, upstream changes adopted beyond the pin
+docs/upstream/              the catalog and snapshot of upstream after the pin
 docs/plans/                 plans and specs; finished ones in docs/plans/completed/
-parity/surface.json         extracted upstream surface (pin 7df70fe)
+parity/                     surface.json (the pin), adopted.json, windows-only.json
+plugins/agterm/             the agent skill and its plugin manifests
 tools/extract_surface.py    surface extractor
 ```
 
@@ -67,11 +65,3 @@ dotnet build src/AgTerm.App -p:Platform=x64
 ```
 
 Both builds treat warnings as errors; use `--no-incremental` to check all warnings after a local build.
-
-Phases 1–5 are complete: Core, control plane (pipe + agtermctl), real terminal (ConPTY + WinUI 3 +
-WebView2/xterm.js), persistence, orchestration, the Windows shell, split/scratch/overlay/quick
-surfaces, search, palettes, custom-command chords, dashboard/zoom, themes, notifications,
-multi-window control, Explorer drop, confirmation/undo/recent workflows, and failure InfoBars.
-Each window owns one WebView2 page, while one application pipe routes all windows. All 41 builtin
-actions have explicit live handlers. The automated matrix and x64/ARM64 manual release checklist
-pass. Complete R1–R5 before any Phase 6 production change.

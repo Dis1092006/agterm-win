@@ -1,238 +1,79 @@
 # PLATFORM-NOTES
 
-Документированные адаптации и расхождения Windows-реализации с upstream agterm
-(политика паритета — см. README.md). Каждая запись: что, почему, как ведёт себя на wire.
+Documented adaptations and divergences of the Windows port from upstream agterm (for the parity policy, see README.md). Each entry says what differs, why, and how it behaves on the wire.
 
-## Фаза 1 (AgTerm.Core)
+## Phase 1 (AgTerm.Core)
 
-- **`Session.DisplayName` basename и разделители путей.** Upstream использует
-  `NSString.lastPathComponent` (только `/`). Windows-порт принимает оба разделителя
-  (`/` и `\`): пины спецификации сохранены (`/` → `/`, `/a/b/` → `b`, `""` → `~`),
-  дополнительно `C:\git\proj` → `proj`. На wire-протокол не влияет — это только
-  вычисление метки сайдбара.
+- **`Session.DisplayName` basename and path separators.** Upstream uses `NSString.lastPathComponent` (only `/`). The Windows port accepts both separators (`/` and `\`): the spec's pinned cases still hold (`/` → `/`, `/a/b/` → `b`, `""` → `~`), and in addition `C:\git\proj` → `proj`. This does not affect the wire protocol; it only computes the sidebar label.
 
-- **`PersistenceStore`.** Формат файла тот же JSON-снапшот (имена полей байт-в-байт),
-  но upstream пишет prettyPrinted+sortedKeys, мы — компактный JSON без сортировки
-  ключей. Контракт — имена/типы полей и правила декода, а не байтовый вид локального
-  файла.
+- **`PersistenceStore`.** The file format is the same JSON snapshot (field names byte for byte), but upstream writes prettyPrinted+sortedKeys, and the port writes compact JSON without sorted keys. The contract is the field names and types and the decoding rules, not the byte layout of a local file.
 
-- **Каталог состояния: `~\.agterm-win`** (вместо спец. §3 `%LOCALAPPDATA%\agterm`).
-  Порядок: `%AGTERM_STATE_DIR%` → `%USERPROFILE%\.agterm-win` → `<temp>\.agterm-win`
-  (последний — аналог upstream-фолбэка `нет $HOME → /tmp`). Имя каталога отличается
-  от upstream-ового `agterm`: из пути выводится имя пайпа, и при совпадающих именах два
-  разных приложения на одной машине делили бы состояние и канал управления. Корень —
-  домашний каталог, как у CLI-инструментов, которыми приложение драйвится (`agtermctl`).
-  На wire не влияет: `--socket` и `AGTERM_STATE_DIR` работают как раньше.
-  `PersistenceStore.RealUserDirectory` и `AgtermctlOptions.SocketPath` обязаны выводить один
-  и тот же путь — иначе CLI не найдёт приложение.
+- **State directory: `~\.agterm-win`** (instead of `%LOCALAPPDATA%\agterm` from spec §3). Order: `%AGTERM_STATE_DIR%` → `%USERPROFILE%\.agterm-win` → `<temp>\.agterm-win` (the last one matches upstream's fallback `no $HOME → /tmp`). The directory name differs from upstream's `agterm` because the pipe name is derived from the path: with the same name, two different apps on one machine would share state and the control channel. The root is the home directory, as for the CLI tools that drive the app (`agtermctl`). No wire effect: `--socket` and `AGTERM_STATE_DIR` work as before. `PersistenceStore.RealUserDirectory` and `AgtermctlOptions.SocketPath` must derive the same path, otherwise the CLI does not find the app.
 
-- **Config dir лежит рядом с состоянием** (вместо спец. §3 `%APPDATA%\agterm`).
-  `keymap.conf` ищется там, куда указывает `AppSettings.configDirectory`, иначе в state dir,
-  то есть по умолчанию `~\.agterm-win\keymap.conf`. `%APPDATA%` не используется нигде:
-  всё состояние и конфиг приложения живут в одном каталоге, как у CLI-инструментов.
+- **The config directory sits next to the state** (instead of `%APPDATA%\agterm` from spec §3). `keymap.conf` is looked up where `AppSettings.configDirectory` points, otherwise in the state directory, so by default it is `~\.agterm-win\keymap.conf`. `%APPDATA%` is not used anywhere: all app state and config live in one directory, as for CLI tools.
 
-- **Гард на дефолтный каталог под тестами.** `PersistenceStore.DefaultDirectory` бросает
-  `InvalidOperationException`, если к нему обращаются из тестового хоста без
-  `AGTERM_STATE_DIR`: тест, дошёдший до неявного дефолта, перезаписал бы реальное
-  состояние разработчика. `RealUserDirectory` гард обходит — он нужен для вывода
-  имени пайпа (чистая строка, без обращения к диску), и читать/писать состояние
-  через него нельзя.
+- **Guard on the default directory under tests.** `PersistenceStore.DefaultDirectory` throws `InvalidOperationException` when a test host reaches it without `AGTERM_STATE_DIR`: a test that fell through to the implicit default would overwrite the developer's real state. `RealUserDirectory` bypasses the guard. It is needed to derive the pipe name (a pure string, no disk access), and state must not be read or written through it.
 
-## Фаза 2 (control plane)
+## Phase 2 (control plane)
 
 - **Structural event coalescing.** `LiveApplicationHost` coalesces `tree.changed` per window after 100 ms of quiet, matching upstream `WindowLibrary`. Store drafts and application-level window changes share the same scheduler. Other event kinds append immediately. Closing or deleting a window flushes its pending invalidation; application shutdown and `FlushTreeEvents()` flush all windows, including removed records. Timers run on the thread pool and serialize publication and flush under a separate gate; callbacks from cancelled timers cannot publish an old invalidation. The existing `Debouncer` does not join an in-flight callback on flush and can run an old timer callback after rescheduling, so this scheduler uses identity-checked timers instead. Standalone `HeadlessHost` and `LiveControlHost` harnesses still forward drafts immediately; production windows use `LiveApplicationHost.AttachWindow` and its coalescing sink.
 
-- **AppStore и потоки.** Upstream `AppStore` изолирован на `@MainActor`; в порте класс
-  так же НЕ потокобезопасен, но actor-а в .NET нет — хост обязан сериализовать доступ
-  сам (headless-хост и pipe-сервер оборачивают диспетчеризацию в один замок).
-  `Debouncer` и грейс-таймеры pending-close срабатывают на пуле потоков и вызывают
-  колбэк напрямую (upstream — через main queue); отложенное действие само отвечает
-  за маршалинг.
+- **AppStore and threads.** Upstream `AppStore` is isolated on `@MainActor`. In the port the class is also NOT thread-safe, but .NET has no actor, so the host must serialize access itself (the headless host and the pipe server wrap dispatch in one lock). `Debouncer` and the pending-close grace timers fire on the thread pool and call the callback directly (upstream goes through the main queue); the deferred action is responsible for its own marshalling.
 
-- **Auto-follow re-arm без Observation.** Upstream перевзводит idle-таймер через
-  `withObservationTracking` над `attentionSessions` (отложенно, с коалесингом на
-  runloop). В порте нет Observation/runloop: `SetAgentIndicator` (единственная точка
-  мутации attention-набора) перевзводит дебаунсер напрямую, когда auto-follow включён.
-  Семантика та же: изменение attention-набора при включённой функции даёт блоку тот же
-  idle-грейс, что и нажатие клавиши. `NotificationCenter`-уведомления
-  (`.agtermAutoFollowed`, `.agtermSidebarVisibilityChanged`) заменены C#-событиями
-  `AppStore.AutoFollowed` / `AppStore.SidebarVisibilityChanged`.
+- **Auto-follow re-arm without Observation.** Upstream re-arms the idle timer through `withObservationTracking` over `attentionSessions` (deferred, coalesced on the runloop). The port has no Observation and no runloop: `SetAgentIndicator` (the only place that mutates the attention set) re-arms the debouncer directly when auto-follow is on. The semantics are the same: a change of the attention set while the feature is on gives the block the same idle grace as a key press. The `NotificationCenter` notifications (`.agtermAutoFollowed`, `.agtermSidebarVisibilityChanged`) are replaced by the C# events `AppStore.AutoFollowed` / `AppStore.SidebarVisibilityChanged`.
 
-- **Транспорт: named pipe вместо unix-сокета (спец. §5).** Файлового пути у канала
-  нет — имя пайпа детерминированно выводится из ТОГО ЖЕ сокет-пути
-  (`ControlResolve.SocketPath`, `<state dir>\agterm.sock`):
-  `agterm-<sha256(path)[0..12] hex>`, т.е. изоляция по `%AGTERM_STATE_DIR%`
-  сохраняется. `%AGTERM_CONTROL_SOCKET%` остаётся явным override-ом и содержит
-  ЛИТЕРАЛЬНОЕ имя пайпа (без префикса `\\.\pipe\`). Семантика соединения — как в
-  upstream: одно соединение = один запрос, newline-JSON, лимит строки 1 MiB, per-read
-  таймаут ~5 с + общий дедлайн ~10 с на чтение и запись, серийный accept-loop
-  (один инстанс пайпа). ACL: `PipeOptions.CurrentUserOnly` — аналог owner-only
-  `chmod 0600` на сокет-файле. «Идемпотентность старта»: у пайпа нет устаревшего
-  файла, который нужно unlink-ать — повторный `Start()` просто no-op.
-  Строки ошибок транспорта закреплены: `"request too large or read failed"`,
-  `"invalid request: <сообщение декодера>"` (префикс — контракт, суффикс
-  платформозависим; upstream пишет `localizedDescription` Foundation),
-  `"debug.appearance is a UI-test-only seam"` для единственной команды, которую
-  диспетчер отклоняет (UI-тестовый шов вне паритета).
+- **Transport: named pipe instead of a unix socket (spec §5).** The channel has no file path. The pipe name is derived deterministically from the SAME socket path (`ControlResolve.SocketPath`, `<state dir>\agterm.sock`): `agterm-<sha256(path)[0..12] hex>`, so isolation by `%AGTERM_STATE_DIR%` is kept. `%AGTERM_CONTROL_SOCKET%` stays an explicit override and holds the LITERAL pipe name (without the `\\.\pipe\` prefix). Connection semantics match upstream: one connection is one request, newline-delimited JSON, a 1 MiB line limit, a per-read timeout of about 5 s plus an overall deadline of about 10 s for read and write, a serial accept loop (one pipe instance). ACL: `PipeOptions.CurrentUserOnly`, the analogue of owner-only `chmod 0600` on the socket file. Idempotent start: a pipe has no stale file to unlink, so a repeated `Start()` is a no-op. Transport error strings are pinned: `"request too large or read failed"`, `"invalid request: <decoder message>"` (the prefix is the contract, the suffix depends on the platform; upstream writes Foundation's `localizedDescription`), and `"debug.appearance is a UI-test-only seam"` for the only command the dispatcher rejects (a UI-test seam outside parity).
 
-- **`RecentClosedStore`.** Локальный файл `recent-closed.json`: имена полей 1:1,
-  `closedAt` кодируется как double секунд от reference date 2001-01-01 (формат
-  Swift `JSONEncoder` по умолчанию) для кросс-читаемости; upstream пишет
-  prettyPrinted+sortedKeys, мы — компактно и атомарно (как `PersistenceStore`).
+- **`RecentClosedStore`.** Local file `recent-closed.json`: field names 1:1, `closedAt` is encoded as a double of seconds since the reference date 2001-01-01 (the Swift `JSONEncoder` default) so that both sides can read it. Upstream writes prettyPrinted+sortedKeys; the port writes compact JSON, atomically (like `PersistenceStore`).
 
-- **Headless-хост (`HeadlessHost`/`HeadlessControlActions`).** Полная реализация
-  `IControlActions` поверх ОДНОГО `AppStore` (single-window; upstream-резолвер целей
-  свёрнут на один стор, wire-строки ошибок не тронуты). Расхождения, продиктованные
-  отсутствием окон/терминального движка:
-  - `window.new/close/resize/move/zoom/fullscreen` → `"window management is not
-available in the headless host"` (после резолюции цели — `no such window`/prefix-
-    ошибки закреплены); `window.select` единственного окна → ok+id; `window.rename`
-    работает; `window.delete` → upstream-точное `"cannot delete last window"`.
-    `window.list`: `geometry`/`fullscreen`/`zoomed` опущены.
-  - Терминальные армы идут через шов `IHeadlessSurface` (фейковые поверхности E2E);
-    realize-поллинги (~360 мс) заменены одиночной проверкой; строки ошибок
-    (`session not realized`, `quick terminal not open`, `no selection`
-    и т.д.) — из upstream.
-  - `session.status --sound` принимается, но не проигрывается и не валидируется;
-    `notify` всегда идёт banners-off путём (`result.text` = BannersOffNote);
-    `session.search` считает совпадения по буферу фейка синхронно;
-    `session.reveal` выбирает сессию (без файлового менеджера), gate на
-    существование cwd сохранён; `config.reload` — инжектируемый счётчик (движка
-    нет); батч-грейс `session.close` по умолчанию выключен (таймер финализации
-    жил бы вне диспетчер-лока), включается опцией.
-  - Бутстрап как у приложения: загрузка снапшота из state dir (armed
-    launchRestore), пустой стейт → дефолтный воркспейс + сессия в home.
+- **Headless host (`HeadlessHost`/`HeadlessControlActions`).** A full implementation of `IControlActions` over ONE `AppStore` (single window; the upstream target resolver is collapsed onto one store, wire error strings are unchanged). Divergences that come from having no windows and no terminal engine:
+  - `window.new/close/resize/move/zoom/fullscreen` → `"window management is not available in the headless host"` (after target resolution; the `no such window` and prefix errors are pinned); `window.select` of the only window → ok+id; `window.rename` works; `window.delete` → the exact upstream `"cannot delete last window"`. `window.list`: `geometry`/`fullscreen`/`zoomed` are omitted.
+  - Terminal arms go through the `IHeadlessSurface` seam (fake E2E surfaces); the realize polling (~360 ms) is replaced by one check; error strings (`session not realized`, `quick terminal not open`, `no selection` and so on) come from upstream.
+  - `session.status --sound` is accepted but not played and not validated; `notify` always takes the banners-off path (`result.text` = BannersOffNote); `session.search` counts matches in the fake's buffer synchronously; `session.reveal` selects the session (no file manager) and keeps the check that the cwd exists; `config.reload` is an injectable counter (there is no engine); the batch grace of `session.close` is off by default (the finalization timer would live outside the dispatcher lock) and an option turns it on.
+  - Bootstrap as in the app: load the snapshot from the state directory (launchRestore armed); an empty state gives the default workspace and a session in home.
 
-- **`agtermctl` (AgTerm.Cli).** Субкоманды/флаги/валидация/вывод — 1:1 с
-  agtermctlKit; парсер — System.CommandLine вместо swift-argument-parser
-  (шов `ParseAsRoot`/`MakeRequest`/`Validate` сохранён для портированных тестов).
-  Разрешение socket-пути: `--socket` → `%AGTERM_STATE_DIR%\agterm.sock` →
-  `%USERPROFILE%\.agterm-win\agterm.sock` → `<temp>\.agterm-win\agterm.sock` (аналог
-  upstream `$HOME/Library/Application Support` → `/tmp`); из пути выводится имя
-  пайпа (см. запись о транспорте). Help-текст `window fullscreen` не упоминает
-  macOS (help — не часть wire-контракта).
+- **`agtermctl` (AgTerm.Cli).** Subcommands, flags, validation and output are 1:1 with agtermctlKit; the parser is System.CommandLine instead of swift-argument-parser (the `ParseAsRoot`/`MakeRequest`/`Validate` seam is kept for the ported tests). Socket path resolution: `--socket` → `%AGTERM_STATE_DIR%\agterm.sock` → `%USERPROFILE%\.agterm-win\agterm.sock` → `<temp>\.agterm-win\agterm.sock` (the analogue of upstream `$HOME/Library/Application Support` → `/tmp`); the pipe name is derived from the path (see the transport entry). The help text of `window fullscreen` does not mention macOS (help is not part of the wire contract).
 
-## Фаза 3 (терминальный движок)
+## Phase 3 (terminal engine)
 
-- **Дефолтный шелл вместо login-shell.** На Windows нет `$SHELL` и login-shell-семантики
-  (upstream спавнит login-шелл пользователя). Политика порта (`ShellResolver`): явная
-  настройка → вербатим; иначе PowerShell 7 (`pwsh.exe` с PATH); иначе Windows PowerShell
-  (`powershell.exe` с PATH, есть в каждой поддерживаемой Windows); иначе `%COMSPEC%`;
-  иначе литеральный `cmd.exe`. Без pwsh панель раньше открывала `cmd.exe`, где нет поиска по
-  истории (Ctrl+R) и интеграции PSReadLine; Windows PowerShell 5.1 даёт и то, и другое.
-  Custom-команды этот шаг пропускают (`ShellResolver.ResolveCommandLineShell`: pwsh →
-  `%COMSPEC%`): строка, написанная для pwsh или cmd, может содержать `&&`, а 5.1 его не
-  принимает. На wire не влияет.
+- **Default shell instead of a login shell.** Windows has no `$SHELL` and no login-shell semantics (upstream spawns the user's login shell). The port's policy (`ShellResolver`): an explicit setting is used verbatim; otherwise PowerShell 7 (`pwsh.exe` on PATH); otherwise Windows PowerShell (`powershell.exe` on PATH, present in every supported Windows); otherwise `%COMSPEC%`; otherwise the literal `cmd.exe`. Without pwsh the pane used to open `cmd.exe`, which has no history search (Ctrl+R) and no PSReadLine integration; Windows PowerShell 5.1 has both. Custom commands skip this step (`ShellResolver.ResolveCommandLineShell`: pwsh → `%COMSPEC%`): a line written for pwsh or cmd may contain `&&`, and 5.1 does not accept it. No wire effect.
 
-- **Токенизация `session.new --command`.** Upstream отдаёт строку конфиг-парсеру libghostty.
-  Здесь токенайзер свой (`CommandTokenizer`), контракт §6 сохранён (кавычко-aware split,
-  argv[0] exec-ится напрямую, операторы шелла НЕ интерпретируются): whitespace разделяет,
-  `'...'` группирует литерально, `"..."` группирует с эскейпами `\"` и `\\`, backslash вне
-  кавычек — ОБЫЧНЫЙ символ (голые `C:\пути` обязаны выживать), незакрытая кавычка берёт
-  хвост литерально. Argv →
-  командная строка CreateProcessW — точная инверсия правил CommandLineToArgvW
-  (`WindowsCommandLine`).
+- **Tokenizing `session.new --command`.** Upstream hands the string to the libghostty config parser. Here the tokenizer is the port's own (`CommandTokenizer`), and the §6 contract holds (quote-aware split, argv[0] is executed directly, shell operators are NOT interpreted): whitespace separates, `'...'` groups literally, `"..."` groups with the escapes `\"` and `\\`, a backslash outside quotes is an ORDINARY character (bare `C:\paths` must survive), an unclosed quote takes the rest literally. Argv → CreateProcessW command line is the exact inverse of the CommandLineToArgvW rules (`WindowsCommandLine`).
 
-- **ConPTY-спавн и std-хэндлы.** `CreateProcessW` без `STARTF_USESTDHANDLES` дублирует
-  (возможно перенаправленные) std-хэндлы хоста в ребёнка, и вывод ребёнка обходит
-  псевдоконсоль (уходит в stdout хоста). Порт передаёт `STARTF_USESTDHANDLES` с нулевыми
-  хэндлами (воркараунд Windows Terminal ConptyConnection) — conhost подменяет их хэндлами
-  самой псевдоконсоли.
+- **ConPTY spawn and std handles.** `CreateProcessW` without `STARTF_USESTDHANDLES` duplicates the host's (possibly redirected) std handles into the child, and the child's output bypasses the pseudoconsole (it goes to the host's stdout). The port passes `STARTF_USESTDHANDLES` with null handles (the Windows Terminal ConptyConnection workaround), and conhost replaces them with the pseudoconsole's own handles.
 
-- **Реализация поверхностей (замена Observation/SwiftUI-рендера).** Upstream реализует
-  поверхность, когда SwiftUI отрисовывает показанный пейн. В порте у стора есть шов
-  `AppStore.SurfaceRealizer` (тот же прецедент, что auto-follow re-arm): оба пути «показа»
-  (SelectSession и AddSession select:true) зовут его для главного пейна без поверхности;
-  фоновое создание (--no-select) остаётся нереализованным — паритетная ошибка
-  `session not realized` сохраняется. Restore() выставляет выбор мимо
-  SelectSession, поэтому хост после бутстрап-restore зовёт `RealizeActiveSession()`
-  (аналог первой отрисовки окна). Событие `AppStore.SelectionChanged` — замена
-  Observation над selectedSessionID для хрома окна.
+- **Surface realization (replacing Observation and SwiftUI rendering).** Upstream realizes a surface when SwiftUI draws the shown pane. In the port the store has the seam `AppStore.SurfaceRealizer` (the same precedent as the auto-follow re-arm): both "show" paths (SelectSession and AddSession select:true) call it for a main pane without a surface; background creation (--no-select) stays unrealized, and the parity error `session not realized` is kept. Restore() sets the selection without SelectSession, so after the bootstrap restore the host calls `RealizeActiveSession()` (the analogue of the window's first draw). The `AppStore.SelectionChanged` event replaces Observation over selectedSessionID for the window chrome.
 
-- **LiveControlHost (приложение).** Control-plane headless-хоста + реальные поверхности
-  (`XtermPaneSurface`): реализация блокирует диспетчер-поток до ~15 с (upstream-аналог
-  realize-поллинга); UI-half (`OpenSurface`) создаёт WebView2-пейн на UI-потоке. Правило
-  потоков: UI-поток НИКОГДА не берёт хост-гейт (иначе дедлок против блокирующей
-  реализации) — колбэки поверхностей (OSC title/cwd, exit) прыгают в пул и мутируют
-  сессию под `RunLocked`. Выход шелла главного пейна → `ClosePrimaryPane` (upstream-путь);
-  сессия с `--command --wait` остаётся открытой (позже добавлен `closeOnShellExit`, см. «A shell
-  pane stays open when its shell fails»). quick/scratch/split/overlay-поверхности
-  в фазе 3 не реализуются — армы отвечают закреплёнными ошибками. Снапшот пишется на
-  выходе (Dispose → Save + teardown всех панелей).
+- **LiveControlHost (the app).** The headless host's control plane plus real surfaces (`XtermPaneSurface`): realization blocks the dispatcher thread for up to ~15 s (the upstream analogue of realize polling); the UI half (`OpenSurface`) creates the WebView2 pane on the UI thread. Threading rule: the UI thread NEVER takes the host gate, otherwise it deadlocks against the blocking realization. Surface callbacks (OSC title/cwd, exit) hop to the pool and mutate the session under `RunLocked`. When the main pane's shell exits, the host calls `ClosePrimaryPane` (the upstream path); a session with `--command --wait` stays open (`closeOnShellExit` was added later, see "A shell pane stays open when its shell fails"). In phase 3 the quick, scratch, split and overlay surfaces were not implemented yet, and their arms answered with pinned errors. The snapshot is written on exit (Dispose → Save and teardown of all panes).
 
-- **`session.text` и мягкие переносы.** Чтение буфера склеивает soft-wrapped строки xterm
-  в логические (иначе обёрнутая длинная команда читается двумя «строками»), `--lines N` —
-  последние N строк КОНТЕНТА (хвостовые пустые ряды вьюпорта отбрасываются). Плоский текст
-  берётся из buffer API (`translateToString`), НЕ из serialize-аддона: тот эмитит
-  VT/SGR-последовательности, а wire-контракт `session.text` — plain text (serialize-аддон
-  забандлен и используется хостом для сериализации экрана, не для session.text).
+- **`session.text` and soft wraps.** Reading the buffer joins xterm's soft-wrapped rows into logical lines (otherwise a wrapped long command reads as two "lines"); `--lines N` is the last N lines of CONTENT (trailing empty viewport rows are dropped). Plain text comes from the buffer API (`translateToString`), NOT from the serialize addon: that addon emits VT/SGR sequences, and the `session.text` wire contract is plain text (the serialize addon is bundled and the host uses it to serialize the screen, not for session.text).
 
-## Фаза 4 (сайдбар и мультисессии)
+## Phase 4 (sidebar and multiple sessions)
 
-- **Один WebView2 на окно, много xterm.js-пейнов (мост v2).** Фаза 3 держала WebView2 на
-  каждую сессию (~100+ МБ рантайма и медленный `EnsureCoreWebView2Async` на каждую).
-  Теперь окно грузит `terminal.html` один раз; `bridge.js` держит реестр пейнов по
-  `paneId`, каждое сообщение обеих сторон и каждый `agterm.*`-вызов адресованы пейном
-  (`XtermPage` — C#-владелец страницы, `XtermTerminal` — per-pane хэндл). Переключение
-  сессий = show/hide div-ов (`agterm.showPane`), а не Visibility WebView2. `PaneToken`
-  поверхности (`AGTERM_PANE_ID`) и `paneId` моста — один и тот же идентификатор.
-  На wire не влияет. The token stays the bridge pane id for every surface, but it is exported as
-  `AGTERM_PANE_ID` only to main, split and scratch (see "Session environment").
+- **One WebView2 per window, many xterm.js panes (bridge v2).** Phase 3 kept a WebView2 per session (~100+ MB of runtime and a slow `EnsureCoreWebView2Async` for each). Now the window loads `terminal.html` once; `bridge.js` keeps a registry of panes by `paneId`, and every message in both directions and every `agterm.*` call is addressed by pane (`XtermPage` is the C# owner of the page, `XtermTerminal` is the per-pane handle). Switching sessions shows and hides divs (`agterm.showPane`) instead of changing the WebView2 Visibility. The surface's `PaneToken` (`AGTERM_PANE_ID`) and the bridge's `paneId` are the same identifier. No wire effect. The token stays the bridge pane id for every surface, but it is exported as `AGTERM_PANE_ID` only to main, split and scratch (see "Session environment").
 
-- **Eager deck в live-хосте.** Upstream-приложение реализует вью каждой сессии с момента
-  её появления в деке, поэтому `session.type` попадает в фоновую сессию без `select`.
-  Порт: `AppStore.EagerSurfaceRealization` (включает live-хост) — `AddSession` реализует
-  и `--no-select`-создания, бутстрап после рестора зовёт `RealizeAllSessions()`.
-  Headless-хост флаг НЕ включает: там поверхности навешиваются тестами извне, и
-  паритетная ошибка `"session not realized"` сохраняется как есть.
+- **Eager deck in the live host.** The upstream app realizes the view of every session as soon as it appears in the deck, so `session.type` reaches a background session without `select`. Port: `AppStore.EagerSurfaceRealization` (the live host turns it on): `AddSession` also realizes `--no-select` creations, and the bootstrap after restore calls `RealizeAllSessions()`. The headless host does NOT turn the flag on: there, tests attach surfaces from outside, and the parity error `"session not realized"` stays as it is.
 
-- **`AppStore.SidebarChanged` (Observation-замена для сайдбара).** Коарсовое C#-событие
-  «что-то в строках сайдбара изменилось» по прецеденту `SelectionChanged` (фаза 3):
-  эмитится из `Save()` (любая персистируемая мутация) плюс из несохраняющих путей
-  (selection до дебаунса, индикаторы, unseen). Публичный `NotifySidebar()` — для
-  OOB-инвалидаций хоста (живые OSC title/cwd, unseen-бамп notify-арма). Кольцо событий
-  НЕ тронуто: flag/collapse/focus/mode по-прежнему не эмитят `tree.changed` (паритет wire).
-  UI-слой: `SidebarController` снимает `SidebarProjection`-снапшот ПОД гейтом и
-  маршалит в UI; жесты сайдбара зовут те же мутаторы стора, что socket-армы
-  (третий вызывающий, как upstream toolbar/menu/control).
+- **`AppStore.SidebarChanged` (the Observation replacement for the sidebar).** A coarse C# event "something in the sidebar rows changed", following the `SelectionChanged` precedent (phase 3): `Save()` raises it (any persisted mutation), and so do the paths that do not save (selection before the debounce, indicators, unseen). The public `NotifySidebar()` is for out-of-band invalidations from the host (live OSC title/cwd, the unseen bump of the notify arm). The event ring is NOT touched: flag, collapse, focus and mode still do not emit `tree.changed` (wire parity). UI layer: `SidebarController` takes a `SidebarProjection` snapshot UNDER the gate and marshals it to the UI; sidebar gestures call the same store mutators as the socket arms (a third caller, as the upstream toolbar, menu and control channel are).
 
 - **Keyboard Shortcuts view (Windows UI only).** Help > Keyboard Shortcuts and Ctrl+Shift+F1 open a separate read-only overlay with search and action groups. It shows all 41 builtin actions with effective Windows defaults and user overrides, unbound actions, custom commands and leader sequences, physical shortcut conflicts, and parser diagnostics. Conflict rows name the action or command that receives the chord. A parser-rejected custom shortcut remains unbound. Search matches names, identifiers, groups, chords, status and diagnostic text. Reload updates an open list after the terminal accepts the new hotkey manifest and keeps the query. Esc or Close dismisses the list and returns focus to the active terminal pane. The opener chord is fixed and is not in `keymap.conf`; it cannot be rebound or unbound there. F1 is outside the keymap grammar, so the opener does not collide with user bindings. The internal page event does not add a builtin action or a control command. Parser diagnostics stay in an internal snapshot; `keymap.reload` still returns only its existing diagnostic count and emits the same events. There is no new unbind syntax. This view has no upstream equivalent and does not change the parity surface.
 
-- **Маппинг модификаторов keymap на Windows (спец. §9: «cmd → Win/Ctrl по вкусу»).**
-  Принято: `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift. Так как два
-  keymap-модификатора делят одну физическую клавишу, нажатие декодируется в КАНДИДАТОВ
-  по приоритету: cmd-интерпретация → ctrl → свёртка ctrl+cmd; побеждает первый, знакомый
-  матчеру (`WindowsChordDecoder` + `HotkeyRouter`).
+- **Keymap modifier mapping on Windows (spec §9: "cmd → Win/Ctrl, as preferred").** Chosen: `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift. Two keymap modifiers share one physical key, so a key press is decoded into CANDIDATES by priority: the cmd interpretation, then ctrl, then the folded ctrl+cmd. The first one the matcher knows wins (`WindowsChordDecoder` + `HotkeyRouter`).
 
-  **Дефолты чордов на Windows свои (`WindowsDefaultChords`).** Свёртка `cmd`→Ctrl сажала 13
-  действий на голый Ctrl, а в терминале Windows голый Ctrl принадлежит оболочке: Ctrl+D
-  завершает ввод, Ctrl+Z приостанавливает, Ctrl+W удаляет слово, Ctrl+P листает историю.
-  Приложение, которое их перехватывает, ломает не удобство, а программу в панели. Поэтому
-  каждое действие, попадающее на голый Ctrl, шипается на Alt с той же клавишей:
-  `new_session` → Alt+N, `toggle_split` → Alt+D, `session_palette` → Alt+P и так далее.
+  **Windows has its own chord defaults (`WindowsDefaultChords`).** Folding `cmd`→Ctrl put 13 actions on bare Ctrl, and in a Windows terminal bare Ctrl belongs to the shell: Ctrl+D ends input, Ctrl+Z suspends, Ctrl+W deletes a word, Ctrl+P walks history. An app that intercepts them breaks the program in the pane, not only convenience. So every action that would land on bare Ctrl ships on Alt with the same key: `new_session` → Alt+N, `toggle_split` → Alt+D, `session_palette` → Alt+P and so on.
 
-  Критерий — куда чорд попадает физически, а не какой модификатор стоял в таблице macOS:
-  пользователь исходного модификатора не видит, а на клавиатуре без клавиши Command он
-  ничего не описывает. Всё, что несёт Shift или Alt (`Ctrl+Shift+…`, `Ctrl+Alt+…`), остаётся
-  на месте: оболочка такие сочетания не читает, а каждое совпадение с macOS — это на одно
-  сочетание меньше переучивать.
+  The criterion is where the chord lands physically, not which modifier the macOS table had: the user does not see the original modifier, and on a keyboard without a Command key it describes nothing. Everything that carries Shift or Alt (`Ctrl+Shift+…`, `Ctrl+Alt+…`) stays where it is: the shell does not read such combinations, and every chord that matches macOS is one less to relearn.
 
-  `BuiltinAction.DefaultChord` при этом не тронут и по-прежнему сверяется с
-  `parity/surface.json`; `WindowsDefaultChords` — слой над ним, там же, где уже живёт свёртка
-  `cmd`→Ctrl. Строка `map` в keymap.conf перекрывает и то, и другое. Это расхождение с
-  оригиналом: в `Ported/KeymapTests.cs` изменённые ожидания помечены построчно, чтобы файл
-  по-прежнему можно было сверять со Swift.
+  `BuiltinAction.DefaultChord` is not touched and is still checked against `parity/surface.json`; `WindowsDefaultChords` is a layer over it, in the same place as the `cmd`→Ctrl fold. A `map` line in keymap.conf overrides both. This is a divergence from the original: in `Ported/KeymapTests.cs` the changed expectations are marked line by line, so the file can still be compared with the Swift tests.
 
-  Побочный эффект: `toggle_fullscreen` стал достижим. Раньше ⌘F (`toggle_search`) и ⌃⌘F
-  (`toggle_fullscreen`) оба сворачивались в Ctrl+F, побеждал первый, и полноэкранный режим
-  не вызывался с клавиатуры вообще. Теперь это Alt+F и Alt+Enter.
+  A side effect: `toggle_fullscreen` became reachable. Before, ⌘F (`toggle_search`) and ⌃⌘F (`toggle_fullscreen`) both folded into Ctrl+F, the first one won, and full screen could not be reached from the keyboard at all. Now they are Alt+F and Alt+Enter.
 
-  Остались две коллизии дефолтов (затенённое действие достижимо через `map`):
-  | Физически | Побеждает | Затенён |
+  Two default collisions remain (the shadowed action is reachable through `map`):
+  | Physical | Wins | Shadowed |
   |---|---|---|
   | Ctrl+Alt+↑ | `previous_session` (⌘⌥↑) | `previous_attention_session` (⌃⌥↑) |
   | Ctrl+Alt+↓ | `next_session` (⌘⌥↓) | `next_attention_session` (⌃⌥↓) |
-  Обе несут Alt, оболочке не мешают, поэтому оставлены как есть.
+  Both carry Alt and do not disturb the shell, so they are left as they are.
 
   Terminal interception: the page receives the active physical chords (`agterm.setChords`).
   A matching keydown does not reach the shell; xterm's `attachCustomKeyEventHandler` sends
@@ -559,7 +400,7 @@ Every shell the app spawns gets `AGTERM_*` variables, so a script or an agent in
 - **The quick terminal** gets `AGTERM_ENABLED`, `AGTERM_WINDOW_ID` and `AGTERM_SOCKET` only. It belongs to the window, not to a session.
 - `AGTERM_WORKSPACE_ID` and `AGTERM_SOCKET` are left out when there is no value, as upstream does.
 
-**`AGTERM_SOCKET` holds a socket path, not a pipe name.** The value is `<state dir>\agterm.sock`, the path the pipe name is derived from (see "Транспорт: named pipe" in Phase 2). `agtermctl` derives the pipe from `--socket` the same way, so `agtermctl <command> --socket "$env:AGTERM_SOCKET"` reaches the app that started the shell. When the `AGTERM_CONTROL_SOCKET` override is set, the app listens on a literal pipe name, no path derives to it, and `AGTERM_SOCKET` is not set.
+**`AGTERM_SOCKET` holds a socket path, not a pipe name.** The value is `<state dir>\agterm.sock`, the path the pipe name is derived from (see "Transport: named pipe" in Phase 2). `agtermctl` derives the pipe from `--socket` the same way, so `agtermctl <command> --socket "$env:AGTERM_SOCKET"` reaches the app that started the shell. When the `AGTERM_CONTROL_SOCKET` override is set, the app listens on a literal pipe name, no path derives to it, and `AGTERM_SOCKET` is not set.
 
 **Inherited values are removed.** Upstream is started by launchd, so a foreign `AGTERM_*` value never reaches it. This port can be started from a pane of another instance. Then the app process carries that instance's values, and a shell that inherits them would talk to the wrong app. Every surface spawn removes all seven names before it sets its own, and custom commands remove all seven and set none.
 

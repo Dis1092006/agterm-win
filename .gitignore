@@ -31,3 +31,5 @@ Thumbs.db
 .superpowers/
 # Plans go to docs/plans/ (see CLAUDE.md), so a skill default must not land here.
 docs/superpowers/
+# Personal instructions for Claude Code, such as local paths. Not shared.
+CLAUDE.local.md

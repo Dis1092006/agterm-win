@@ -34,7 +34,7 @@ declarative sources (`ControlProtocol.swift`, `BuiltinAction.swift`, `CustomComm
 `AppSettings.swift`, `Snapshot.swift`) — no Swift compiler needed.
 
 ```sh
-python tools/extract_surface.py --agterm C:\git\github\umputun\agterm --out parity/surface.json
+python tools/extract_surface.py --agterm <agterm-clone> --out parity/surface.json
 ```
 
 `surface.json` captures, per agterm git revision:
@@ -73,7 +73,7 @@ plugins/agterm/            the agent skill, packaged as a plugin
 ```
 
 See the portable spec (`docs/agterm-windows-spec.md`) for the full data model, protocol, and keymap format
-that drive the implementation.
+that drive the implementation. The spec and the upstream catalog in `docs/upstream/` are written in Russian.
 
 ## Running
 
