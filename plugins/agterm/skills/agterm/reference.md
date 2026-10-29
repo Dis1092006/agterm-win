@@ -369,11 +369,14 @@ All twelve are read-only projections of GUI state.
   set the sidebar agent-status glyph. Wire: `session.status`. `--blink` requests an attention pulse.
   `--auto-reset` clears it back to idle once the session
   is visited (use for a one-shot completion flash). `--sound` requests a
-  one-shot sound when the status is set: `default` and `beep` play the Windows default sound. Other
-  names are accepted on the wire but are not played (the app records a diagnostic instead).
-  Without `--sound`, a `blocked` status plays the sound named by `blockedStatusSoundName` in
-  settings.json if the user set one; an explicit `--sound` always overrides it. The same sound name
-  within 200 ms is played once.
+  one-shot sound when the status is set.
+
+  `default` and `beep` are synonyms for the Windows system alert. Other names resolve case-insensitively to top-level `.wav` filename stems in `%WINDIR%\Media` or `<state directory>\sounds` (normally `~\.agterm-win\sounds`). Keep the exact stem, including any `Windows ` prefix, and quote names with spaces: `--sound "Windows Notify Calendar"`. An optional `.wav` suffix is accepted. User files override same-name Windows files; `default` and `beep` remain reserved aliases. No sound files are bundled. Settings lists the installed catalog with Preview. Reopen Settings to refresh the list after adding or removing files.
+
+  Unknown explicit names return `unknown sound: <name> (use 'default', 'beep', or one of: <Windows list>)` before resolving the target, with no status change. The hint lists installed Windows stems in case-insensitive alphabetical order. Empty means no explicit sound; whitespace is a name, not empty. Without an explicit sound, a transition into `blocked` plays `blockedStatusSoundName` from settings.json if set. Repeated `blocked` writes do not replay this default. A missing blocked default stays stored, logs a diagnostic, and does not prevent the status change. The same resolved status sound within 200 ms is played once; Preview bypasses this throttle. Status and Preview sounds do not use the notify suppression check.
+
+  `notify` has no sound argument; it uses `notificationSoundName`. None is silent. For `default` and `beep`, Windows owns the toast's audio and applies Do Not Disturb, priority mode, and the per-app sound switch. Named WAVs mute the toast and play through the app; the InfoBar fallback also uses app playback. App-played notify audio requires notifications enabled for the app, `NotificationMode` unrestricted when that property exists (PriorityOnly also skips audio), and the shell accepting notifications (state 5 or 7). On older Windows versions without `NotificationMode`, an undocumented WNF quiet-hours read substitutes for the mode check; any nonzero profile skips audio, while a failed read is logged and continues to the shell check. Status sounds and Preview bypass these notify checks. If a configured notify sound is missing or cannot play, the app logs the failure and tries the Windows default sound, subject to the same checks. Missing stored names appear as `(unavailable)` in Settings with Preview disabled. App playback runs serially in the background so a later clip does not cut off an earlier clip.
+
   `--color` (`#rrggbb`) overrides the glyph tint for THIS call only — it rides the status, so the next
   `session status` without `--color` reverts to the configured color (`activeStatusColorHex` and so on
   in settings.json; a malformed hex errors).

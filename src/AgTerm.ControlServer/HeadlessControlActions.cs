@@ -258,6 +258,7 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly Action<HeadlessThemeSnapshot>? _themeChanged;
     private readonly Func<LiveNotificationRequest, bool>? _notificationRequested;
     private readonly Action<LiveStatusNotificationRequest>? _statusNotificationRequested;
+    private readonly SoundCatalog _sounds;
     private readonly Func<TerminalZoomTarget, bool>? _zoomTargetAvailable;
 
     public HeadlessControlActions(AppStore store, ControlEventRing ring, Guid windowId,
@@ -280,6 +281,7 @@ public sealed class HeadlessControlActions : IControlActions
                                   Func<TerminalZoomTarget, bool>? zoomTargetAvailable = null,
                                   PickController? pick = null,
                                   PickRegistry? picks = null,
+                                  SoundCatalog? sounds = null,
                                   HeadlessQuickTerminal? quick = null)
     {
         Quick = quick ?? new HeadlessQuickTerminal();
@@ -310,6 +312,7 @@ public sealed class HeadlessControlActions : IControlActions
         _themeChanged = themeChanged;
         _notificationRequested = notificationRequested;
         _statusNotificationRequested = statusNotificationRequested;
+        _sounds = sounds ?? new SoundCatalog(store.StateDirectory ?? configDirectory);
         _zoomTargetAvailable = zoomTargetAvailable;
         Zoom.TargetResolver = () => TerminalZoomController.ResolveTarget(_store, Quick.Visible);
     }
@@ -888,20 +891,21 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
-    /// <summary>session.status. Divergence (PLATFORM-NOTES): upstream validates the per-call sound
-    /// name against the macOS system-sound catalog ("unknown sound: …") and plays it; Windows has no
-    /// named-system-sound analogue, so sound is accepted and playback is a host-side no-op.</summary>
+    /// <summary>Validate explicit sounds before resolving targets or changing the indicator.</summary>
     public ControlResponse SetSessionStatus(string? target, string? window, ControlSessionStatusUpdate update)
     {
+        if (!string.IsNullOrEmpty(update.Sound) && _sounds.Resolve(update.Sound) is null)
+            return Err(_sounds.UnknownSoundError(update.Sound));
         return ResolveSession(target, window, (store, id) =>
         {
             var session = store.SessionWithId(id);
+            var wasBlocked = session?.AgentIndicator.Status == AgentStatus.Blocked;
             // a --pane-id that resolves against the session's LIVE surfaces overrides the stale role
             // --pane; an absent/unknown token falls back to the baked --pane value.
             var resolvedPane = (update.PaneId is { } token ? session?.PaneRole(token) : null) ?? update.Pane;
             store.SetAgentIndicator(new AgentIndicator(update.Status, update.Blink ?? false,
                 update.AutoReset ?? false, update.Color, update.Shape, resolvedPane), id);
-            if (!string.IsNullOrWhiteSpace(update.Sound) || update.Status == AgentStatus.Blocked)
+            if (!string.IsNullOrEmpty(update.Sound) || (update.Status == AgentStatus.Blocked && !wasBlocked))
             {
                 _statusNotificationRequested?.Invoke(
                     new LiveStatusNotificationRequest(id, update.Status, update.Sound));

@@ -164,7 +164,8 @@ public sealed class HeadlessHost : IDisposable
             themeChanged: options.ThemeChanged,
             notificationRequested: options.NotificationRequested,
             statusNotificationRequested: options.StatusNotificationRequested,
-            zoomTargetAvailable: options.ZoomTargetAvailable);
+            zoomTargetAvailable: options.ZoomTargetAvailable,
+            sounds: new SoundCatalog(options.StateDir ?? PersistenceStore.DefaultDirectory, log: options.Log));
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.

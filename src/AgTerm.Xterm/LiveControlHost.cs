@@ -128,6 +128,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private AppSettings _notificationSettings;
     private readonly Func<TimeSpan> _notificationClock;
     private readonly SoundThrottle _soundThrottle = new(TimeSpan.FromMilliseconds(200));
+    private readonly SoundCatalog _soundCatalog;
     private readonly Queue<LiveNotificationDelivery> _pendingNotificationDeliveries = new();
     private Task? _notificationDeliveryTask;
 
@@ -158,6 +159,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     {
         _ = useWindowHost;
         _options = options;
+        _soundCatalog = new SoundCatalog(options.StateDir ?? PersistenceStore.DefaultDirectory, log: options.Log);
         _currentBaseFontSize = options.BaseFontSize;
         _notificationSettings = options.NotificationSettings;
         var notificationStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -225,6 +227,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 zoomTargetAvailable: IsZoomTargetRealized,
                 pick: windowHost.Pick,
                 picks: windowHost.Picks,
+                sounds: _soundCatalog,
                 quick: options.QuickTerminal);
             windowHost.AttachLive(actions, ReserveSurface, _scopeFactory);
         }
@@ -857,7 +860,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         var soundName = LiveNotificationPolicy.StatusSound(
             request,
             Volatile.Read(ref _notificationSettings));
-        if (soundName is not null && _soundThrottle.Allow(soundName, _notificationClock()))
+        var identity = _soundCatalog.Resolve(soundName)?.Name ?? soundName;
+        if (soundName is not null && identity is not null && _soundThrottle.Allow(identity, _notificationClock()))
             QueueNotificationDelivery(new LiveNotificationDelivery.Status(soundName));
     }
 

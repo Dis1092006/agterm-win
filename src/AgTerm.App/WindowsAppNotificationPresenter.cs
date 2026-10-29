@@ -36,16 +36,10 @@ internal sealed class WindowsAppNotificationPresenter : IDisposable
                 .AddArgument("session", notification.SessionId.ToString("D"))
                 .AddText(notification.Title)
                 .AddText(notification.Body);
-            if (notification.SoundName is null)
-            {
+            if (NotificationAudioPolicy.UsesToastDefault(notification.SoundName))
+                builder.SetAudioEvent(AppNotificationSoundEvent.Default);
+            else
                 builder.MuteAudio();
-            }
-            else if (!WindowsNotificationSound.IsSupported(notification.SoundName))
-            {
-                builder.MuteAudio();
-                _log?.Invoke(
-                    $"Unsupported Windows notification sound '{notification.SoundName}' from notify; no sound was played.");
-            }
 
             _manager.Show(builder.BuildNotification());
             return true;

@@ -66,6 +66,7 @@ public sealed partial class MainWindow : Window
     private readonly ThemeCatalog _themeCatalog = ThemeCatalog.Default;
     private readonly UISettings _uiSettings = new();
     private readonly WindowsAppNotificationPresenter _notificationPresenter;
+    private readonly WindowsNotificationSound _notificationSounds;
     private readonly SemaphoreSlim _themeApplyGate = new(1, 1);
     private AppSettings _settings; // UI-thread confined
     // what the titles show: the dashboard, or a session's title (null: no session, an empty window)
@@ -141,6 +142,8 @@ public sealed partial class MainWindow : Window
         _switcher.Changed += OnSwitcherChanged;
         _notificationPresenter = new WindowsAppNotificationPresenter(
             message => System.Diagnostics.Trace.TraceWarning(message));
+        _notificationSounds = new WindowsNotificationSound(new SoundCatalog(_applicationHost.Settings.StateDirectory),
+            new NotificationSuppression(new WindowsNotificationSuppressionSources()));
         ApplyThemeChrome(initialTheme.UseDarkChrome);
         ApplyOverlayPanelBackground(_settings);
         if (ThemeCatalogFailureNotice.From(_themeCatalog.Errors) is { } themeFilesFailure)
@@ -3119,7 +3122,10 @@ public sealed partial class MainWindow : Window
 
     private void ShowNotification(LiveBannerNotification notification)
     {
-        if (_notificationPresenter.TryShow(notification))
+        var shown = _notificationPresenter.TryShow(notification);
+        if (NotificationAudioPolicy.PlayFromApp(notification.SoundName, shown))
+            PlayNotificationSound(notification.SoundName, "notify");
+        if (shown)
             return;
 
         NotificationBanner.Title = string.IsNullOrWhiteSpace(notification.Title)
@@ -3127,7 +3133,6 @@ public sealed partial class MainWindow : Window
             : notification.Title;
         NotificationBanner.Message = notification.Body;
         NotificationBanner.IsOpen = true;
-        PlayNotificationSound(notification.SoundName, "notify");
 
         _notificationBannerCancellation?.Cancel();
         _notificationBannerCancellation?.Dispose();
@@ -3209,15 +3214,13 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static void PlayNotificationSound(string? soundName, string source)
+    private void PlayNotificationSound(string? soundName, string source)
     {
-        if (string.IsNullOrWhiteSpace(soundName))
+        if (string.IsNullOrEmpty(soundName))
             return;
-        if (WindowsNotificationSound.TryPlay(soundName))
-            return;
-
-        System.Diagnostics.Trace.TraceWarning(
-            $"Unsupported Windows notification sound '{soundName}' from {source}; no sound was played.");
+        ObserveTaskFault(_notificationSounds.TryPlayAsync(soundName,
+            source == "notify" ? NotificationSoundKind.Notify : NotificationSoundKind.Status),
+            $"Sound playback failed for {source}");
     }
 
     private void ApplyComposition(RendererSettingsSnapshot snapshot)
