@@ -49,7 +49,6 @@ public class XtermPaneSurfaceEnvironmentTests
                 Environment.SetEnvironmentVariable(name, "foreign");
 
             var windowId = Guid.NewGuid();
-            var window = windowId.ToString("D").ToUpperInvariant();
             using var surface = await OpenAsync(new XtermSurfaceOptions
             {
                 Argv = new[] { Cmd },
@@ -59,10 +58,9 @@ public class XtermPaneSurfaceEnvironmentTests
             surface.Inject("echo [%AGTERM_ENABLED%][%AGTERM_SESSION_ID%][%AGTERM_WINDOW_ID%][%AGTERM_WORKSPACE_ID%]"
                 + "[%AGTERM_SOCKET%][%AGTERM_PANE%][%AGTERM_PANE_ID%]\n");
 
-            // cmd leaves an undefined %X% as is, so a removed name echoes its own reference. The window
-            // id is not on the command line, so this matches the result line only.
+            // cmd leaves an undefined %X% as is. Quick must strip inherited window identity too.
             WaitForScreen(surface,
-                $"[1][%AGTERM_SESSION_ID%][{window}][%AGTERM_WORKSPACE_ID%]"
+                "[1][%AGTERM_SESSION_ID%][%AGTERM_WINDOW_ID%][%AGTERM_WORKSPACE_ID%]"
                 + @"[C:\s\agterm.sock][%AGTERM_PANE%][%AGTERM_PANE_ID%]");
         }
         finally

@@ -32,6 +32,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\AgTerm.App\GlobalHotkey.cs" Link="App\GlobalHotkey.cs" />
+    <Compile Include="..\..\src\AgTerm.App\QuickPanelGeometry.cs" Link="App\QuickPanelGeometry.cs" />
+    <Compile Include="..\..\src\AgTerm.App\QuickPanelFocus.cs" Link="App\QuickPanelFocus.cs" />
     <Compile Include="..\..\src\AgTerm.App\ContentDialogCoordinator.cs" Link="App\ContentDialogCoordinator.cs" />
     <Compile Include="..\..\src\AgTerm.App\ActivationClickFilter.cs" Link="App\ActivationClickFilter.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowForeground.cs" Link="App\WindowForeground.cs" />

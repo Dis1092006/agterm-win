@@ -22,6 +22,7 @@ public sealed class LiveWindowHost
     private readonly string _homeDirectory;
     private string _windowName;
     private string? _acceptedPaneId;
+    private readonly HeadlessQuickTerminal _quick;
 
     internal LiveWindowHost(
         Guid windowId,
@@ -33,8 +34,10 @@ public sealed class LiveWindowHost
         bool seedIfEmpty,
         bool launchRestore,
         PickRegistry? picks = null,
-        Action<Guid>? scheduleTreeChanged = null)
+        Action<Guid>? scheduleTreeChanged = null,
+        HeadlessQuickTerminal? quick = null)
     {
+        _quick = quick ?? new HeadlessQuickTerminal();
         WindowId = windowId;
         Picks = picks ?? new PickRegistry();
         Pick = new PickController(Picks.Asks);
@@ -344,5 +347,6 @@ public sealed class LiveWindowHost
             configDirectory: _stateDirectory,
             homeDirectory: _homeDirectory,
             pick: Pick,
-            picks: Picks);
+            picks: Picks,
+            quick: _quick);
 }

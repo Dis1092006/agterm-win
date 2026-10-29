@@ -153,11 +153,9 @@ public sealed class TerminalZoomController
 
     public void Clear() => Target = null;
 
-    /// <summary>The zoom target the toggle resolves for the current state: the quick terminal when
-    /// visible, else the active session's active surface.</summary>
+    /// <summary>A bare zoom resolves inside its window, never to the detached quick panel.</summary>
     public static TerminalZoomTarget? ResolveTarget(AppStore store, bool quickTerminalVisible)
     {
-        if (quickTerminalVisible) return new TerminalZoomTarget.Quick();
         if (store.ActiveSession is not { } session) return null;
         var surface = TerminalZoomSurfaces.AllCases.FirstOrDefault(s => s.IsActive(session),
             TerminalZoomSurface.Primary);
@@ -169,7 +167,7 @@ public sealed class TerminalZoomController
         switch (target)
         {
             case TerminalZoomTarget.Quick:
-                return quickTerminalVisible;
+                return false;
             case TerminalZoomTarget.Session s:
                 var session = store.SessionWithId(s.SessionId);
                 return session is not null && s.Surface.IsAvailable(session);

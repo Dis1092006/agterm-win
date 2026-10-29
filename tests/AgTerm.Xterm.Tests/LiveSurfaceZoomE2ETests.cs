@@ -48,7 +48,6 @@ public sealed class LiveSurfaceZoomE2ETests
     [InlineData("right", "split-token")]
     [InlineData("scratch", "scratch-token")]
     [InlineData("overlay", "overlay-token")]
-    [InlineData("quick", "quick-token")]
     public async Task Zoom_transition_publishes_the_exact_existing_pane(
         string surface,
         string expectedPaneId)
@@ -95,8 +94,8 @@ public sealed class LiveSurfaceZoomE2ETests
             Assert.True(response.Ok, response.Error);
             var snapshot = await published.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(expectedPaneId, snapshot.ZoomPaneId);
-            Assert.Equal(surface == "quick", snapshot.QuickVisible);
-            Assert.Equal(surface == "quick", ReadLocked(host, () => host.Host.Actions.Quick.Visible));
+            Assert.True(snapshot.QuickVisible);
+            Assert.True(ReadLocked(host, () => host.Host.Actions.Quick.Visible));
         }
         finally
         {
@@ -343,11 +342,11 @@ public sealed class LiveSurfaceZoomE2ETests
 
                 Assert.True(response.Ok, response.Error);
                 Assert.Equal(active.Id, store.SelectedSessionId);
-                Assert.False(active.SearchActive);
-                Assert.Null(active.SearchSurface);
-                Assert.Equal("", active.SearchNeedle);
-                Assert.Null(active.SearchTotal);
-                Assert.Null(active.SearchSelected);
+                Assert.Equal(targetKind == "quick", active.SearchActive);
+                Assert.Equal(targetKind == "quick" ? active.Surface : null, active.SearchSurface);
+                Assert.Equal(targetKind == "quick" ? "needle" : "", active.SearchNeedle);
+                Assert.Equal(targetKind == "quick" ? 2 : (int?)null, active.SearchTotal);
+                Assert.Equal(targetKind == "quick" ? 1 : (int?)null, active.SearchSelected);
                 Assert.Equal(targetKind == "quick", background.SearchActive);
                 Assert.Equal(targetKind == "quick" ? background.Surface : null, background.SearchSurface);
                 Assert.True(unrelated.SearchActive);
@@ -410,7 +409,7 @@ public sealed class LiveSurfaceZoomE2ETests
     [InlineData("scratch")]
     [InlineData("overlay")]
     [InlineData("quick")]
-    public void Live_zoom_rejects_an_available_model_slot_without_a_realized_pane(string surface)
+    public void Session_zoom_requires_a_realized_pane_but_panel_zoom_can_precede_realization(string surface)
     {
         var stateDir = Directory.CreateTempSubdirectory("agterm-live-zoom-unrealized-").FullName;
         try
@@ -444,8 +443,9 @@ public sealed class LiveSurfaceZoomE2ETests
                     window: null,
                     ControlToggleMode.On));
 
-            Assert.False(response.Ok);
-            Assert.Equal($"surface not available: {target}", response.Error);
+            Assert.Equal(surface == "quick", response.Ok);
+            Assert.Equal(surface == "quick" ? null : $"surface not available: {target}", response.Error);
+            Assert.Equal(surface == "quick", host.Host.Actions.Quick.IsZoomed);
             Assert.Null(ReadLocked(host, () => host.Host.Actions.Zoom.Target));
             Assert.False(host.ZoomActive);
         }

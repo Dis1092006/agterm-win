@@ -121,7 +121,7 @@ public sealed class LiveSessionEnvironmentWiringTests : IDisposable
     }
 
     [Fact]
-    public void Quick_terminal_gets_only_enabled_window_and_socket()
+    public void Quick_terminal_gets_only_enabled_and_socket()
     {
         var host = StartDerivedHost();
         OpenSplitScratchOverlayAndQuick(host);
@@ -131,7 +131,6 @@ public sealed class LiveSessionEnvironmentWiringTests : IDisposable
         Assert.Equal(new Dictionary<string, string>
         {
             ["AGTERM_ENABLED"] = "1",
-            ["AGTERM_WINDOW_ID"] = Upper(host.WindowId),
             ["AGTERM_SOCKET"] = SocketPath,
         }, env);
     }

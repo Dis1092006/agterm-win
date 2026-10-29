@@ -34,7 +34,7 @@ public class SurfaceEnvironmentTests
         Assert.Equal("ABCDEF01-2345-6789-ABCD-EF0123456789", env["AGTERM_SESSION_ID"]);
         Assert.Equal("ABCDEF01-2345-6789-ABCD-EF0123456789", env["AGTERM_WINDOW_ID"]);
         Assert.Equal("ABCDEF01-2345-6789-ABCD-EF0123456789", env["AGTERM_WORKSPACE_ID"]);
-        Assert.Equal("ABCDEF01-2345-6789-ABCD-EF0123456789", SurfaceEnvironment.QuickTerminal(id, Socket)["AGTERM_WINDOW_ID"]);
+        Assert.DoesNotContain("AGTERM_WINDOW_ID", SurfaceEnvironment.QuickTerminal(id, Socket).Keys);
     }
 
     [Fact]
@@ -81,14 +81,13 @@ public class SurfaceEnvironmentTests
     }
 
     [Fact]
-    public void Quick_terminal_environment_omits_session_and_workspace_identifiers()
+    public void Quick_terminal_environment_omits_all_window_and_session_identifiers()
     {
         var env = SurfaceEnvironment.QuickTerminal(WindowId, Socket);
 
         Assert.Equal(new Dictionary<string, string>
         {
             ["AGTERM_ENABLED"] = "1",
-            ["AGTERM_WINDOW_ID"] = "22222222-2222-2222-2222-222222222222",
             ["AGTERM_SOCKET"] = Socket,
         }, env);
     }

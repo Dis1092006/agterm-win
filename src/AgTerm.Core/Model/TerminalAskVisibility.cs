@@ -17,14 +17,10 @@ public sealed record TerminalAskPlacement(Guid SessionId, PendingAsk Ask, Overla
 
 public static class TerminalAskVisibility
 {
-    /// <summary>Port of upstream SessionAskInput.visible. Only the selected session is on screen;
-    /// zoom, the dashboard and the quick terminal hide terminal questions without resolving them; a
-    /// pane question needs its pane laid out and hides under the scratch, while a session-wide one
-    /// draws above it. The quick terminal is a Windows adaptation: upstream floats it in its own
-    /// window above the question, here it shares the page and would sit under the question.</summary>
+    /// <summary>Only the selected session is drawn. Session zoom and the dashboard hide questions without resolving them. A pane question needs its pane laid out and hides under scratch; a session question draws above it. Detached quick leaves the question drawn and defers keyboard focus at the page boundary.</summary>
     public static TerminalAskPlacement? For(AppStore store, bool zoomActive, bool dashboardOpen, bool quickTerminalVisible)
     {
-        if (zoomActive || dashboardOpen || quickTerminalVisible
+        if (zoomActive || dashboardOpen
             || store.ActiveSession is not { AskPending: { } ask } session)
             return null;
         if (session.AskPaneIdentity is null)

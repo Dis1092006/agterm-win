@@ -136,17 +136,16 @@ public class TerminalAskVisibilityTests
         Assert.Null(TerminalAskVisibility.For(store, zoomActive: false, dashboardOpen: true, quickTerminalVisible: false));
     }
 
-    // spec 5: the quick terminal takes input before a terminal question, so the question waits
     [Fact]
-    public void TheQuickTerminalHidesEveryQuestion()
+    public void TheDetachedQuickTerminalLeavesQuestionsRendered()
     {
         var (store, session) = Selected();
         store.OpenAsk(session.Id, Ask(), null, WindowId);
-        Assert.Null(TerminalAskVisibility.For(store, false, false, quickTerminalVisible: true));
+        Assert.NotNull(TerminalAskVisibility.For(store, false, false, quickTerminalVisible: true));
 
         store.ResolveAsk(session.Id, "ASK", ControlAskResult.Escaped());
         Assert.True(store.OpenAsk(session.Id, Ask() with { Id = "NEXT" }, session.SplitPaneIdentity, WindowId));
-        Assert.Null(TerminalAskVisibility.For(store, false, false, quickTerminalVisible: true));
+        Assert.NotNull(TerminalAskVisibility.For(store, false, false, quickTerminalVisible: true));
         Assert.NotNull(TerminalAskVisibility.For(store, false, false, quickTerminalVisible: false));
     }
 

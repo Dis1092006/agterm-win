@@ -754,6 +754,7 @@ public sealed partial class MainWindow : Window
 
                 var previousSelection = _selection;
                 _selection = snapshot;
+                ObserveTaskFault(ApplyQuickInputOwnershipAsync(snapshot.QuickHoldsKey), "Quick input ownership failed");
                 RefreshTitleBarActions(_settings);
                 // upstream cancels a switch when the dashboard takes the keyboard
                 if (snapshot.DashboardOpen) _switcher.Cancel();
@@ -762,8 +763,7 @@ public sealed partial class MainWindow : Window
                 ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
                 _selectedSessionId = snapshot.SessionId;
                 SetTerminalCompositionOnly(
-                    snapshot.QuickVisible && !string.IsNullOrWhiteSpace(snapshot.QuickPaneId)
-                    || !string.IsNullOrWhiteSpace(snapshot.ZoomPaneId)
+                    !string.IsNullOrWhiteSpace(snapshot.ZoomPaneId)
                     || snapshot.DashboardOpen);
                 SubmitLayout();
                 SubmitSearchPresentation(previousSelection, snapshot);
@@ -774,7 +774,7 @@ public sealed partial class MainWindow : Window
 
         host.SurfaceRealized += (request, surface) =>
         {
-            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay or LiveSurfaceKind.Quick)
+            if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split or LiveSurfaceKind.Scratch or LiveSurfaceKind.Overlay)
             {
                 DispatcherQueue.TryEnqueue(() => MountSurface(surface));
             }
@@ -847,8 +847,6 @@ public sealed partial class MainWindow : Window
                 })
                 .OfType<XtermPaneSurface>()
                 .ToList();
-            if (host.Host.Actions.Quick.Surface is XtermPaneSurface quickSurface)
-                committedSurfaces.Add(quickSurface);
             return new StartupState(
                 selection,
                 committedSurfaces);
@@ -860,8 +858,7 @@ public sealed partial class MainWindow : Window
             PresentPaneThemes(startup.Selection);
             _selectedSessionId = startup.Selection.SessionId;
             SetTerminalCompositionOnly(
-                startup.Selection.QuickVisible && !string.IsNullOrWhiteSpace(startup.Selection.QuickPaneId)
-                || !string.IsNullOrWhiteSpace(startup.Selection.ZoomPaneId));
+                !string.IsNullOrWhiteSpace(startup.Selection.ZoomPaneId));
             foreach (var surface in startup.CommittedSurfaces)
                 MountSurface(surface);
             SubmitLayout();
@@ -978,7 +975,7 @@ public sealed partial class MainWindow : Window
                 }),
             [BuiltinAction.QuickTerminal] = Async(
                 () => true,
-                () => host.ToggleQuickTerminalAsync()),
+                () => _applicationHost.ToggleQuickAsync()),
             [BuiltinAction.SessionPalette] = Async(
                 () => !host.ZoomActive,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.Sessions)),
@@ -1311,6 +1308,7 @@ public sealed partial class MainWindow : Window
 
     private void FocusTerminal(string paneId)
     {
+        if (_applicationHost.Quick.HoldsKey) return;
         if (AskOverlay.IsOpen)
         {
             // keys in the WebView2 would reach the shell and the page's chords while the question is modal
@@ -1768,6 +1766,18 @@ public sealed partial class MainWindow : Window
         SyncPageSwitcher();
     }
 
+    internal bool HandleQuickSwitcherKey(SessionSwitcherKey key)
+    {
+        HandleSwitcherKey(key);
+        return _switcher.IsActive;
+    }
+
+    internal void ShowQuickKeybindings()
+    {
+        ActivateWindow();
+        ObserveTaskFault(ToggleKeybindingsAsync(), "Keyboard shortcuts failed");
+    }
+
     // upstream canSwitch (uiActionsEnabled): not while a palette, a question or the dashboard has the keys
     private bool CanSwitchSessions() =>
         !PaletteOverlay.IsOpen && !AskOverlay.IsOpen && !KeybindingsOverlay.IsOpen && !_selection.DashboardOpen;
@@ -1828,6 +1838,13 @@ public sealed partial class MainWindow : Window
         if (hotkeyState?.Router.Handle(physical) is not { } action)
             return false;
 
+        return ExecuteBuiltinHotkey(action);
+    }
+
+    internal bool ExecuteBuiltinHotkey(BuiltinAction action)
+    {
+        if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen)
+            return false;
         var router = _commandRouter;
         if (router is null || !router.CanExecute(action))
             return false;
@@ -2139,6 +2156,20 @@ public sealed partial class MainWindow : Window
             "Theme could not be applied",
             response.Error ?? "theme.set failed"));
         return false;
+    }
+
+    internal async Task ExecuteQuickCustomCommandAsync(CustomCommand command, string selection)
+    {
+        var host = await _hostReady.Task;
+        var invocation = await host.StoreCoordinator.ReadAsync(store => CustomCommandInvocationResolver.Resolve(
+            store,
+            new Keymap(new Dictionary<BuiltinAction, Chord>(), [command]),
+            new CustomCommandExecutionRequest(command.Id, CustomCommandSource.Hotkey,
+                HotkeyGeneration: 0, Selection: selection),
+            new CustomCommandWindowContext(host.Host.WindowId, host.Host.WindowName, host.PipeName, 0)));
+        if (invocation is null)
+            throw new InvalidOperationException($"Custom command '{command.Name}' needs an active session.");
+        await Task.Run(() => StartCustomCommand(invocation));
     }
 
     private async Task ExecuteCustomCommandAsync(
@@ -3123,6 +3154,14 @@ public sealed partial class MainWindow : Window
     {
         if (state.Error is { } error)
             ReportSettingsReloadFailure(error);
+    }
+
+    internal void ReportQuickFailure(LiveFailureNotice notice) => QueueFailureNotice(notice);
+
+    private async Task ApplyQuickInputOwnershipAsync(bool ownsInput)
+    {
+        var page = await _pageTask;
+        await page.SetExternalInputOwnerAsync(ownsInput);
     }
 
     private void QueueFailureNotice(LiveFailureNotice notice) =>

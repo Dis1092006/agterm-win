@@ -29,6 +29,7 @@ public static class KeymapParser
         var parsedOverrides = new List<ParsedOverride>();
         var commands = new List<CustomCommand>();
         var diagnostics = new List<KeymapDiagnostic>();
+        Chord? globalHotkey = null;
 
         // normalize line endings so CRLF and lone-CR files split into lines correctly: without this
         // a CRLF line leaves a trailing \r ("toggle_split\r" reads as an unknown action) and a
@@ -54,6 +55,9 @@ public static class KeymapParser
                 case "command":
                     ParseCommandLine(rest, lineNumber, commands, diagnostics);
                     break;
+                case "global-hotkey":
+                    ParseGlobalHotkey(rest, lineNumber, ref globalHotkey, diagnostics);
+                    break;
                 default:
                     diagnostics.Add(new KeymapDiagnostic(lineNumber, $"unknown verb '{verb}'"));
                     break;
@@ -68,7 +72,27 @@ public static class KeymapParser
         var keymap = new Keymap(builtinOverrides, commands);
         var validated = ValidateCommands(commands, keymap, diagnostics);
 
-        return (new Keymap(builtinOverrides, validated), diagnostics);
+        return (new Keymap(builtinOverrides, validated, globalHotkey), diagnostics);
+    }
+
+    private static void ParseGlobalHotkey(string rest, int line, ref Chord? hotkey,
+                                         List<KeymapDiagnostic> diagnostics)
+    {
+        var token = new string(rest.TakeWhile(c => !char.IsWhiteSpace(c)).ToArray());
+        string? error = null;
+        if (token.Length == 0)
+            error = "global-hotkey needs a chord";
+        else if (rest[token.Length..].Trim().Length != 0)
+            error = $"global-hotkey takes one chord, found '{rest}'";
+        else if (Keybinds.Parse(token) is not { Length: 1 } binding)
+            error = $"invalid global-hotkey chord '{token}'";
+        else if (binding[0].Mods == Modifiers.None)
+            error = $"global-hotkey '{token}' must include a modifier";
+        else if (WindowsVirtualKeyNames.KeyCode(binding[0].Key) is null)
+            error = $"global-hotkey '{token}' names no key position; write a shifted symbol as shift+<base>";
+        else
+            hotkey = binding[0];
+        if (error is not null) diagnostics.Add(new(line, error));
     }
 
     /// <summary>A single valid map line, retained in file order until the final duplicate pass.</summary>

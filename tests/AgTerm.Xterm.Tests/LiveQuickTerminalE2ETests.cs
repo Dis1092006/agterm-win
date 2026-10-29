@@ -8,8 +8,7 @@ using AgTerm.Xterm;
 namespace AgTerm.Xterm.Tests;
 
 /// <summary>
-/// Q5 live quick terminal: real LiveControlHost + shared WebView2 + ConPTY + agtermctl.
-/// Quick is window-scoped (SessionId=null), not a session surface.
+/// Live quick contract over real ConPTY and a dedicated WebView2 page.
 /// </summary>
 [Collection("webview2")]
 public sealed class LiveQuickTerminalE2ETests : IDisposable
@@ -22,11 +21,13 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         Directory.CreateTempSubdirectory("agterm-live-quick-").FullName;
     private readonly LiveControlHost _host;
     private readonly Lazy<Task<XtermPage>> _page;
+    private readonly Lazy<Task<XtermPage>> _quickPage;
 
     public LiveQuickTerminalE2ETests(WebView2Fixture webView)
     {
         _webView = webView;
         _page = new Lazy<Task<XtermPage>>(() => _webView.CreatePageAsync());
+        _quickPage = new Lazy<Task<XtermPage>>(() => _webView.CreatePageAsync());
         _host = new LiveControlHost(new LiveControlHostOptions
         {
             StateDir = _stateDir,
@@ -36,9 +37,14 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
             HomeDirectory = _stateDir,
             OpenSurface = async (request, cancellationToken) =>
             {
-                var shared = await _page.Value;
+                var shared = await (request.Kind == LiveSurfaceKind.Quick ? _quickPage.Value : _page.Value);
                 return await _webView.RunAsync(async _ =>
-                    await XtermPaneSurface.OpenAsync(shared, request.Options, cancellationToken));
+                {
+                    var surface = await XtermPaneSurface.OpenAsync(shared, request.Options, cancellationToken);
+                    if (request.Kind == LiveSurfaceKind.Quick)
+                        await shared.ApplyLayoutAsync(new TerminalLayout.Single(1, surface.PaneToken!, "Quick"));
+                    return surface;
+                });
             },
         });
         _host.Start();
@@ -331,11 +337,8 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         return result;
     }
 
-    // Q5.1(5): quick show while a session surface zoom is active returns the exact "terminal zoom
-    // active" error; after zoom is cleared quick show succeeds reusing the retained surface;
-    // hiding quick when its own zoom is active clears the zoom first and then hides.
     [Fact]
-    public async Task Quick_show_blocked_by_session_zoom_and_hide_under_quick_zoom_dismisses_correctly()
+    public async Task Quick_show_is_allowed_under_session_zoom_and_hide_clears_only_panel_zoom()
     {
         WaitForText(">");
 
@@ -348,15 +351,8 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         CtlOk("surface", "zoom", "show");
         Assert.NotNull(ReadLocked(() => _host.Host.Actions.Zoom.Target));
 
-        // quick show while zoom is active: exact upstream error, quick stays hidden.
-        var zoomedShowResult = Ctl("quick", "show");
-        Assert.NotEqual(0, zoomedShowResult.Exit);
-        Assert.Contains("terminal zoom active", zoomedShowResult.Error);
-        Assert.False(ReadLocked(() => _host.Host.Actions.Quick.Visible));
-
-        // Clear the session zoom; show must succeed (surface retained, no new realization).
-        CtlOk("surface", "zoom", "hide");
-        Assert.Null(ReadLocked(() => _host.Host.Actions.Zoom.Target));
+        CtlOk("quick", "show");
+        Assert.True(ReadLocked(() => _host.Host.Actions.Quick.Visible));
 
         var newRealizationCount = 0;
         _host.SurfaceRealized += (req, _) => { if (req.Kind == LiveSurfaceKind.Quick) newRealizationCount++; };
@@ -366,12 +362,14 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
 
         // Zoom the quick terminal itself.
         CtlOk("surface", "zoom", "show", "--target", "quick");
-        Assert.IsType<TerminalZoomTarget.Quick>(ReadLocked(() => _host.Host.Actions.Zoom.Target));
+        Assert.True(_host.Host.Actions.Quick.IsZoomed);
+        Assert.NotNull(ReadLocked(() => _host.Host.Actions.Zoom.Target));
 
         // quick hide while quick is zoomed: clears quick zoom first, then hides.
         CtlOk("quick", "hide");
         Assert.False(ReadLocked(() => _host.Host.Actions.Quick.Visible));
-        Assert.Null(ReadLocked(() => _host.Host.Actions.Zoom.Target));
+        Assert.False(_host.Host.Actions.Quick.IsZoomed);
+        Assert.NotNull(ReadLocked(() => _host.Host.Actions.Zoom.Target));
     }
 
     // Q5.1(6): quick visibility and surface must not be restored when a new host starts from the
@@ -499,9 +497,7 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         Assert.Equal(_stateDir, firstRequest.Options.Cwd);
     }
 
-    // Q5.2: SelectionSnapshotChanged carries QuickVisible=true and a nonblank QuickPaneId after
-    // realization; hide sets QuickVisible=false while the same pane id is retained (keep-alive);
-    // ToTerminalLayout yields a 90% Layered when shown and the non-Quick base when hidden.
+    // Snapshot visibility drives chrome; quick never becomes part of the ordinary layout.
     [Fact]
     public async Task Quick_snapshot_carries_QuickVisible_and_QuickPaneId_through_show_hide()
     {
@@ -534,11 +530,8 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         Assert.False(string.IsNullOrEmpty(shownSnapshot.QuickPaneId),
             "QuickPaneId must be nonblank after realization");
 
-        // ToTerminalLayout must wrap the base in a 90% Layered when Quick is shown.
         var shownLayout = shownSnapshot.ToTerminalLayout(1);
-        var layered = Assert.IsType<TerminalLayout.Layered>(shownLayout);
-        Assert.Equal(shownSnapshot.QuickPaneId, layered.Layer.PaneId);
-        Assert.Equal(90, layered.Layer.SizePercent);
+        Assert.IsNotType<TerminalLayout.Layered>(shownLayout);
 
         CtlOk("quick", "hide");
 
@@ -553,11 +546,8 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         Assert.IsNotType<TerminalLayout.Layered>(hiddenLayout);
     }
 
-    // spec 5: the quick terminal takes input before a terminal question. LiveStoreCoordinator does
-    // not watch the quick terminal itself; LiveControlHost republishes on every quick change, so the
-    // real host is the one to drive here.
     [Fact]
-    public async Task The_quick_terminal_hides_a_pending_terminal_question_until_it_hides_again()
+    public async Task The_detached_quick_terminal_keeps_a_pending_terminal_question_rendered()
     {
         WaitForText(">");
         var hidden = new TaskCompletionSource<LiveSelectionSnapshot>(
@@ -568,7 +558,7 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         {
             if (snapshot.QuickVisible && !string.IsNullOrEmpty(snapshot.QuickPaneId))
             {
-                if (snapshot.TerminalAsk is null) hidden.TrySetResult(snapshot);
+                if (snapshot.TerminalAsk is not null) hidden.TrySetResult(snapshot);
             }
             else if (hidden.Task.IsCompleted && !snapshot.QuickVisible && snapshot.TerminalAsk is not null)
             {
@@ -628,11 +618,8 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         CtlOk("quick", "hide");
     }
 
-    // Q5.3 GUI zoom: ToggleQuickTerminalAsync is inert when any session-surface zoom is active
-    // (Quick is hidden, toggle must not show); it is also inert when Quick is shown under a Quick
-    // zoom (toggle must not hide). Wire hide dismissal under Quick zoom remains covered by Q5.1(5).
     [Fact]
-    public async Task ToggleQuickTerminalAsync_inert_under_session_zoom_and_quick_zoom()
+    public async Task ToggleQuickTerminalAsync_works_under_session_and_panel_zoom()
     {
         WaitForText(">");
 
@@ -646,9 +633,8 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
         CtlOk("surface", "zoom", "show");
         Assert.NotNull(ReadLocked(() => _host.Host.Actions.Zoom.Target));
 
-        // Host API toggle while session zoom is active: Quick must stay hidden.
         await _host.ToggleQuickTerminalAsync();
-        Assert.False(ReadLocked(() => _host.Host.Actions.Quick.Visible));
+        Assert.True(ReadLocked(() => _host.Host.Actions.Quick.Visible));
 
         // Clear session zoom.
         CtlOk("surface", "zoom", "hide");
@@ -660,11 +646,11 @@ public sealed class LiveQuickTerminalE2ETests : IDisposable
 
         // Zoom Quick itself.
         CtlOk("surface", "zoom", "show", "--target", "quick");
-        Assert.IsType<TerminalZoomTarget.Quick>(ReadLocked(() => _host.Host.Actions.Zoom.Target));
+        Assert.True(_host.Host.Actions.Quick.IsZoomed);
 
-        // Host API toggle while Quick zoom is active: Quick must remain visible.
         await _host.ToggleQuickTerminalAsync();
-        Assert.True(ReadLocked(() => _host.Host.Actions.Quick.Visible));
+        Assert.False(ReadLocked(() => _host.Host.Actions.Quick.Visible));
+        Assert.False(_host.Host.Actions.Quick.IsZoomed);
 
         // Cleanup.
         CtlOk("surface", "zoom", "hide");

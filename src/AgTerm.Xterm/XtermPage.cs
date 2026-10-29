@@ -289,6 +289,9 @@ public sealed class XtermPage
             $"agterm.setChords({JsonSerializer.Serialize(items, XtermTerminal.ScriptLiteral)})");
     }
 
+    public Task SetExternalInputOwnerAsync(bool ownsInput) =>
+        _host.ExecuteScriptAsync($"agterm.setExternalInputOwner({(ownsInput ? "true" : "false")})");
+
     public async Task<bool> SetHotkeyManifestAsync(
         Core.Keymap.HotkeyManifest manifest,
         IReadOnlyList<Core.Keymap.PhysicalChord>? zoomPassthroughSingles = null,

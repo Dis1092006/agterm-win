@@ -274,7 +274,7 @@ public sealed class LiveSelectionSnapshotLayoutTests
 
     // Q5.2: QuickVisible=true with a realized QuickPaneId wraps the session base in a 90% centered layer.
     [Fact]
-    public void ToTerminalLayout_wraps_base_in_90pct_quick_layer_when_quick_is_visible_and_realized()
+    public void ToTerminalLayout_keeps_the_session_layout_when_detached_quick_is_shown()
     {
         var snapshot = new LiveSelectionSnapshot(
             Guid.NewGuid(), "session", "workspace",
@@ -282,16 +282,14 @@ public sealed class LiveSelectionSnapshotLayoutTests
             QuickPaneId: "quick-token",
             QuickVisible: true);
 
-        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(5));
-        Assert.IsType<TerminalLayout.Single>(layered.BaseLayout);
-        Assert.Equal("quick-token", layered.Layer.PaneId);
-        Assert.Equal(90, layered.Layer.SizePercent);
-        Assert.Equal(5, layered.Generation);
+        var single = Assert.IsType<TerminalLayout.Single>(snapshot.ToTerminalLayout(5));
+        Assert.Equal("main-token", single.PaneId);
+        Assert.Equal(5, single.Generation);
     }
 
-    // Q5.2: Quick has higher priority than active Overlay and Scratch.
+    // Detached quick never changes the ordinary page's overlay/scratch ordering.
     [Fact]
-    public void ToTerminalLayout_places_quick_above_overlay_and_scratch()
+    public void ToTerminalLayout_keeps_overlay_above_scratch_while_detached_quick_is_shown()
     {
         var snapshot = new LiveSelectionSnapshot(
             Guid.NewGuid(), "session", null,
@@ -305,13 +303,12 @@ public sealed class LiveSelectionSnapshotLayoutTests
             QuickVisible: true);
 
         var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(1));
-        Assert.Equal("quick-token", layered.Layer.PaneId);
-        Assert.Equal(90, layered.Layer.SizePercent);
+        Assert.Equal("overlay-token", layered.Layer.PaneId);
+        Assert.Equal(70, layered.Layer.SizePercent);
     }
 
-    // Q5.2: Quick with SessionId=null (no active session) uses TerminalLayout.Empty as its base.
     [Fact]
-    public void ToTerminalLayout_quick_over_empty_when_quick_visible_and_no_session()
+    public void ToTerminalLayout_stays_empty_without_sessions_while_detached_quick_is_shown()
     {
         var snapshot = new LiveSelectionSnapshot(
             null,
@@ -319,11 +316,8 @@ public sealed class LiveSelectionSnapshotLayoutTests
             QuickPaneId: "quick-token",
             QuickVisible: true);
 
-        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(3));
-        Assert.IsType<TerminalLayout.Empty>(layered.BaseLayout);
-        Assert.Equal("quick-token", layered.Layer.PaneId);
-        Assert.Equal(90, layered.Layer.SizePercent);
-        Assert.Equal(3, layered.Generation);
+        var empty = Assert.IsType<TerminalLayout.Empty>(snapshot.ToTerminalLayout(3));
+        Assert.Equal(3, empty.Generation);
     }
 }
 
@@ -369,23 +363,22 @@ public sealed class MainWindowSplitWiringTests
         Assert.Contains("[BuiltinAction.ToggleScratch]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.ToggleSearch]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.QuickTerminal]", source, StringComparison.Ordinal);
-        Assert.Contains("host.ToggleQuickTerminalAsync", source, StringComparison.Ordinal);
+        Assert.Contains("_applicationHost.ToggleQuickAsync", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusLeftPane]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.FocusRightPane]", source, StringComparison.Ordinal);
     }
 
-    // Q5.2: MainWindow must mount Quick surfaces and toggle terminal-only presentation from the snapshot.
     [Fact]
-    public void MainWindow_mounts_quick_surface_and_drives_presentation_from_snapshot_QuickVisible()
+    public void MainWindow_leaves_quick_to_the_detached_window_and_keeps_rendering_its_deck()
     {
         var source = File.ReadAllText(Path.Combine(
             FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
 
-        // Quick surfaces must be mounted in the same SurfaceRealized handler as Main/Scratch/Overlay.
-        Assert.Contains("LiveSurfaceKind.Quick", source, StringComparison.Ordinal);
-        // Snapshot-driven composition: realized Quick, zoom, or dashboard enters terminal-only presentation.
+        Assert.DoesNotContain("LiveSurfaceKind.Quick", source, StringComparison.Ordinal);
+        var quickWindow = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "QuickTerminalWindow.cs"));
+        Assert.Contains("new XtermPage(new WinRtScriptHost(", quickWindow, StringComparison.Ordinal);
         Assert.Matches(
-            @"SetTerminalCompositionOnly\(\s*snapshot\.QuickVisible && !string\.IsNullOrWhiteSpace\(snapshot\.QuickPaneId\)\s+\|\| !string\.IsNullOrWhiteSpace\(snapshot\.ZoomPaneId\)\s+\|\| snapshot\.DashboardOpen\);",
+            @"SetTerminalCompositionOnly\(\s*!string\.IsNullOrWhiteSpace\(snapshot\.ZoomPaneId\)\s+\|\| snapshot\.DashboardOpen\);",
             source);
         Assert.Matches(
             @"SetAcceptedPane\(layered\.Layer\.PaneId\);\s+FocusActiveTerminal\(\);",

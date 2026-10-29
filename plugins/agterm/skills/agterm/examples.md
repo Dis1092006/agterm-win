@@ -290,12 +290,10 @@ agtermctl session scratch on --command "lazygit"   # run a program instead of a 
 
 ## Drive the quick terminal
 
-The quick terminal is the window's throwaway overlay (not in the session tree). Show it, type into it,
-and read it back — the twins of `session type`/`session text`, but always the frontmost window's quick
-terminal (no `--target`/`--pane`).
+The quick terminal is one app-level detached panel, outside the session tree. Show it, type into it and read it back, with no `--target`/`--pane`. Control `quick show` pins it; its shell stays alive when hidden.
 
 ```bash
-agtermctl quick show                                 # drop the overlay over whatever is active
+agtermctl quick show                                 # show and pin the detached panel
 agtermctl quick type 'ls -la'$'\n'                   # inject keystrokes (\n runs it)
 echo "some payload" | agtermctl quick type --stdin   # pipe stdin in (e.g. a paste helper)
 agtermctl quick text --all                           # read its screen + scrollback back

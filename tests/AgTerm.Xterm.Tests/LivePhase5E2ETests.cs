@@ -232,6 +232,9 @@ public sealed class LivePhase5E2ETests
         LiveControlHost? secondAttachment = null;
         TestPage? firstPage = null;
         TestPage? secondPage = null;
+        TestPage? quickPage = null;
+        Task quickThemeApplication = Task.CompletedTask;
+        var quickThemeReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         Guid? firstWindowId = null;
         Guid? secondWindowId = null;
         PagePresentation? firstPresentation = null;
@@ -258,6 +261,7 @@ public sealed class LivePhase5E2ETests
         {
             firstPage = await CreatePageAsync();
             secondPage = await CreatePageAsync();
+            quickPage = await CreatePageAsync();
             Assert.NotSame(firstPage.Page, secondPage.Page);
             Assert.NotSame(firstPage.View, secondPage.View);
 
@@ -276,6 +280,17 @@ public sealed class LivePhase5E2ETests
                 HomeDirectory = stateDir,
                 PipeName = "agterm-phase5-live-" + Guid.NewGuid().ToString("N"),
                 WindowController = controller,
+            });
+            application.ConfigureQuickTerminal(CreateHostOptions(stateDir, quickPage.Page) with
+            {
+                OpenSurface = async (request, cancellationToken) =>
+                {
+                    var surface = await _webView.RunAsync(async _ =>
+                        await XtermPaneSurface.OpenAsync(quickPage.Page, request.Options, cancellationToken));
+                    await _webView.RunAsync(_ => quickPage.Page.ApplyLayoutAsync(
+                        new TerminalLayout.Single(1, surface.PaneToken!, "Quick")));
+                    return surface;
+                },
             });
 
             firstWindowId = Assert.Single(application.LaunchWindowIds);
@@ -306,6 +321,13 @@ public sealed class LivePhase5E2ETests
             secondPresentation = await AttachPagePresentationAsync(secondAttachment, secondPage, stateDir);
             secondAttachment.NotificationRequested += secondNotifications.Enqueue;
             secondAttachment.StatusNotificationRequested += secondStatusSounds.Enqueue;
+            secondAttachment.ThemeChanged += state =>
+            {
+                var settings = LiveThemeSettings.Apply(new SettingsStore(stateDir).Load(), state);
+                quickThemeApplication = _webView.RunAsync(_ => quickPage.Page.ApplyRendererSettingsAsync(
+                    LiveThemeSettings.Resolve(settings, ThemeCatalog.Default, false).RendererSettings));
+                quickThemeReady.TrySetResult();
+            };
 
             application.Start();
             Assert.True(application.IsListening);
@@ -637,8 +659,8 @@ public sealed class LivePhase5E2ETests
                 () => secondAttachment.Host.Actions.Quick.Surface,
                 $"quick terminal for window {secondWindowId.Value:D}");
             realizedSurfaces.Add(secondQuickSurface);
-            Assert.Same(secondPage.Page, secondQuickSurface.Pane.Page);
-            Assert.Null(ReadLocked(
+            Assert.Same(quickPage.Page, secondQuickSurface.Pane.Page);
+            Assert.Same(secondQuickSurface, ReadLocked(
                 firstAttachment,
                 () => firstAttachment.Host.Actions.Quick.Surface));
 
@@ -1218,6 +1240,8 @@ public sealed class LivePhase5E2ETests
             await Task.WhenAll(
                 firstPresentation.WhenThemeIdleAsync(),
                 secondPresentation.WhenThemeIdleAsync());
+            await quickThemeReady.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await quickThemeApplication;
             var dracula = Assert.IsType<TerminalTheme>(ThemeCatalog.Default.Resolve("Dracula"));
             foreach (var surface in new[]
                      {
@@ -1233,11 +1257,11 @@ public sealed class LivePhase5E2ETests
                      {
                          secondInitialSurface,
                          secondBackgroundSurface,
-                         secondQuickSurface,
                      })
             {
                 await AssertRendererThemeAsync(secondPage, surface.PaneToken!, dracula);
             }
+            await AssertRendererThemeAsync(quickPage, secondQuickSurface.PaneToken!, dracula);
 
             var futureSessionId = CreateBackgroundSession(
                 client,
@@ -1368,6 +1392,10 @@ public sealed class LivePhase5E2ETests
             secondPage = null;
             await DisposePageAsync(firstPage);
             firstPage = null;
+            await AssertPanesRemovedAsync(quickPage, realizedSurfaces.Where(surface =>
+                ReferenceEquals(surface.Pane.Page, quickPage.Page)));
+            await DisposePageAsync(quickPage);
+            quickPage = null;
 
             restartFirstPage = await CreatePageAsync();
             restartSecondPage = await CreatePageAsync();
@@ -1680,6 +1708,12 @@ public sealed class LivePhase5E2ETests
             application?.Dispose();
             foreach (var surface in realizedSurfaces)
                 await WaitForPaneExitSettlementAsync(surface);
+            if (quickPage is not null)
+            {
+                await AssertPanesRemovedAsync(quickPage, realizedSurfaces.Where(surface =>
+                    ReferenceEquals(surface.Pane.Page, quickPage.Page)));
+                await DisposePageAsync(quickPage);
+            }
             if (secondPage is not null)
             {
                 await AssertPanesRemovedAsync(secondPage, realizedSurfaces

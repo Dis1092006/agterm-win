@@ -7,15 +7,19 @@ namespace AgTerm.Core.Keymap;
 /// </summary>
 public sealed class Keymap
 {
-    public Keymap(IReadOnlyDictionary<BuiltinAction, Chord> builtinOverrides, IReadOnlyList<CustomCommand> commands)
+    public Keymap(IReadOnlyDictionary<BuiltinAction, Chord> builtinOverrides, IReadOnlyList<CustomCommand> commands,
+                  Chord? globalHotkey = null)
     {
         BuiltinOverrides = builtinOverrides;
         Commands = commands;
+        GlobalHotkey = globalHotkey;
     }
 
     public IReadOnlyDictionary<BuiltinAction, Chord> BuiltinOverrides { get; }
 
     public IReadOnlyList<CustomCommand> Commands { get; }
+
+    public Chord? GlobalHotkey { get; }
 
     public static Keymap Empty { get; } =
         new(new Dictionary<BuiltinAction, Chord>(), Array.Empty<CustomCommand>());

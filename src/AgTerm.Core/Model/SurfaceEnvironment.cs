@@ -39,13 +39,12 @@ public static class SurfaceEnvironment
         return env;
     }
 
-    /// <summary>The set for the quick terminal, which belongs to a window but to no session.</summary>
+    /// <summary>The app's quick terminal has no window or session identity.</summary>
     public static IReadOnlyDictionary<string, string> QuickTerminal(Guid windowId, string? socketPath)
     {
         var env = new Dictionary<string, string>
         {
             [Enabled] = "1",
-            [WindowId] = Format(windowId),
         };
         if (socketPath is not null) env[Socket] = socketPath;
         return env;

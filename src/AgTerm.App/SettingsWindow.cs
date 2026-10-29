@@ -25,6 +25,7 @@ internal sealed class SettingsWindow : Window
     private readonly AppWindow appWindow;
     private readonly Func<Task<IReadOnlyList<KeybindingGroup>>> shortcuts;
     private readonly Func<Task> reloadKeymap;
+    private readonly Func<string?> globalHotkeyError;
     private readonly TabView tabs = new() { IsAddTabButtonVisible = false, CanDragTabs = false,
         CanReorderTabs = false, TabWidthMode = TabViewWidthMode.SizeToContent };
     private readonly InfoBar error = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
@@ -38,11 +39,13 @@ internal sealed class SettingsWindow : Window
     private bool closed;
 
     public SettingsWindow(SettingsCoordinator coordinator,
-        Func<Task<IReadOnlyList<KeybindingGroup>>> shortcuts, Func<Task> reloadKeymap)
+        Func<Task<IReadOnlyList<KeybindingGroup>>> shortcuts, Func<Task> reloadKeymap,
+        Func<string?> globalHotkeyError)
     {
         this.coordinator = coordinator;
         this.shortcuts = shortcuts;
         this.reloadKeymap = reloadKeymap;
+        this.globalHotkeyError = globalHotkeyError;
         editor = new SettingsEditor(coordinator);
         soundCatalog = new SoundCatalog(coordinator.StateDirectory);
         notificationSounds = new WindowsNotificationSound(soundCatalog);
@@ -412,6 +415,13 @@ internal sealed class SettingsWindow : Window
     private void RenderShortcuts()
     {
         shortcutRows.Children.Clear();
+        if (globalHotkeyError() is { } message)
+        {
+            var diagnostic = new InfoBar { IsOpen = true, IsClosable = false,
+                Severity = InfoBarSeverity.Error, Title = "Global hotkey unavailable", Message = message };
+            Identify(diagnostic, "global-hotkey-error", "Global hotkey unavailable");
+            shortcutRows.Children.Add(diagnostic);
+        }
         foreach (var group in keybindings.Groups)
         {
             shortcutRows.Children.Add(new TextBlock { Text = group.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
