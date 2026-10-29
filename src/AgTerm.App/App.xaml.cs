@@ -15,6 +15,9 @@ public partial class App : Application, ILiveWindowController
     private DispatcherQueue? _dispatcherQueue;
     private SettingsWindow? _settingsWindow;
     private QuickTerminalWindow? _quickWindow;
+    private readonly TaskbarNotificationAttention _taskbarAttention =
+        new(WindowsTaskbarFlash.IsApplicationForeground, WindowsTaskbarFlash.Apply);
+    private IDisposable? _taskbarSettingsSubscription;
 
     internal void OpenSettings()
     {
@@ -30,6 +33,8 @@ public partial class App : Application, ILiveWindowController
             }, () => _quickWindow?.GlobalHotkeyError);
         _settingsWindow.Closed -= OnSettingsClosed;
         _settingsWindow.Closed += OnSettingsClosed;
+        _settingsWindow.Activated -= OnAttentionWindowActivated;
+        _settingsWindow.Activated += OnAttentionWindowActivated;
         _settingsWindow.ShowGeneral();
     }
 
@@ -57,6 +62,12 @@ public partial class App : Application, ILiveWindowController
             WindowController = this,
         });
         _applicationHost = applicationHost;
+        _taskbarSettingsSubscription = await applicationHost.Settings.SubscribeAsync((snapshot, _) =>
+            RunOnUiAsync(() =>
+            {
+                _taskbarAttention.ApplySettings(snapshot.Settings);
+                return Task.CompletedTask;
+            }, CancellationToken.None));
         _quickWindow = new QuickTerminalWindow(applicationHost, notice =>
         {
             var window = applicationHost.ActiveWindowId is { } id && _windows.TryGetValue(id, out var active)
@@ -68,6 +79,7 @@ public partial class App : Application, ILiveWindowController
                 throw new InvalidOperationException("No open window for the quick-terminal custom command.");
             return window.ExecuteQuickCustomCommandAsync(command, selection);
         });
+        _quickWindow.Activated += OnAttentionWindowActivated;
         await _quickWindow.InitializeAsync();
         foreach (var windowId in applicationHost.LaunchWindowIds)
         {
@@ -183,20 +195,51 @@ public partial class App : Application, ILiveWindowController
         var applicationHost = _applicationHost
             ?? throw new InvalidOperationException("Application host is not initialized.");
         var window = new MainWindow(applicationHost, windowId);
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
         _windows.Add(windowId, window);
-        window.Closed += (_, _) => OnWindowClosed(windowId);
+        window.Activated += OnAttentionWindowActivated;
+        window.Closed += (_, _) => OnWindowClosed(windowId, hwnd);
         return window;
     }
 
-    private void OnWindowClosed(Guid windowId)
+    private void OnWindowClosed(Guid windowId, nint hwnd)
     {
+        _taskbarAttention.WindowClosed(hwnd);
         _windows.Remove(windowId);
         if (_windows.Count == 0)
         {
+            _taskbarSettingsSubscription?.Dispose();
+            _taskbarAttention.Dispose();
             _settingsWindow?.Close();
             _quickWindow?.Dispose();
             _quickWindow = null;
         }
+    }
+
+    internal Task RequestTaskbarAttentionAsync(Guid windowId) =>
+        RunOnUiAsync(() =>
+        {
+            if (_applicationHost is { } host && _windows.TryGetValue(windowId, out var window))
+            {
+                // A settings change may have overtaken the queued notification delivery.
+                _taskbarAttention.ApplySettings(host.Settings.State.Snapshot.Settings);
+                _taskbarAttention.Request(WinRT.Interop.WindowNative.GetWindowHandle(window));
+            }
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+
+    private void OnAttentionWindowActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState != WindowActivationState.Deactivated)
+            _taskbarAttention.Activated(WinRT.Interop.WindowNative.GetWindowHandle((Window)sender));
+    }
+
+    internal void NoteTaskbarWindowRaised(nint hwnd)
+    {
+        if (WindowsTaskbarFlash.IsForegroundWindow(hwnd))
+            _taskbarAttention.Activated(hwnd);
+        else
+            _taskbarAttention.RelinquishForRaise(hwnd);
     }
 
     /// <summary>A second launch on the same state directory handed its activation here; AppInstance

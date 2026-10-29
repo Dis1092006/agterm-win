@@ -905,6 +905,10 @@ off, so no banner was posted`) instead of a bare `ok`. Treat the presence of `re
 appeared"; a delivered notification carries none. The badge itself reads back on `tree` as `unseen`;
 settings.json `notificationBadgeEnabled` only hides it in the sidebar.
 
+Settings > Notifications > Flash taskbar button offers Off (default) and Once, using the existing `dockBounce` field. `once` and legacy `untilFocused` run as Once; absent, `off`, and unknown values run as Off. Opening Settings or editing another field preserves the raw value. Choosing Off removes the override. Once requests one taskbar-only flash on the notification's owning terminal window, with no added sound or activation. The taskbar can stay highlighted after flashing. No notification flash starts while any agterm window is foreground, including Settings and Quick Terminal. The first target stays pending until real app-window activation, Off, target close, or shutdown; repeats do not restart it or flash additional windows. A logical `window select` alone is not acknowledgement. Existing flashing after a refused explicit window raise is separate and unchanged.
+
+The flash follows explicit `notify`, even with banners off, Do Not Disturb / Focus Assist enabled, or Windows notifications disabled for the app. Toast and sound suppression still apply independently. `session status` does not flash, and terminal OSC 9/777 notifications are not implemented in the port yet.
+
 Returning to a window applies the same badge policy as `window select`, even when no other agterm-win window was activated in between. The policy clears the badge of the session whose main or split pane has accepted focus, without a session switch. An overlay, scratch, or quick pane clears no session badge. Zoom and dashboard panes follow the same owner check even when their session is not selected.
 
 For agentic attention (waiting on input, or a finished result), prefer `session status` over `notify`.
@@ -1101,10 +1105,10 @@ config, so `result.count` is always 0. App-global (no `--window`).
 
 ### settings.json
 
-`settings.json` in the state directory (`~\.agterm-win` by default) holds the app settings; agterm-win has no Settings window, so edit the file
-and run `agtermctl config reload`. Fields this reference names: `fontFamily`, `fontSize`, `theme`,
+`settings.json` in the state directory (`~\.agterm-win` by default) holds the app settings. Use Settings for available controls, or edit the file and run `agtermctl config reload`.
+Fields this reference names: `fontFamily`, `fontSize`, `theme`,
 `darkTheme`, `followSystemAppearance`, `backgroundOpacity`, `backgroundBlur`, `notificationsEnabled`,
-`notificationBadgeEnabled`, `notificationSoundName`, `blockedStatusSoundName`, the
+`notificationBadgeEnabled`, `notificationSoundName`, `blockedStatusSoundName`, `dockBounce`, the
 `active`/`blocked`/`completed` `StatusColorHex` and `StatusShape` fields, `configDirectory`,
 `restoreRunningCommand`, `newSessionDirectory` and `closeGraceUndoEnabled`. An omitted field keeps its
 default.

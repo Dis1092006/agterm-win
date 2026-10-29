@@ -76,6 +76,9 @@ public sealed class SettingsEditor
         new("notificationSoundName", "Notifications", "Notification sound", SettingControl.Choice,
             Choices: SoundChoices, Hint: "None is silent. Windows default and Beep use the same system alert. Add your own WAV files to the sounds folder in the state directory."),
         new("attentionButtonEnabled", "Notifications", "Show attention indicator", SettingControl.Toggle, false),
+        new("dockBounce", "Notifications", "Flash taskbar button", SettingControl.Choice,
+            Choices: [new(null, "Off"), new("once", "Once")],
+            Hint: "Flashes once for a notification while agterm is in the background, including during Do Not Disturb. Does not play a sound."),
         new("activeStatusColorHex", "Agent Status", "Active color", SettingControl.Color, AppSettings.DefaultActiveStatusColorHex),
         new("activeStatusShape", "Agent Status", "Active shape", SettingControl.Choice, "circle", Choices: ShapeChoices),
         new("blockedStatusColorHex", "Agent Status", "Blocked color", SettingControl.Color, AppSettings.DefaultBlockedStatusColorHex),
@@ -100,9 +103,12 @@ public sealed class SettingsEditor
 
     public JsonNode? Value(string key) => Document(Draft)[key]?.DeepClone();
 
-    public string? ChoiceValue(string key) => key == "toolbarMode"
-        ? Draft.EffectiveToolbarMode() == ToolbarMode.Normal ? "normal" : "compact"
-        : Value(key)?.GetValue<string>();
+    public string? ChoiceValue(string key) => key switch
+    {
+        "toolbarMode" => Draft.EffectiveToolbarMode() == ToolbarMode.Normal ? "normal" : "compact",
+        "dockBounce" => Draft.TaskbarFlashEnabled() ? "once" : null,
+        _ => Value(key)?.GetValue<string>(),
+    };
 
     public async Task SetAsync(string key, object? value)
     {

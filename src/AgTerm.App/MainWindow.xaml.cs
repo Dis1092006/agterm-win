@@ -318,6 +318,8 @@ public sealed partial class MainWindow : Window
     {
         Activate();
         WindowForeground.Raise(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        ((App)Application.Current).NoteTaskbarWindowRaised(
+            WinRT.Interop.WindowNative.GetWindowHandle(this));
     }
 
     internal Task RequestManagedCloseAsync()
@@ -865,6 +867,8 @@ public sealed partial class MainWindow : Window
             ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed"));
         host.ThemeUpdateRequested += change =>
             ObserveTaskFault(ApplyLiveThemeWithFailureAsync(change), "Theme apply failed");
+        host.AttentionRequested += () => ObserveTaskFault(
+            ((App)Application.Current).RequestTaskbarAttentionAsync(_windowId), "Taskbar attention failed");
         host.NotificationRequested += notification => DispatcherQueue.TryEnqueue(() =>
             ShowNotification(notification));
         host.StatusNotificationRequested += soundName => DispatcherQueue.TryEnqueue(() =>

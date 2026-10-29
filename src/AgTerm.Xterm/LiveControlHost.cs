@@ -134,6 +134,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private abstract record LiveNotificationDelivery
     {
+        public sealed record Attention : LiveNotificationDelivery;
         public sealed record Banner(LiveBannerNotification Notification) : LiveNotificationDelivery;
         public sealed record Status(string SoundName) : LiveNotificationDelivery;
     }
@@ -640,6 +641,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public event Action<LiveBannerNotification>? NotificationRequested;
 
+    public event Action? AttentionRequested;
+
     public event Action<string>? StatusNotificationRequested;
 
     public void SetNotificationSettings(AppSettings settings)
@@ -845,9 +848,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             return false;
         }
 
-        var notification = LiveNotificationPolicy.ForNotify(
-            request,
-            Volatile.Read(ref _notificationSettings));
+        var settings = Volatile.Read(ref _notificationSettings);
+        if (settings.TaskbarFlashEnabled())
+            QueueNotificationDelivery(new LiveNotificationDelivery.Attention());
+        var notification = LiveNotificationPolicy.ForNotify(request, settings);
         if (notification is null)
             return false;
 
@@ -950,6 +954,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             {
                 switch (notification)
                 {
+                    case LiveNotificationDelivery.Attention:
+                        AttentionRequested?.Invoke();
+                        break;
                     case LiveNotificationDelivery.Banner banner:
                         NotificationRequested?.Invoke(banner.Notification);
                         break;
