@@ -89,7 +89,10 @@ public sealed class SidebarRowNestingSourceTests
 
         Assert.Contains("SidebarWorkspaceIcon.KindOf(_iconName, SymbolGlyphs.Has, _imageFailed)", model, StringComparison.Ordinal);
         Assert.Contains("DecodePixelWidth = 16", model, StringComparison.Ordinal);
-        Assert.Contains("RasterizePixelWidth = 16", model, StringComparison.Ordinal);
+        // an SVG renders at the Image's size, which follows the display scale
+        Assert.DoesNotContain("RasterizePixel", model, StringComparison.Ordinal);
+        // a hand-edited snapshot can hold a URL; the row reads local files only
+        Assert.Contains("|| !uri.IsFile", model, StringComparison.Ordinal);
         Assert.Contains(".ImageFailed +=", model, StringComparison.Ordinal);
         Assert.Contains(".OpenFailed +=", model, StringComparison.Ordinal);
         var raised = Between(model, "public void Update(", "private static SolidColorBrush BrushFrom");

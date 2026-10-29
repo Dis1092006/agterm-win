@@ -353,8 +353,11 @@ internal static class WorkspaceCommands
         };
 
         // the app runs in its own directory, so a relative image path resolves here, where the user typed it
+        // a blank or padded name goes as typed: the server trims it, so it clears or names the icon
         private static string? WireIcon(string? icon) =>
-            icon is not null && WorkspaceIconFile.IsFile(icon) ? Path.GetFullPath(icon) : icon;
+            icon?.Trim() is { Length: > 0 } trimmed && WorkspaceIconFile.IsFile(trimmed)
+                ? Path.GetFullPath(trimmed)
+                : icon;
     }
 
     private static System.CommandLine.Command BuildIcon(CommandBindings bindings)

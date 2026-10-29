@@ -84,16 +84,18 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _imageFailed = false;
         _image = null;
         if (!IsWorkspace || SidebarWorkspaceIcon.ImageFile(_iconName) is not { } path) return;
-        if (!Uri.TryCreate(path, UriKind.Absolute, out var uri))
+        // the wire takes absolute file paths only, but a hand-edited snapshot can hold any URL
+        if (!Uri.TryCreate(path, UriKind.Absolute, out var uri) || !uri.IsFile)
         {
             _imageFailed = true;
             return;
         }
 
-        // the decode size is set before the source, so the file is decoded once at row size
+        // a bitmap's decode size is set before its source, so the file is decoded once at row size;
+        // an SVG renders at the Image's size
         if (Path.GetExtension(path).Equals(".svg", StringComparison.OrdinalIgnoreCase))
         {
-            var svg = new SvgImageSource { RasterizePixelWidth = 16, RasterizePixelHeight = 16 };
+            var svg = new SvgImageSource();
             svg.OpenFailed += (sender, _) => ImageFailed(sender);
             svg.UriSource = uri;
             _image = svg;
