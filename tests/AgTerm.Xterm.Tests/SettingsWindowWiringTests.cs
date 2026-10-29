@@ -37,7 +37,10 @@ public sealed class SettingsWindowWiringTests
         Assert.Contains("SelectedIndex = 0", code);
         Assert.Contains("new SettingsEditor(coordinator)", code);
         Assert.DoesNotContain("new SettingsStore()", code);
-        Assert.Contains("WindowsNotificationSound.TryPlay", code);
+        Assert.Contains("notificationSounds.TryPlayAsync", code);
+        Assert.Contains("Task.Run(() => soundCatalog.Sounds)", code);
+        Assert.Contains(" (unavailable)", code);
+        Assert.Contains("NotificationSoundKind.Preview", code);
         Assert.Contains("InstalledFonts.MonospacedFamilies()", code);
     }
 

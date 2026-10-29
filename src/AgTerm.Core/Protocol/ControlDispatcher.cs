@@ -470,27 +470,34 @@ public sealed class ControlDispatcher
 
     private ControlResponse DispatchSessionStatus(ControlRequest request)
     {
+        var (update, rejection) = ParseSessionStatus(request);
+        return rejection ?? _actions.SetSessionStatus(request.Target, request.Args?.Window,
+            update ?? throw new InvalidOperationException("Status parsing returned neither an update nor an error."));
+    }
+
+    public static (ControlSessionStatusUpdate? Update, ControlResponse? Rejection) ParseSessionStatus(ControlRequest request)
+    {
         var status = AgentStatuses.FromWire(request.Args?.Status ?? "");
         if (status is null)
-            return Err("invalid status");
+            return (null, Err("invalid status"));
         if (request.Args?.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
-            return Err("invalid color (expected #rrggbb)");
+            return (null, Err("invalid color (expected #rrggbb)"));
         StatusShape? shape = null;
         if (request.Args?.Shape is { } rawShape)
         {
             var parsed = StatusShapes.FromWire(rawShape);
             if (parsed is null)
-                return Err($"invalid shape: {rawShape} ({StatusShapes.ValidNamesList})");
+                return (null, Err($"invalid shape: {rawShape} ({StatusShapes.ValidNamesList})"));
             shape = parsed;
         }
         if (!TryParsePane(request.Args?.Pane, out var pane, out var rejection))
-            return rejection;
+            return (null, rejection);
         var update = new ControlSessionStatusUpdate(status.Value, Blink: request.Args?.Blink,
             AutoReset: request.Args?.AutoReset,
             Sound: request.Args?.Sound, Color: request.Args?.Color,
             Shape: shape,
             Pane: pane, PaneId: request.Args?.PaneId);
-        return _actions.SetSessionStatus(request.Target, request.Args?.Window, update);
+        return (update, null);
     }
 
     /// <summary>

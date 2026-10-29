@@ -26,7 +26,7 @@ public sealed class SettingsEditor
         ["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"];
 
     private static readonly SettingChoice[] SoundChoices =
-        [new(null, "None"), new("default", "Windows default"), new("beep", "Beep")];
+        [new(null, "None"), new("default", "Windows default"), new("beep", "Beep (same as Windows default)")];
     private static readonly SettingChoice[] ShapeChoices =
         [new(null, "Default (Circle)"), new("circle", "Circle"), new("square", "Square"),
             new("triangle", "Triangle"), new("diamond", "Diamond"), new("capsule", "Capsule"), new("star", "Star")];
@@ -70,7 +70,7 @@ public sealed class SettingsEditor
         new("notificationsEnabled", "Notifications", "Show notification banners", SettingControl.Toggle, true),
         new("notificationBadgeEnabled", "Notifications", "Show notification badges", SettingControl.Toggle, true),
         new("notificationSoundName", "Notifications", "Notification sound", SettingControl.Choice,
-            Choices: SoundChoices, Hint: "None is silent. Windows default and Beep use the Windows system sound. Other stored names are preserved but cannot be played."),
+            Choices: SoundChoices, Hint: "None is silent. Windows default and Beep use the same system alert. Add your own WAV files to the sounds folder in the state directory."),
         new("attentionButtonEnabled", "Notifications", "Show attention indicator", SettingControl.Toggle, false),
         new("activeStatusColorHex", "Agent Status", "Active color", SettingControl.Color, AppSettings.DefaultActiveStatusColorHex),
         new("activeStatusShape", "Agent Status", "Active shape", SettingControl.Choice, "circle", Choices: ShapeChoices),
@@ -79,7 +79,7 @@ public sealed class SettingsEditor
         new("completedStatusColorHex", "Agent Status", "Completed color", SettingControl.Color, AppSettings.DefaultCompletedStatusColorHex),
         new("completedStatusShape", "Agent Status", "Completed shape", SettingControl.Choice, "circle", Choices: ShapeChoices),
         new("blockedStatusSoundName", "Agent Status", "Blocked sound", SettingControl.Choice, Choices: SoundChoices,
-            Hint: "None disables the configured blocked sound. An explicit sound on a status command still takes priority."),
+            Hint: "Plays when a session becomes blocked. None disables this default. An explicit status sound takes priority. Add WAV files to the sounds folder in the state directory."),
         new("configDirectory", "Key Mapping", "Keymap directory", SettingControl.Directory,
             Hint: "Default is the state directory. Changing it reloads keymap.conf in every window."),
     ];
@@ -199,6 +199,8 @@ public sealed class SettingsEditor
                 && double.IsFinite(number) && number >= field.Minimum && number <= field.Maximum
                 && (field.Default is not int || number == Math.Truncate(number)),
             SettingControl.Color => value is string color && AppSettings.IsHexColor(color),
+            SettingControl.Choice when field.Key is "notificationSoundName" or "blockedStatusSoundName" =>
+                value is string sound && !string.IsNullOrEmpty(sound),
             SettingControl.Choice => value is string choice && field.Choices!.Any(option => option.Value == choice),
             SettingControl.Font or SettingControl.Theme => value is string name && !string.IsNullOrWhiteSpace(name),
             SettingControl.Directory => value is string path && Path.IsPathFullyQualified(path) && Directory.Exists(path),

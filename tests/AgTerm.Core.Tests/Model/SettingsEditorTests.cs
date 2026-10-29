@@ -182,7 +182,7 @@ public sealed class SettingsEditorTests : IDisposable
     public async Task Sound_choices_label_silence_and_windows_sounds_without_changing_values(string key)
     {
         var choices = JsonSerializer.SerializeToNode(SettingsEditor.Fields.Single(field => field.Key == key).Choices)!.AsArray();
-        Assert.Equal("""[{"Value":null,"Label":"None"},{"Value":"default","Label":"Windows default"},{"Value":"beep","Label":"Beep"}]""",
+        Assert.Equal("""[{"Value":null,"Label":"None"},{"Value":"default","Label":"Windows default"},{"Value":"beep","Label":"Beep (same as Windows default)"}]""",
             choices.ToJsonString());
         var editor = new SettingsEditor(new SettingsCoordinator(Store));
         await editor.SetAsync(key, "default");

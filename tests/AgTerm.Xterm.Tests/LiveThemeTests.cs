@@ -575,9 +575,10 @@ public sealed class LiveNotificationTests
             new LiveStatusNotificationRequest(request.SessionId, AgentStatus.Active, null),
             new AppSettings { BlockedStatusSoundName = "blocked-default" }));
 
-        Assert.True(WindowsNotificationSound.IsSupported("default"));
-        Assert.True(WindowsNotificationSound.IsSupported("beep"));
-        Assert.False(WindowsNotificationSound.IsSupported("Glass"));
+        var catalog = new SoundCatalog(Path.GetTempPath(), Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        Assert.True(catalog.Resolve("default")!.IsSystemDefault);
+        Assert.True(catalog.Resolve("beep")!.IsSystemDefault);
+        Assert.Null(catalog.Resolve("Glass"));
     }
 
     [Fact]
@@ -609,7 +610,7 @@ public sealed class LiveNotificationTests
                 NotificationClock = () => now,
             });
             var sounds = new List<string>();
-            using var delivered = new CountdownEvent(3);
+            using var delivered = new CountdownEvent(2);
             host.StatusNotificationRequested += sound =>
             {
                 sounds.Add(sound);
@@ -637,7 +638,7 @@ public sealed class LiveNotificationTests
             SetSound("default");
 
             Assert.True(delivered.Wait(TimeSpan.FromSeconds(5)));
-            Assert.Equal(["default", "beep", "default"], sounds);
+            Assert.Equal(["default", "default"], sounds);
         }
         finally
         {
@@ -726,7 +727,15 @@ public sealed class LiveNotificationTests
         Assert.Contains("host.NotificationRequested +=", source, StringComparison.Ordinal);
         Assert.Contains("host.StatusNotificationRequested +=", source, StringComparison.Ordinal);
         Assert.Contains("WindowsAppNotificationPresenter", source, StringComparison.Ordinal);
-        Assert.Contains("WindowsNotificationSound.TryPlay", source, StringComparison.Ordinal);
+        Assert.Contains("_notificationSounds.TryPlayAsync", source, StringComparison.Ordinal);
+        var show = source[source.IndexOf("private void ShowNotification(", StringComparison.Ordinal)..];
+        show = show[..show.IndexOf("private ", 1, StringComparison.Ordinal)];
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(show, "PlayNotificationSound\\("));
+        var presenter = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "WindowsAppNotificationPresenter.cs"));
+        Assert.Contains(".MuteAudio()", presenter, StringComparison.Ordinal);
+        Assert.Contains("SetAudioEvent(AppNotificationSoundEvent.Default)", presenter, StringComparison.Ordinal);
+        Assert.Contains("NotificationAudioPolicy.PlayFromApp", show, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryPlay", presenter, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

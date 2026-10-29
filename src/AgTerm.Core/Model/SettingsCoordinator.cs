@@ -34,6 +34,8 @@ public sealed class SettingsCoordinator
     }
 
     public SettingsApplicationState State => Volatile.Read(ref state);
+    public string StateDirectory => Path.GetDirectoryName(store.FilePath)
+        ?? throw new InvalidOperationException("The settings path has no state directory.");
     internal SettingsSnapshot ReadStrict() => store.ReadStrict();
     public event Action<SettingsApplicationState>? Changed;
     public bool HasSubscribers { get { lock (subscribersGate) return subscribers.Count > 0; } }

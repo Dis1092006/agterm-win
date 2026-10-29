@@ -947,9 +947,8 @@ internal static class SessionCommands
         };
         var sound = new Option<string?>("--sound")
         {
-            Description = "Play a sound when set: 'default' (or 'beep') for the system alert sound, or a "
-                + "system sound name (Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, "
-                + "Sosumi, Submarine, Tink).",
+            Description = "Play a sound when set: 'default' (or 'beep') for the Windows system alert, or a "
+                + "Windows/user WAV sound name. See Settings for available names.",
         };
         var color = new Option<string?>("--color")
         {
