@@ -21,19 +21,22 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     private readonly SidebarMode _mode;
     private SidebarSurfaceStatus _surfaceStatus;
     private SidebarRowLook _look;
+    private string? _iconName;
 
     public SidebarRowViewModel(
         SidebarRow row,
         AppSettings settings,
         SidebarMode mode,
         SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
-        SidebarRowLook? look = null)
+        SidebarRowLook? look = null,
+        string? iconName = null)
     {
         _row = row;
         _settings = settings;
         _mode = mode;
         _surfaceStatus = surfaceStatus;
         _look = look ?? SidebarRowLook.Default;
+        _iconName = iconName;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -57,7 +60,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public Visibility WorkspaceVisibility => IsWorkspace ? Visibility.Visible : Visibility.Collapsed;
 
-    public string WorkspaceGlyph => SidebarWorkspaceIcon.Glyph(_row.IconName, SymbolGlyphs.Has) ?? "";
+    public string WorkspaceGlyph => SidebarWorkspaceIcon.Glyph(_iconName, SymbolGlyphs.Has) ?? "";
 
     public Visibility WorkspaceGlyphVisibility =>
         IsWorkspace && WorkspaceGlyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -223,16 +226,18 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         SidebarRow row,
         AppSettings settings,
         SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
-        SidebarRowLook? look = null)
+        SidebarRowLook? look = null,
+        string? iconName = null)
     {
         look ??= SidebarRowLook.Default;
         var settingsChanged = !ReferenceEquals(_settings, settings);
         var surfaceStatusChanged = _surfaceStatus != surfaceStatus;
-        if (_row == row && !settingsChanged && !surfaceStatusChanged && _look == look) return;
+        if (_row == row && !settingsChanged && !surfaceStatusChanged && _look == look && _iconName == iconName) return;
         _row = row;
         _settings = settings;
         _surfaceStatus = surfaceStatus;
         _look = look;
+        _iconName = iconName;
         Raise(nameof(Label), nameof(Chevron), nameof(LabelWeight),
               nameof(WorkspaceGlyph), nameof(WorkspaceGlyphVisibility), nameof(GridIconVisibility),
               nameof(FontSize), nameof(RowHeight),

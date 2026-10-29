@@ -28,6 +28,7 @@ public sealed partial class SidebarView : UserControl
     private readonly ObservableCollection<SidebarRowViewModel> _items = new();
     private SidebarController? _controller;
     private SidebarRowThemes? _rowThemes;
+    private readonly SidebarRowIcons _rowIcons = new();
     private Window? _ownerWindow;
     private AppSettings _settings = new();
     private Keymap _keymap = Keymap.Empty;
@@ -71,7 +72,7 @@ public sealed partial class SidebarView : UserControl
             var status = _snapshot is { } snapshot
                 ? SurfaceStatusOf(snapshot, row)
                 : SidebarSurfaceStatus.Ready;
-            _items[i].Update(row, _settings, status, LookOf(row));
+            _items[i].Update(row, _settings, status, LookOf(row), _rowIcons.IconNameFor(row));
         }
 
         RefreshRealizedRowAutomationNames();
@@ -108,19 +109,21 @@ public sealed partial class SidebarView : UserControl
     {
         _snapshot = snapshot;
         _rowThemes?.Observe(snapshot.Generation);
+        _rowIcons.Observe(snapshot.Generation);
         if (_shapeKey != snapshot.ShapeKey)
         {
             _shapeKey = snapshot.ShapeKey;
             CancelRename();
             _items.Clear();
             foreach (var row in snapshot.Rows)
-                _items.Add(new SidebarRowViewModel(row, _settings, snapshot.Mode, SurfaceStatusOf(snapshot, row), LookOf(row)));
+                _items.Add(new SidebarRowViewModel(row, _settings, snapshot.Mode, SurfaceStatusOf(snapshot, row), LookOf(row),
+                    _rowIcons.IconNameFor(row)));
         }
         else
         {
             for (var i = 0; i < snapshot.Rows.Count; i++)
                 _items[i].Update(snapshot.Rows[i], _settings, SurfaceStatusOf(snapshot, snapshot.Rows[i]),
-                    LookOf(snapshot.Rows[i]));
+                    LookOf(snapshot.Rows[i]), _rowIcons.IconNameFor(snapshot.Rows[i]));
         }
 
         RefreshRealizedRowAutomationNames();
@@ -223,6 +226,27 @@ public sealed partial class SidebarView : UserControl
         RecolorRows();
     }
 
+    /// <summary>The workspace icon palette's preview, shown on that workspace's rows in this window
+    /// only.</summary>
+    public void PreviewWorkspaceIcon(Guid workspaceId, string? iconName)
+    {
+        _rowIcons.Preview(workspaceId, iconName);
+        RecolorRows();
+    }
+
+    public void EndWorkspaceIconPreview()
+    {
+        _rowIcons.EndPreview();
+        RecolorRows();
+    }
+
+    public void WorkspaceIconSaved(Guid workspaceId, string? iconName)
+    {
+        // the save already changed the store, so a snapshot requested now shows it
+        _rowIcons.Saved(workspaceId, iconName, _controller?.RequestSnapshot() ?? 0);
+        RecolorRows();
+    }
+
     private SidebarRowLook LookOf(SidebarRow row) =>
         SidebarRowLook.From(_rowThemes?.ColorsFor(row, _settings.ShowSidebarThemeColors()), _settings.EffectiveSidebarThemeStyle());
 
@@ -231,7 +255,7 @@ public sealed partial class SidebarView : UserControl
         foreach (var item in _items)
         {
             var status = _snapshot is { } snapshot ? SurfaceStatusOf(snapshot, item.Row) : SidebarSurfaceStatus.Ready;
-            item.Update(item.Row, _settings, status, LookOf(item.Row));
+            item.Update(item.Row, _settings, status, LookOf(item.Row), _rowIcons.IconNameFor(item.Row));
         }
     }
 
