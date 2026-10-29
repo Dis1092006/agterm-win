@@ -25,7 +25,7 @@ public sealed class IconPaletteModelTests
 
         Assert.Equal([null, "Home", "MapPin", "MapLayers", "Zoom"], Names(model));
         Assert.Equal(new IconPaletteCell(null, "Default", null), model.Cells[0]);
-        Assert.Equal(new IconPaletteCell("MapPin", "MapPin", ""), model.Cells[2]);
+        Assert.Equal(new IconPaletteCell("MapPin", "MapPin", "\uE707"), model.Cells[2]);
     }
 
     [Fact]
@@ -143,12 +143,12 @@ public sealed class IconPaletteModelTests
     [Fact]
     public void Filtering_back_after_no_match_restores_the_icon_selected_before()
     {
-        var model = Model("MapPin");
+        var model = Model("MapLayers");
         model.Filter("zzzz");
 
         model.Filter("map");
 
-        Assert.Equal("MapPin", model.SelectedName);
+        Assert.Equal("MapLayers", model.SelectedName);
     }
 
     [Fact]
