@@ -822,6 +822,16 @@ agtermctl theme list --json | jq '.result | {sync, light, dark}'   # inspect the
 agtermctl theme set --dark none              # stop tracking; the light theme stays as the single theme
 ```
 
+## Give a workspace an icon
+
+The icon is a Segoe Fluent Icons name. Names match exactly, including case. No name clears the icon.
+
+```bash
+agtermctl icon list | grep Map                       # find a name
+agtermctl workspace icon MapPin --target active      # set it on the current workspace
+agtermctl workspace icon --target active             # clear it
+```
+
 ## Targeting another window's tree
 
 ```bash

@@ -183,6 +183,9 @@ All twelve are read-only projections of GUI state.
   workspace and fill it with `session new --no-select` without it ever opening (a fresh workspace is
   expanded by default). Read the state back from the tree workspace node's `collapsed` flag.
 - `workspace rename <name> [--target] [--window W]`. Wire: `workspace.rename`.
+- `workspace theme [name] [--target] [--window W]`: Windows-only. Set the workspace's own terminal theme; a missing or blank name clears it, and the workspace shows the global theme again. An unknown name returns `unknown theme: <name>`, the string `theme.set` uses. Answers `{"id":...}`, as `workspace.rename` does. The tree's workspace node reports `theme` with the stored name. Wire: `workspace.theme`.
+- `workspace icon [name] [--target] [--window W]`: Windows-only. Set the workspace's own sidebar icon, a Segoe Fluent Icons name such as `MapPin`. A missing or blank name clears it, and the row shows the default icon again. An unknown name returns `unknown icon: <name>`, with the name trimmed. Names match exactly, including case: `mappin` is unknown. Answers `{"id":...}`. The tree's workspace node reports `icon` with the stored name. On a machine whose fonts lack the glyph (Windows 10), an accepted name draws as the default icon. Wire: `workspace.icon`.
+- `icon list`: Windows-only. List the icon names `workspace icon` accepts: the 1533 Segoe Fluent Icons names in code-point order. Returns `result.icons`; human output prints one name per line. Wire: `icon.list`.
 - `workspace delete [--target] [--window W]` — keep-at-least-one; deleting the last workspace errors.
   Wire: `workspace.delete`.
 - `workspace select [--target] [--window W]`. Wire: `workspace.select`.
