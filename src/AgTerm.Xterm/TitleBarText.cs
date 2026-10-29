@@ -23,6 +23,12 @@ public static class TitleBarText
     public static string OsTitle(string? session, string? customWindowName) =>
         ProductIdentity.WindowTitle(Join(session, customWindowName));
 
+    public static double ToolbarHeight(AppSettings settings) =>
+        settings.EffectiveToolbarMode() == ToolbarMode.Normal ? 48 : 32;
+
+    public static string Subtitle(string? detail, AppSettings settings) =>
+        settings.EffectiveToolbarMode() == ToolbarMode.Normal ? detail ?? string.Empty : string.Empty;
+
     // an empty part (a split or zoom without a title) counts as absent
     private static string Join(string? session, string? window) =>
         (NullIfEmpty(session), NullIfEmpty(window)) switch

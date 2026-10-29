@@ -185,7 +185,11 @@ public sealed partial class MainWindow : Window
         _applicationHost.Settings.Changed += OnSettingsChanged;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppTitleBar.Loaded += (_, _) => ApplyShortcutHints();
+        AppTitleBar.Loaded += (_, _) =>
+        {
+            ApplyInterfaceElements(_settings);
+            ApplyShortcutHints();
+        };
         AppTitleBar.PaneToggleRequested += (_, _) =>
         {
             var router = _commandRouter;
@@ -1272,16 +1276,15 @@ public sealed partial class MainWindow : Window
     /// pane id — for a Layered layout, the base still owns the chrome and the layer owns focus.</summary>
     private void ApplyAcceptedBaseLayout(TerminalLayout baseLayout, string paneId)
     {
-        var (title, workspaceName) = baseLayout switch
+        var title = baseLayout switch
         {
-            TerminalLayout.Single single => (single.Title, single.WorkspaceName),
-            TerminalLayout.Zoomed zoomed => (zoomed.Title ?? string.Empty, zoomed.WorkspaceName),
-            TerminalLayout.Split split => (split.Title ?? string.Empty, split.WorkspaceName),
+            TerminalLayout.Single single => single.Title,
+            TerminalLayout.Zoomed zoomed => zoomed.Title ?? string.Empty,
+            TerminalLayout.Split split => split.Title ?? string.Empty,
             _ => throw new ArgumentOutOfRangeException(nameof(baseLayout), baseLayout, "Base layout must be single, split, or zoomed."),
         };
 
         ShowSessionTitle(title);
-        AppTitleBar.Subtitle = workspaceName ?? string.Empty;
 
         if (_acceptedPaneId != paneId)
         {
@@ -2683,6 +2686,7 @@ public sealed partial class MainWindow : Window
     private void ApplyTitleBarState(TitleBarState state)
     {
         _titleBarState = state;
+        RefreshTitles(_settings);
         RefreshTitleBarActions(_settings);
     }
 
@@ -2950,10 +2954,31 @@ public sealed partial class MainWindow : Window
         {
             Title = ProductIdentity.WindowTitle("Dashboard");
             AppTitleBar.Title = "Dashboard";
+            ApplyToolbarMode(settings);
             return;
         }
         Title = TitleBarText.OsTitle(_sessionTitle, _customWindowName);
         AppTitleBar.Title = TitleBarText.Visible(_sessionTitle ?? ProductIdentity.Name, _customWindowName, settings);
+        ApplyToolbarMode(settings);
+    }
+
+    private void ApplyToolbarMode(AppSettings settings)
+    {
+        var normal = settings.EffectiveToolbarMode() == ToolbarMode.Normal;
+        var height = TitleBarText.ToolbarHeight(settings);
+        AppTitleBar.Resources["TitleBarExpandedHeight"] = height;
+        AppTitleBar.Resources["TitleBarContentHorizontalAlignment"] = HorizontalAlignment.Left;
+        AppTitleBar.Height = height;
+        // The template's expanded height may already have been resolved before a live settings edit.
+        if (FindDescendant(AppTitleBar, "PART_LayoutRoot") is { } layoutRoot)
+            layoutRoot.Height = height;
+        ToolbarTitle.Text = AppTitleBar.Title;
+        ToolbarSubtitle.Text = TitleBarText.Subtitle(
+            _dashboardTitle ? null : _titleBarState.SubtitleDetail, settings);
+        ToolbarSubtitle.Visibility = string.IsNullOrEmpty(ToolbarSubtitle.Text) ? Visibility.Collapsed : Visibility.Visible;
+        ToolbarLabels.Visibility = normal ? Visibility.Visible : Visibility.Collapsed;
+        if (normal)
+            AppTitleBar.Title = string.Empty;
     }
 
     private async Task ApplyThemePresentationAsync(

@@ -16,6 +16,26 @@ public class AppSettingsTests : IDisposable
 
     private string FilePath => Path.Combine(_dir, "settings.json");
 
+    [Theory]
+    [InlineData(null, null, ToolbarMode.Compact)]
+    [InlineData(null, false, ToolbarMode.Normal)]
+    [InlineData(null, true, ToolbarMode.Compact)]
+    [InlineData("normal", true, ToolbarMode.Normal)]
+    [InlineData("compact", false, ToolbarMode.Compact)]
+    [InlineData("hidden", false, ToolbarMode.Compact)]
+    [InlineData("future", false, ToolbarMode.Normal)]
+    [InlineData("future", null, ToolbarMode.Compact)]
+    [InlineData("Normal", null, ToolbarMode.Compact)]
+    [InlineData("normal ", null, ToolbarMode.Compact)]
+    public void Toolbar_mode_resolves_windows_modes_and_legacy_fallback(
+        string? raw, bool? legacy, ToolbarMode expected)
+    {
+        var settings = new AppSettings { ToolbarMode = raw, CompactToolbar = legacy };
+        Assert.Equal(expected, settings.EffectiveToolbarMode());
+        Assert.Equal(raw, settings.ToolbarMode);
+        Assert.Equal(legacy, settings.CompactToolbar);
+    }
+
     [Fact]
     public void Load_with_no_file_seeds_the_default_theme()
     {

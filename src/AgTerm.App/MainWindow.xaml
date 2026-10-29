@@ -62,6 +62,24 @@
             <TitleBar.Resources>
                 <x:Double x:Key="TitleBarExpandedHeight">32</x:Double>
             </TitleBar.Resources>
+            <TitleBar.Content>
+                <StackPanel x:Name="ToolbarLabels"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            IsHitTestVisible="False"
+                            Spacing="1">
+                    <TextBlock x:Name="ToolbarTitle"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               AutomationProperties.AutomationId="toolbar-title" />
+                    <TextBlock x:Name="ToolbarSubtitle"
+                               FontSize="11"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               AutomationProperties.AutomationId="toolbar-subtitle" />
+                </StackPanel>
+            </TitleBar.Content>
             <!-- upstream titlebarTrailingActions: recent sessions + attention | scratch + split |
                  dashboard + quick terminal. MainWindow.RefreshTitleBarActions sets visibility, the
                  dividers and the glyph states; the shapes are Paths like the sidebar's icons -->

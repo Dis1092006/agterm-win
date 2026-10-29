@@ -15,7 +15,7 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        var deferred = new[] { "toolbarMode", "compactToolbar", "autoHideSidebarInactiveWindows", "dockBounce",
+        var deferred = new[] { "compactToolbar", "autoHideSidebarInactiveWindows", "dockBounce",
             "autoFollowAttention", "autoFollowStayOnActive" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
@@ -23,6 +23,77 @@ public sealed class SettingsEditorTests : IDisposable
             .OfType<string>().Except(deferred).Order();
         Assert.Equal(fields, SettingsEditor.Fields.Select(field => field.Key).Order());
         Assert.False(SettingsEditor.Fields.Single(field => field.Key == "inheritGlobalGhosttyConfig").Editable);
+    }
+
+    [Fact]
+    public void Toolbar_choices_offer_only_normal_and_compact()
+    {
+        var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "toolbarMode");
+        Assert.Equal("Appearance", field.Tab);
+        Assert.Equal(SettingControl.Choice, field.Control);
+        Assert.Equal("compact", field.Default);
+        Assert.Equal(["normal", "compact"], field.Choices!.Select(choice => choice.Value));
+        Assert.Equal(["Normal", "Compact"], field.Choices!.Select(choice => choice.Label));
+    }
+
+    [Theory]
+    [InlineData("normal", "normal")]
+    [InlineData("compact", null)]
+    [InlineData(null, null)]
+    public async Task Writing_toolbar_mode_clears_the_legacy_override(string? mode, string? stored)
+    {
+        File.WriteAllText(Store.FilePath, """{"toolbarMode":"hidden","compactToolbar":false,"future":42}""");
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        await editor.SetAsync("toolbarMode", mode);
+
+        Assert.Equal(stored, editor.Draft.ToolbarMode);
+        Assert.Null(editor.Draft.CompactToolbar);
+        var saved = JsonNode.Parse(File.ReadAllText(Store.FilePath))!.AsObject();
+        Assert.False(saved.ContainsKey("compactToolbar"));
+        Assert.Equal(42, saved["future"]!.GetValue<int>());
+        if (stored is null) Assert.False(saved.ContainsKey("toolbarMode"));
+    }
+
+    [Fact]
+    public async Task Hidden_is_preserved_when_opening_settings_or_editing_another_field()
+    {
+        var original = """{"toolbarMode":"hidden","compactToolbar":false}""";
+        File.WriteAllText(Store.FilePath, original);
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        Assert.Equal("hidden", editor.Draft.ToolbarMode);
+        Assert.False(editor.HasUnsavedChanges);
+        Assert.Equal(original, File.ReadAllText(Store.FilePath));
+        await editor.SetAsync("fontSize", 18d);
+        Assert.Equal("hidden", Store.Load().ToolbarMode);
+        Assert.False(Store.Load().CompactToolbar);
+    }
+
+    [Fact]
+    public async Task Hidden_is_not_a_writable_toolbar_choice()
+    {
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+        await Assert.ThrowsAsync<ArgumentException>(() => editor.SetAsync("toolbarMode", "hidden"));
+        Assert.False(File.Exists(Store.FilePath));
+    }
+
+    [Theory]
+    [InlineData("hidden", false, "compact")]
+    [InlineData("normal", true, "normal")]
+    [InlineData(null, false, "normal")]
+    [InlineData(null, null, "compact")]
+    [InlineData("future", false, "normal")]
+    public void Toolbar_picker_shows_the_effective_mode_without_editing(
+        string? raw, bool? legacy, string selected)
+    {
+        Store.Save(new AppSettings { ToolbarMode = raw, CompactToolbar = legacy });
+        var original = File.ReadAllText(Store.FilePath);
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        Assert.Equal(selected, editor.ChoiceValue("toolbarMode"));
+        Assert.False(editor.HasUnsavedChanges);
+        Assert.Equal(original, File.ReadAllText(Store.FilePath));
     }
 
     [Fact]
