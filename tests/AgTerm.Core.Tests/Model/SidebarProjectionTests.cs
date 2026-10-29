@@ -146,6 +146,18 @@ public class SidebarProjectionTests : IDisposable
     }
 
     [Fact]
+    public void A_workspace_row_carries_the_icon_name_and_session_rows_do_not()
+    {
+        var (w1, _, a, _, _) = Seed();
+        _store.SetWorkspaceIcon(w1.Id, "MapPin");
+
+        var rows = SidebarProjection.Project(_store);
+
+        Assert.Equal("MapPin", rows.Single(r => r.Id == w1.Id).IconName);
+        Assert.Null(rows.Single(r => r.Id == a.Id).IconName);
+    }
+
+    [Fact]
     public void Flagged_rows_carry_the_theme_of_their_own_workspace()
     {
         var (w1, w2, a, _, c) = Seed();

@@ -31,6 +31,9 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
     // both: a session row carries the workspace it lives in, and the theme it shows
     public Guid WorkspaceId { get; init; }
     public string? ThemeName { get; init; }
+
+    // workspace rows
+    public string? IconName { get; init; }
 }
 
 /// <summary>
@@ -65,6 +68,7 @@ public static class SidebarProjection
                 Unseen = workspace.UnseenCount,
                 WorkspaceId = workspace.Id,
                 ThemeName = workspace.ThemeName,
+                IconName = workspace.IconName,
             });
             if (!workspace.IsExpanded) continue;
             foreach (var session in workspace.Sessions)

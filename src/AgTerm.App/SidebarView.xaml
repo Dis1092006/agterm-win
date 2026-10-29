@@ -111,13 +111,28 @@
                                   Width="16" Height="15"
                                   Margin="0,0,6,0"
                                   VerticalAlignment="Center"
-                                  Visibility="{x:Bind WorkspaceVisibility, Mode=OneWay}">
+                                  Visibility="{x:Bind GridIconVisibility, Mode=OneWay}">
                                 <Path.Style>
                                     <Style TargetType="Path">
                                         <Setter Property="Stroke" Value="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </Style>
                                 </Path.Style>
                             </Path>
+                            <!-- a Segoe icon the workspace chose; the grid shows when it has none -->
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      Glyph="{x:Bind WorkspaceGlyph, Mode=OneWay}"
+                                      FontSize="14"
+                                      Width="16"
+                                      Margin="0,0,6,0"
+                                      VerticalAlignment="Center"
+                                      local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
+                                      Visibility="{x:Bind WorkspaceGlyphVisibility, Mode=OneWay}">
+                                <FontIcon.Style>
+                                    <Style TargetType="FontIcon">
+                                        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    </Style>
+                                </FontIcon.Style>
+                            </FontIcon>
                             <!-- the block of the label style -->
                             <Border Grid.Column="1"
                                     Background="{x:Bind LabelBlockBackground, Mode=OneWay}"
