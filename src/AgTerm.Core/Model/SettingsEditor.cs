@@ -51,6 +51,8 @@ public sealed class SettingsEditor
             Hint: "Not available: Windows uses xterm.js, not Ghostty. The stored value is preserved."),
         new("fontFamily", "Appearance", "Terminal font", SettingControl.Font),
         new("fontSize", "Appearance", "Default font size", SettingControl.Number, 14d, 8, 32),
+        new("toolbarMode", "Appearance", "Toolbar", SettingControl.Choice, "compact",
+            Choices: [new("normal", "Normal"), new("compact", "Compact")]),
         new("theme", "Appearance", "Theme / light theme", SettingControl.Theme),
         new("followSystemAppearance", "Appearance", "Follow Windows appearance", SettingControl.Toggle, false),
         new("darkTheme", "Appearance", "Dark theme", SettingControl.Theme,
@@ -96,6 +98,10 @@ public sealed class SettingsEditor
 
     public JsonNode? Value(string key) => Document(Draft)[key]?.DeepClone();
 
+    public string? ChoiceValue(string key) => key == "toolbarMode"
+        ? Draft.EffectiveToolbarMode() == ToolbarMode.Normal ? "normal" : "compact"
+        : Value(key)?.GetValue<string>();
+
     public async Task SetAsync(string key, object? value)
     {
         try
@@ -109,6 +115,7 @@ public sealed class SettingsEditor
             var document = Document(Draft);
             if (value is null || Equals(value, field.Default)) document.Remove(key);
             else document[key] = JsonSerializer.SerializeToNode(value, ControlJson.Options);
+            if (key == "toolbarMode") document.Remove("compactToolbar");
             Draft = ControlJson.Deserialize<AppSettings>(document.ToJsonString())!;
             await SaveAsync();
         }

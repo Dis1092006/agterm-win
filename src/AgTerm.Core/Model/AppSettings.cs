@@ -87,6 +87,15 @@ public sealed record AppSettings
 
     [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
 
+    /// <summary>Windows keeps its title bar for hidden mode. Unknown values retain the upstream
+    /// legacy fallback; an explicit hidden value always runs as compact.</summary>
+    public Model.ToolbarMode EffectiveToolbarMode() => ToolbarMode switch
+    {
+        "normal" => Model.ToolbarMode.Normal,
+        "compact" or "hidden" => Model.ToolbarMode.Compact,
+        _ => CompactToolbar == false ? Model.ToolbarMode.Normal : Model.ToolbarMode.Compact,
+    };
+
     /// <summary>Whether a shell pane closes when its shell exits with this code. A value is matched
     /// exactly, like upstream's enum decode of other settings; an unknown one reads as graceful.</summary>
     public bool ClosesPaneOnShellExit(int exitCode) => CloseOnShellExit switch

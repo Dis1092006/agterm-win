@@ -23,6 +23,46 @@ public sealed class TitleBarStateTests
     }
 
     [Fact]
+    public void Subtitle_tracks_the_focused_panes_detail_not_the_workspace_name()
+    {
+        var session = Add(@"C:\main");
+        session.CustomName = "Work";
+        session.OscTitle = "remote:~/main";
+        session.SplitSurface = new SubtitleSurface();
+        session.SplitCwd = @"C:\split";
+        session.SplitTitle = "remote:~/split";
+        session.SplitFocused = true;
+
+        var split = TitleBarState.Project(_store);
+        Assert.Equal("remote:~/split", split.SubtitleDetail);
+        session.SplitFocused = false;
+        Assert.Equal("remote:~/main", TitleBarState.Project(_store).SubtitleDetail);
+        Assert.Equal("remote:~/split", split.SubtitleDetail);
+        session.OscTitle = null;
+        Assert.Equal(@"C:\main", TitleBarState.Project(_store).SubtitleDetail);
+    }
+
+    [Theory]
+    [InlineData("normal", 48, @"C:\main")]
+    [InlineData("compact", 32, "")]
+    [InlineData("hidden", 32, "")]
+    [InlineData(null, 32, "")]
+    public void Toolbar_height_and_subtitle_follow_the_effective_mode(string? mode, double height, string subtitle)
+    {
+        var settings = new AppSettings { ToolbarMode = mode };
+        Assert.Equal(height, TitleBarText.ToolbarHeight(settings));
+        Assert.Equal(subtitle, TitleBarText.Subtitle(@"C:\main", settings));
+        Assert.Equal("", TitleBarText.Subtitle(null, settings));
+    }
+
+    private sealed class SubtitleSurface : ITerminalSurface
+    {
+        public string? PaneToken => "split";
+        public void Teardown() { }
+        public void PromoteToPrimaryPane() { }
+    }
+
+    [Fact]
     public void Projecting_recent_sessions_does_not_write_state_files()
     {
         Add(@"C:\first");

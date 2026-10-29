@@ -226,7 +226,7 @@ internal sealed class SettingsWindow : Window
                             new SettingChoice(sound.Name, sound.Name + (sound.IsUserSound ? " (user)" : "")))).ToArray(),
                     _ => field.Choices ?? [],
                 };
-                var selected = value?.GetValue<string>();
+                var selected = editor.ChoiceValue(field.Key);
                 var combo = new ComboBox { MaxWidth = 380, HorizontalAlignment = HorizontalAlignment.Left,
                     IsEditable = field.Control == SettingControl.Font,
                     IsTextSearchEnabled = true, PlaceholderText = "Default" };
@@ -254,6 +254,7 @@ internal sealed class SettingsWindow : Window
                 Identify(combo, id, field.Label);
                 combo.SelectionChanged += async (_, _) =>
                 {
+                    if (closed || !combo.IsLoaded) return;
                     if (combo.SelectedItem is SettingChoice choice)
                         await RunAsync(() => editor.SetAsync(field.Key, choice.Value), id);
                 };

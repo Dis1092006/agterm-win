@@ -36,6 +36,8 @@ public sealed record TitleBarState(
     IReadOnlyList<TitleBarRecentSession> RecentSessions,
     IReadOnlyList<TitleBarRecentSession> SwitcherSessions)
 {
+    public string SubtitleDetail { get; init; } = string.Empty;
+
     /// <summary>Upstream SessionSwitcher.maxCandidates: the recent list is capped like Ctrl-Tab's.</summary>
     public const int MaxRecentSessions = 10;
 
@@ -51,7 +53,10 @@ public sealed record TitleBarState(
             SplitOf(active),
             AttentionOf(store.AttentionSessions),
             RecentOf(store, active),
-            SwitcherOf(store));
+            SwitcherOf(store))
+        {
+            SubtitleDetail = active?.SubtitleDetail ?? string.Empty,
+        };
     }
 
     private static TitleBarSplit SplitOf(Session? session) => session switch
