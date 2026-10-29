@@ -209,7 +209,7 @@ unset or idle), `statusBlink`/`statusColor`/`statusShape` (the status glyph's `-
 `#rrggbb` tint and its `--shape` silhouette from `session status`, omitted when idle / not blinking / using
 the configured color or shape — the tint and the silhouette report the per-call override only), `background` (the background
 spec — image/text watermark or solid color — set via `session background`, omitted when none — the read side of set/clear),
-`unseen` (the unseen-notification badge count — raised by `notify`/OSC 9/777, cleared by `session
+`unseen` (the unseen-notification badge count — raised by `notify`, cleared by `session
 seen` — omitted when zero), `commandWait` (whether a `--command` session was created with `--wait` to
 hold open after the command exits — the read side of `session new --wait`, omitted for a plain or
 non-holding session), `overlaySizePercent` (an open overlay's floating-panel percent 1–100,
@@ -463,6 +463,8 @@ Visibility/mode act on the frontmost window; `expand`/`collapse` default to the 
 With Settings > Interface > Show sidebar only in the active window (`autoHideSidebarInactiveWindows`) enabled, every terminal-window activation shows that window's sidebar and hides the others. Manual visibility changes last until the next activation. Disabling the setting keeps the current visibility of each window.
 
 **notify** — `notify <body> [--title T]` — post a desktop notification attributed to a session. To signal that you need the user, prefer `session status` (`blocked`/`completed`), a persistent typed attention state rather than a one-shot banner; keep `notify` for a one-off nudge.
+
+Settings > Notifications > Flash taskbar button offers Off (default) and Once. Once flashes the notification's owning terminal window while the app is in the background, even with banners off, Do Not Disturb enabled, or Windows notifications disabled for the app. It adds no sound. Only one window has pending notification attention; repeats do not restart it. Real activation of any agterm window, switching the setting Off, closing the target, or shutdown clears it. Stored `dockBounce: "untilFocused"` runs as Once without being rewritten; unknown values run as Off and remain preserved. Terminal OSC 9/777 notifications are not implemented yet.
 
 **font** — `font inc|dec|reset [--pane left|right|scratch]` — change a session pane's font size (omitted/`left` = main pane, `right` = the split pane, `scratch` = the scratch terminal). The wire format has `fontSize`/`splitFontSize`/`scratchFontSize` per pane, but agterm-win always omits them from `tree`.
 

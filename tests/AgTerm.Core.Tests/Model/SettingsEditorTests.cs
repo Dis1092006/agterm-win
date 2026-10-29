@@ -15,7 +15,7 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        var deferred = new[] { "compactToolbar", "dockBounce",
+        var deferred = new[] { "compactToolbar",
             "autoFollowAttention", "autoFollowStayOnActive" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
@@ -23,6 +23,62 @@ public sealed class SettingsEditorTests : IDisposable
             .OfType<string>().Except(deferred).Order();
         Assert.Equal(fields, SettingsEditor.Fields.Select(field => field.Key).Order());
         Assert.False(SettingsEditor.Fields.Single(field => field.Key == "inheritGlobalGhosttyConfig").Editable);
+    }
+
+    [Fact]
+    public void Taskbar_flash_picker_offers_only_off_and_once_in_notifications()
+    {
+        var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "dockBounce");
+        Assert.Equal("Notifications", field.Tab);
+        Assert.Equal("Flash taskbar button", field.Label);
+        Assert.Equal(SettingControl.Choice, field.Control);
+        Assert.Null(field.Default);
+        Assert.Equal([null, "once"], field.Choices!.Select(choice => choice.Value));
+        Assert.Equal(["Off", "Once"], field.Choices!.Select(choice => choice.Label));
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("off", null)]
+    [InlineData("once", "once")]
+    [InlineData("untilFocused", "once")]
+    [InlineData("future", null)]
+    [InlineData("ONCE", null)]
+    public async Task Taskbar_flash_picker_reads_effective_value_without_rewriting(string? raw, string? selected)
+    {
+        Store.Save(new AppSettings { DockBounce = raw });
+        var original = File.ReadAllText(Store.FilePath);
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+        Assert.Equal(selected, editor.ChoiceValue("dockBounce"));
+        Assert.False(editor.HasUnsavedChanges);
+        Assert.Equal(original, File.ReadAllText(Store.FilePath));
+        await editor.SetAsync("fontSize", 18d);
+        Assert.Equal(raw, Store.ReadStrict().Settings.DockBounce);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("once")]
+    public async Task Writing_taskbar_flash_replaces_legacy_value_and_off_removes_override(string? selected)
+    {
+        File.WriteAllText(Store.FilePath, """{"dockBounce":"untilFocused","future":42}""");
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+        await editor.SetAsync("dockBounce", selected);
+        var saved = JsonNode.Parse(File.ReadAllText(Store.FilePath))!;
+        Assert.Equal(selected, Store.ReadStrict().Settings.DockBounce);
+        Assert.Equal(42, saved["future"]!.GetValue<int>());
+        if (selected is null) Assert.Null(saved["dockBounce"]);
+    }
+
+    [Theory]
+    [InlineData("untilFocused")]
+    [InlineData("off")]
+    [InlineData("future")]
+    public async Task Legacy_taskbar_values_are_not_writable_picker_options(string value)
+    {
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+        await Assert.ThrowsAsync<ArgumentException>(() => editor.SetAsync("dockBounce", value));
+        Assert.False(File.Exists(Store.FilePath));
     }
 
     [Fact]

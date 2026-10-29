@@ -87,6 +87,8 @@ public sealed record AppSettings
 
     [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
 
+    public bool TaskbarFlashEnabled() => DockBounce is "once" or "untilFocused";
+
     /// <summary>Windows keeps its title bar for hidden mode. Unknown values retain the upstream
     /// legacy fallback; an explicit hidden value always runs as compact.</summary>
     public Model.ToolbarMode EffectiveToolbarMode() => ToolbarMode switch

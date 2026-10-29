@@ -10,7 +10,7 @@
     <!-- The app version. Every PR raises it by hand. The plugin manifests under plugins/agterm and
          .claude-plugin/marketplace.json carry their own version, which goes up only when the skill changes
          (CLAUDE.md). It is not tied to upstream agterm's version numbers. -->
-    <Version>0.1.52</Version>
+    <Version>0.1.53</Version>
   </PropertyGroup>
 
 </Project>

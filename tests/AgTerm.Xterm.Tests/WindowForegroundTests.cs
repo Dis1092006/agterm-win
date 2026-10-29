@@ -29,7 +29,7 @@ public sealed class WindowForegroundTests
     {
         var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
 
-        Assert.Matches(@"internal void ActivateWindow\(\)\s*\{\s*Activate\(\);\s*WindowForeground\.Raise\(WinRT\.Interop\.WindowNative\.GetWindowHandle\(this\)\);\s*\}", source);
+        Assert.Matches(@"internal void ActivateWindow\(\)\s*\{\s*Activate\(\);\s*WindowForeground\.Raise\(WinRT\.Interop\.WindowNative\.GetWindowHandle\(this\)\);\s*\(\(App\)Application\.Current\)\.NoteTaskbarWindowRaised\(\s*WinRT\.Interop\.WindowNative\.GetWindowHandle\(this\)\);\s*\}", source);
     }
 
     private static string FindRepoRoot()
