@@ -70,6 +70,7 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("_rowIcons.IconNameFor(row)", view, StringComparison.Ordinal);
         Assert.Contains("SidebarWorkspaceIcon.Glyph(_iconName, SymbolGlyphs.Has)", model, StringComparison.Ordinal);
         Assert.DoesNotContain("_row.IconName", model, StringComparison.Ordinal);
+        Assert.Contains("_iconName == iconName", MethodBody(model, "public void Update("), StringComparison.Ordinal);
     }
 
     [Fact]
