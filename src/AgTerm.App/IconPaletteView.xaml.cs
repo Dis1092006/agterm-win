@@ -9,14 +9,18 @@ using Windows.System;
 namespace AgTerm.App;
 
 /// <summary>A grid cell as the template shows it. The Default cell has no glyph of its own, so it
-/// shows a cross.</summary>
+/// draws the grid icon of a workspace row.</summary>
 public sealed class IconPaletteCellItem(IconPaletteCell cell)
 {
-    private const string DefaultGlyph = "\uE711";
-
     public IconPaletteCell Cell { get; } = cell;
 
-    public string Glyph => Cell.Glyph ?? DefaultGlyph;
+    public string Glyph => Cell.Glyph ?? "";
+
+    public Visibility GlyphVisibility =>
+        Cell.Glyph is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility DefaultIconVisibility =>
+        Cell.Glyph is null ? Visibility.Visible : Visibility.Collapsed;
 
     public string Label => Cell.Label;
 }
@@ -128,8 +132,8 @@ public sealed partial class IconPaletteView : UserControl
         ShowModel(notify: true);
     }
 
-    // the columns the panel really wraps at: the scroll bar floats over the content, so the grid's own
-    // width minus a guess disagreed with it in narrow windows
+    // the scroll bar floats over the content, so the grid's own width is not the wrap width: the
+    // columns come from the panel
     private int Columns() =>
         IconGrid.ItemsPanelRoot is ItemsWrapGrid panel
             ? Math.Max(1, (int)(panel.ActualWidth / CellSize))
@@ -143,8 +147,7 @@ public sealed partial class IconPaletteView : UserControl
         _syncing = true;
         try
         {
-            // a selection move keeps the cells; rebuilding 1500 of them on every key press made
-            // holding an arrow key lag
+            // a move keeps the cells; rebuilding 1500 items per key press is slow
             if (!ReferenceEquals(_shownCells, _model.Cells))
             {
                 _items = _model.Cells.Select(cell => new IconPaletteCellItem(cell)).ToList();

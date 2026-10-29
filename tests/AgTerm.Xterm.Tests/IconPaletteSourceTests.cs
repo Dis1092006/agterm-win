@@ -132,7 +132,43 @@ public sealed class IconPaletteSourceTests
         Assert.Contains("IconGrid.ItemsPanelRoot is ItemsWrapGrid panel", view, StringComparison.Ordinal);
         Assert.DoesNotContain("ScrollBarAllowance", view, StringComparison.Ordinal);
         Assert.Contains("DispatcherQueue.TryEnqueue(ScrollSelectedIntoView)", MethodBody(view, "public void Open("), StringComparison.Ordinal);
-        Assert.Contains("\"\\uE711\"", view, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Default_cell_draws_the_workspace_grid_icon_and_other_cells_draw_their_glyph()
+    {
+        var xaml = Source("IconPaletteView.xaml");
+        var view = Source("IconPaletteView.xaml.cs");
+
+        Assert.Contains("Data=\"M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{x:Bind DefaultIconVisibility}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{x:Bind GlyphVisibility}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("<FontIcon", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("DefaultGlyph", view, StringComparison.Ordinal);
+        Assert.Contains("Cell.Glyph is null ? Visibility.Visible : Visibility.Collapsed", view, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Filter_box_hands_every_navigation_key_to_the_grid_before_the_text_box_sees_it()
+    {
+        var xaml = Source("IconPaletteView.xaml");
+
+        Assert.Contains("PreviewKeyDown=\"OnQueryBoxKeyDown\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain(" KeyDown=\"OnQueryBoxKeyDown\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Selected_cell_has_a_two_pixel_accent_border_over_a_light_accent_fill()
+    {
+        var xaml = Source("IconPaletteView.xaml");
+
+        Assert.Contains("<ListViewItemPresenter", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedBorderThickness=\"2\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedBorderBrush=\"{ThemeResource AccentFillColorDefaultBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedPointerOverBorderBrush=\"{ThemeResource AccentFillColorDefaultBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedPressedBorderBrush=\"{ThemeResource AccentFillColorDefaultBrush}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("SelectedBackground=\"{ThemeResource PaletteSelectedCellFill}\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Color=\"{ThemeResource SystemAccentColor}\"", xaml, StringComparison.Ordinal);
     }
 
     // from the signature to the first line that closes a member at class indentation

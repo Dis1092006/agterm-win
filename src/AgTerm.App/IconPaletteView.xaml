@@ -6,6 +6,11 @@
     Visibility="Collapsed"
     SizeChanged="OnPaletteSizeChanged"
     AutomationProperties.Name="Workspace icon palette">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="PaletteSelectedCellFill"
+                         Color="{ThemeResource SystemAccentColor}"
+                         Opacity="0.25" />
+    </UserControl.Resources>
     <Grid>
         <Grid x:Name="DismissSurface"
               Background="#66000000"
@@ -49,7 +54,7 @@
                              BorderThickness="0"
                              PlaceholderText="Filter icons"
                              TextChanged="OnQueryBoxTextChanged"
-                             KeyDown="OnQueryBoxKeyDown"
+                             PreviewKeyDown="OnQueryBoxKeyDown"
                              AutomationProperties.Name="Filter icons" />
                 </Grid>
 
@@ -78,16 +83,45 @@
                             <Setter Property="MinHeight" Value="0" />
                             <Setter Property="HorizontalContentAlignment" Value="Center" />
                             <Setter Property="VerticalContentAlignment" Value="Center" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="GridViewItem">
+                                        <ListViewItemPresenter
+                                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                            Padding="{TemplateBinding Padding}"
+                                            CornerRadius="4"
+                                            SelectionIndicatorVisualEnabled="False"
+                                            SelectedBorderThickness="2"
+                                            SelectedBorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                            SelectedPointerOverBorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                            SelectedPressedBorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                            SelectedBackground="{ThemeResource PaletteSelectedCellFill}"
+                                            SelectedPointerOverBackground="{ThemeResource PaletteSelectedCellFill}"
+                                            SelectedPressedBackground="{ThemeResource PaletteSelectedCellFill}"
+                                            PointerOverBackground="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
                         </Style>
                     </GridView.ItemContainerStyle>
                     <GridView.ItemTemplate>
                         <DataTemplate x:DataType="local:IconPaletteCellItem">
-                            <TextBlock Text="{x:Bind Glyph}"
-                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                       FontSize="16"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       AutomationProperties.Name="{x:Bind Label}" />
+                            <Grid AutomationProperties.Name="{x:Bind Label}">
+                                <FontIcon Glyph="{x:Bind Glyph}"
+                                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          FontSize="16"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Visibility="{x:Bind GlyphVisibility}" />
+                                <Path Data="M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z"
+                                      Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                                      StrokeThickness="1"
+                                      Width="16" Height="15"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Visibility="{x:Bind DefaultIconVisibility}" />
+                            </Grid>
                         </DataTemplate>
                     </GridView.ItemTemplate>
                 </GridView>
