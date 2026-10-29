@@ -68,6 +68,39 @@ public sealed class SidebarRowNestingSourceTests
     }
 
     [Fact]
+    public void A_workspace_image_file_draws_in_the_slot_of_the_grid_at_16_px()
+    {
+        var xaml = Source("SidebarView.xaml");
+        var label = Between(xaml, "<Grid Grid.Column=\"1\" HorizontalAlignment=\"Left\" VerticalAlignment=\"Center\">",
+            "Background=\"{x:Bind LabelBlockBackground, Mode=OneWay}\"");
+        var image = Between(label, "<Image", "/>");
+
+        Assert.Contains("Source=\"{x:Bind WorkspaceImage, Mode=OneWay}\"", image, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{x:Bind WorkspaceImageVisibility, Mode=OneWay}\"", image, StringComparison.Ordinal);
+        Assert.Contains("Width=\"16\"", image, StringComparison.Ordinal);
+        Assert.Contains("Height=\"16\"", image, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"0,0,6,0\"", image, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_view_model_loads_the_image_at_16_px_and_draws_the_grid_when_it_fails()
+    {
+        var model = Source("SidebarRowViewModel.cs");
+
+        Assert.Contains("SidebarWorkspaceIcon.KindOf(_iconName, SymbolGlyphs.Has, _imageFailed)", model, StringComparison.Ordinal);
+        Assert.Contains("DecodePixelWidth = 16", model, StringComparison.Ordinal);
+        // an SVG renders at the Image's size, which follows the display scale
+        Assert.DoesNotContain("RasterizePixel", model, StringComparison.Ordinal);
+        // a hand-edited snapshot can hold a URL; the row reads local files only
+        Assert.Contains("|| !uri.IsFile", model, StringComparison.Ordinal);
+        Assert.Contains(".ImageFailed +=", model, StringComparison.Ordinal);
+        Assert.Contains(".OpenFailed +=", model, StringComparison.Ordinal);
+        var raised = Between(model, "public void Update(", "private static SolidColorBrush BrushFrom");
+        Assert.Contains("nameof(WorkspaceImage)", raised, StringComparison.Ordinal);
+        Assert.Contains("nameof(WorkspaceImageVisibility)", raised, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_session_icon_fill_follows_the_sidebar_mode()
     {
         Assert.Contains("SidebarSessionIcon.IsFilled(_row.Flagged, _mode)",

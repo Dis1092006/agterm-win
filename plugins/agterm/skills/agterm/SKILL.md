@@ -239,7 +239,7 @@ rebaselined. There is no terminal-output event stream.
 **workspace** — `new [name] [--collapsed]` (`--collapsed` creates it closed in the sidebar so you can fill
 it with `session new --no-select` without it opening) · `rename <name>` · `delete` · `select` ·
 `move --to up|down|top|bottom` ·
-`theme [NAME]` (the workspace's own terminal theme; no name clears it) · `icon [NAME]` (the workspace's own sidebar icon, a Segoe Fluent Icons name; no name clears it; `agtermctl icon list` prints the names) ·
+`theme [NAME]` (the workspace's own terminal theme; no name clears it) · `icon [NAME]` (the workspace's own sidebar icon, a Segoe Fluent Icons name or the path of an .ico, .png or .svg file such as a project's favicon; no name clears it; `agtermctl icon list` prints the names) ·
 `focus [on|off|toggle]` (collapse the sidebar tree to a single workspace; read back which workspace is
 focused from the tree workspace node's `focused` flag) ·
 `collapse [--target W] [--window W]` · `expand [--target W] [--window W]` (collapse/expand ONE workspace
