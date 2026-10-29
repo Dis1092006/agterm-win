@@ -2158,6 +2158,15 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
+    private async Task CloseWorkspaceIconPaletteAsync(Guid workspaceId)
+    {
+        // the close was queued for this workspace; by now a palette for another one may be open
+        if (_workspaceIconTarget != workspaceId || !IconPaletteOverlay.IsOpen)
+            return;
+        IconPaletteOverlay.Close();
+        await FinishPaletteCloseAsync();
+    }
+
     private async Task CloseWorkspaceThemePaletteAsync(Guid workspaceId)
     {
         // the close was queued for this workspace; by now a palette for another one may be open
@@ -3468,6 +3477,14 @@ public sealed partial class MainWindow : Window
             ObserveTaskFault(
                 _paletteTransitions.RunAsync(() => CloseWorkspaceThemePaletteAsync(workspaceId)),
                 "Workspace theme palette close failed");
+        }
+        if (IconPaletteOverlay.IsOpen &&
+            _workspaceIconTarget is { } iconWorkspaceId &&
+            !_paneThemes.HasWorkspace(iconWorkspaceId))
+        {
+            ObserveTaskFault(
+                _paletteTransitions.RunAsync(() => CloseWorkspaceIconPaletteAsync(iconWorkspaceId)),
+                "Workspace icon palette close failed");
         }
     }
 

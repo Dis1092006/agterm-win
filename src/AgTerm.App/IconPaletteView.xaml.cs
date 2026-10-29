@@ -12,7 +12,7 @@ namespace AgTerm.App;
 /// shows a cross.</summary>
 public sealed class IconPaletteCellItem(IconPaletteCell cell)
 {
-    private const string DefaultGlyph = "";
+    private const string DefaultGlyph = "\uE711";
 
     public IconPaletteCell Cell { get; } = cell;
 
@@ -24,7 +24,6 @@ public sealed class IconPaletteCellItem(IconPaletteCell cell)
 public sealed partial class IconPaletteView : UserControl
 {
     private const double CellSize = 36;
-    private const double ScrollBarAllowance = 24;
     private const double LabelRowHeight = 32;
 
     private readonly ActivationClickFilter _activationClicks = new();
@@ -70,6 +69,13 @@ public sealed partial class IconPaletteView : UserControl
         ApplyAvailableHeight(ActualHeight);
         ShowModel(notify: false);
         FocusFilter();
+        DispatcherQueue.TryEnqueue(ScrollSelectedIntoView);
+    }
+
+    private void ScrollSelectedIntoView()
+    {
+        if (_open && _model.Selected is { } index && index < _items.Count)
+            IconGrid.ScrollIntoView(_items[index]);
     }
 
     public void Close()
@@ -122,8 +128,12 @@ public sealed partial class IconPaletteView : UserControl
         ShowModel(notify: true);
     }
 
+    // the columns the panel really wraps at: the scroll bar floats over the content, so the grid's own
+    // width minus a guess disagreed with it in narrow windows
     private int Columns() =>
-        Math.Max(1, (int)((IconGrid.ActualWidth - IconGrid.Padding.Left - IconGrid.Padding.Right - ScrollBarAllowance) / CellSize));
+        IconGrid.ItemsPanelRoot is ItemsWrapGrid panel
+            ? Math.Max(1, (int)(panel.ActualWidth / CellSize))
+            : 1;
 
     private int RowsPerPage() =>
         Math.Max(1, (int)((IconGrid.ActualHeight - IconGrid.Padding.Top - IconGrid.Padding.Bottom) / CellSize));
@@ -174,8 +184,7 @@ public sealed partial class IconPaletteView : UserControl
 
     private void OnGridSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (_open && _model.Selected is { } index && index < _items.Count)
-            IconGrid.ScrollIntoView(_items[index]);
+        ScrollSelectedIntoView();
     }
 
     private void OnQueryBoxTextChanged(object sender, TextChangedEventArgs e)

@@ -885,6 +885,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
         Assert.Null(Assert.Single(application.GetOpenWindow(firstId).Store.Workspaces).IconName);
         Assert.False(refused.Ok);
         Assert.Equal("unknown icon: mappin", refused.Error);
+        Assert.Equal("MapPin", Assert.Single(application.GetOpenWindow(secondId).Store.Workspaces).IconName);
     }
 
     [Fact]

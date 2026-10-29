@@ -91,6 +91,50 @@ public sealed class IconPaletteSourceTests
         Assert.Contains("IconPaletteOverlay.FocusFilter()", MethodBody(window, "private void OnWindowActivated("), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Palette_closes_with_its_workspace()
+    {
+        var window = Source("MainWindow.xaml.cs");
+
+        var present = MethodBody(window, "private void PresentPaneThemes(");
+        Assert.Contains("IconPaletteOverlay.IsOpen", present, StringComparison.Ordinal);
+        Assert.Contains("!_paneThemes.HasWorkspace(iconWorkspaceId)", present, StringComparison.Ordinal);
+        Assert.Contains("_paletteTransitions.RunAsync(() => CloseWorkspaceIconPaletteAsync(iconWorkspaceId))", present, StringComparison.Ordinal);
+        var close = MethodBody(window, "private async Task CloseWorkspaceIconPaletteAsync(");
+        Assert.Contains("_workspaceIconTarget != workspaceId", close, StringComparison.Ordinal);
+        Assert.Contains("FinishPaletteCloseAsync()", close, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Opening_replaces_any_open_palette()
+    {
+        var window = Source("MainWindow.xaml.cs");
+
+        Assert.Contains("IconPaletteOverlay.Close();",
+            MethodBody(window, "private async Task PresentPaletteAsync("), StringComparison.Ordinal);
+        Assert.Contains("ClosePalette();",
+            MethodBody(window, "private async Task OpenWorkspaceIconPaletteAsync("), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Grid_cells_never_keep_the_keyboard_focus_from_the_filter_box()
+    {
+        var xaml = Source("IconPaletteView.xaml");
+
+        Assert.Contains("<Setter Property=\"AllowFocusOnInteraction\" Value=\"False\" />", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Columns_come_from_the_realized_wrap_grid_and_the_scroll_to_current_waits_for_layout()
+    {
+        var view = Source("IconPaletteView.xaml.cs");
+
+        Assert.Contains("IconGrid.ItemsPanelRoot is ItemsWrapGrid panel", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("ScrollBarAllowance", view, StringComparison.Ordinal);
+        Assert.Contains("DispatcherQueue.TryEnqueue(ScrollSelectedIntoView)", MethodBody(view, "public void Open("), StringComparison.Ordinal);
+        Assert.Contains("\"\\uE711\"", view, StringComparison.Ordinal);
+    }
+
     // from the signature to the first line that closes a member at class indentation
     private static string MethodBody(string source, string signature)
     {
