@@ -15,7 +15,7 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        var deferred = new[] { "compactToolbar", "autoHideSidebarInactiveWindows", "dockBounce",
+        var deferred = new[] { "compactToolbar", "dockBounce",
             "autoFollowAttention", "autoFollowStayOnActive" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
@@ -23,6 +23,25 @@ public sealed class SettingsEditorTests : IDisposable
             .OfType<string>().Except(deferred).Order();
         Assert.Equal(fields, SettingsEditor.Fields.Select(field => field.Key).Order());
         Assert.False(SettingsEditor.Fields.Single(field => field.Key == "inheritGlobalGhosttyConfig").Editable);
+    }
+
+    [Fact]
+    public async Task Active_window_sidebar_toggle_defaults_off_and_preserves_other_settings()
+    {
+        var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "autoHideSidebarInactiveWindows");
+        Assert.Equal("Interface", field.Tab);
+        Assert.Equal("Show sidebar only in the active window", field.Label);
+        Assert.Equal(SettingControl.Toggle, field.Control);
+        Assert.Equal(false, field.Default);
+        File.WriteAllText(Store.FilePath, """{"toolbarMode":"hidden","future":42}""");
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+        await editor.SetAsync(field.Key, true);
+        Assert.True(Store.ReadStrict().Settings.AutoHideSidebarInactiveWindows);
+        await editor.SetAsync(field.Key, false);
+        var saved = JsonNode.Parse(File.ReadAllText(Store.FilePath))!;
+        Assert.Null(saved[field.Key]);
+        Assert.Equal("hidden", saved["toolbarMode"]!.GetValue<string>());
+        Assert.Equal(42, saved["future"]!.GetValue<int>());
     }
 
     [Fact]

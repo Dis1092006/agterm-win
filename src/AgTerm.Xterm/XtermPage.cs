@@ -88,6 +88,12 @@ public sealed class XtermPage
     public Task ShowPaneAsync(string paneId) =>
         _host.ExecuteScriptAsync($"agterm.showPane({PaneLiteral(paneId)})");
 
+    public Task ScrollInactiveAtAsync(double xFraction, double yFraction, int wheelDelta)
+    {
+        var arguments = JsonSerializer.Serialize(new[] { xFraction, yFraction, wheelDelta });
+        return _host.ExecuteScriptAsync($"agterm.scrollInactiveAt(...{arguments})");
+    }
+
     /// <summary>Apply a discriminated layout on the page and return whether the page accepted it.
     /// Unknown layout variants throw so new variants cannot serialize silently.</summary>
     public async Task<bool> ApplyLayoutAsync(TerminalLayout layout)

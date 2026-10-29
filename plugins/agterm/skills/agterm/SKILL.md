@@ -460,6 +460,8 @@ back from the tree's top-level `sidebarMode`) · `expand [--window W]` (expand e
 Visibility/mode act on the frontmost window; `expand`/`collapse` default to the frontmost but take a
 `--window` selector to target any open window.
 
+With Settings > Interface > Show sidebar only in the active window (`autoHideSidebarInactiveWindows`) enabled, every terminal-window activation shows that window's sidebar and hides the others. Manual visibility changes last until the next activation. Disabling the setting keeps the current visibility of each window.
+
 **notify** — `notify <body> [--title T]` — post a desktop notification attributed to a session. To signal that you need the user, prefer `session status` (`blocked`/`completed`), a persistent typed attention state rather than a one-shot banner; keep `notify` for a one-off nudge.
 
 **font** — `font inc|dec|reset [--pane left|right|scratch]` — change a session pane's font size (omitted/`left` = main pane, `right` = the split pane, `scratch` = the scratch terminal). The wire format has `fontSize`/`splitFontSize`/`scratchFontSize` per pane, but agterm-win always omits them from `tree`.

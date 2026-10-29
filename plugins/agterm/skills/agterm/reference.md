@@ -861,6 +861,8 @@ like `quick type`. Errors with `quick terminal not open` (never shown), `failed 
 Wire: `sidebar`. `toggle` is the default; an unknown mode is an error. The GUI half is the title-bar
 button, the Ctrl+Shift+P palette "Toggle Sidebar", and the Alt+S keymap action (`toggle_sidebar`).
 
+Settings > Interface > Show sidebar only in the active window (`autoHideSidebarInactiveWindows`, default off) overrides manual visibility on each terminal-window activation: the activated window shows its sidebar and every other open window hides it. Enabling the setting applies this immediately, including with one window. Switching to another app does not change sidebars. Disabling keeps the current per-window visibility; it does not restore earlier manual choices.
+
 `agtermctl sidebar mode [tree|flagged|toggle]` — flip the frontmost window's sidebar VIEW between the
 workspace tree and the flat flagged working-set list (the durable per-session `flag`; each flagged row
 is labeled `session : workspace`, even across workspaces). Wire: `sidebar.mode`. `toggle` is the

@@ -23,6 +23,14 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task Inactive_wheel_passes_view_relative_coordinates_and_native_delta_to_the_page()
+    {
+        var page = await InitializedAsync();
+        await page.ScrollInactiveAtAsync(0.25, 0.75, 120);
+        Assert.Equal("agterm.scrollInactiveAt(...[0.25,0.75,120])", Assert.Single(_host.Scripts));
+    }
+
+    [Fact]
     public async Task Initialize_maps_assets_navigates_and_awaits_the_page_ready()
     {
         var page = new XtermPage(_host);
