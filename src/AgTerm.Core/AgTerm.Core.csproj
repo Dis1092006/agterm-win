@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Icons\segoe-fluent-icons.tsv" LogicalName="icons/segoe-fluent-icons.tsv" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Markdig" Version="1.4.0" />
   </ItemGroup>
 
