@@ -93,6 +93,12 @@ public sealed record WorkspaceSnapshot
     [JsonPropertyName("theme")]
     [JsonConverter(typeof(LossyThemeNameConverter))]
     public string? Theme { get; init; }
+
+    /// <summary>The workspace's own sidebar icon name (Windows-only). Decoded as leniently as
+    /// Theme, for the same reason.</summary>
+    [JsonPropertyName("icon")]
+    [JsonConverter(typeof(LossyThemeNameConverter))]
+    public string? Icon { get; init; }
 }
 
 /// <summary>

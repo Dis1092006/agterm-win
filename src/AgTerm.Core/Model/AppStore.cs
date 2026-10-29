@@ -1030,6 +1030,7 @@ public sealed partial class AppStore
             // all-expanded tree serializes identically to a legacy snapshot.
             Collapsed = workspace.IsExpanded ? null : true,
             Theme = workspace.ThemeName,
+            Icon = workspace.IconName,
         }).ToArray();
         return new Snapshot
         {
@@ -1076,6 +1077,7 @@ public sealed partial class AppStore
                 isExpanded: !(workspaceSnapshot.Collapsed ?? false))
             {
                 ThemeName = workspaceSnapshot.Theme,
+                IconName = workspaceSnapshot.Icon,
             });
         }
         Workspaces = restored;
@@ -1244,5 +1246,6 @@ public sealed partial class AppStore
             isExpanded: !(snapshot.Collapsed ?? false))
         {
             ThemeName = snapshot.Theme,
+            IconName = snapshot.Icon,
         };
 }

@@ -56,12 +56,38 @@ public class SnapshotTests
         var workspace = new WorkspaceSnapshot
         {
             Id = WorkspaceId, Name = "w", Sessions = Array.Empty<SessionSnapshot>(),
-            Collapsed = true, Theme = "Nord",
+            Collapsed = true, Theme = "Nord", Icon = "MapPin",
         };
         using var doc = JsonDocument.Parse(ControlJson.Serialize(workspace));
         Assert.Equal(
             SurfaceFieldNames("workspaceSnapshot").Concat(ParitySurface.WindowsOnly("workspaceSnapshot")).ToList(),
             doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
+    }
+
+    [Fact]
+    public void WorkspaceSnapshotWritesTheIconAndOmitsItWhenAbsent()
+    {
+        var workspace = new WorkspaceSnapshot
+        {
+            Id = WorkspaceId, Name = "w", Sessions = Array.Empty<SessionSnapshot>(), Icon = "MapPin",
+        };
+
+        Assert.Contains("\"icon\":\"MapPin\"", ControlJson.Serialize(workspace));
+        Assert.DoesNotContain("icon", ControlJson.Serialize(workspace with { Icon = null }));
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("{}")]
+    [InlineData("\"  \"")]
+    public void AnIconThatIsNotANameReadsAsNoneAndKeepsTheWorkspace(string value)
+    {
+        var json = $$"""{"id":"{{WorkspaceId.ToString().ToUpperInvariant()}}","name":"w","sessions":[],"icon":{{value}}}""";
+
+        var workspace = Assert.IsType<WorkspaceSnapshot>(ControlJson.Deserialize<WorkspaceSnapshot>(json));
+
+        Assert.Null(workspace.Icon);
+        Assert.Equal("w", workspace.Name);
     }
 
     [Fact]

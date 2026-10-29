@@ -7,7 +7,8 @@
     { "name": "theme", "reason": "Reports the workspace's own terminal theme in tree." }
   ],
   "workspaceSnapshot": [
-    { "name": "theme", "reason": "Persists the workspace's own terminal theme." }
+    { "name": "theme", "reason": "Persists the workspace's own terminal theme." },
+    { "name": "icon", "reason": "Persists the workspace's own icon." }
   ],
   "settings": [
     { "name": "sidebarThemeColors", "reason": "Turns off the theme colors on the sidebar rows of workspaces with their own theme." },
