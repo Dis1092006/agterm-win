@@ -118,6 +118,8 @@ public sealed partial class MainWindow : Window
     private readonly ThemePalettePreview _workspaceThemePreview;
     // the workspace the theme palette is open for; null unless the palette is in WorkspaceTheme mode
     private Guid? _workspaceThemeTarget;
+    // the workspace the icon palette is open for; null while it is closed
+    private Guid? _workspaceIconTarget;
     private readonly PaneThemeAssigner _paneThemes;
     // the selected workspace's theme background; null while the global theme's background applies
     private string? _terminalBackground;
@@ -172,6 +174,13 @@ public sealed partial class MainWindow : Window
             HandlePaletteItemAcceptedAsync(item),
             "Palette item acceptance failed");
         PaletteOverlay.Cancelled += () => ObserveTaskFault(HandlePaletteCancelledAsync(), "Palette cancellation failed");
+        IconPaletteOverlay.SelectionChanged += OnIconPaletteSelectionChanged;
+        IconPaletteOverlay.Accepted += iconName => ObserveTaskFault(
+            HandleIconPaletteAcceptedAsync(iconName),
+            "Icon palette acceptance failed");
+        IconPaletteOverlay.Cancelled += () => ObserveTaskFault(
+            _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync()),
+            "Icon palette cancellation failed");
         KeybindingsOverlay.CloseRequested += () => ObserveTaskFault(
             _paletteTransitions.RunAsync(() => CloseKeybindingsAsync()), "Keyboard shortcuts close failed");
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
@@ -531,15 +540,18 @@ public sealed partial class MainWindow : Window
         if (args.WindowActivationState == WindowActivationState.Deactivated)
             return;
         PaletteOverlay.NoteActivation();
+        IconPaletteOverlay.NoteActivation();
 
         ObserveTaskFault(_applicationHost.ReportActivatedAsync(_windowId), "Window activation failed");
         if (PaletteOverlay.IsOpen)
             PaletteOverlay.FocusQuery();
+        if (IconPaletteOverlay.IsOpen)
+            IconPaletteOverlay.FocusFilter();
         if (AskOverlay.IsOpen)
             AskOverlay.FocusPanel();
         if (KeybindingsOverlay.IsOpen)
             KeybindingsOverlay.FocusQuery();
-        _terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);
+        _terminalFocus.Activated(modalOpen: AnyPaletteOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);
     }
 
     private void RefreshActivationShield()
@@ -1097,6 +1109,9 @@ public sealed partial class MainWindow : Window
             Sidebar.WorkspaceThemeRequested += workspaceId => ObserveTaskFault(
                 _paletteTransitions.RunAsync(() => OpenWorkspaceThemePaletteAsync(workspaceId)),
                 "Workspace theme palette failed to open");
+            Sidebar.WorkspaceIconRequested += workspaceId => ObserveTaskFault(
+                _paletteTransitions.RunAsync(() => OpenWorkspaceIconPaletteAsync(workspaceId)),
+                "Workspace icon palette failed to open");
             sidebar.SnapshotChanged += ApplyChrome;
             sidebar.Start();
         });
@@ -1114,6 +1129,7 @@ public sealed partial class MainWindow : Window
             _paletteTransitions.RunAsync(SyncModalAsync),
             "Modal presentation failed"));
         PaletteOverlay.CancelChord = IsCloseSessionChord;
+        IconPaletteOverlay.CancelChord = IsCloseSessionChord;
         AskOverlay.CancelChord = IsCloseSessionChord;
         ObserveTaskFault(_paletteTransitions.RunAsync(SyncModalAsync), "Modal presentation failed");
         try
@@ -1226,6 +1242,8 @@ public sealed partial class MainWindow : Window
             AskOverlay.FocusPanel();
         else if (PaletteOverlay.IsOpen)
             PaletteOverlay.FocusQuery();
+        else if (IconPaletteOverlay.IsOpen)
+            IconPaletteOverlay.FocusFilter();
     }
 
     private static void EnsureWindowCommandSucceeded(ControlResponse response)
@@ -1376,7 +1394,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         // the palette is modal for the keyboard; its close returns focus to the accepted pane
-        if (PaletteOverlay.IsOpen || KeybindingsOverlay.IsOpen)
+        if (AnyPaletteOpen || KeybindingsOverlay.IsOpen)
             return;
         _terminalFocus.Request(_windowIsActive, () => TerminalView.Focus(FocusState.Programmatic));
         if (_surfaces.TryGetValue(paneId, out var surface))
@@ -1473,9 +1491,9 @@ public sealed partial class MainWindow : Window
         if (_shownPickId == pending.Id)
             return;
         await CloseKeybindingsAsync(restoreFocus: false);
-        if (PaletteOverlay.IsOpen)
+        if (AnyPaletteOpen)
         {
-            PaletteOverlay.Close();
+            ClosePalette();
             await FinishPaletteCloseAsync(restoreFocus: false);
         }
         await _paletteAutoFollow.AcquireAsync(() =>
@@ -1521,9 +1539,9 @@ public sealed partial class MainWindow : Window
         if (_shownAskId == pending.Id)
             return;
         await CloseKeybindingsAsync(restoreFocus: false);
-        if (PaletteOverlay.IsOpen)
+        if (AnyPaletteOpen)
         {
-            PaletteOverlay.Close();
+            ClosePalette();
             await FinishPaletteCloseAsync(restoreFocus: false);
         }
         await _paletteAutoFollow.AcquireAsync(() =>
@@ -1762,7 +1780,7 @@ public sealed partial class MainWindow : Window
         // silently eat characters before they ever reach the TextBox. The palette's query box is the
         // exception, but not for a pick: upstream keeps a pending pick modal for window actions.
         if (IsTextInputFocused() &&
-            !(PaletteOverlay.IsOpen && _shownPickId is null && PaletteKeys.PassesToWindow(physical)))
+            !(AnyPaletteOpen && _shownPickId is null && PaletteKeys.PassesToWindow(physical)))
             return;
         if (HandleChord(physical)) e.Handled = true;
     }
@@ -1839,7 +1857,7 @@ public sealed partial class MainWindow : Window
 
     // upstream canSwitch (uiActionsEnabled): not while a palette, a question or the dashboard has the keys
     private bool CanSwitchSessions() =>
-        !PaletteOverlay.IsOpen && !AskOverlay.IsOpen && !KeybindingsOverlay.IsOpen && !_selection.DashboardOpen;
+        !AnyPaletteOpen && !AskOverlay.IsOpen && !KeybindingsOverlay.IsOpen && !_selection.DashboardOpen;
 
     // the page assumes a switch from its own Ctrl+Tab; tell it when none began or one ended here
     private void SyncPageSwitcher()
@@ -1909,7 +1927,7 @@ public sealed partial class MainWindow : Window
             return false;
 
         ObserveTaskFault(
-            PaletteOverlay.IsOpen && _shownPickId is null && PaletteKeys.ClosesPaletteFirst(action)
+            AnyPaletteOpen && _shownPickId is null && PaletteKeys.ClosesPaletteFirst(action)
                 ? ClosePaletteThenExecuteAsync(router, action)
                 : router.ExecuteAsync(action),
             $"Hotkey action {action} failed");
@@ -1920,9 +1938,9 @@ public sealed partial class MainWindow : Window
     {
         await _paletteTransitions.RunAsync(async () =>
         {
-            if (!PaletteOverlay.IsOpen)
+            if (!AnyPaletteOpen)
                 return;
-            PaletteOverlay.Close();
+            ClosePalette();
             await FinishPaletteCloseAsync();
         });
         await router.ExecuteAsync(action);
@@ -1990,6 +2008,11 @@ public sealed partial class MainWindow : Window
         CancellationToken cancellationToken)
     {
         await CloseKeybindingsAsync(restoreFocus: false);
+        if (IconPaletteOverlay.IsOpen)
+        {
+            IconPaletteOverlay.Close();
+            await FinishPaletteCloseAsync(restoreFocus: false);
+        }
         await _paletteAutoFollow.AcquireAsync(() =>
             host.StoreCoordinator.MutateAsync(
                 store => store.SuppressAutoFollow(),
@@ -2044,6 +2067,106 @@ public sealed partial class MainWindow : Window
         await PresentPaletteAsync(host, snapshot, workspaceId, CancellationToken.None);
     }
 
+    private sealed record WorkspaceIconOpening(string? CurrentIcon);
+
+    private async Task OpenWorkspaceIconPaletteAsync(Guid workspaceId)
+    {
+        var host = await _hostReady.Task;
+        if (host.Host.Actions.Pick.ModalPending)
+            return;
+        var opening = await host.StoreCoordinator.ReadAsync(store =>
+            host.Host.Actions.Zoom.Target is null && store.Workspaces.Find(w => w.Id == workspaceId) is { } workspace
+                ? new WorkspaceIconOpening(workspace.IconName)
+                : null);
+        if (opening is null)
+            return;
+
+        await CloseKeybindingsAsync(restoreFocus: false);
+        if (AnyPaletteOpen)
+        {
+            ClosePalette();
+            await FinishPaletteCloseAsync(restoreFocus: false);
+        }
+        await _paletteAutoFollow.AcquireAsync(() =>
+            host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
+        try
+        {
+            _workspaceIconTarget = workspaceId;
+            IconPaletteOverlay.Open(opening.CurrentIcon);
+        }
+        catch
+        {
+            _workspaceIconTarget = null;
+            await _paletteAutoFollow.ReleaseAsync(() =>
+                host.StoreCoordinator.MutateAsync(store => store.ResumeAutoFollow(), CancellationToken.None));
+            throw;
+        }
+    }
+
+    private void OnIconPaletteSelectionChanged(IconPaletteCell? cell)
+    {
+        if (_workspaceIconTarget is not { } workspaceId)
+            return;
+        if (cell is null)
+        {
+            Sidebar.EndWorkspaceIconPreview();
+            return;
+        }
+
+        var iconName = cell.Name;
+        Sidebar.PreviewWorkspaceIcon(workspaceId, iconName);
+    }
+
+    /// <summary>The preview stays on the row until the save answers, so the row never shows the old
+    /// icon in between.</summary>
+    private async Task HandleIconPaletteAcceptedAsync(string? iconName)
+    {
+        Guid? target = null;
+        await _paletteTransitions.RunAsync(async () =>
+        {
+            target = _workspaceIconTarget;
+            await FinishPaletteCloseAsync(restoreFocus: false, endIconPreview: false);
+        });
+
+        try
+        {
+            var saved = target is { } workspaceId && await SaveWorkspaceIconAsync(workspaceId, iconName);
+            if (!saved)
+                Sidebar.EndWorkspaceIconPreview();
+        }
+        catch
+        {
+            Sidebar.EndWorkspaceIconPreview();
+            throw;
+        }
+        finally
+        {
+            FocusActiveTerminal();
+        }
+    }
+
+    private async Task<bool> SaveWorkspaceIconAsync(Guid workspaceId, string? iconName)
+    {
+        var response = await _applicationHost.SetWorkspaceIconAsync(_windowId, workspaceId, iconName);
+        if (response.Ok)
+        {
+            Sidebar.WorkspaceIconSaved(workspaceId, iconName);
+            return true;
+        }
+
+        ShowFailure(new LiveFailureNotice("Icon could not be applied", response.Error ?? "workspace.icon failed"));
+        return false;
+    }
+
+    private async Task CloseWorkspaceIconPaletteAsync(Guid workspaceId)
+    {
+        // the close was queued for this workspace; by now a palette for another one may be open
+        if (_workspaceIconTarget != workspaceId || !IconPaletteOverlay.IsOpen)
+            return;
+        IconPaletteOverlay.Close();
+        await FinishPaletteCloseAsync();
+    }
+
     private async Task CloseWorkspaceThemePaletteAsync(Guid workspaceId)
     {
         // the close was queued for this workspace; by now a palette for another one may be open
@@ -2077,8 +2200,19 @@ public sealed partial class MainWindow : Window
         await OpenPaletteAsync(mode, states);
     }
 
-    private async Task FinishPaletteCloseAsync(bool restoreFocus = true)
+    private bool AnyPaletteOpen => PaletteOverlay.IsOpen || IconPaletteOverlay.IsOpen;
+
+    private void ClosePalette()
     {
+        PaletteOverlay.Close();
+        IconPaletteOverlay.Close();
+    }
+
+    private async Task FinishPaletteCloseAsync(bool restoreFocus = true, bool endIconPreview = true)
+    {
+        if (endIconPreview)
+            Sidebar.EndWorkspaceIconPreview();
+        _workspaceIconTarget = null;
         await CancelThemePreviewAsync();
         if (_host is { } host)
         {
@@ -2881,9 +3015,9 @@ public sealed partial class MainWindow : Window
             host.Host.Actions.Pick.Pending is not null || host.Host.Actions.Pick.PendingAsk is not null ||
             _terminalAsks.CurrentAskId is not null)
             return;
-        if (PaletteOverlay.IsOpen)
+        if (AnyPaletteOpen)
         {
-            PaletteOverlay.Close();
+            ClosePalette();
             await FinishPaletteCloseAsync(restoreFocus: false);
         }
         await _keybindingsAutoFollow.AcquireAsync(() =>
@@ -3165,6 +3299,7 @@ public sealed partial class MainWindow : Window
         }
         KeybindingsOverlay.SetPanelBackground(background);
         PaletteOverlay.SetPanelBackground(background);
+        IconPaletteOverlay.SetPanelBackground(background);
         SwitcherOverlay.SetPanelBackground(background);
         AskOverlay.SetPanelBackground(background);
     }
@@ -3342,6 +3477,14 @@ public sealed partial class MainWindow : Window
             ObserveTaskFault(
                 _paletteTransitions.RunAsync(() => CloseWorkspaceThemePaletteAsync(workspaceId)),
                 "Workspace theme palette close failed");
+        }
+        if (IconPaletteOverlay.IsOpen &&
+            _workspaceIconTarget is { } iconWorkspaceId &&
+            !_paneThemes.HasWorkspace(iconWorkspaceId))
+        {
+            ObserveTaskFault(
+                _paletteTransitions.RunAsync(() => CloseWorkspaceIconPaletteAsync(iconWorkspaceId)),
+                "Workspace icon palette close failed");
         }
     }
 

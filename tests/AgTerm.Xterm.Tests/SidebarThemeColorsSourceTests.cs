@@ -57,6 +57,23 @@ public sealed class SidebarThemeColorsSourceTests
     }
 
     [Fact]
+    public void Sidebar_view_feeds_every_row_its_icon_name_through_the_icon_holder()
+    {
+        var view = Source("SidebarView.xaml.cs");
+        var model = Source("SidebarRowViewModel.cs");
+
+        Assert.Contains("_rowIcons.Observe(snapshot.Generation)", view, StringComparison.Ordinal);
+        Assert.Contains("_rowIcons.Saved(workspaceId, iconName, _controller?.RequestSnapshot() ?? 0)", view, StringComparison.Ordinal);
+        Assert.Contains("public void PreviewWorkspaceIcon(Guid workspaceId, string? iconName)", view, StringComparison.Ordinal);
+        Assert.Contains("public void EndWorkspaceIconPreview()", view, StringComparison.Ordinal);
+        Assert.Contains("public void WorkspaceIconSaved(Guid workspaceId, string? iconName)", view, StringComparison.Ordinal);
+        Assert.Contains("_rowIcons.IconNameFor(row)", view, StringComparison.Ordinal);
+        Assert.Contains("SidebarWorkspaceIcon.Glyph(_iconName, SymbolGlyphs.Has)", model, StringComparison.Ordinal);
+        Assert.DoesNotContain("_row.IconName", model, StringComparison.Ordinal);
+        Assert.Contains("_iconName == iconName", MethodBody(model, "public void Update("), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Label_area_is_a_left_aligned_grid_so_a_long_name_trims_before_the_focus_icon()
     {
         var xaml = Source("SidebarView.xaml");

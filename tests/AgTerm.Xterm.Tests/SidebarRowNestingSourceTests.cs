@@ -60,7 +60,7 @@ public sealed class SidebarRowNestingSourceTests
     {
         var model = Source("SidebarRowViewModel.cs");
 
-        Assert.Contains("SidebarWorkspaceIcon.Glyph(_row.IconName, SymbolGlyphs.Has)", model, StringComparison.Ordinal);
+        Assert.Contains("SidebarWorkspaceIcon.Glyph(_iconName, SymbolGlyphs.Has)", model, StringComparison.Ordinal);
         var raised = Between(model, "public void Update(", "private static SolidColorBrush BrushFrom");
         Assert.Contains("nameof(WorkspaceGlyph)", raised, StringComparison.Ordinal);
         Assert.Contains("nameof(WorkspaceGlyphVisibility)", raised, StringComparison.Ordinal);

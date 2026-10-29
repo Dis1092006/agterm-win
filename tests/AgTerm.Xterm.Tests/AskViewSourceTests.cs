@@ -86,7 +86,7 @@ public sealed class AskViewSourceTests
         Assert.Contains("AskOverlay.CancelChord = IsCloseSessionChord;", source, StringComparison.Ordinal);
         Assert.Contains("AskAnchorGeometry.Pane(", source, StringComparison.Ordinal);
         Assert.Contains("if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen) return;", source, StringComparison.Ordinal);
-        Assert.Contains("_terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);", source, StringComparison.Ordinal);
+        Assert.Contains("_terminalFocus.Activated(modalOpen: AnyPaletteOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);", source, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -158,7 +158,7 @@ public sealed class AskViewSourceTests
         Assert.Contains("_contentDialogs.DialogClosed += FocusModalAfterContentDialog;", source, StringComparison.Ordinal);
         // a pick or the command palette shown under the dialog gets the keys back too
         Assert.Matches(new Regex(
-            @"private void FocusModalAfterContentDialog\(\)\s*\{\s*if \(!_windowIsActive\)\s*return;\s*if \(AskOverlay\.IsOpen\)\s*AskOverlay\.FocusPanel\(\);\s*else if \(PaletteOverlay\.IsOpen\)\s*PaletteOverlay\.FocusQuery\(\);\s*\}"),
+            @"private void FocusModalAfterContentDialog\(\)\s*\{\s*if \(!_windowIsActive\)\s*return;\s*if \(AskOverlay\.IsOpen\)\s*AskOverlay\.FocusPanel\(\);\s*else if \(PaletteOverlay\.IsOpen\)\s*PaletteOverlay\.FocusQuery\(\);\s*else if \(IconPaletteOverlay\.IsOpen\)\s*IconPaletteOverlay\.FocusFilter\(\);\s*\}"),
             source);
         // all three dialogs (confirmation, rename, installer result) go through the coordinator, so its event covers each of them
         Assert.Equal(3, Regex.Matches(source, @"await ShowDialogAsync\(dialog\)").Count);

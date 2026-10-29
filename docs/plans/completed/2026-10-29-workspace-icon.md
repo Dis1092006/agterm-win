@@ -8,7 +8,7 @@
 
 **Tech Stack:** .NET 10, WinUI 3, xUnit, System.CommandLine, Python 3 for the generator.
 
-**Spec:** `docs/plans/2026-10-29-workspace-icon-design.md`
+**Spec:** `docs/plans/completed/2026-10-29-workspace-icon-design.md`
 
 ## Global Constraints
 
