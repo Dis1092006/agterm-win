@@ -63,7 +63,7 @@ public class TreeNodeTests
         var node = new ControlWorkspaceNode
         {
             Id = "i", Name = "n", Active = true, Focused = true, Collapsed = true,
-            Sessions = new[] { FullSessionNode() }, Theme = "Nord",
+            Sessions = new[] { FullSessionNode() }, Theme = "Nord", Icon = "MapPin",
         };
         Assert.Equal(
             SurfaceFieldNames("workspaceNode").Concat(ParitySurface.WindowsOnly("workspaceNode")).ToList(),
@@ -78,6 +78,7 @@ public class TreeNodeTests
             Id = "i", Name = "n", Active = true, Sessions = Array.Empty<ControlSessionNode>(),
         };
         Assert.DoesNotContain("theme", PropertyNames(ControlJson.Serialize(node)));
+        Assert.DoesNotContain("icon", PropertyNames(ControlJson.Serialize(node)));
     }
 
     [Fact]

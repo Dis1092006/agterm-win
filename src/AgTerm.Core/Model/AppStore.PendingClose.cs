@@ -411,6 +411,7 @@ public sealed partial class AppStore
                 isExpanded: pending.Close.Workspace.IsExpanded)
             {
                 ThemeName = pending.Close.Workspace.ThemeName,
+                IconName = pending.Close.Workspace.IconName,
             };
         }
         var snapshot = RecentClosedStore?.Load()
@@ -421,6 +422,7 @@ public sealed partial class AppStore
             return new Workspace(id, snapshot.Name, isExpanded: !(snapshot.Collapsed ?? false))
             {
                 ThemeName = snapshot.Theme,
+                IconName = snapshot.Icon,
             };
         }
         return new Workspace(id, name);

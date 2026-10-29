@@ -32,6 +32,10 @@ public interface IControlActions
     /// null name clears it. The host resolves the target like RenameWorkspace and checks the name
     /// against its theme list.</summary>
     ControlResponse SetWorkspaceTheme(string? target, string? window, string? themeName);
+    /// <summary>Set or clear a workspace's own icon (the Windows-only workspace.icon); a null or
+    /// blank name clears it. The host resolves the target like RenameWorkspace and checks the name
+    /// against the icon catalog.</summary>
+    ControlResponse SetWorkspaceIcon(string? target, string? window, string? iconName);
     ControlResponse SetSessionFlag(string? target, string? window, string? mode);
     ControlResponse MarkSessionSeen(string? target, string? window);
     ControlResponse SetSessionStatus(string? target, string? window, ControlSessionStatusUpdate update);
@@ -57,6 +61,8 @@ public interface IControlActions
     ControlResponse SendNotification(string? target, string? window, string? title, string body);
     ControlResponse SetTheme(ControlArgs? args);
     ControlResponse ListThemes();
+    /// <summary>The icon names workspace.icon accepts (the Windows-only icon.list).</summary>
+    ControlResponse ListIcons();
     ControlResponse SetSidebarVisibility(ControlToggleMode mode);
     ControlResponse SetSidebarViewMode(ControlSidebarViewMode mode);
     ControlResponse ExpandSidebar(string? window);

@@ -105,6 +105,11 @@ public sealed record ControlResult
     /// <summary>ask.result payload.</summary>
     [JsonPropertyName("ask")]
     public ControlAskResult? Ask { get; init; }
+
+    /// <summary>The icon names workspace.icon accepts, for icon.list. Windows-only
+    /// (parity/windows-only.json); declared last so the upstream fields keep upstream order.</summary>
+    [JsonPropertyName("icons")]
+    public string[]? Icons { get; init; }
 }
 
 /// <summary>

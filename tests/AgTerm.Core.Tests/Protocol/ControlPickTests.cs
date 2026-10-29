@@ -74,7 +74,7 @@ public class ControlPickTests
     }
 
     [Fact]
-    public void ResultPropertyNamesMatchPinPlusAdoptedInUpstreamOrder()
+    public void ResultPropertyNamesMatchPinPlusAdoptedInUpstreamOrderThenWindowsOnly()
     {
         var result = new ControlResult
         {
@@ -89,11 +89,12 @@ public class ControlPickTests
             },
             Pick = ControlPickResult.Pending(),
             Ask = ControlAskResult.Pending(),
+            Icons = new[] { "a" },
         };
 
         using var serialized = JsonDocument.Parse(ControlJson.Serialize(result));
         var actual = serialized.RootElement.EnumerateObject().Select(p => p.Name).ToList();
 
-        Assert.Equal(ParitySurface.Expected("result", "result"), actual);
+        Assert.Equal(ParitySurface.Expected("result", "result").Concat(ParitySurface.WindowsOnly("result")).ToList(), actual);
     }
 }

@@ -1,6 +1,6 @@
 # Third-party notices
 
-This repository contains material from the projects below. All three are under the MIT License.
+This repository contains material from the projects below. The first three are under the MIT License. The icon names at the end are under CC BY 4.0.
 
 ## agterm
 
@@ -102,3 +102,9 @@ This license covers the iTerm-Color-Schemes repository collection of themes.
 
 The copyright/license for each individual theme belongs to the author of that theme.
 ```
+
+## Segoe Fluent Icons names
+
+Source: https://github.com/MicrosoftDocs/windows-dev-docs, file `hub/apps/design/iconography/segoe-fluent-icons-font.md` on the `docs` branch. Copyright Microsoft. Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+
+Used in this repository: the icon names and code points were extracted from that file into `src/AgTerm.Core/Icons/segoe-fluent-icons.tsv`. No other text or image of the file is included. `src/AgTerm.Core/Icons/SOURCE.md` names the commit and the regenerate command.

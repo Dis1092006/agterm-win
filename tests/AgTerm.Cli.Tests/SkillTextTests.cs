@@ -119,6 +119,18 @@ public class SkillTextTests
     }
 
     [Fact]
+    public void Reference_names_every_windows_only_command()
+    {
+        var windowsOnly = JsonNode.Parse(File.ReadAllText(Path.Combine(FindRepoRoot(), "parity", "windows-only.json")))!;
+        var wire = windowsOnly["commands"]!.AsArray().Select(c => (string)c!["wire"]!).ToList();
+        Assert.NotEmpty(wire);
+
+        var reference = ReadSkill("reference.md");
+        var missing = wire.Where(w => !reference.Contains($"`{w}`", StringComparison.Ordinal)).ToList();
+        Assert.True(missing.Count == 0, "reference.md does not name: " + string.Join(", ", missing));
+    }
+
+    [Fact]
     public void Every_agtermctl_line_in_a_code_block_parses()
     {
         var failures = new List<string>();

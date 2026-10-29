@@ -57,6 +57,14 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public Visibility WorkspaceVisibility => IsWorkspace ? Visibility.Visible : Visibility.Collapsed;
 
+    public string WorkspaceGlyph => SidebarWorkspaceIcon.Glyph(_row.IconName, SymbolGlyphs.Has) ?? "";
+
+    public Visibility WorkspaceGlyphVisibility =>
+        IsWorkspace && WorkspaceGlyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility GridIconVisibility =>
+        IsWorkspace && WorkspaceGlyph.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+
     public Visibility SessionVisibility => IsSession ? Visibility.Visible : Visibility.Collapsed;
 
     public string AutomationName => SidebarAutomationText.Row(_row, _surfaceStatus);
@@ -226,6 +234,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _surfaceStatus = surfaceStatus;
         _look = look;
         Raise(nameof(Label), nameof(Chevron), nameof(LabelWeight),
+              nameof(WorkspaceGlyph), nameof(WorkspaceGlyphVisibility), nameof(GridIconVisibility),
               nameof(FontSize), nameof(RowHeight),
               nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),

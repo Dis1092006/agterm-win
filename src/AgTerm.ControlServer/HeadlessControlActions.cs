@@ -1,3 +1,4 @@
+using AgTerm.Core.Icons;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
@@ -670,6 +671,20 @@ public sealed class HeadlessControlActions : IControlActions
             if (name is not null && !_availableThemes.Contains(name))
                 return Err($"unknown theme: {name}");
             store.SetWorkspaceTheme(id, name);
+            return OkId(id);
+        });
+    }
+
+    /// <summary>workspace.icon (Windows-only). The name is checked against the icon catalog after
+    /// the target resolves, so a missing workspace reports first.</summary>
+    public ControlResponse SetWorkspaceIcon(string? target, string? window, string? iconName)
+    {
+        var name = Trimmed(iconName);
+        return ResolveWorkspace(target, window, (store, id) =>
+        {
+            if (name is not null && !SegoeIconCatalog.TryGet(name, out _))
+                return Err($"unknown icon: {name}");
+            store.SetWorkspaceIcon(id, name);
             return OkId(id);
         });
     }
@@ -1842,6 +1857,12 @@ public sealed class HeadlessControlActions : IControlActions
         ThemeUpdateRequested?.Invoke(update);
         return ThemeStateResponse(themes: null);
     }
+
+    public ControlResponse ListIcons() => new()
+    {
+        Ok = true,
+        Result = new ControlResult { Icons = SegoeIconCatalog.All.Select(icon => icon.Name).ToArray() },
+    };
 
     public ControlResponse ListThemes() => ThemeStateResponse(themes: _availableThemes.ToArray());
 

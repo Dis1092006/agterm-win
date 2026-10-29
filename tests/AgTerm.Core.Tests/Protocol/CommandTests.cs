@@ -16,7 +16,7 @@ public class CommandTests
     {
         var wires = PortCommands().ToList();
 
-        Assert.Equal(78, wires.Count);
+        Assert.Equal(80, wires.Count);
         foreach (var wire in wires)
         {
             var cmd = JsonSerializer.Deserialize<Command>($"\"{wire}\"", ControlJson.Options);

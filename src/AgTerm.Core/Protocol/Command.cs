@@ -90,6 +90,10 @@ public enum Command
     AskCancel,
     /// <summary>Windows-only (parity/windows-only.json): sets or clears a workspace's own theme.</summary>
     WorkspaceTheme,
+    /// <summary>Windows-only (parity/windows-only.json): sets or clears a workspace's own icon.</summary>
+    WorkspaceIcon,
+    /// <summary>Windows-only (parity/windows-only.json): lists the icon names workspace.icon accepts.</summary>
+    IconList,
     /// <summary>
     /// UI-TEST-ONLY upstream (XCUITest appearance flip). Kept in the enum so the wire string decodes,
     /// but NOT implemented in the Windows port — recorded as an intentional skip in the parity manifest.
@@ -179,6 +183,8 @@ public static class CommandWire
         (Command.AskResult, "ask.result"),
         (Command.AskCancel, "ask.cancel"),
         (Command.WorkspaceTheme, "workspace.theme"),
+        (Command.WorkspaceIcon, "workspace.icon"),
+        (Command.IconList, "icon.list"),
         (Command.DebugAppearance, "debug.appearance"),
     };
 

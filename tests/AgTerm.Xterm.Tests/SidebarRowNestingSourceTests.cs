@@ -32,9 +32,39 @@ public sealed class SidebarRowNestingSourceTests
         var icon = Between(label, "<Path Data=\"" + WorkspaceIconData + "\"", "</Path>");
 
         Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
-        Assert.Contains("Visibility=\"{x:Bind WorkspaceVisibility, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{x:Bind GridIconVisibility, Mode=OneWay}\"", icon, StringComparison.Ordinal);
         Assert.Contains("Margin=\"0,0,6,0\"", icon, StringComparison.Ordinal);
         Assert.Contains("<Setter Property=\"Stroke\" Value=\"{ThemeResource TextFillColorSecondaryBrush}\" />", icon, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_workspace_icon_draws_in_the_slot_of_the_grid_with_the_secondary_text_color()
+    {
+        var xaml = Source("SidebarView.xaml");
+        var label = Between(xaml, "<Grid Grid.Column=\"1\" HorizontalAlignment=\"Left\" VerticalAlignment=\"Center\">",
+            "Background=\"{x:Bind LabelBlockBackground, Mode=OneWay}\"");
+        var icon = Between(label, "<FontIcon", "</FontIcon>");
+
+        Assert.Contains("Glyph=\"{x:Bind WorkspaceGlyph, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{x:Bind WorkspaceGlyphVisibility, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+        Assert.Contains("FontFamily=\"{ThemeResource SymbolThemeFontFamily}\"", icon, StringComparison.Ordinal);
+        Assert.Contains("FontSize=\"14\"", icon, StringComparison.Ordinal);
+        Assert.Contains("Width=\"16\"", icon, StringComparison.Ordinal);
+        Assert.Contains("Margin=\"0,0,6,0\"", icon, StringComparison.Ordinal);
+        Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"Foreground\" Value=\"{ThemeResource TextFillColorSecondaryBrush}\" />", icon, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_view_model_asks_the_symbol_fonts_for_the_glyph_and_raises_the_three_names()
+    {
+        var model = Source("SidebarRowViewModel.cs");
+
+        Assert.Contains("SidebarWorkspaceIcon.Glyph(_row.IconName, SymbolGlyphs.Has)", model, StringComparison.Ordinal);
+        var raised = Between(model, "public void Update(", "private static SolidColorBrush BrushFrom");
+        Assert.Contains("nameof(WorkspaceGlyph)", raised, StringComparison.Ordinal);
+        Assert.Contains("nameof(WorkspaceGlyphVisibility)", raised, StringComparison.Ordinal);
+        Assert.Contains("nameof(GridIconVisibility)", raised, StringComparison.Ordinal);
     }
 
     [Fact]

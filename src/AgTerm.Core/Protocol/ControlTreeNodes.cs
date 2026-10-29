@@ -166,6 +166,11 @@ public sealed record ControlWorkspaceNode
     /// upstream fields keep upstream order.</summary>
     [JsonPropertyName("theme")]
     public string? Theme { get; init; }
+
+    /// <summary>The workspace's own icon name as stored; null when it has none. Windows-only
+    /// (parity/windows-only.json); written after theme.</summary>
+    [JsonPropertyName("icon")]
+    public string? Icon { get; init; }
 }
 
 /// <summary>The whole workspace tree, the payload of a tree response.</summary>

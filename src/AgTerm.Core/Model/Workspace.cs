@@ -34,6 +34,11 @@ public sealed class Workspace
     /// comes back with a later theme pack works again.</summary>
     public string? ThemeName { get; set; }
 
+    /// <summary>The Segoe icon name shown on the workspace's sidebar row, or null for the default
+    /// icon. Windows-only: upstream has no icon per workspace. The name is stored as given, so one
+    /// the catalog lacks is kept.</summary>
+    public string? IconName { get; set; }
+
     /// <summary>Total unseen-notification count across this workspace's sessions, for the badge on a
     /// collapsed workspace row.</summary>
     public int UnseenCount => Sessions.Sum(s => s.UnseenCount);
@@ -48,5 +53,6 @@ public sealed class Workspace
         Sessions = Sessions.Select(s => s.ToSnapshot()).ToArray(),
         Collapsed = IsExpanded ? null : true,
         Theme = ThemeName,
+        Icon = IconName,
     };
 }
