@@ -4,6 +4,7 @@ using AgTerm.Xterm;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI;
 using Windows.UI.Text;
 
@@ -22,6 +23,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     private SidebarSurfaceStatus _surfaceStatus;
     private SidebarRowLook _look;
     private string? _iconName;
+    private ImageSource? _image;
+    private bool _imageFailed;
 
     public SidebarRowViewModel(
         SidebarRow row,
@@ -37,6 +40,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _surfaceStatus = surfaceStatus;
         _look = look ?? SidebarRowLook.Default;
         _iconName = iconName;
+        LoadImage();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -62,11 +66,54 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public string WorkspaceGlyph => SidebarWorkspaceIcon.Glyph(_iconName, SymbolGlyphs.Has) ?? "";
 
-    public Visibility WorkspaceGlyphVisibility =>
-        IsWorkspace && WorkspaceGlyph.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public ImageSource? WorkspaceImage => _image;
 
-    public Visibility GridIconVisibility =>
-        IsWorkspace && WorkspaceGlyph.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility WorkspaceGlyphVisibility => IconVisibility(SidebarWorkspaceIconKind.Glyph);
+
+    public Visibility WorkspaceImageVisibility => IconVisibility(SidebarWorkspaceIconKind.Image);
+
+    public Visibility GridIconVisibility => IconVisibility(SidebarWorkspaceIconKind.Grid);
+
+    private Visibility IconVisibility(SidebarWorkspaceIconKind kind) =>
+        IsWorkspace && SidebarWorkspaceIcon.KindOf(_iconName, SymbolGlyphs.Has, _imageFailed) == kind
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    private void LoadImage()
+    {
+        _imageFailed = false;
+        _image = null;
+        if (!IsWorkspace || SidebarWorkspaceIcon.ImageFile(_iconName) is not { } path) return;
+        if (!Uri.TryCreate(path, UriKind.Absolute, out var uri))
+        {
+            _imageFailed = true;
+            return;
+        }
+
+        // the decode size is set before the source, so the file is decoded once at row size
+        if (Path.GetExtension(path).Equals(".svg", StringComparison.OrdinalIgnoreCase))
+        {
+            var svg = new SvgImageSource { RasterizePixelWidth = 16, RasterizePixelHeight = 16 };
+            svg.OpenFailed += (sender, _) => ImageFailed(sender);
+            svg.UriSource = uri;
+            _image = svg;
+        }
+        else
+        {
+            var bitmap = new BitmapImage { DecodePixelWidth = 16, DecodePixelType = DecodePixelType.Logical };
+            bitmap.ImageFailed += (sender, _) => ImageFailed(sender);
+            bitmap.UriSource = uri;
+            _image = bitmap;
+        }
+    }
+
+    // a failure of an image the row no longer shows is ignored
+    private void ImageFailed(object sender)
+    {
+        if (!ReferenceEquals(sender, _image)) return;
+        _imageFailed = true;
+        Raise(nameof(WorkspaceImageVisibility), nameof(GridIconVisibility));
+    }
 
     public Visibility SessionVisibility => IsSession ? Visibility.Visible : Visibility.Collapsed;
 
@@ -237,9 +284,14 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _settings = settings;
         _surfaceStatus = surfaceStatus;
         _look = look;
-        _iconName = iconName;
+        if (_iconName != iconName)
+        {
+            _iconName = iconName;
+            LoadImage();
+        }
         Raise(nameof(Label), nameof(Chevron), nameof(LabelWeight),
               nameof(WorkspaceGlyph), nameof(WorkspaceGlyphVisibility), nameof(GridIconVisibility),
+              nameof(WorkspaceImage), nameof(WorkspaceImageVisibility),
               nameof(FontSize), nameof(RowHeight),
               nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),

@@ -43,6 +43,32 @@ public class WorkspaceIconCommandsTests
     }
 
     [Fact]
+    public void A_relative_image_path_is_sent_as_an_absolute_one()
+    {
+        var expected = Path.GetFullPath(@"public\favicon.ico");
+
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.WorkspaceIcon, Target = "9f3c",
+                Args = new ControlArgs { Name = expected },
+            },
+            Request("workspace", "icon", @"public\favicon.ico", "--target", "9f3c"));
+    }
+
+    [Fact]
+    public void An_absolute_image_path_is_sent_as_it_is()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.WorkspaceIcon, Target = "9f3c",
+                Args = new ControlArgs { Name = @"C:\site\favicon.ico" },
+            },
+            Request("workspace", "icon", @"C:\site\favicon.ico", "--target", "9f3c"));
+    }
+
+    [Fact]
     public void Icon_list_sends_icon_list()
     {
         CanonicalJson.AssertEqual(new ControlRequest { Cmd = WireCommand.IconList }, Request("icon", "list"));

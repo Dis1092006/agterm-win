@@ -1,4 +1,5 @@
 using System.CommandLine;
+using AgTerm.Core.Icons;
 using AgTerm.Core.Protocol;
 using WireCommand = AgTerm.Core.Protocol.Command;
 
@@ -348,8 +349,12 @@ internal static class WorkspaceCommands
         {
             Cmd = WireCommand.WorkspaceIcon,
             Target = Target.Target,
-            Args = Client.WithWindow(new ControlArgs { Name = Name }),
+            Args = Client.WithWindow(new ControlArgs { Name = WireIcon(Name) }),
         };
+
+        // the app runs in its own directory, so a relative image path resolves here, where the user typed it
+        private static string? WireIcon(string? icon) =>
+            icon is not null && WorkspaceIconFile.IsFile(icon) ? Path.GetFullPath(icon) : icon;
     }
 
     private static System.CommandLine.Command BuildIcon(CommandBindings bindings)
@@ -358,7 +363,7 @@ internal static class WorkspaceCommands
             "Set a workspace's own icon, or clear it without a name (Windows only).");
         var name = new Argument<string?>("name")
         {
-            Description = "Icon name from `agtermctl icon list`; omit it to show the default icon again.",
+            Description = "Icon name from `agtermctl icon list`, or the path of an .ico, .png or .svg file; omit it to show the default icon again.",
             Arity = ArgumentArity.ZeroOrOne,
         };
         var target = new TargetOptions.Binder();

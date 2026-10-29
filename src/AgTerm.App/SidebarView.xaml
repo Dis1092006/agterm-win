@@ -133,6 +133,12 @@
                                     </Style>
                                 </FontIcon.Style>
                             </FontIcon>
+                            <!-- an image file the workspace chose keeps its own colors -->
+                            <Image Source="{x:Bind WorkspaceImage, Mode=OneWay}"
+                                   Width="16" Height="16"
+                                   Margin="0,0,6,0"
+                                   VerticalAlignment="Center"
+                                   Visibility="{x:Bind WorkspaceImageVisibility, Mode=OneWay}" />
                             <!-- the block of the label style -->
                             <Border Grid.Column="1"
                                     Background="{x:Bind LabelBlockBackground, Mode=OneWay}"

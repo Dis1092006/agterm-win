@@ -675,19 +675,24 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
-    /// <summary>workspace.icon (Windows-only). The name is checked against the icon catalog after
-    /// the target resolves, so a missing workspace reports first.</summary>
+    /// <summary>workspace.icon (Windows-only). The icon is checked after the target resolves, so a
+    /// missing workspace reports first.</summary>
     public ControlResponse SetWorkspaceIcon(string? target, string? window, string? iconName)
     {
         var name = Trimmed(iconName);
         return ResolveWorkspace(target, window, (store, id) =>
         {
-            if (name is not null && !SegoeIconCatalog.TryGet(name, out _))
-                return Err($"unknown icon: {name}");
+            if (name is not null && WorkspaceIconError(name) is { } error)
+                return Err(error);
             store.SetWorkspaceIcon(id, name);
             return OkId(id);
         });
     }
+
+    private static string? WorkspaceIconError(string icon) =>
+        WorkspaceIconFile.IsFile(icon) ? WorkspaceIconFile.Error(icon, File.Exists)
+        : SegoeIconCatalog.TryGet(icon, out _) ? null
+        : $"unknown icon: {icon}";
 
     public ControlResponse DeleteWorkspace(string? target, string? window)
     {

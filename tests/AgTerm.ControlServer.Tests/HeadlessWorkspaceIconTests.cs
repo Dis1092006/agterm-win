@@ -137,5 +137,38 @@ public sealed class HeadlessWorkspaceIconTests : IDisposable
             ControlJson.Serialize(response.Result));
     }
 
+    [Fact]
+    public void An_existing_image_file_is_set_and_tree_shows_its_path()
+    {
+        var file = Path.Combine(_stateDir, "favicon.ico");
+        File.WriteAllBytes(file, [0, 0, 1, 0]);
+
+        var response = SetIcon(file);
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal(file, Workspace().Icon);
+    }
+
+    [Fact]
+    public void A_missing_image_file_is_refused_and_changes_nothing()
+    {
+        var file = Path.Combine(_stateDir, "missing.png");
+
+        var response = SetIcon(file);
+
+        Assert.False(response.Ok);
+        Assert.Equal($"icon file not found: {file}", response.Error);
+        Assert.Null(Workspace().Icon);
+    }
+
+    [Fact]
+    public void A_relative_image_path_is_refused()
+    {
+        var response = SetIcon(@"public\favicon.ico");
+
+        Assert.False(response.Ok);
+        Assert.Equal(@"icon file path must be absolute: public\favicon.ico", response.Error);
+    }
+
     private const string NoSuchWorkspace = "no such workspace: nope";
 }

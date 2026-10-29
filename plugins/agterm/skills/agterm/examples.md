@@ -824,12 +824,19 @@ agtermctl theme set --dark none              # stop tracking; the light theme st
 
 ## Give a workspace an icon
 
-The icon is a Segoe Fluent Icons name. Names match exactly, including case. No name clears the icon.
+The icon is a Segoe Fluent Icons name, or the path of an `.ico`, `.png` or `.svg` file. Names match exactly, including case. No name clears the icon.
 
 ```bash
 agtermctl icon list | grep Map                       # find a name
 agtermctl workspace icon MapPin --target active      # set it on the current workspace
 agtermctl workspace icon --target active             # clear it
+```
+
+To use the project's own icon, look for a favicon in the session's project folder (`public/`, `static/`, `wwwroot/`, `src/assets/`). Projects made from one template often share the same favicon, so when there are several candidates, ask the user which one to use before setting it. A relative path is resolved against the current directory.
+
+```bash
+find . -path ./node_modules -prune -o \( -iname 'favicon*' -o -iname '*.ico' \) -print   # candidates
+agtermctl workspace icon public/favicon.ico --target active                               # use one
 ```
 
 ## Targeting another window's tree
