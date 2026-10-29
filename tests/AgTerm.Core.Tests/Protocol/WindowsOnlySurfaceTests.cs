@@ -9,10 +9,11 @@ namespace AgTerm.Core.Tests.Protocol;
 public class WindowsOnlySurfaceTests
 {
     [Fact]
-    public void The_list_names_the_workspace_theme_and_the_windows_only_settings()
+    public void The_list_names_the_workspace_theme_and_icon_and_the_windows_only_settings()
     {
-        Assert.Equal(["workspace.theme"], ParitySurface.WindowsOnly("commands"));
-        Assert.Equal(["theme"], ParitySurface.WindowsOnly("workspaceNode"));
+        Assert.Equal(["workspace.theme", "workspace.icon", "icon.list"], ParitySurface.WindowsOnly("commands"));
+        Assert.Equal(["theme", "icon"], ParitySurface.WindowsOnly("workspaceNode"));
+        Assert.Equal(["icons"], ParitySurface.WindowsOnly("result"));
         Assert.Equal(["theme", "icon"], ParitySurface.WindowsOnly("workspaceSnapshot"));
         Assert.Equal(["sidebarThemeColors", "sidebarThemeStyle", "restoreScrollback", "overlayOpacity", "closeOnShellExit"], ParitySurface.WindowsOnly("settings"));
     }
@@ -20,6 +21,7 @@ public class WindowsOnlySurfaceTests
     [Theory]
     [InlineData("commands")]
     [InlineData("workspaceNode")]
+    [InlineData("result")]
     public void No_windows_only_control_entry_exists_upstream(string section)
     {
         Assert.All(ParitySurface.WindowsOnly(section),

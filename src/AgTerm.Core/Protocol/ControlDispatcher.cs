@@ -40,12 +40,12 @@ public sealed class ControlDispatcher
                 return await DispatchSessionSurfaceCommand(request);
             case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
                 or Command.WorkspaceDelete or Command.WorkspaceMove or Command.WorkspaceFocus
-                or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme:
+                or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme or Command.WorkspaceIcon:
                 return DispatchWorkspaceCommand(request);
             case Command.Quick or Command.FontInc or Command.FontDec or Command.FontReset
                 or Command.KeymapReload or Command.KeymapList or Command.KeymapRun
                 or Command.ConfigReload or Command.Notify
-                or Command.ThemeSet or Command.ThemeList or Command.Sidebar or Command.SidebarMode
+                or Command.ThemeSet or Command.ThemeList or Command.IconList or Command.Sidebar or Command.SidebarMode
                 or Command.SidebarExpand or Command.SidebarCollapse or Command.RestoreClear:
                 return await DispatchAppCommand(request);
             case Command.QuickType or Command.QuickText:
@@ -586,6 +586,8 @@ public sealed class ControlDispatcher
             }
             case Command.WorkspaceTheme:
                 return _actions.SetWorkspaceTheme(request.Target, request.Args?.Window, request.Args?.Name);
+            case Command.WorkspaceIcon:
+                return _actions.SetWorkspaceIcon(request.Target, request.Args?.Window, request.Args?.Name);
             case Command.WorkspaceDelete:
                 return _actions.DeleteWorkspace(request.Target, request.Args?.Window);
             case Command.WorkspaceMove:
@@ -734,6 +736,8 @@ public sealed class ControlDispatcher
                 return _actions.SetTheme(request.Args);
             case Command.ThemeList:
                 return _actions.ListThemes();
+            case Command.IconList:
+                return _actions.ListIcons();
             case Command.Sidebar:
             {
                 var mode = ControlToggleModes.Parse(request.Args?.Mode, onToken: "show", offToken: "hide");

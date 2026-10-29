@@ -333,6 +333,7 @@ public sealed partial class AppStore
                 Collapsed = workspace.IsExpanded ? null : true,
                 Sessions = sessions,
                 Theme = workspace.ThemeName,
+                Icon = workspace.IconName,
             };
         }).ToArray();
         return new ControlTree

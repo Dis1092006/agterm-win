@@ -70,6 +70,8 @@ public sealed class MockControlActions : IControlActions
         public sealed record Notify(string? Target, string? Window, string? Title, string Body) : Call;
         public sealed record ThemeSet(string? Name) : Call;
         public sealed record ThemeList : Call;
+        public sealed record WorkspaceIcon(string? Target, string? Window, string? IconName) : Call;
+        public sealed record IconList : Call;
         public sealed record SidebarVisibility(ControlToggleMode Mode) : Call;
         public sealed record SidebarViewMode(ControlSidebarViewMode Mode) : Call;
         public sealed record Expand(string? Window) : Call;
@@ -247,6 +249,18 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse SetWorkspaceTheme(string? target, string? window, string? themeName)
     {
         Calls.Add(new Call.WorkspaceTheme(target, window, themeName));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetWorkspaceIcon(string? target, string? window, string? iconName)
+    {
+        Calls.Add(new Call.WorkspaceIcon(target, window, iconName));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse ListIcons()
+    {
+        Calls.Add(new Call.IconList());
         return new ControlResponse { Ok = true };
     }
 
