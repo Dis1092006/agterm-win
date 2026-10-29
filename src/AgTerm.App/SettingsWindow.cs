@@ -17,6 +17,9 @@ internal sealed class SettingsWindow : Window
 {
     private readonly SettingsCoordinator coordinator;
     private readonly SettingsEditor editor;
+    private readonly SoundCatalog soundCatalog;
+    private readonly WindowsNotificationSound notificationSounds;
+    private IReadOnlyList<CatalogSound> soundChoices = [];
     private readonly UISettings uiSettings = new();
     private readonly Grid root = new() { Background = new SolidColorBrush(Colors.Transparent) };
     private readonly AppWindow appWindow;
@@ -41,6 +44,8 @@ internal sealed class SettingsWindow : Window
         this.shortcuts = shortcuts;
         this.reloadKeymap = reloadKeymap;
         editor = new SettingsEditor(coordinator);
+        soundCatalog = new SoundCatalog(coordinator.StateDirectory);
+        notificationSounds = new WindowsNotificationSound(soundCatalog);
         Title = "Settings - agterm-win";
         SystemBackdrop = new MicaBackdrop();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -54,7 +59,7 @@ internal sealed class SettingsWindow : Window
                 Content = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                     HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } });
         tabs.SelectionChanged += (_, _) => DispatcherQueue.TryEnqueue(RenderTab);
-        tabs.Loaded += (_, _) => RenderTab();
+        tabs.Loaded += async (_, _) => await LoadSoundsAsync();
         tabs.SelectedIndex = 0;
         var footer = new Grid { ColumnSpacing = 12, Margin = new Thickness(20) };
         footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -88,9 +93,27 @@ internal sealed class SettingsWindow : Window
         ShowError();
     }
 
+    private async Task LoadSoundsAsync()
+    {
+        try
+        {
+            var choices = await Task.Run(() => soundCatalog.Sounds);
+            if (closed) return;
+            soundChoices = choices;
+            RenderTab();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            System.Diagnostics.Trace.TraceWarning($"Could not load sound choices: {ex.Message}");
+            error.Message = ex.Message;
+            error.IsOpen = true;
+        }
+    }
+
     public void ShowGeneral()
     {
         tabs.SelectedIndex = 0;
+        _ = LoadSoundsAsync();
         Activate();
         WindowForeground.Raise(WinRT.Interop.WindowNative.GetWindowHandle(this));
     }
@@ -195,6 +218,9 @@ internal sealed class SettingsWindow : Window
                         .Select(name => new SettingChoice(name, name)).ToArray(),
                     SettingControl.Theme => AgTerm.Xterm.ThemeCatalog.Default.Names
                         .Select(name => new SettingChoice(name, name)).ToArray(),
+                    _ when field.Key is "notificationSoundName" or "blockedStatusSoundName" =>
+                        (field.Choices ?? []).Concat(soundChoices.Select(sound =>
+                            new SettingChoice(sound.Name, sound.Name + (sound.IsUserSound ? " (user)" : "")))).ToArray(),
                     _ => field.Choices ?? [],
                 };
                 var selected = value?.GetValue<string>();
@@ -206,11 +232,22 @@ internal sealed class SettingsWindow : Window
                     (field.Control != SettingControl.Theme || editor.Draft.FollowSystemAppearance != true))
                     options.Add(new(null, field.Default is null ? "Default" : $"Default ({field.Default})"));
                 options.AddRange(choices);
-                if (selected is not null && !choices.Any(choice => choice.Value == selected))
-                    options.Add(new(selected, selected + " (stored)"));
+                var isSound = field.Key is "notificationSoundName" or "blockedStatusSoundName";
+                var canonicalSound = soundChoices.FirstOrDefault(sound =>
+                    string.Equals(sound.Name, selected, StringComparison.OrdinalIgnoreCase))?.Name
+                    ?? (selected?.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) == true
+                        ? soundChoices.FirstOrDefault(sound =>
+                            string.Equals(sound.Name, selected[..^4], StringComparison.OrdinalIgnoreCase))?.Name
+                        : null)
+                    ?? selected;
+                bool Matches(SettingChoice choice) => isSound
+                    ? string.Equals(choice.Value, canonicalSound, StringComparison.OrdinalIgnoreCase)
+                    : choice.Value == selected;
+                if (selected is not null && !choices.Any(Matches))
+                    options.Add(new(selected, selected + (isSound ? " (unavailable)" : " (stored)")));
                 combo.ItemsSource = options;
                 combo.DisplayMemberPath = nameof(SettingChoice.Label);
-                combo.SelectedItem = options.FirstOrDefault(option => option.Value == selected);
+                combo.SelectedItem = options.FirstOrDefault(Matches);
                 Identify(combo, id, field.Label);
                 combo.SelectionChanged += async (_, _) =>
                 {
@@ -236,12 +273,12 @@ internal sealed class SettingsWindow : Window
                     sounds.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                     sounds.Children.Add(combo);
                     var preview = Button("Preview", id + "-preview");
-                    preview.IsEnabled = WindowsNotificationSound.IsSupported(selected);
-                    preview.Click += async (_, _) => await RunAsync(() =>
+                    preview.IsEnabled = selected is not null && choices.Any(Matches);
+                    preview.Click += async (_, _) => await RunAsync(async () =>
                     {
-                        if (!WindowsNotificationSound.TryPlay(editor.Value(field.Key)?.GetValue<string>()))
+                        if (!await notificationSounds.TryPlayAsync(editor.Value(field.Key)?.GetValue<string>(),
+                            NotificationSoundKind.Preview))
                             throw new InvalidOperationException("Windows could not play the selected sound.");
-                        return Task.CompletedTask;
                     });
                     Grid.SetColumn(preview, 1);
                     sounds.Children.Add(preview);

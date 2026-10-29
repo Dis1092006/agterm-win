@@ -12,7 +12,7 @@ public sealed record LiveBannerNotification(
 public sealed class SoundThrottle
 {
     private readonly TimeSpan _window;
-    private readonly Dictionary<string, TimeSpan> _lastPlayed = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TimeSpan> _lastPlayed = new(StringComparer.OrdinalIgnoreCase);
 
     public SoundThrottle(TimeSpan window)
     {
@@ -63,5 +63,5 @@ public static class LiveNotificationPolicy
     }
 
     private static string? Normalize(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        string.IsNullOrEmpty(value) ? null : value;
 }

@@ -322,15 +322,12 @@ public class ControlSidebarStatusTests : ControlApiTestCase
             .GetValue<bool>());
         Assert.Equal("completed", CurrentStatus());
 
-        // PLATFORM-NOTES divergence: upstream validates the per-call sound against the macOS
-        // system-sound catalog and rejects with "unknown sound: NoSuchSoundXYZ" BEFORE the mutation;
-        // Windows has no named-system-sound catalogue, so --sound is accepted verbatim (playback is
-        // a host-side no-op) and the status change applies.
         var unknownSound = SendCommand(
             $$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"active","sound":"NoSuchSoundXYZ"}}""");
-        Assert.True(unknownSound["ok"]!.GetValue<bool>(),
-            $"an unknown sound is accepted on Windows (documented divergence): {unknownSound.ToJsonString()}");
-        Assert.Equal("active", CurrentStatus());
+        Assert.False(unknownSound["ok"]!.GetValue<bool>());
+        Assert.StartsWith("unknown sound: NoSuchSoundXYZ (use 'default', 'beep', or one of: ",
+            unknownSound["error"]!.GetValue<string>());
+        Assert.Equal("completed", CurrentStatus());
     }
 
     // session.status --color sets a per-call glyph tint. Upstream cannot observe the tint in the AX

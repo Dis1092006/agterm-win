@@ -37,6 +37,7 @@ public sealed class LiveApplicationHost : IDisposable
     private readonly Dictionary<Guid, ITimer> _treeEventTimers = new();
     private readonly TimeProvider _treeEventTimeProvider;
     private readonly string _stateDirectory;
+    private readonly SoundCatalog _soundCatalog;
     private readonly string _homeDirectory;
     private readonly ILiveWindowController? _windowController;
     private readonly RecentClosedStore _recentClosedStore;
@@ -56,6 +57,7 @@ public sealed class LiveApplicationHost : IDisposable
         options ??= new LiveApplicationHostOptions();
         _treeEventTimeProvider = options.TreeEventTimeProvider;
         _stateDirectory = options.StateDir ?? PersistenceStore.DefaultDirectory;
+        _soundCatalog = new SoundCatalog(_stateDirectory);
         Settings = new SettingsCoordinator(new SettingsStore(_stateDirectory));
         _homeDirectory = options.HomeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -427,6 +429,13 @@ public sealed class LiveApplicationHost : IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Cmd == Command.SessionStatus)
+        {
+            var (_, rejection) = ControlDispatcher.ParseSessionStatus(request);
+            if (rejection is not null) return rejection;
+            if (request.Args?.Sound is { Length: > 0 } sound && _soundCatalog.Resolve(sound) is null)
+                return new ControlResponse { Ok = false, Error = _soundCatalog.UnknownSoundError(sound) };
+        }
         if (request.Cmd == Command.WindowList)
             return await ListWindowsAsync(cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowNew && _windowController is not null)
