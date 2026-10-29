@@ -22,6 +22,7 @@ internal static class WorkspaceCommands
         workspace.Subcommands.Add(BuildCollapse(bindings));
         workspace.Subcommands.Add(BuildExpand(bindings));
         workspace.Subcommands.Add(BuildTheme(bindings));
+        workspace.Subcommands.Add(BuildIcon(bindings));
         return workspace;
     }
 
@@ -327,6 +328,45 @@ internal static class WorkspaceCommands
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Theme
+        {
+            Name = result.GetValue(name),
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    // Windows-only (parity/windows-only.json): upstream has no icon per workspace.
+    internal sealed class Icon : IRequestCommand
+    {
+        public string? Name { get; init; }
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.WorkspaceIcon,
+            Target = Target.Target,
+            Args = Client.WithWindow(new ControlArgs { Name = Name }),
+        };
+    }
+
+    private static System.CommandLine.Command BuildIcon(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("icon",
+            "Set a workspace's own icon, or clear it without a name (Windows only).");
+        var name = new Argument<string?>("name")
+        {
+            Description = "Icon name from `agtermctl icon list`; omit it to show the default icon again.",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(name);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Icon
         {
             Name = result.GetValue(name),
             Target = target.Read(result),

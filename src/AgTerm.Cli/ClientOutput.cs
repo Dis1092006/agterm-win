@@ -53,6 +53,10 @@ internal static class ClientOutput
         {
             return FormatKeymap(keymap);
         }
+        if (response.Result?.Icons is { } icons)
+        {
+            return string.Join("\n", icons);
+        }
         if (response.Result?.Text is { } text)
         {
             return text;

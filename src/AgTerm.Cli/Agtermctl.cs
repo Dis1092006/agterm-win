@@ -110,6 +110,7 @@ public static class Agtermctl
                      KeymapCommands.Build(bindings),
                      ConfigCommands.Build(bindings),
                      ThemeCommands.Build(bindings),
+                     IconCommands.Build(bindings),
                      RestoreCommands.Build(bindings),
                  })
         {
