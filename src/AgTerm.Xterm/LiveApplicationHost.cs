@@ -35,6 +35,8 @@ public sealed record LiveWindowEntry(
 public sealed class LiveApplicationHost : IDisposable
 {
     private readonly Lock _gate = new();
+    private readonly Lock _sidebarGate = new();
+    private bool _autoHideInactiveSidebars;
     private readonly Lock _treeEventGate = new();
     private readonly Dictionary<Guid, ITimer> _treeEventTimers = new();
     private readonly TimeProvider _treeEventTimeProvider;
@@ -63,7 +65,7 @@ public sealed class LiveApplicationHost : IDisposable
         _treeEventTimeProvider = options.TreeEventTimeProvider;
         _stateDirectory = options.StateDir ?? PersistenceStore.DefaultDirectory;
         _soundCatalog = new SoundCatalog(_stateDirectory);
-        Settings = new SettingsCoordinator(new SettingsStore(_stateDirectory));
+        Settings = new SettingsCoordinator(new SettingsStore(_stateDirectory), ApplyApplicationSettingsAsync);
         _homeDirectory = options.HomeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _windowController = options.WindowController;
@@ -112,7 +114,21 @@ public sealed class LiveApplicationHost : IDisposable
         SocketPath = ControlPipeName.AdvertisedSocketPath(PipeName, socketPath);
         _server = new ControlPipeServer(PipeName, DispatchAsync);
         Quick.CanShow = CanShowQuick;
+        _autoHideInactiveSidebars = Settings.State.Snapshot.Settings.AutoHideSidebarInactiveWindows == true;
+        lock (_sidebarGate)
+            ReconcileInactiveSidebarsLocked();
     }
+
+    private Task ApplyApplicationSettingsAsync(SettingsSnapshot snapshot, SettingsApplyKind kind) => Task.Run(() =>
+    {
+        lock (_sidebarGate)
+        {
+            var enabled = snapshot.Settings.AutoHideSidebarInactiveWindows == true;
+            var reconcile = enabled && (!_autoHideInactiveSidebars || kind == SettingsApplyKind.Reload);
+            _autoHideInactiveSidebars = enabled;
+            if (reconcile) ReconcileInactiveSidebarsLocked();
+        }
+    });
 
     public HeadlessQuickTerminal Quick { get; } = new();
     public event Action<Keymap>? KeymapReloaded;
@@ -451,17 +467,36 @@ public sealed class LiveApplicationHost : IDisposable
             }
             acceptedPaneId = window.AcceptedPaneId;
         }
-        return Task.Run(() => window.RunLocked(() =>
+        return Task.Run(() =>
         {
-            // The accepted layout may change while this callback waits for the store gate.
-            if (acceptedPaneId is null || window.AcceptedPaneId != acceptedPaneId)
-                return;
-            var session = window.Store.Workspaces.SelectMany(workspace => workspace.Sessions)
-                .FirstOrDefault(candidate => candidate.Surface?.PaneToken == acceptedPaneId
-                    || candidate.SplitSurface?.PaneToken == acceptedPaneId);
-            if (session is { UnseenCount: > 0 })
-                window.Store.ClearUnseen(session.Id);
-        }));
+            lock (_sidebarGate)
+                ReconcileInactiveSidebarsLocked();
+            window.RunLocked(() =>
+            {
+                // The accepted layout may change while this callback waits for the store gate.
+                if (acceptedPaneId is null || window.AcceptedPaneId != acceptedPaneId)
+                    return;
+                var session = window.Store.Workspaces.SelectMany(workspace => workspace.Sessions)
+                    .FirstOrDefault(candidate => candidate.Surface?.PaneToken == acceptedPaneId
+                        || candidate.SplitSurface?.PaneToken == acceptedPaneId);
+                if (session is { UnseenCount: > 0 })
+                    window.Store.ClearUnseen(session.Id);
+            });
+        });
+    }
+
+    private void ReconcileInactiveSidebarsLocked()
+    {
+        LiveWindowHost[] windows;
+        Guid active;
+        lock (_gate)
+        {
+            if (_disposed || !_autoHideInactiveSidebars || ActiveWindowIdLocked() is not { } id) return;
+            active = id;
+            windows = _openWindows.Values.ToArray();
+        }
+        foreach (var window in windows)
+            window.RunLocked(() => window.Store.SetSidebarVisible(window.WindowId == active));
     }
 
     public async Task CloseWindowAsync(

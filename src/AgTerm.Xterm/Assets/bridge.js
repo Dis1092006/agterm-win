@@ -348,6 +348,18 @@ function getVisiblePaneIds() {
   return visibleLayout.paneIds;
 }
 
+function scrollInactiveAt(xFraction, yFraction, wheelDelta) {
+  const element = document.elementFromPoint(xFraction * innerWidth, yFraction * innerHeight);
+  const paneId = element?.closest(".pane")?.dataset.paneId;
+  if (!getVisiblePaneIds().includes(paneId)) return;
+  const pane = panes.get(paneId);
+  const amount = (pane.inactiveScrollRemainder ?? 0)
+    - wheelDelta / 120 * pane.term.options.scrollSensitivity;
+  const lines = Math.trunc(amount);
+  pane.inactiveScrollRemainder = amount - lines;
+  if (lines !== 0) pane.term.scrollLines(lines);
+}
+
 function emitPaneFocus(paneId) {
   if (!panes.has(paneId)) return;
   post({ type: "paneFocus", paneId });
@@ -3305,6 +3317,7 @@ window.agterm = {
   setExternalInputOwner: (ownsInput) => { externalInputOwner = ownsInput === true; },
   openPane,
   showPane,
+  scrollInactiveAt,
   closePane,
   openSearch,
   closeSearch,

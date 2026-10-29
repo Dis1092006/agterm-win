@@ -23,6 +23,142 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public async Task Enabling_active_window_sidebars_applies_immediately_and_persists_each_changed_window()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(secondId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication();
+        application.GetOpenWindow(secondId).Store.SetSidebarVisible(false);
+
+        await application.Settings.UpdateCurrentAsync(settings =>
+            settings with { AutoHideSidebarInactiveWindows = true });
+
+        Assert.False(application.GetOpenWindow(firstId).Store.SidebarVisible);
+        Assert.True(application.GetOpenWindow(secondId).Store.SidebarVisible);
+        Assert.False(new PersistenceStore(Path.Combine(_stateDir, "windows"), $"{firstId:D}.json").Load().SidebarVisible);
+        Assert.True(new PersistenceStore(Path.Combine(_stateDir, "windows"), $"{secondId:D}.json").Load().SidebarVisible);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    public async Task Default_or_disabled_policy_keeps_manual_visibility_on_activation(bool? enabled)
+    {
+        new SettingsStore(_stateDir).Save(new AppSettings { AutoHideSidebarInactiveWindows = enabled });
+        using var application = CreateApplication();
+        var id = application.ActiveWindowId!.Value;
+        application.GetOpenWindow(id).Store.SetSidebarVisible(false);
+        await application.ReportActivatedAsync(id);
+        Assert.False(application.GetOpenWindow(id).Store.SidebarVisible);
+    }
+
+    [Fact]
+    public async Task Every_activation_reconciles_even_the_same_restored_frontmost_and_a_single_window()
+    {
+        new SettingsStore(_stateDir).Save(new AppSettings { AutoHideSidebarInactiveWindows = true });
+        using var application = CreateApplication();
+        var id = application.ActiveWindowId!.Value;
+        var store = application.GetOpenWindow(id).Store;
+        store.SetSidebarVisible(false);
+
+        await application.ReportActivatedAsync(id);
+
+        Assert.True(store.SidebarVisible);
+        var changes = 0;
+        store.SidebarVisibilityChanged += () => changes++;
+        await application.ReportActivatedAsync(id);
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public async Task Switching_windows_reverses_visibility_but_disabling_does_not_restore_it()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        new SettingsStore(_stateDir).Save(new AppSettings { AutoHideSidebarInactiveWindows = true });
+        using var application = CreateApplication();
+
+        await application.ReportActivatedAsync(secondId);
+        Assert.False(application.GetOpenWindow(firstId).Store.SidebarVisible);
+        Assert.True(application.GetOpenWindow(secondId).Store.SidebarVisible);
+        await application.ReportActivatedAsync(firstId);
+        Assert.True(application.GetOpenWindow(firstId).Store.SidebarVisible);
+        Assert.False(application.GetOpenWindow(secondId).Store.SidebarVisible);
+
+        await application.Settings.UpdateCurrentAsync(settings =>
+            settings with { AutoHideSidebarInactiveWindows = null });
+        await application.ReportActivatedAsync(secondId);
+        Assert.True(application.GetOpenWindow(firstId).Store.SidebarVisible);
+        Assert.False(application.GetOpenWindow(secondId).Store.SidebarVisible);
+    }
+
+    [Fact]
+    public async Task Unrelated_settings_edits_leave_manual_visibility_until_the_next_activation()
+    {
+        using var application = CreateApplication();
+        await application.Settings.UpdateCurrentAsync(settings =>
+            settings with { AutoHideSidebarInactiveWindows = true });
+        var id = application.ActiveWindowId!.Value;
+        var store = application.GetOpenWindow(id).Store;
+        store.SetSidebarVisible(false);
+
+        await application.Settings.UpdateCurrentAsync(settings => settings with { FontSize = 18 });
+
+        Assert.False(store.SidebarVisible);
+        await application.ReportActivatedAsync(id);
+        Assert.True(store.SidebarVisible);
+    }
+
+    [Fact]
+    public async Task Concurrent_activation_callbacks_leave_only_the_latest_frontmost_sidebar_visible()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication();
+        await application.Settings.UpdateCurrentAsync(settings =>
+            settings with { AutoHideSidebarInactiveWindows = true });
+
+        var pending = Enumerable.Range(0, 20)
+            .Select(index => application.ReportActivatedAsync(index % 2 == 0 ? firstId : secondId))
+            .ToArray();
+        await Task.WhenAll(pending).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(secondId, application.ActiveWindowId);
+        Assert.False(application.GetOpenWindow(firstId).Store.SidebarVisible);
+        Assert.True(application.GetOpenWindow(secondId).Store.SidebarVisible);
+        application.GetOpenWindow(secondId).Store.SetSidebarVisible(false);
+        await application.Settings.ReloadAsync();
+        Assert.True(application.GetOpenWindow(secondId).Store.SidebarVisible);
+    }
+
+    [Fact]
+    public async Task Closing_a_window_and_ignoring_its_late_activation_does_not_touch_the_remaining_sidebar()
+    {
+        using var application = CreateApplication();
+        var id = application.ActiveWindowId!.Value;
+        await application.Settings.UpdateCurrentAsync(settings =>
+            settings with { AutoHideSidebarInactiveWindows = true });
+        await application.CloseWindowAsync(id);
+        await application.ReportActivatedAsync(id);
+        Assert.Null(application.ActiveWindowId);
+    }
+
+    [Fact]
     public void Fresh_state_seeds_one_open_active_window_and_persists_separate_files()
     {
         using var application = new LiveApplicationHost(new LiveApplicationHostOptions

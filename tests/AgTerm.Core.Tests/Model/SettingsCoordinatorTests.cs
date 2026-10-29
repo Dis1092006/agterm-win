@@ -11,6 +11,55 @@ public sealed class SettingsCoordinatorTests : IDisposable
     public void Dispose() => Directory.Delete(directory, recursive: true);
 
     [Fact]
+    public async Task Application_policy_is_awaited_without_counting_as_a_window_subscriber()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = new SettingsCoordinator(Store, async (snapshot, kind) =>
+        {
+            Assert.Equal(SettingsApplyKind.Edit, kind);
+            Assert.True(snapshot.Settings.AutoHideSidebarInactiveWindows);
+            entered.SetResult();
+            await release.Task;
+        });
+        Assert.False(coordinator.HasSubscribers);
+
+        var saving = coordinator.UpdateCurrentAsync(settings =>
+            settings with { AutoHideSidebarInactiveWindows = true });
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(saving.IsCompleted);
+        release.SetResult();
+        await saving;
+        Assert.False(coordinator.HasSubscribers);
+    }
+
+    [Fact]
+    public async Task Application_policy_failure_is_reported_but_window_application_still_runs()
+    {
+        var fail = true;
+        var coordinator = new SettingsCoordinator(Store, (_, _) =>
+            fail ? Task.FromException(new IOException("application policy failed")) : Task.CompletedTask);
+        var calls = 0;
+        using var subscription = await coordinator.SubscribeAsync((_, _) =>
+        {
+            calls++;
+            return Task.CompletedTask;
+        });
+
+        var error = await Assert.ThrowsAsync<SettingsApplyException>(() =>
+            coordinator.UpdateCurrentAsync(settings => settings with { AutoHideSidebarInactiveWindows = true }));
+
+        Assert.Equal("application policy failed", Assert.Single(error.InnerExceptions).Message);
+        Assert.Same(error, coordinator.State.Error);
+        Assert.True(Store.ReadStrict().Settings.AutoHideSidebarInactiveWindows);
+        Assert.Equal(2, calls);
+        fail = false;
+        await coordinator.ReloadAsync();
+        Assert.Null(coordinator.State.Error);
+        Assert.Equal(3, calls);
+    }
+
+    [Fact]
     public async Task Edit_is_persisted_then_applied_to_every_subscriber_and_is_observable()
     {
         var coordinator = new SettingsCoordinator(Store);

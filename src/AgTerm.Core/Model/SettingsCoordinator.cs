@@ -17,14 +17,17 @@ public sealed class SettingsApplyException(SettingsSnapshot snapshot, IReadOnlyL
 public sealed class SettingsCoordinator
 {
     private readonly SettingsStore store;
+    private readonly Func<SettingsSnapshot, SettingsApplyKind, Task>? applyApplication;
     private readonly SemaphoreSlim operations = new(1, 1);
     private readonly Lock subscribersGate = new();
     private readonly Dictionary<Guid, Func<SettingsSnapshot, SettingsApplyKind, Task>> subscribers = new();
     private SettingsApplicationState state;
 
-    public SettingsCoordinator(SettingsStore store)
+    public SettingsCoordinator(SettingsStore store,
+        Func<SettingsSnapshot, SettingsApplyKind, Task>? applyApplication = null)
     {
         this.store = store;
+        this.applyApplication = applyApplication;
         try { state = new(store.ReadStrict(), false, null); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or System.Text.Json.JsonException or NotSupportedException)
@@ -120,7 +123,8 @@ public sealed class SettingsCoordinator
     private async Task<List<Exception>> ApplyToSubscribersAsync(SettingsSnapshot snapshot, SettingsApplyKind kind)
     {
         Func<SettingsSnapshot, SettingsApplyKind, Task>[] targets;
-        lock (subscribersGate) targets = subscribers.Values.ToArray();
+        lock (subscribersGate)
+            targets = applyApplication is { } apply ? [apply, .. subscribers.Values] : subscribers.Values.ToArray();
         var errors = new List<Exception>();
         foreach (var apply in targets)
         {

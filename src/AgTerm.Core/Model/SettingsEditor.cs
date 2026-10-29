@@ -69,6 +69,8 @@ public sealed class SettingsEditor
         new("sidebarThemeStyle", "Appearance", "Sidebar theme style", SettingControl.Choice, "row",
             Choices: [new(null, "Default (Row)"), new("row", "Row"), new("label", "Label")]),
         new("hiddenInterfaceElements", "Interface", "Visible interface elements", SettingControl.Interface),
+        new("autoHideSidebarInactiveWindows", "Interface", "Show sidebar only in the active window",
+            SettingControl.Toggle, false),
         new("notificationsEnabled", "Notifications", "Show notification banners", SettingControl.Toggle, true),
         new("notificationBadgeEnabled", "Notifications", "Show notification badges", SettingControl.Toggle, true),
         new("notificationSoundName", "Notifications", "Notification sound", SettingControl.Choice,

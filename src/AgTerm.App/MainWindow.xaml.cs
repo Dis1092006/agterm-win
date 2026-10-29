@@ -39,6 +39,9 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<string, XtermPaneSurface> _surfaces = new(); // UI-thread confined; keyed by pane token
     private readonly AppWindow _appWindow;
     private readonly FullscreenController _fullscreen;
+    private readonly DispatcherTimer _activationClickReleaseTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private bool _activationClickInProgress;
+    private bool _activationShieldCaptured;
     private readonly WindowFrameStore _frames = new();
     private readonly WindowFrameTracker _frameTracker = new();
     private readonly CancellationTokenSource _bootstrapCancellation = new();
@@ -135,6 +138,8 @@ public sealed partial class MainWindow : Window
         _paneThemes = new PaneThemeAssigner(_themeCatalog.Resolve);
 
         InitializeComponent();
+        _activationClickReleaseTimer.Tick += (_, _) => RefreshActivationShield();
+        RefreshActivationShield();
         InstallCommandLineToolItem.Text = InstallerCommands.InstallCommandLineTool;
         InstallAgentSkillItem.Text = InstallerCommands.InstallAgentSkill;
         InstallAgentStatusHooksItem.Text = InstallerCommands.InstallAgentStatusHooks;
@@ -272,6 +277,7 @@ public sealed partial class MainWindow : Window
             _appWindow.Closing -= OnAppWindowClosing;
             _appWindow.Changed -= OnAppWindowChanged;
             Activated -= OnWindowActivated;
+            _activationClickReleaseTimer.Stop();
             _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
             _uiSettings.AdvancedEffectsEnabledChanged -= OnAdvancedEffectsEnabledChanged;
             PaletteOverlay.SelectionChanged -= OnPaletteSelectionChanged;
@@ -494,6 +500,9 @@ public sealed partial class MainWindow : Window
 
     private static class NativeMethods
     {
+        [DllImport("user32.dll")]
+        internal static extern short GetAsyncKeyState(int key);
+
         internal const uint MonitorDefaultToNearest = 2;
 
         [DllImport("user32.dll")]
@@ -511,7 +520,11 @@ public sealed partial class MainWindow : Window
 
     private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
     {
+        var wasActive = _windowIsActive;
         _windowIsActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        if (_windowIsActive && !wasActive)
+            _activationClickInProgress = new[] { 1, 2, 4 }.Any(key => (NativeMethods.GetAsyncKeyState(key) & 0x8000) != 0);
+        RefreshActivationShield();
         // the Ctrl release may land in another window, so a switch never outlives the focus
         if (!_windowIsActive)
             _switcher.Cancel();
@@ -527,6 +540,49 @@ public sealed partial class MainWindow : Window
         if (KeybindingsOverlay.IsOpen)
             KeybindingsOverlay.FocusQuery();
         _terminalFocus.Activated(modalOpen: PaletteOverlay.IsOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);
+    }
+
+    private void RefreshActivationShield()
+    {
+        // Keep the activating gesture off WebView2 while the sidebar changes the terminal bounds.
+        if (_activationClickInProgress && !_activationShieldCaptured
+            && new[] { 1, 2, 4 }.All(key => (NativeMethods.GetAsyncKeyState(key) & 0x8000) == 0))
+            _activationClickInProgress = false;
+        ActivationShield.Visibility = _settings.AutoHideSidebarInactiveWindows == true
+            && (!_windowIsActive || _activationClickInProgress) ? Visibility.Visible : Visibility.Collapsed;
+        if (_windowIsActive && _activationClickInProgress && !_activationShieldCaptured)
+            _activationClickReleaseTimer.Start();
+        else
+            _activationClickReleaseTimer.Stop();
+    }
+
+    private void OnActivationShieldWheelChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+        var point = e.GetCurrentPoint(TerminalView);
+        if (_windowIsActive || point.Properties.IsHorizontalMouseWheel
+            || TerminalView.ActualWidth <= 0 || TerminalView.ActualHeight <= 0
+            || !_pageTask.IsCompletedSuccessfully)
+            return;
+        ObserveTaskFault(_pageTask.Result.ScrollInactiveAtAsync(
+            point.Position.X / TerminalView.ActualWidth,
+            point.Position.Y / TerminalView.ActualHeight,
+            point.Properties.MouseWheelDelta), "Inactive terminal scroll failed");
+    }
+
+    private void OnActivationShieldPressed(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+        _activationShieldCaptured = ActivationShield.CapturePointer(e.Pointer);
+    }
+
+    private void OnActivationShieldReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+        _activationShieldCaptured = false;
+        _activationClickInProgress = false;
+        ActivationShield.ReleasePointerCapture(e.Pointer);
+        RefreshActivationShield();
     }
 
     private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -577,7 +633,7 @@ public sealed partial class MainWindow : Window
             oldView.SizeChanged -= OnTerminalViewSizeChanged;
             var replacement = new WebView2();
             TerminalView = replacement;
-            ShellSplitView.Content = replacement;
+            TerminalContent.Children[0] = replacement;
             replacement.SizeChanged += OnTerminalViewSizeChanged;
             oldView.Close();
         }
@@ -2987,6 +3043,7 @@ public sealed partial class MainWindow : Window
     {
         await ShowThemePresentationAsync(settings, presentation);
         _settings = settings;
+        RefreshActivationShield();
         _rendererSettings = presentation.RendererSettings;
     }
 

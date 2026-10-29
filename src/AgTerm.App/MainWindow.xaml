@@ -257,7 +257,17 @@
                 </Grid>
             </SplitView.Pane>
             <SplitView.Content>
-                <WebView2 x:Name="TerminalView" />
+                <Grid x:Name="TerminalContent">
+                    <WebView2 x:Name="TerminalView" />
+                    <Border x:Name="ActivationShield"
+                            Background="Transparent"
+                            Visibility="Collapsed"
+                            PointerWheelChanged="OnActivationShieldWheelChanged"
+                            PointerPressed="OnActivationShieldPressed"
+                            PointerReleased="OnActivationShieldReleased"
+                            PointerCanceled="OnActivationShieldReleased"
+                            PointerCaptureLost="OnActivationShieldReleased" />
+                </Grid>
             </SplitView.Content>
         </SplitView>
 
