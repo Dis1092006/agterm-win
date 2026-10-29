@@ -1,4 +1,5 @@
 using AgTerm.ControlServer;
+using AgTerm.Core.Keymap;
 using AgTerm.Core.Protocol;
 using AgTerm.Xterm;
 using Microsoft.UI.Dispatching;
@@ -13,6 +14,7 @@ public partial class App : Application, ILiveWindowController
     private LiveApplicationHost? _applicationHost;
     private DispatcherQueue? _dispatcherQueue;
     private SettingsWindow? _settingsWindow;
+    private QuickTerminalWindow? _quickWindow;
 
     internal void OpenSettings()
     {
@@ -25,13 +27,20 @@ public partial class App : Application, ILiveWindowController
                 var response = await Task.Run(() => new ControlPipeClient(applicationHost.PipeName)
                     .Send(new ControlRequest { Cmd = Command.KeymapReload }));
                 if (!response.Ok) throw new IOException(response.Error);
-            });
+            }, () => _quickWindow?.GlobalHotkeyError);
         _settingsWindow.Closed -= OnSettingsClosed;
         _settingsWindow.Closed += OnSettingsClosed;
         _settingsWindow.ShowGeneral();
     }
 
     private void OnSettingsClosed(object sender, WindowEventArgs args) => _settingsWindow = null;
+
+    private MainWindow? ActiveMainWindow =>
+        _applicationHost?.ActiveWindowId is { } id && _windows.TryGetValue(id, out var window) ? window : null;
+
+    internal void DispatchQuickBuiltin(BuiltinAction action) => ActiveMainWindow?.ExecuteBuiltinHotkey(action);
+    internal bool DispatchQuickSwitcher(SessionSwitcherKey key) => ActiveMainWindow?.HandleQuickSwitcherKey(key) ?? false;
+    internal void ShowQuickKeybindings() => ActiveMainWindow?.ShowQuickKeybindings();
 
     public App()
     {
@@ -48,12 +57,26 @@ public partial class App : Application, ILiveWindowController
             WindowController = this,
         });
         _applicationHost = applicationHost;
+        _quickWindow = new QuickTerminalWindow(applicationHost, notice =>
+        {
+            var window = applicationHost.ActiveWindowId is { } id && _windows.TryGetValue(id, out var active)
+                ? active : _windows.Values.FirstOrDefault();
+            window?.ReportQuickFailure(notice);
+        }, (command, selection) =>
+        {
+            if (applicationHost.ActiveWindowId is not { } id || !_windows.TryGetValue(id, out var window))
+                throw new InvalidOperationException("No open window for the quick-terminal custom command.");
+            return window.ExecuteQuickCustomCommandAsync(command, selection);
+        });
+        await _quickWindow.InitializeAsync();
         foreach (var windowId in applicationHost.LaunchWindowIds)
         {
             CreateWindow(windowId).ActivateWindow();
         }
 
         await Task.WhenAll(_windows.Values.Select(window => window.Ready));
+        if (_quickWindow.GlobalHotkeyError is { } hotkeyError)
+            _windows.Values.First().ReportQuickFailure(new("Global hotkey unavailable", hotkeyError));
         applicationHost.Start();
     }
 
@@ -169,7 +192,11 @@ public partial class App : Application, ILiveWindowController
     {
         _windows.Remove(windowId);
         if (_windows.Count == 0)
+        {
             _settingsWindow?.Close();
+            _quickWindow?.Dispose();
+            _quickWindow = null;
+        }
     }
 
     /// <summary>A second launch on the same state directory handed its activation here; AppInstance

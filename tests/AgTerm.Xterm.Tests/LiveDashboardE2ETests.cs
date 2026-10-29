@@ -181,7 +181,7 @@ public sealed class LiveDashboardE2ETests
                     mru: false);
                 Assert.True(response.Ok, response.Error);
             });
-            Assert.False(ReadLocked(host, () => host.Host.Actions.Quick.Visible));
+            Assert.True(ReadLocked(host, () => host.Host.Actions.Quick.Visible));
             Assert.Equal(1, ReadLocked(host, () => AutoFollowSuppressionCount(host.Host.Store)));
 
             var secondRef = ControlRef(secondId, "left");

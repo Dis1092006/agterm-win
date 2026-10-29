@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
+using AgTerm.Core.Keymap;
 using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
+using AgTerm.Terminal;
 
 namespace AgTerm.Xterm;
 
@@ -50,6 +52,9 @@ public sealed class LiveApplicationHost : IDisposable
     private readonly PickRegistry _picks = new();
     private Guid? _frontmostWindowId;
     private bool _disposed;
+    private readonly SemaphoreSlim _quickSurfaceGate = new(1, 1);
+    private readonly CancellationTokenSource _quickLifetime = new();
+    private LiveControlHostOptions? _quickOptions;
 
     public LiveApplicationHost(LiveApplicationHostOptions? options = null)
     {
@@ -104,6 +109,115 @@ public sealed class LiveApplicationHost : IDisposable
         PipeName = options.PipeName ?? ControlPipeName.Derive(socketPath!);
         SocketPath = ControlPipeName.AdvertisedSocketPath(PipeName, socketPath);
         _server = new ControlPipeServer(PipeName, DispatchAsync);
+        Quick.CanShow = CanShowQuick;
+    }
+
+    public HeadlessQuickTerminal Quick { get; } = new();
+    public event Action<Keymap>? KeymapReloaded;
+
+    private bool CanShowQuick()
+    {
+        lock (_gate)
+            return !_disposed && ActiveWindowIdLocked() is { } id
+                && _openWindows[id].Pick.PendingModalError is null;
+    }
+
+    public void ConfigureQuickTerminal(LiveControlHostOptions options) =>
+        _quickOptions = options;
+
+    public Task NoteQuickUserActivityAsync() => Task.Run(() =>
+    {
+        LiveWindowHost? window;
+        lock (_gate) window = !_disposed && ActiveWindowIdLocked() is { } id ? _openWindows[id] : null;
+        window?.RunLocked(window.Store.NoteUserActivity);
+    });
+
+    public async Task ToggleQuickAsync(bool fromGlobalHotkey = false, CancellationToken cancellationToken = default)
+    {
+        Quick.Toggle(fromGlobalHotkey);
+        if (Quick.Visible) await EnsureQuickSurfaceAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task EnsureQuickSurfaceAsync(CancellationToken cancellationToken = default)
+    {
+        var options = _quickOptions;
+        if (options is null || !Quick.Visible) return;
+        await _quickSurfaceGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _quickLifetime.Token);
+        try
+        {
+            if (_disposed || !Quick.Visible || Quick.Surface is not null) return;
+            LiveWindowHost? window;
+            lock (_gate) window = ActiveWindowIdLocked() is { } id ? _openWindows[id] : null;
+            var cwd = _homeDirectory;
+            await Task.Run(() => window?.RunLocked(() =>
+                cwd = window.Store.ActiveSession?.EffectiveCwd ?? _homeDirectory), lifetime.Token).ConfigureAwait(false);
+            var request = new SurfaceOpenRequest(null, LiveSurfaceKind.Quick, new XtermSurfaceOptions
+            {
+                Argv = ShellIntegration.Inject([AgTerm.Terminal.ShellResolver.Resolve(options.DefaultShell)],
+                    options.ShellIntegrationDirectory).ToArray(),
+                Cwd = Directory.Exists(cwd) ? cwd : _homeDirectory,
+                BaseFontSize = Settings.State.Snapshot.Settings.FontSize ?? options.BaseFontSize,
+                ReadClipboard = options.ReadClipboard,
+                ChildEnvironment = _ => SurfaceEnvironment.QuickTerminal(Guid.Empty, SocketPath),
+            });
+            var pending = options.OpenSurface(request, lifetime.Token);
+            IHeadlessSurface surface;
+            try { surface = await pending.WaitAsync(options.RealizeBudget, lifetime.Token).ConfigureAwait(false); }
+            catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
+            {
+                lifetime.Cancel();
+                _ = DiscardQuickSurfaceAsync(pending, options);
+                throw;
+            }
+            bool accepted;
+            lock (_gate)
+            {
+                accepted = !_disposed;
+                if (accepted) Quick.Surface = surface;
+            }
+            if (!accepted)
+            {
+                surface.Teardown();
+                return;
+            }
+            if (surface is XtermPaneSurface live)
+                _ = ObserveQuickExitAsync(live, options);
+        }
+        catch (Exception ex)
+        {
+            Quick.Hide();
+            if (ex is not OperationCanceledException || !_disposed)
+            {
+                options.Log?.Invoke($"Quick terminal creation failed: {ex}");
+                options.FailureReported?.Invoke(new("Quick terminal failed", ex.GetBaseException().Message));
+            }
+        }
+        finally { _quickSurfaceGate.Release(); }
+    }
+
+    private static async Task DiscardQuickSurfaceAsync(Task<IHeadlessSurface> pending, LiveControlHostOptions options)
+    {
+        try { (await pending.ConfigureAwait(false)).Teardown(); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            options.Log?.Invoke($"Discarding quick terminal failed: {ex}");
+            options.FailureReported?.Invoke(new("Quick terminal cleanup failed", ex.GetBaseException().Message));
+        }
+    }
+
+    private async Task ObserveQuickExitAsync(XtermPaneSurface surface, LiveControlHostOptions options)
+    {
+        try { await surface.Pane.Exited.ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            options.Log?.Invoke($"Quick terminal exit failed: {ex}");
+            options.FailureReported?.Invoke(new("Quick terminal failed", ex.GetBaseException().Message));
+        }
+        if (!ReferenceEquals(Quick.Surface, surface)) return;
+        Quick.ShellExited();
+        surface.Teardown();
     }
 
     public IReadOnlyList<LiveWindowEntry> Windows
@@ -289,6 +403,7 @@ public sealed class LiveApplicationHost : IDisposable
                     PipeName = PipeName,
                     SocketPath = SocketPath,
                     WindowName = window.WindowName,
+                    QuickTerminal = Quick,
                 },
                 window,
                 PipeName);
@@ -369,6 +484,7 @@ public sealed class LiveApplicationHost : IDisposable
             SaveIndexLocked();
         }
 
+        if (ActiveWindowId is null) Quick.Hide();
         try
         {
             await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
@@ -416,6 +532,10 @@ public sealed class LiveApplicationHost : IDisposable
             window.RunLocked(window.Store.CloseAllHuds);
         }
         _server.Stop();
+        _quickLifetime.Cancel();
+        Quick.Hide();
+        Quick.Surface?.Teardown();
+        Quick.Surface = null;
         foreach (var attachment in attachments) attachment.Dispose();
         foreach (var window in windows) window.Save();
         SaveIndex();
@@ -427,6 +547,24 @@ public sealed class LiveApplicationHost : IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Cmd is Command.Quick or Command.QuickType or Command.QuickText
+            || request.Cmd == Command.SurfaceZoom && request.Target?.Trim() == "quick")
+        {
+            LiveWindowHost? active;
+            lock (_gate) active = ActiveWindowIdLocked() is { } id ? _openWindows[id] : null;
+            if (active is null)
+                return new ControlResponse { Ok = false, Error = request.Cmd == Command.SurfaceZoom
+                    ? "surface not available: quick" : "no open window" };
+            if (request.Cmd is Command.QuickType or Command.QuickText && Quick.Visible)
+                await EnsureQuickSurfaceAsync(cancellationToken).ConfigureAwait(false);
+            var result = await active.DispatchAsync(request with
+            {
+                Args = request.Args is { } args ? args with { Window = null } : null,
+            }, cancellationToken).ConfigureAwait(false);
+            if (result?.Ok == true && request.Cmd == Command.Quick && Quick.Visible)
+                await EnsureQuickSurfaceAsync(cancellationToken).ConfigureAwait(false);
+            return result;
+        }
         if (request.Cmd == Command.WindowList)
             return await ListWindowsAsync(cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowNew && _windowController is not null)
@@ -602,6 +740,8 @@ public sealed class LiveApplicationHost : IDisposable
                 Error = "window not open — window.select it first",
             };
         var response = await window.DispatchAsync(request, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd is Command.PickOpen or Command.AskOpen && window.Pick.ModalPending)
+            Quick.Hide();
         if (request.Cmd is Command.PickOpen or Command.AskOpen && request.Args?.Follow == true && response?.Ok == true
             && _windowController is not null)
         {
@@ -1243,6 +1383,8 @@ public sealed class LiveApplicationHost : IDisposable
         }
         if (request.Cmd == Command.ConfigReload)
             ResetSessionFontSizes(cancellationToken);
+        if (request.Cmd == Command.KeymapReload && windows.Length > 0)
+            KeymapReloaded?.Invoke(windows[0].Actions.LoadKeymap());
         return firstResponse ?? new ControlResponse
         {
             Ok = false,
@@ -1389,7 +1531,8 @@ public sealed class LiveApplicationHost : IDisposable
             seedIfEmpty,
             launchRestore,
             _picks,
-            EmitTreeChanged);
+            EmitTreeChanged,
+            Quick);
 
     private void SetOpen(Guid windowId, bool isOpen)
     {

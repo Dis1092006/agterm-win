@@ -399,7 +399,7 @@ public sealed class PaletteViewSourceTests
         var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
 
         Assert.Matches(
-            @"private void FocusTerminal\(string paneId\)\s*\{\s*if \(AskOverlay\.IsOpen\)\s*\{[^}]*\}\s*(//[^\r\n]*\s*)*if \(PaletteOverlay\.IsOpen \|\| KeybindingsOverlay\.IsOpen\)\s*return;\s*_terminalFocus\.Request\(",
+            @"private void FocusTerminal\(string paneId\)\s*\{\s*if \(_applicationHost\.Quick\.HoldsKey\) return;\s*if \(AskOverlay\.IsOpen\)\s*\{[^}]*\}\s*(//[^\r\n]*\s*)*if \(PaletteOverlay\.IsOpen \|\| KeybindingsOverlay\.IsOpen\)\s*return;\s*_terminalFocus\.Request\(",
             source);
     }
 

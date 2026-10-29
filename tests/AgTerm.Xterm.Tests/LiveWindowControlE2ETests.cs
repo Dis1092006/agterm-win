@@ -913,6 +913,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Contains("Task ToggleZoomAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task ToggleFullscreenAsync(", app, StringComparison.Ordinal);
         Assert.DoesNotContain("applicationHost.Dispose();", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("_applicationHost?.Dispose()", app, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.NewWindow]", mainWindow, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.RenameWindow]", mainWindow, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.DeleteWindow]", mainWindow, StringComparison.Ordinal);

@@ -356,6 +356,7 @@ function emitPaneFocus(paneId) {
 }
 
 function focusPane(paneId, emitEvent) {
+  if (externalInputOwner) return false;
   const pane = panes.get(paneId);
   if (!pane) return false;
   if (askCovers(paneId)) {
@@ -1656,6 +1657,7 @@ function askIntentFromKey(ev) {
 
 // the layer sits inside its pane element, whose focusin would report a pane focus nobody asked for
 function focusAskLayer() {
+  if (externalInputOwner) return;
   programmaticFocusPaneId = askState.paneId;
   try {
     askLayerEl.focus();
@@ -3298,7 +3300,9 @@ const withPane = (paneId, fn) => {
   return pane ? fn(pane) : null;
 };
 
+let externalInputOwner = false;
 window.agterm = {
+  setExternalInputOwner: (ownsInput) => { externalInputOwner = ownsInput === true; },
   openPane,
   showPane,
   closePane,

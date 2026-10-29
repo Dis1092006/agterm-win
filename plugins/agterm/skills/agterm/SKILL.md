@@ -49,9 +49,7 @@ the control channel is available:
   per-surface token; the agent-status hook forwards them as `session status --pane` / `--pane-id`. The
   token resolves the pane's LIVE slot, so a promoted-then-re-split agent still tags the right pane.
 
-The quick terminal is scratch (not in the tree), so it only gets `AGTERM_ENABLED`, `AGTERM_WINDOW_ID`,
-and `AGTERM_SOCKET` (no session/workspace ids). An overlay gets no `AGTERM_PANE`/`AGTERM_PANE_ID`.
-Custom-command actions from `keymap.conf` run with no `AGTERM_*` variables at all.
+The app-level quick terminal is not in the tree. Its shell gets only `AGTERM_ENABLED` and `AGTERM_SOCKET`, with no window, session, workspace or pane identifiers. An overlay gets no `AGTERM_PANE`/`AGTERM_PANE_ID`. Custom-command actions from `keymap.conf` run with no `AGTERM_*` variables at all.
 
 These variables are inherited by every process the session's shell spawns — including long-lived
 daemons that outlive the shell. A terminal multiplexer server, a session manager (agent-deck and the like), or
@@ -136,8 +134,7 @@ A **window** is the top level: a named bundle rendered in its own top-level Wind
 holds a tree of **workspaces**, each holding **sessions**. A session has a primary shell and can also
 have: a **split** pane (a second shell side by side), a **scratch** terminal (a third full-coverage
 shell, toggled like the split), and an ephemeral **overlay** (runs one program on top, then vanishes).
-Separately, each window has one **quick terminal** (a scratch overlay at 90% of the window, not part
-of the tree).
+The app also has one **quick terminal**, a detached floating panel with its own shell and renderer, outside every window's tree. A human summon hides on focus loss; `quick show` pins it until hidden. Its shell survives hides and ordinary-window closes.
 
 Inspect the live tree any time with `agtermctl tree --json` (workspaces → sessions, each with
 `id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `scratch`, `status`, `background`, `surfaces`). `title` is the raw OSC
@@ -148,8 +145,7 @@ hidden-but-alive split/scratch surfaces. The tree object also carries five
 read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
-(`tree` or `flagged` — the read side of `sidebar mode`), and `quickVisible` (whether the window's quick
-terminal is shown — the read side of the write-only `quick` command). List windows with
+(`tree` or `flagged` — the read side of `sidebar mode`), and `quickVisible` (the same app-level panel visibility in every window's tree). List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
 read side, so record it then restore the exact frame; logical points relative to the display, `y`
@@ -399,11 +395,7 @@ makes the window frontmost for routing; Windows may refuse to raise it, and then
 flashes. `resize` is clamped to the display's work area, and `move` keeps part of the window on screen.
 Closing the last window ends the app; the next launch opens it again.
 
-**surface** — `zoom [show|hide|toggle] [--target surface:<session-id>:left|right|scratch|overlay|quick] [--window W]`
-— zoom a terminal surface to fill the window (sidebar hidden). Omit `--target` to use the active surface;
-copy an explicit surface id from `tree --json` to address a hidden split/scratch or a background
-session (`quick` is the id returned for a quick-terminal zoom). `hide` exits zoom; `toggle`
-enters/exits only this zoom mode, not the window maximize of `window zoom`.
+**surface** — `zoom [show|hide|toggle] [--target SURFACE_ID|active|quick] [--window W]` zooms a session surface inside its window. Omit `--target` to use that window's active session surface, never quick. Explicit `--target quick` independently expands the visible detached panel to its monitor's work area; it ignores `--window` and refuses a hidden panel with `surface not available: quick`, even for `hide`. While quick is zoomed, every tree reports `zoomedSurface: "quick"`; hiding or unzooming it restores the window's own zoom readback.
 
 **dashboard** — `dashboard <ids…> [--font-size N | --auto-size] [--window W]` opens a view-only grid
 showing the named sessions' live panes; `dashboard --mru [--font-size N | --auto-size] [--window W]`
@@ -456,7 +448,7 @@ match its owner. Tree exposes terminal asks on session nodes as `ask: {id, pane?
 top-level `askPending`. See [reference.md](reference.md#ask) for result formats and command details.
 
 **quick** — `[show|hide|toggle]` (visibility; read back from the tree's `quickVisible`) ·
-`type TEXT` (or `--stdin`) inject keystrokes into the frontmost window's quick terminal ·
+`type TEXT` (or `--stdin`) inject keystrokes into the app-level quick terminal ·
 `text [--all] [--lines N]` read its screen back — the twins of `session type`/`session text`,
 frontmost-window-only (no `--target`/`--window`/`--pane`).
 

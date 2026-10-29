@@ -99,7 +99,7 @@ public class ControlSurfaceZoomTests : ControlApiTestCase
         Assert.True(SendCommand("""{"cmd":"quick","args":{"mode":"show"}}""")["ok"]?.GetValue<bool>(),
             "quick show should succeed");
 
-        var zoom = SendCommand("""{"cmd":"surface.zoom","args":{"mode":"show"}}""");
+        var zoom = SendCommand("""{"cmd":"surface.zoom","target":"quick","args":{"mode":"show"}}""");
         Assert.True(zoom["ok"]?.GetValue<bool>(), $"surface zoom show should succeed: {zoom.ToJsonString()}");
         Assert.Equal("quick", zoom["result"]?["id"]?.GetValue<string>());
 
@@ -110,7 +110,7 @@ public class ControlSurfaceZoomTests : ControlApiTestCase
 
         // zoom the quick terminal again and dismiss it with plain `quick hide`: dismissal must stay
         // unconditional for scripts — a zoomed quick terminal exits its zoom first, never an error.
-        Assert.True(SendCommand("""{"cmd":"surface.zoom","args":{"mode":"show"}}""")["ok"]?.GetValue<bool>(),
+        Assert.True(SendCommand("""{"cmd":"surface.zoom","target":"quick","args":{"mode":"show"}}""")["ok"]?.GetValue<bool>(),
             "re-zooming the quick terminal should succeed");
         var quickHide = SendCommand("""{"cmd":"quick","args":{"mode":"hide"}}""");
         Assert.True(quickHide["ok"]?.GetValue<bool>(),

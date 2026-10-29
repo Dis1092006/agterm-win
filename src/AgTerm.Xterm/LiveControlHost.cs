@@ -25,6 +25,8 @@ public sealed record LiveControlHostOptions
 {
     public string? StateDir { get; init; }
 
+    public HeadlessQuickTerminal? QuickTerminal { get; init; }
+
     public string? ConfigDir { get; init; }
 
     public string? PipeName { get; init; }
@@ -222,7 +224,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 statusNotificationRequested: QueueStatusNotificationRequested,
                 zoomTargetAvailable: IsZoomTargetRealized,
                 pick: windowHost.Pick,
-                picks: windowHost.Picks);
+                picks: windowHost.Picks,
+                quick: options.QuickTerminal);
             windowHost.AttachLive(actions, ReserveSurface, _scopeFactory);
         }
         // Without a pipe name the HeadlessHost derives the pipe from this same path.
@@ -346,9 +349,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 }
             }
 
-            var quick = Host.Actions.Quick.Surface;
-            Host.Actions.Quick.Surface = null;
-            quick?.Teardown();
+            if (_options.QuickTerminal is null)
+            {
+                var quick = Host.Actions.Quick.Surface;
+                Host.Actions.Quick.Surface = null;
+                quick?.Teardown();
+            }
         }, cancellationToken);
 
     public async Task ApplySearchTotalAsync(
@@ -398,16 +404,21 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         StoreCoordinator.MutateAsync(
             _ =>
             {
-                if (Host.Actions.Zoom.Target is null)
+                if (Host.Actions.Pick.PendingModalError is null)
                 {
-                    Host.Actions.SetQuickTerminal("toggle");
+                    Host.Actions.Quick.Toggle();
+                    QueueQuickChanged();
                 }
             },
             cancellationToken);
 
     public Task ToggleTerminalZoomAsync(CancellationToken cancellationToken = default) =>
         StoreCoordinator.MutateAsync(
-            _ => Host.Actions.SetSurfaceZoom(null, null, ControlToggleMode.Toggle),
+            _ =>
+            {
+                if (Host.Actions.Quick.HoldsKey) Host.Actions.Quick.SetZoom(ControlToggleMode.Toggle);
+                else Host.Actions.SetSurfaceZoom(null, null, ControlToggleMode.Toggle);
+            },
             cancellationToken);
 
     public Task ToggleDashboardAsync(CancellationToken cancellationToken = default) =>
@@ -955,12 +966,6 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private void QueueZoomChanged()
     {
-        if (Host.Actions.Zoom.Target is TerminalZoomTarget.Session
-            && Host.Actions.Quick.Visible)
-        {
-            Host.Actions.SetQuickTerminal("hide");
-        }
-
         if (Host.Actions.Zoom.Target is not null && Host.Actions.Dashboard.IsOpen)
             Host.Actions.Dashboard.Close();
 
@@ -985,8 +990,6 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         if (isOpen)
         {
             Host.Store.SuppressAutoFollow();
-            if (Host.Actions.Quick.Visible)
-                Host.Actions.SetQuickTerminal("hide");
         }
         else
         {
@@ -1143,7 +1146,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             }
         }
 
-        if (Host.Actions.Quick.Visible && Host.Actions.Quick.Surface is null)
+        if (_options.QuickTerminal is null && Host.Actions.Quick.Visible && Host.Actions.Quick.Surface is null)
         {
             var pending = coordinator.Reserve(CaptureQuickRequest(Host.Store.ActiveSession));
             _ = PublishQuickSettlementAsync(pending);
@@ -1702,8 +1705,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 return;
             }
 
-            Host.Actions.Quick.Visible = false;
-            Host.Actions.Quick.Surface = null;
+            Host.Actions.Quick.ShellExited();
             surface.Teardown();
             _storeCoordinator.PublishSelectionSnapshotLocked();
             ReconcileSurfacesLocked();
@@ -1813,7 +1815,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     scrollbackTargets.Add((session.Id, StatusPane.Right, split));
             }
 
-            AddSurface(Host.Actions.Quick.Surface);
+            if (_options.QuickTerminal is null) AddSurface(Host.Actions.Quick.Surface);
 
             surfacesToShutdown = orderedSurfaces.ToArray();
 

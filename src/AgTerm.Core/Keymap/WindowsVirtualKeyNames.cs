@@ -6,6 +6,13 @@ namespace AgTerm.Core.Keymap;
 /// The OEM virtual keys follow the US positions on the US and Cyrillic layouts.</summary>
 public static class WindowsVirtualKeyNames
 {
+    public static int? KeyCode(string key)
+    {
+        for (var code = 0; code <= 0xFF; code++)
+            if (KeyName(code) == key) return code;
+        return null;
+    }
+
     public static string? KeyName(int virtualKey) => virtualKey switch
     {
         >= 0x41 and <= 0x5A => ((char)(virtualKey + ('a' - 'A'))).ToString(),

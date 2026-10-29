@@ -4,14 +4,111 @@ using AgTerm.Core.Protocol;
 
 namespace AgTerm.ControlServer;
 
-/// <summary>Per-host quick-terminal state — the headless stand-in for the upstream per-window
-/// QuickTerminalController. Visible flips with the quick command; the surface (kept alive while
-/// hidden, like upstream) is attached externally by tests/E2E, never fabricated by the host.</summary>
+/// <summary>The app-level quick panel state. Its host owns the retained surface, not a window.</summary>
 public sealed class HeadlessQuickTerminal
 {
-    public bool Visible { get; set; }
+    private readonly Lock _gate = new();
+    private readonly TimeProvider _clock;
+    private bool _visible;
+    private bool _holdsKey;
+    private bool _isZoomed;
+    private bool _dismissesOnFocusLoss = true;
+    private long? _autoHiddenAt;
+    private IHeadlessSurface? _surface;
 
-    public IHeadlessSurface? Surface { get; set; }
+    public HeadlessQuickTerminal(TimeProvider? clock = null) => _clock = clock ?? TimeProvider.System;
+
+    public event Action? Changed;
+
+    public Func<bool> CanShow { get; set; } = static () => true;
+
+    public bool Visible
+    {
+        get { lock (_gate) return _visible; }
+        set { if (value) Show(false); else Hide(); }
+    }
+
+    public bool HoldsKey { get { lock (_gate) return _holdsKey; } }
+    public bool DismissesOnFocusLoss { get { lock (_gate) return _dismissesOnFocusLoss; } }
+    public bool IsZoomed { get { lock (_gate) return _isZoomed; } }
+    public IHeadlessSurface? Surface
+    {
+        get { lock (_gate) return _surface; }
+        set { lock (_gate) _surface = value; }
+    }
+
+    public void Show(bool dismissOnFocusLoss = true)
+    {
+        if (!CanShow()) return;
+        lock (_gate)
+        {
+            _dismissesOnFocusLoss &= dismissOnFocusLoss;
+            _autoHiddenAt = null;
+            _visible = true;
+        }
+        Changed?.Invoke();
+    }
+
+    public void Toggle(bool fromGlobalHotkey = false)
+    {
+        lock (_gate)
+        {
+            if (!_visible && !fromGlobalHotkey && _autoHiddenAt is { } hidden
+                && _clock.GetElapsedTime(hidden) < TimeSpan.FromMilliseconds(300))
+            {
+                _autoHiddenAt = null;
+                return;
+            }
+        }
+        if (Visible) Hide(); else Show();
+    }
+
+    public void Hide()
+    {
+        lock (_gate)
+        {
+            _visible = _holdsKey = _isZoomed = false;
+            _dismissesOnFocusLoss = true;
+        }
+        Changed?.Invoke();
+    }
+
+    public void SetKeyOwnership(bool holdsKey)
+    {
+        var hide = false;
+        lock (_gate)
+        {
+            _holdsKey = holdsKey && _visible;
+            hide = !holdsKey && _visible && _dismissesOnFocusLoss;
+        }
+        if (hide)
+        {
+            Hide();
+            lock (_gate) _autoHiddenAt = _clock.GetTimestamp();
+        }
+        else Changed?.Invoke();
+    }
+
+    public bool SetZoom(ControlToggleMode mode)
+    {
+        lock (_gate)
+        {
+            if (!_visible) return false;
+            _isZoomed = mode.DesiredValue(_isZoomed);
+        }
+        Changed?.Invoke();
+        return true;
+    }
+
+    public void ShellExited()
+    {
+        lock (_gate)
+        {
+            _surface = null;
+            _autoHiddenAt = null;
+        }
+        Hide();
+    }
 }
 
 /// <summary>Headless port of the upstream DashboardController (agtermCore): the picked pane cells,
@@ -182,8 +279,10 @@ public sealed class HeadlessControlActions : IControlActions
                                   Action<LiveStatusNotificationRequest>? statusNotificationRequested = null,
                                   Func<TerminalZoomTarget, bool>? zoomTargetAvailable = null,
                                   PickController? pick = null,
-                                  PickRegistry? picks = null)
+                                  PickRegistry? picks = null,
+                                  HeadlessQuickTerminal? quick = null)
     {
+        Quick = quick ?? new HeadlessQuickTerminal();
         Picks = picks ?? new PickRegistry();
         Pick = pick ?? new PickController(Picks.Asks);
         if (pick is null) Picks.Register(windowId, Pick);
@@ -220,7 +319,7 @@ public sealed class HeadlessControlActions : IControlActions
     /// <summary>The single window's name; window.rename mutates it.</summary>
     public string WindowName { get; private set; }
 
-    public HeadlessQuickTerminal Quick { get; } = new();
+    public HeadlessQuickTerminal Quick { get; }
 
     public TerminalZoomController Zoom { get; } = new();
 
@@ -347,7 +446,7 @@ public sealed class HeadlessControlActions : IControlActions
             // zoom, and dashboard read the headless controllers.
             var tree = store.ControlTree(
                 quickVisible: () => Quick.Visible,
-                zoomedSurface: () => Zoom.Target?.ControlId,
+                zoomedSurface: () => Quick.IsZoomed ? "quick" : Zoom.Target?.ControlId,
                 dashboardMembers: () => Dashboard.IsOpen
                     ? Dashboard.Members.Select(m => m.ControlRef).ToArray() : null,
                 dashboardHighlighted: () => Dashboard.IsOpen ? Dashboard.Highlighted?.ControlRef : null,
@@ -962,12 +1061,9 @@ public sealed class HeadlessControlActions : IControlActions
             return SetActiveSurfaceZoom(window, mode);
         if (rawTarget == "quick")
         {
-            if (ResolveWindowGate(window) is { } gate) return gate;
-            var quickTarget = new TerminalZoomTarget.Quick();
-            if (mode != ControlToggleMode.Off
-                && !IsZoomTargetAvailable(quickTarget))
+            if (!Quick.SetZoom(mode))
                 return Err("surface not available: quick");
-            ApplyZoom(mode, quickTarget);
+            _quickChanged?.Invoke();
             return new ControlResponse { Ok = true, Result = new ControlResult { Id = "quick" } };
         }
         if (TerminalSurfaceId.FromRawValue(rawTarget) is not { } surfaceId)
@@ -1820,25 +1916,9 @@ public sealed class HeadlessControlActions : IControlActions
             return Err($"invalid quick mode: {mode ?? "toggle"}");
         var want = parsedMode.DesiredValue(Quick.Visible);
         if (want && Pick.PendingModalError is { } pickError) return Err(pickError);
-        if (Zoom.Target is not null)
-        {
-            // a script must always be able to DISMISS the quick terminal: hiding un-zooms a zoomed
-            // quick terminal first, then hides. Only SHOWING one under the zoom layer stays blocked.
-            if (want)
-                return Err("terminal zoom active");
-            if (Zoom.Target is TerminalZoomTarget.Quick) ClearZoom();
-            if (Quick.Visible)
-            {
-                Quick.Visible = false;
-                _quickChanged?.Invoke();
-            }
-            return Ok();
-        }
-        if (want != Quick.Visible)
-        {
-            Quick.Visible = want;
-            _quickChanged?.Invoke();
-        }
+        if (want) Quick.Show(dismissOnFocusLoss: false);
+        else Quick.Hide();
+        _quickChanged?.Invoke();
         return Ok();
     }
 

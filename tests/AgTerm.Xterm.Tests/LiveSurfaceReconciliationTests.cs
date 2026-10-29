@@ -684,13 +684,11 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
         var directOpenCalls = sources
             .Where(pair => pair.Value.Contains("XtermPaneSurface.OpenAsync", StringComparison.Ordinal))
             .ToArray();
-        var allowedPath = Path.Combine(appRoot, "MainWindow.xaml.cs");
-        var allowedSource = Assert.Single(directOpenCalls);
-        Assert.Equal(allowedPath, allowedSource.Key, ignoreCase: true);
-        Assert.Contains(
-            "private Task<IHeadlessSurface> OpenSurfaceAsync(SurfaceOpenRequest request, CancellationToken cancellationToken)",
-            allowedSource.Value,
-            StringComparison.Ordinal);
+        Assert.Equal(new[] { "MainWindow.xaml.cs", "QuickTerminalWindow.cs" },
+            directOpenCalls.Select(pair => Path.GetFileName(pair.Key)).Order().ToArray());
+        Assert.All(directOpenCalls, source => Assert.Contains(
+            "Task<IHeadlessSurface> OpenSurfaceAsync(SurfaceOpenRequest request, CancellationToken",
+            source.Value, StringComparison.Ordinal));
     }
 
     [Fact]

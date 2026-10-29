@@ -33,7 +33,7 @@ public sealed class AskViewSourceTests
             @"private bool HandleChord\(PhysicalChord physical, long\? generation = null\)\s*\{\s*if \(AskOverlay\.IsOpen \|\| KeybindingsOverlay\.IsOpen\)\s*return false;"),
             source);
         Assert.Matches(new Regex(
-            @"private void FocusTerminal\(string paneId\)\s*\{\s*if \(AskOverlay\.IsOpen\)\s*\{\s*(//[^
+            @"private void FocusTerminal\(string paneId\)\s*\{\s*if \(_applicationHost\.Quick\.HoldsKey\) return;\s*if \(AskOverlay\.IsOpen\)\s*\{\s*(//[^
 ]*\s*)*if \(_windowIsActive\)\s*AskOverlay\.FocusPanel\(\);\s*return;\s*\}"),
             source);
     }

@@ -11,13 +11,10 @@ public sealed record TerminalHudPlacement(Guid SessionId, HudSpec Spec, HudPanel
 
 public static class TerminalHudVisibility
 {
-    /// <summary>Only the selected session is on screen. Zoom, the dashboard and the quick terminal
-    /// hide the HUD without closing it; the quick terminal is a Windows adaptation, because the port
-    /// draws it in the same page. A pane HUD needs its pane laid out and a page token. Unlike a
-    /// terminal question a HUD is not hidden by the scratch: upstream draws the HUD layer above it.</summary>
+    /// <summary>Only the selected session is drawn. Session zoom and the dashboard hide the HUD without closing it; detached quick leaves it drawn. A pane HUD needs its pane laid out and a page token. Unlike a pane question, a HUD draws above scratch.</summary>
     public static TerminalHudPlacement? For(AppStore store, bool zoomActive, bool dashboardOpen, bool quickTerminalVisible)
     {
-        if (zoomActive || dashboardOpen || quickTerminalVisible
+        if (zoomActive || dashboardOpen
             || store.ActiveSession is not { Hud: { } spec, HudPanelSize: { } stored } session)
             return null;
         var size = DrawnSize(session, stored);

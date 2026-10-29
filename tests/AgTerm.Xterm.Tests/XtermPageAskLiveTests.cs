@@ -34,6 +34,25 @@ public class XtermPageAskLiveTests
         """;
 
     [Fact]
+    public async Task Detached_quick_keeps_the_question_drawn_without_moving_keyboard_focus()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "right", "Shell")));
+        var state = await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync($$"""
+            (() => {
+                agterm.setExternalInputOwner(true);
+                agterm.applyAsk({{Payload}});
+                const layer = document.querySelector('.ask-layer');
+                return { drawn: layer !== null, focused: layer?.contains(document.activeElement) };
+            })()
+            """));
+        using var json = JsonDocument.Parse(state);
+        Assert.True(json.RootElement.GetProperty("drawn").GetBoolean());
+        Assert.False(json.RootElement.GetProperty("focused").GetBoolean());
+    }
+
+    [Fact]
     public async Task A_pane_question_is_drawn_inside_its_pane_and_takes_its_focus()
     {
         var (page, view) = await BootPageAsync();

@@ -48,9 +48,9 @@ public sealed class CloseSessionShortcut
         await _coordinator.MutateAsync(_ =>
         {
             ControlResponse? result = null;
-            if (_actions.Quick.Visible && _actions.Zoom.Target is TerminalZoomTarget.Quick)
-                result = _actions.SetSurfaceZoom("active", null, ControlToggleMode.Off);
-            else if (_actions.Quick.Visible)
+            if (_actions.Quick.HoldsKey && _actions.Quick.IsZoomed)
+                result = _actions.SetSurfaceZoom("quick", null, ControlToggleMode.Off);
+            else if (_actions.Quick.HoldsKey)
                 result = _actions.SetQuickTerminal("hide");
             else if (_actions.Zoom.Target is not null)
                 result = _actions.SetSurfaceZoom("active", null, ControlToggleMode.Off);

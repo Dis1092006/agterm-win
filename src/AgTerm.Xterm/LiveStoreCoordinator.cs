@@ -33,7 +33,8 @@ public sealed record LiveSelectionSnapshot(
     double? DashboardFontSize = null,
     TerminalAskPlacement? TerminalAsk = null,
     TerminalHudPlacement? Hud = null,
-    PaneThemeTable? PaneThemes = null)
+    PaneThemeTable? PaneThemes = null,
+    bool QuickHoldsKey = false)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -80,14 +81,6 @@ public sealed record LiveSelectionSnapshot(
                 ZoomPaneId,
                 DisplayName,
                 WorkspaceName);
-        }
-
-        if (QuickVisible && !string.IsNullOrWhiteSpace(QuickPaneId))
-        {
-            return new TerminalLayout.Layered(
-                generation,
-                baseLayout,
-                new TerminalLayer(QuickPaneId, sizePercent: 90));
         }
 
         if (baseLayout is TerminalLayout.Empty)
@@ -208,6 +201,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             _host.Store.SelectionChanged += _onSelectionChanged;
             _host.Store.AsksChanged += _onAsksChanged;
             _host.Store.HudChanged += _onHudChanged;
+            _host.Actions.Quick.Changed += OnQuickStateChanged;
         });
     }
 
@@ -308,6 +302,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             _host.Store.SelectionChanged -= _onSelectionChanged;
             _host.Store.AsksChanged -= _onAsksChanged;
             _host.Store.HudChanged -= _onHudChanged;
+            _host.Actions.Quick.Changed -= OnQuickStateChanged;
         });
     }
 
@@ -401,7 +396,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
                 DashboardCells: dashboardCells,
                 DashboardHighlighted: dashboardHighlighted,
                 DashboardFontSize: dashboardFontSize,
-                PaneThemes: PaneThemeAssignment.For(_host.Store));
+                PaneThemes: PaneThemeAssignment.For(_host.Store),
+                QuickHoldsKey: _host.Actions.Quick.HoldsKey);
         }
 
         var selectedSession = _host.Store.SessionWithId(id);
@@ -438,13 +434,26 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             dashboardFontSize,
             TerminalAsk: terminalAsk,
             Hud: hud,
-            PaneThemes: PaneThemeAssignment.For(_host.Store));
+            PaneThemes: PaneThemeAssignment.For(_host.Store),
+            QuickHoldsKey: _host.Actions.Quick.HoldsKey);
     }
 
-    // the same test ToTerminalLayout uses to draw the quick layer: a quick terminal that failed to
-    // realize is not on screen, so it must not keep the question hidden
     private bool QuickTerminalShown() =>
         _host.Actions.Quick.Visible && !string.IsNullOrWhiteSpace(_host.Actions.Quick.Surface?.PaneToken);
+
+    private async void OnQuickStateChanged()
+    {
+        try
+        {
+            await ReadAsync(_ =>
+            {
+                PublishSelectionSnapshotLocked();
+                return true;
+            }).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0) { }
+        catch (Exception ex) { System.Diagnostics.Trace.TraceError($"Quick panel snapshot failed: {ex}"); }
+    }
 
     private IReadOnlyList<TerminalDashboardCell> CaptureDashboardCells()
     {

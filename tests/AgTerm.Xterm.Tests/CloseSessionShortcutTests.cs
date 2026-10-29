@@ -129,11 +129,14 @@ public sealed class CloseSessionShortcutTests : IDisposable
         {
             Assert.True(_host.Actions.SetQuickTerminal("show").Ok);
             Assert.True(_host.Actions.SetSurfaceZoom("active", null, ControlToggleMode.On).Ok);
+            _host.Actions.Quick.SetKeyOwnership(true);
+            Assert.True(_host.Actions.SetSurfaceZoom("quick", null, ControlToggleMode.On).Ok);
         });
 
         await PressAsync();
         Assert.True(_host.Actions.Quick.Visible);
-        Assert.Null(_host.Actions.Zoom.Target);
+        Assert.False(_host.Actions.Quick.IsZoomed);
+        Assert.NotNull(_host.Actions.Zoom.Target);
 
         await PressAsync();
         Assert.False(_host.Actions.Quick.Visible);
@@ -146,12 +149,26 @@ public sealed class CloseSessionShortcutTests : IDisposable
     {
         var id = await ActiveIdAsync();
         await MutateAsync(store => store.CloseSession(id));
-        await MutateAsync(_ => Assert.True(_host.Actions.SetQuickTerminal("show").Ok));
+        await MutateAsync(_ =>
+        {
+            Assert.True(_host.Actions.SetQuickTerminal("show").Ok);
+            _host.Actions.Quick.SetKeyOwnership(true);
+        });
 
         await PressAsync();
 
         Assert.False(_host.Actions.Quick.Visible);
         Assert.Equal(0, _closed);
+    }
+
+    [Fact]
+    public async Task UnfocusedPinnedQuickDoesNotTakeTheNormalWindowsCloseShortcut()
+    {
+        await MutateAsync(_ => _host.Actions.SetQuickTerminal("show"));
+        Assert.False(_host.Actions.Quick.HoldsKey);
+        await PressAsync();
+        Assert.True(_host.Actions.Quick.Visible);
+        Assert.Equal(1, _closed);
     }
 
     [Fact]

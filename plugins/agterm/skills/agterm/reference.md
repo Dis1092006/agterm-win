@@ -157,7 +157,7 @@ timeout in milliseconds, omitted when Auto-follow is disabled), `sidebarVisible`
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
-`sidebar mode`), `quickVisible` (whether the window's quick terminal is currently shown — the read
+`sidebar mode`), `quickVisible` (whether the app-level quick panel is currently shown — the read
 side of the write-only `quick` command, so a script can make the toggle idempotent), `zoomedSurface`
 (the control id of the surface terminal zoom currently fills the window with —
 `surface:<session-id>:<kind>` or `quick`; omitted when nothing is zoomed — the read side of the
@@ -550,7 +550,7 @@ All twelve are read-only projections of GUI state.
   a caption, a strip across the top as tall as its text:
   `session hud --markdown --sticky --no-frame --position top --size-percent 100 "**deploy api** [PR](https://…) · [docs](https://…)"`.
   It is still the one transient slot: `session overlay open` closes it, a restart drops it, and zoom, the
-  dashboard and the quick terminal hide it, so a script re-posts it after a restart. A frameless panel is
+  dashboard hide it. The HUD stays rendered behind the detached quick panel. A script re-posts it after a restart. A frameless panel is
   its rendered rows plus 12 pixels of padding tall. Both read back, as `hud.sticky` and
   `hud.frame`, and an update that omits either returns the panel to its margin or its frame. `--background-color #rrggbb` gives the panel its own solid
   background, read once when the panel is created; `--text-color #rrggbb` colors the TEXT and, unlike the
@@ -655,21 +655,20 @@ All twelve are read-only projections of GUI state.
 
 ## surface
 
-Entering zoom or changing its target ends search in the window's active session, including when zooming the quick terminal or a background session. Zooming a background session also ends that session's search. Leaving zoom does not reopen either search.
+Entering session zoom or changing its target ends search in the window's active session. Zooming a background session also ends that session's search. Leaving zoom does not reopen either search. Quick-panel zoom changes neither window zoom nor session searches.
 
 `agtermctl surface zoom [show|hide|toggle] [--target SURFACE_ID|active|quick] [--window W]` — zoom one
 terminal surface to fill the window's terminal area. Wire: `surface.zoom`. `SURFACE_ID` comes from
 `agtermctl tree --json` at `.result.tree.workspaces[].sessions[].surfaces[].id`, for example
 `surface:<session-id>:right`. Omit `--target` (or pass `active`) to act on the active surface in the
-frontmost or `--window` window; `quick` addresses a quick-terminal zoom (the id the command itself
-returns when the quick terminal is the zoom target).
+frontmost or `--window` window, never the quick panel. Explicit `quick` independently fills the detached panel's monitor work area and ignores `--window`. All modes, including `hide`, refuse a hidden panel with `surface not available: quick`. While quick is zoomed, every tree reports `zoomedSurface: "quick"`; unzooming or hiding quick restores the window's own zoom readback.
 
-`show` is idempotent; `hide` exits zoom and is idempotent too (when an explicit id is provided, it
+For session surfaces, `show` is idempotent; `hide` exits zoom and is idempotent too (when an explicit id is provided, it
 only clears that same zoom target, and succeeds as a no-op even if that surface has since vanished);
 `toggle` enters when unzoomed and exits when that surface is already zoomed. Read the current zoom
 back from the tree's top-level `zoomedSurface` (the zoomed surface's control id, omitted when nothing
 is zoomed). This is NOT
-`window zoom`: it does not change the window frame, and it does not change split ratios, focus,
+`window zoom`: session zoom does not change the window frame, and it does not change split ratios, focus,
 sidebar state, or split/scratch visibility. While zoomed, the hidden deck keeps running:
 `session.split`/`session.scratch`/overlay opens on the zoomed session still spawn their shells behind the
 zoom layer. With a pick pending in the window, turning a zoom on answers `pick pending`; with a window
@@ -795,8 +794,7 @@ it waited for. Results age out oldest-first: the 8 most recent per open window, 
 reading stdin. Wire: `ask.open`. Use explicit `ask open` when the title is `open`, `result`, or `cancel`.
 
 `--style terminal` is the default and uses the window's selected session, with one pending ask per
-session. It is drawn inside the terminal page over the pane or the whole session, and it hides while the
-quick terminal is shown. `--target` can name an unselected session without selecting it; its ask waits hidden.
+session. It is drawn inside the terminal page over the pane or the whole session. It stays rendered behind the detached quick panel and defers autofocus while quick holds the keyboard. `--target` can name an unselected session without selecting it; its ask waits hidden.
 `--pane left|right` and `--pane-id TOKEN` narrow placement without requiring a target. A live token takes
 precedence over the role, and the pane must be laid out by its session at open.
 `--style gui` uses the window modal slot shared with pick. Without a target, it centers over the
@@ -841,26 +839,11 @@ App shutdown can interrupt polling. Ask emits no events.
 
 ## quick
 
-`agtermctl quick [show|hide|toggle]` — the frontmost window's quick terminal (a single scratch
-terminal layer over 90% of the window, not in the tree; its shell stays alive across hides). Wire:
-`quick`. The default chord is Alt+\` (`quick_terminal`). Read its visibility back from the tree's
-top-level `quickVisible`.
-While terminal zoom is active, `show` errors with `terminal zoom active`; with a pick pending it errors
-with `pick pending`. `hide` always succeeds (a
-zoomed quick terminal exits its zoom first), so cleanup scripts can dismiss it unconditionally. The quick
-terminal's shell gets only `AGTERM_ENABLED`, `AGTERM_WINDOW_ID` and `AGTERM_SOCKET`.
+`agtermctl quick [show|hide|toggle]` controls one app-level detached floating panel, not a session or saved window. Wire: `quick`. The default local chord is Alt+\` (`quick_terminal`). Every window's tree reports the same top-level `quickVisible`. Human summons dismiss on blur; control `show` or toggle-on pins the panel, including when it is already visible. `show` is allowed under session zoom. A pending GUI picker or question blocks showing; a newly opened GUI modal hides the panel. `hide` clears panel zoom and pinning but retains its shell and page. Closing an ordinary window does not destroy them; closing the last ordinary window ends the app. The shell gets only `AGTERM_ENABLED` and `AGTERM_SOCKET`, with no window, session, workspace or pane identifiers.
 
-`agtermctl quick type TEXT` (or `--stdin`) — inject `TEXT` as literal keystrokes into the frontmost
-window's quick terminal, the quick-terminal twin of `session type`. Wire: `quick.type`. There is no
-`--target`/`--window`
-(always the frontmost window's quick terminal) and no `--pane` (a single surface). It polls briefly for
-the surface to come up, so `quick show; quick type` back-to-back is reliable (the layer mounts a beat
-after `quick show` flips visibility). Errors with `quick terminal not open` when the layer has never
-been shown, `quick terminal not realized` if a shown surface never comes up in time. Typing into a
-shown-then-hidden quick terminal still works (its shell stays alive).
+`agtermctl quick type TEXT` (or `--stdin`) injects literal keystrokes into the app-level quick terminal. Wire: `quick.type`. There is no `--target`, `--window` or `--pane`. A shown panel waits briefly for realization; a never-created shell answers `quick terminal not open`, and an unavailable shown surface answers `quick terminal not realized`. Typing into a shown-then-hidden quick terminal still works.
 
-`agtermctl quick text [--all] [--lines N]` — print the frontmost window's quick-terminal buffer as
-plain text (the read-back for `quick type`; does not touch the system clipboard). Wire: `quick.text`.
+`agtermctl quick text [--all] [--lines N]` prints the app-level quick-terminal buffer as plain text without touching the clipboard. Wire: `quick.text`.
 `--all` reads the
 full screen + scrollback, `--lines N` keeps only the last N (mutually exclusive). Polls for the surface
 like `quick type`. Errors with `quick terminal not open` (never shown), `failed to read surface buffer`
@@ -1101,6 +1084,8 @@ Built-in action names for `map` include: `new_window`, `new_workspace`, `new_ses
 `keymap.conf` in an editor, then `agtermctl keymap reload`.
 
 ## config
+
+`global-hotkey ctrl+opt+space` in `keymap.conf` registers an optional system-wide quick-panel toggle. It takes one modified chord, with no alternatives, leader sequence or trailing arguments. The last valid line wins. It is separate from local shortcut conflict checks and takes precedence while agterm is foreground too. Reload with `agtermctl keymap reload`. Windows uses `RegisterHotKey`; registration conflicts appear in app diagnostics, not the parser error count. US and Russian ANSI positions use the existing virtual-key mapping. On remapped Latin layouts such as Dvorak, the global chord follows the virtual key rather than the physical position; local shortcuts are unchanged.
 
 `agtermctl config reload` - re-read settings.json and apply its theme, font and notification settings to
 every window; it also clears per-session font zoom. Wire: `config.reload`. agterm-win reads no ghostty

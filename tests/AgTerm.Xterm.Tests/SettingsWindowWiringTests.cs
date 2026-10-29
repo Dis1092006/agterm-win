@@ -49,6 +49,37 @@ public sealed class SettingsWindowWiringTests
     }
 
     [Fact]
+    public void Shortcuts_show_native_global_hotkey_errors_without_changing_keymap_diagnostics()
+    {
+        Assert.Contains("global-hotkey-error", Source("SettingsWindow.cs"));
+        Assert.Contains("() => _quickWindow?.GlobalHotkeyError", Source("App.xaml.cs"));
+    }
+
+    [Fact]
+    public void Quick_settings_preserve_font_zoom_until_the_base_font_changes_and_failed_pages_are_released()
+    {
+        var code = Source("QuickTerminalWindow.cs");
+        Assert.Contains("if (resetFontSize || _appliedBaseFontSize != fontSize)", code);
+        Assert.Contains("SettingsApplyKind.Edit or SettingsApplyKind.Reload", code);
+        Assert.Contains("preservePaneFontSizes: !resetFontSize", code);
+        Assert.DoesNotContain("token, presentation.Theme", code);
+        Assert.Contains("ResetPage();", code);
+        Assert.Contains("ReferenceEquals(_view, view)", code);
+    }
+
+    [Fact]
+    public void Detached_quick_dispatches_the_application_bindings_its_manifest_intercepts()
+    {
+        Assert.Contains("page.CustomCommandPressed +=", Source("QuickTerminalWindow.cs"));
+        Assert.Contains("WindowCommandRouter.ActionImplementations", Source("QuickTerminalWindow.cs"));
+        Assert.Contains("page.SwitcherKeyPressed +=", Source("QuickTerminalWindow.cs"));
+        Assert.Contains("page.KeyboardShortcutsRequested +=", Source("QuickTerminalWindow.cs"));
+        Assert.Contains("ExecuteQuickCustomCommandAsync", Source("App.xaml.cs"));
+        Assert.Contains("ExecuteBuiltinHotkey", Source("MainWindow.xaml.cs"));
+        Assert.Contains("CustomCommandInvocationResolver.Resolve", Source("MainWindow.xaml.cs"));
+    }
+
+    [Fact]
     public void Installed_font_choices_are_sorted_unique_and_include_windows_monospaced_fonts()
     {
         var fonts = InstalledFonts.MonospacedFamilies();
@@ -71,6 +102,15 @@ public sealed class SettingsWindowWiringTests
         Assert.Contains("TitleBar.PreferredTheme", code);
         Assert.Contains("uiSettings.ColorValuesChanged += OnSystemAppearanceChanged", code);
         Assert.Contains("uiSettings.ColorValuesChanged -= OnSystemAppearanceChanged", code);
+    }
+
+    [Fact]
+    public void Detached_quick_applies_the_focus_failure_policy_instead_of_reporting_native_denials_directly()
+    {
+        var code = Source("QuickTerminalWindow.cs");
+        Assert.Contains("QuickPanelFocus.ActivationCompleted(", code);
+        Assert.Contains("QuickPanelFocus.RestoreDenied(", code);
+        Assert.DoesNotContain("Report(\"Quick terminal focus\", \"Windows denied", code);
     }
 
     private static string Source(string file)

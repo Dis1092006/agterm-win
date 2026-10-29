@@ -65,14 +65,14 @@ public class TerminalHudVisibilityTests
     }
 
     [Fact]
-    public void ZoomTheDashboardAndTheQuickTerminalHideTheHudWithoutClosingIt()
+    public void WindowCoversHideTheHudButTheDetachedQuickTerminalDoesNot()
     {
         var (store, session) = Selected();
         store.OpenHud(session.Id, new HudSpec("building"), null);
 
         Assert.Null(TerminalHudVisibility.For(store, zoomActive: true, dashboardOpen: false, quickTerminalVisible: false));
         Assert.Null(TerminalHudVisibility.For(store, zoomActive: false, dashboardOpen: true, quickTerminalVisible: false));
-        Assert.Null(TerminalHudVisibility.For(store, zoomActive: false, dashboardOpen: false, quickTerminalVisible: true));
+        Assert.NotNull(TerminalHudVisibility.For(store, zoomActive: false, dashboardOpen: false, quickTerminalVisible: true));
         Assert.True(session.HudActive);
     }
 
