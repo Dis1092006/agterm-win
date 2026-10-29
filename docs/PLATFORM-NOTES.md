@@ -671,6 +671,10 @@ Commands and fields that upstream does not have. `parity/windows-only.json` list
   - The snapshot reads `icon` leniently: a value that is not a string, or a blank string, reads as no icon, and the rest of the snapshot loads. A workspace closed and restored from the recently-closed list keeps its icon.
   - The sidebar draws the glyph in the workspace row's icon slot, in the row's text color. A name the catalog lacks, or a glyph the machine's fonts lack (Windows 10 has `Segoe MDL2 Assets` only), draws the default grid icon.
   - The catalog is `src/AgTerm.Core/Icons/segoe-fluent-icons.tsv`. Its source is described in `src/AgTerm.Core/Icons/SOURCE.md`.
+  - The workspace row menu has `Icon…`, after `Theme…`. It opens the icon palette for that workspace: a grid of every icon the machine's fonts can draw, `Default` first.
+  - The filter box narrows the grid by name, case-insensitive. The arrows, Page Up, Page Down, Home and End move the selection. In the filter box they move the grid, not the caret.
+  - The icon under the selection shows on that workspace's row at once, in this window only. Enter or a double click saves it through `workspace.icon`. Esc and every other close show the saved icon again.
+  - The palette closes when its workspace leaves the window. Like the other palettes, it does not open while a pane is zoomed. There is no builtin action and no default chord for it.
 - Theme colors on sidebar rows: the settings `sidebarThemeColors` and `sidebarThemeStyle` in `settings.json`, listed under `settings` in `parity/windows-only.json`.
   - The row of a workspace with its own theme, and the rows of its sessions, use the theme's exact background and foreground for the row, its text and its icons. In the flagged view each session row has the colors of its workspace.
   - A selected colored row keeps its colors: its label is bold and it has a 1 px frame in the theme foreground. Rows of workspaces without a theme, or with a theme the catalog does not have, look as before.

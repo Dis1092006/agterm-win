@@ -8,7 +8,7 @@
 
 **Tech Stack:** .NET 10, WinUI 3, xUnit, System.CommandLine, Python 3 for the generator.
 
-**Spec:** `docs/plans/2026-10-29-workspace-icon-design.md`
+**Spec:** `docs/plans/completed/2026-10-29-workspace-icon-design.md`
 
 ## Global Constraints
 
@@ -246,7 +246,7 @@
 
 **Files:**
 - Modify: `docs/PLATFORM-NOTES.md` (the workspace icon bullet: the palette)
-- Move: `docs/plans/2026-10-29-workspace-icon.md` and `docs/plans/2026-10-29-workspace-icon-design.md` to `docs/plans/completed/`
+- Move: `docs/plans/completed/2026-10-29-workspace-icon.md` and `docs/plans/completed/2026-10-29-workspace-icon-design.md` to `docs/plans/completed/`
 
 - [ ] **Step 1:** Add the palette sub-bullet, modeled on the `Theme…` one: `Icon…` in the workspace menu, the grid, the filter, the preview in its own window only, Enter or click saves, Esc and every other close restore, not while a pane is zoomed, no builtin action or chord.
 - [ ] **Step 2:** `git mv` both plan files to `docs/plans/completed/`.
