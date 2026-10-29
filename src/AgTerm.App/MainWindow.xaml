@@ -274,6 +274,9 @@
         <local:PaletteView x:Name="PaletteOverlay"
                            Grid.RowSpan="2"
                            Canvas.ZIndex="100" />
+        <local:IconPaletteView x:Name="IconPaletteOverlay"
+                               Grid.RowSpan="2"
+                               Canvas.ZIndex="100" />
         <local:AskView x:Name="AskOverlay"
                        Grid.RowSpan="2"
                        Canvas.ZIndex="100" />

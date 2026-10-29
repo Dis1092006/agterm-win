@@ -360,6 +360,23 @@ public sealed class LiveApplicationHost : IDisposable
             cancellationToken).ConfigureAwait(false)
         ?? new ControlResponse { Ok = false, Error = "no such window: active" };
 
+    /// <summary>Sends workspace.icon to one window, the way its sidebar's icon palette saves, so the
+    /// palette gets the same answer and errors agtermctl would.</summary>
+    public async Task<ControlResponse> SetWorkspaceIconAsync(
+        Guid windowId,
+        Guid workspaceId,
+        string? iconName,
+        CancellationToken cancellationToken = default) =>
+        await DispatchAsync(
+            new ControlRequest
+            {
+                Cmd = Command.WorkspaceIcon,
+                Target = workspaceId.ToString("D"),
+                Args = new ControlArgs { Name = iconName, Window = windowId.ToString("D") },
+            },
+            cancellationToken).ConfigureAwait(false)
+        ?? new ControlResponse { Ok = false, Error = "no such window: active" };
+
     public Task<ControlResponse> CreateWindowAsync(
         string? name = null,
         CancellationToken cancellationToken = default) =>

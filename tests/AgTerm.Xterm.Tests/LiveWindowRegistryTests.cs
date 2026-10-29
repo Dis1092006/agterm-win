@@ -863,6 +863,31 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public async Task SetWorkspaceIconAsync_sends_workspace_icon_to_the_named_window()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var firstWorkspaceId = Guid.NewGuid();
+        var secondWorkspaceId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, SnapshotWithWorkspace("alpha", firstWorkspaceId));
+        WriteWindowSnapshot(secondId, SnapshotWithWorkspace("beta", secondWorkspaceId));
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication();
+        application.Start();
+
+        var set = await application.SetWorkspaceIconAsync(secondId, secondWorkspaceId, "MapPin");
+        var refused = await application.SetWorkspaceIconAsync(secondId, secondWorkspaceId, "mappin");
+
+        Assert.True(set.Ok, set.Error);
+        Assert.Equal("MapPin", Assert.Single(application.GetOpenWindow(secondId).Store.Workspaces).IconName);
+        Assert.Null(Assert.Single(application.GetOpenWindow(firstId).Store.Workspaces).IconName);
+        Assert.False(refused.Ok);
+        Assert.Equal("unknown icon: mappin", refused.Error);
+    }
+
+    [Fact]
     public void Workspace_prefix_ambiguity_is_computed_across_all_open_windows()
     {
         var firstId = Guid.NewGuid();
