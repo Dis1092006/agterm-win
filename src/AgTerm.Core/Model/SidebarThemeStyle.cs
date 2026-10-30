@@ -4,6 +4,7 @@ namespace AgTerm.Core.Model;
 /// <c>sidebarThemeStyle</c> setting (parity/windows-only.json).</summary>
 public enum SidebarThemeStyle
 {
+    Off,
     Row,
     Label,
 }

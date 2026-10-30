@@ -1,4 +1,5 @@
 using AgTerm.Core.Model;
+using AgTerm.Core.Protocol;
 
 namespace AgTerm.Core.Tests.Model;
 
@@ -82,42 +83,32 @@ public class AppSettingsTests : IDisposable
         Assert.DoesNotContain("version", json);
     }
 
-    [Fact]
-    public void Save_writes_sidebar_theme_colors_only_when_set()
-    {
-        var store = new SettingsStore(_dir);
-        store.Save(new AppSettings { SidebarThemeColors = false });
-        Assert.Contains("\"sidebarThemeColors\":false", File.ReadAllText(FilePath));
-
-        store.Save(new AppSettings());
-        Assert.DoesNotContain("sidebarThemeColors", File.ReadAllText(FilePath));
-    }
-
-    [Fact]
-    public void Sidebar_theme_colors_are_on_unless_turned_off()
-    {
-        Assert.True(new AppSettings().ShowSidebarThemeColors());
-        Assert.True(new AppSettings { SidebarThemeColors = true }.ShowSidebarThemeColors());
-        Assert.False(new AppSettings { SidebarThemeColors = false }.ShowSidebarThemeColors());
-    }
-
-    [Fact]
-    public void Settings_that_differ_only_in_sidebar_theme_colors_are_not_equal()
-    {
-        Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeColors = false });
-    }
+    [Theory]
+    [InlineData(null, SidebarThemeStyle.Off)]
+    [InlineData("off", SidebarThemeStyle.Off)]
+    [InlineData("row", SidebarThemeStyle.Row)]
+    [InlineData("swatch", SidebarThemeStyle.Off)]
+    [InlineData("label", SidebarThemeStyle.Label)]
+    [InlineData("Label", SidebarThemeStyle.Off)]
+    [InlineData("Row", SidebarThemeStyle.Off)]
+    [InlineData("label ", SidebarThemeStyle.Off)]
+    [InlineData("stripe", SidebarThemeStyle.Off)]
+    [InlineData("", SidebarThemeStyle.Off)]
+    public void Sidebar_theme_style_reads_exact_values_and_falls_back_to_off(string? raw, SidebarThemeStyle expected) =>
+        Assert.Equal(expected, new AppSettings { SidebarThemeStyle = raw }.EffectiveSidebarThemeStyle());
 
     [Theory]
-    [InlineData(null, SidebarThemeStyle.Row)]
-    [InlineData("row", SidebarThemeStyle.Row)]
-    [InlineData("swatch", SidebarThemeStyle.Row)]
-    [InlineData("label", SidebarThemeStyle.Label)]
-    [InlineData("Label", SidebarThemeStyle.Row)]
-    [InlineData("label ", SidebarThemeStyle.Row)]
-    [InlineData("stripe", SidebarThemeStyle.Row)]
-    [InlineData("", SidebarThemeStyle.Row)]
-    public void Sidebar_theme_style_reads_exact_values_and_falls_back_to_row(string? raw, SidebarThemeStyle expected) =>
-        Assert.Equal(expected, new AppSettings { SidebarThemeStyle = raw }.EffectiveSidebarThemeStyle());
+    [InlineData("""{"sidebarThemeColors":true}""", SidebarThemeStyle.Off)]
+    [InlineData("""{"sidebarThemeColors":false}""", SidebarThemeStyle.Off)]
+    [InlineData("""{"sidebarThemeColors":false,"sidebarThemeStyle":"label"}""", SidebarThemeStyle.Label)]
+    [InlineData("""{"sidebarThemeColors":true,"sidebarThemeStyle":"row"}""", SidebarThemeStyle.Row)]
+    public void The_retired_sidebar_theme_colors_key_is_ignored(string json, SidebarThemeStyle expected)
+    {
+        File.WriteAllText(FilePath, json);
+        var settings = new SettingsStore(_dir).Load();
+        Assert.Equal(expected, settings.EffectiveSidebarThemeStyle());
+        Assert.DoesNotContain("sidebarThemeColors", ControlJson.Serialize(settings));
+    }
 
     [Fact]
     public void Settings_that_differ_only_in_sidebar_theme_style_are_not_equal() =>
@@ -177,7 +168,6 @@ public class AppSettingsTests : IDisposable
             SidebarFontSize = 15,
             HiddenInterfaceElements = new[] { "flaggedView", "someFutureElement" },
             AutoHideSidebarInactiveWindows = true,
-            SidebarThemeColors = false,
             SidebarThemeStyle = "label",
             RestoreScrollback = false,
             CopyOnSelect = "off",

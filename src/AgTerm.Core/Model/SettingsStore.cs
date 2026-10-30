@@ -20,6 +20,11 @@ public sealed class SettingsStore
     private static readonly ConcurrentDictionary<string, Lock> Gates = new(
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private static readonly string[] ThemeFields = ["theme", "darkTheme", "followSystemAppearance"];
+    // A retired key the model no longer reads, removed from the file when the field that replaced it is written
+    private static readonly Dictionary<string, string> RetiredFields = new(StringComparer.Ordinal)
+    {
+        ["sidebarThemeStyle"] = "sidebarThemeColors",
+    };
 
     private readonly string _directory;
     private readonly Lock _gate;
@@ -107,6 +112,8 @@ public sealed class SettingsStore
                     document[field] = value?.DeepClone();
                 else
                     document.Remove(field);
+                if (RetiredFields.TryGetValue(field, out var retired))
+                    document.Remove(retired);
             }
             return Write(current, document);
         }
