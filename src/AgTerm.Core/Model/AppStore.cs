@@ -920,6 +920,25 @@ public sealed partial class AppStore
         if (changed) Save();
     }
 
+    /// <summary>Expands every workspace (wire sidebar.expand, palette Expand Workspaces). A no-op in
+    /// flagged mode, which has no workspace rows.</summary>
+    public void ExpandAllWorkspaces()
+    {
+        if (SidebarMode == SidebarMode.Flagged) return;
+        SetWorkspacesExpanded(Workspaces.Select(w => w.Id).ToHashSet());
+    }
+
+    /// <summary>Collapses every workspace except the active session's (wire sidebar.collapse, palette
+    /// Collapse Workspaces). A no-op in flagged mode.</summary>
+    public void CollapseOtherWorkspaces()
+    {
+        if (SidebarMode == SidebarMode.Flagged) return;
+        var keep = new HashSet<Guid>();
+        if (SelectedSessionId is { } selected && WorkspaceForSession(selected) is { } active)
+            keep.Add(active.Id);
+        SetWorkspacesExpanded(keep);
+    }
+
     /// <summary>The focused workspace, resolved from FocusedWorkspaceId — null when unfocused OR
     /// when the id is stale (its workspace no longer exists).</summary>
     public Workspace? FocusedWorkspace =>

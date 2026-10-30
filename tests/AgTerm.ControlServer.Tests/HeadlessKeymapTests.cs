@@ -42,6 +42,12 @@ public sealed class HeadlessKeymapTests : IDisposable
 
     private string KeymapPath => Path.Combine(_stateDir, "keymap.conf");
 
+    [Fact]
+    public void Actions_expose_the_keymap_path_they_load()
+    {
+        Assert.Equal(KeymapPath, _host.Actions.KeymapPath);
+    }
+
     private Task<ControlResponse> Send(ControlRequest request) =>
         Task.Factory.StartNew(() => _client.Send(request), CancellationToken.None,
             TaskCreationOptions.LongRunning, TaskScheduler.Default);

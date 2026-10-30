@@ -87,6 +87,8 @@ public static class WindowPaletteProjection
         _ => null,
     };
 
+    public static PaletteAppCommand? ParseAppCommand(string itemId) => PaletteAppCommands.Parse(itemId);
+
     public static Guid? ParseCustomCommandId(string itemId)
     {
         const string prefix = "custom-";
@@ -172,6 +174,11 @@ public static class WindowPaletteProjection
                 action.WireName(),
                 CommandTitle(action, store),
                 shortcut: keymap.GlyphHint(action)))
+            .Concat(PaletteAppCommands.All
+                .Where(command => PaletteAppCommands.IsVisible(command, store))
+                .Select(command => new PaletteItemViewModel(
+                    PaletteAppCommands.Id(command),
+                    PaletteAppCommands.Title(command))))
             .Concat(
             [
                 new PaletteItemViewModel(InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallCommandLineTool),

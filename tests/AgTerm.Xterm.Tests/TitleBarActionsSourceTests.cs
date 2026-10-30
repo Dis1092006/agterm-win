@@ -1,3 +1,5 @@
+using AgTerm.App;
+
 namespace AgTerm.Xterm.Tests;
 
 // upstream titlebarTrailingActions: recent sessions + attention | scratch + split | dashboard + quick
@@ -66,6 +68,29 @@ public sealed class TitleBarActionsSourceTests
         Assert.Contains("RunInstallerAsync(InstallerCommands.InstallAgentStatusHooksId)",
             MethodBody(window, "private void OnInstallAgentStatusHooksClick("), StringComparison.Ordinal);
         Assert.Contains("executeInstallerCommandAsync:", window, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Palette_app_rows_reach_the_same_paths_as_the_sidebar_and_the_wire()
+    {
+        var window = Source("MainWindow.xaml.cs");
+        Assert.Contains("executeAppCommandAsync: ExecutePaletteAppCommandAsync", window, StringComparison.Ordinal);
+
+        var body = MethodBody(window, "private async Task ExecutePaletteAppCommandAsync(");
+        foreach (var command in PaletteAppCommands.All)
+            Assert.Contains($"case PaletteAppCommand.{command}:", body, StringComparison.Ordinal);
+        Assert.Contains("editor.OpenAsync(", body, StringComparison.Ordinal);
+        Assert.Contains("ConfigEditor.Command(Path.GetFileName(keymapPath))", body, StringComparison.Ordinal);
+        Assert.Contains("_applicationHost.ReloadKeymapAsync(", body, StringComparison.Ordinal);
+        Assert.Contains("_applicationHost.ReloadConfigAsync(", body, StringComparison.Ordinal);
+        Assert.Contains("_sidebar?.RequestClearFlags()", body, StringComparison.Ordinal);
+        Assert.Contains("_sidebar?.ClearFocus()", body, StringComparison.Ordinal);
+        Assert.Contains("store.ExpandAllWorkspaces()", body, StringComparison.Ordinal);
+        Assert.Contains("store.CollapseOtherWorkspaces()", body, StringComparison.Ordinal);
+
+        // closing the keymap editor reloads the keymap in every window, like Reload Keymap
+        Assert.Contains("() => _applicationHost.ReloadKeymapAsync()", window, StringComparison.Ordinal);
+        Assert.Contains("_keymapEditOverlay?.Dispose();", window, StringComparison.Ordinal);
     }
 
     [Fact]

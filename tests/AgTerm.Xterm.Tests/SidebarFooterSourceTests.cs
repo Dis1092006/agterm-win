@@ -4,9 +4,9 @@ namespace AgTerm.Xterm.Tests;
 
 // upstream WindowContentView.bottomBar (7df70fe, WindowContentView.swift:741-830): new workspace and
 // the New Session menu on the left, a spacer, then the focus pill and the flagged-view toggle, all
-// borderless in the chrome foreground, no line above. The port keeps its Clear flagged "x" button in
-// the right group. SidebarView is a WinUI type the test project does not compile, so it is pinned in
-// source.
+// borderless in the chrome foreground, no line above. Clear Flagged is a command-palette row, as
+// upstream, not a footer button. SidebarView is a WinUI type the test project does not compile, so it
+// is pinned in source.
 public sealed class SidebarFooterSourceTests
 {
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
@@ -20,7 +20,7 @@ public sealed class SidebarFooterSourceTests
 
         Assert.Equal(2, groups.Count);
         Assert.Equal(["NewWorkspaceButton", "NewSessionButton"], Names(groups[0]));
-        Assert.Equal(["FocusPill", "ClearFlaggedButton", "FlaggedToggle"], Names(groups[1]));
+        Assert.Equal(["FocusPill", "FlaggedToggle"], Names(groups[1]));
         Assert.Equal("2", (string?)groups[0].Attribute("Spacing"));
         Assert.Equal("2", (string?)groups[1].Attribute("Spacing"));
         Assert.Equal("1", (string?)groups[1].Attribute("Grid.Column"));
@@ -48,7 +48,7 @@ public sealed class SidebarFooterSourceTests
         Assert.Equal("0", Setter(style, "Padding"));
         Assert.Equal("{StaticResource SidebarForegroundBrush}", Setter(style, "Foreground"));
 
-        foreach (var name in new[] { "NewWorkspaceButton", "NewSessionButton", "FocusPill", "ClearFlaggedButton" })
+        foreach (var name in new[] { "NewWorkspaceButton", "NewSessionButton", "FocusPill" })
             Assert.Equal("{StaticResource SidebarFooterButtonStyle}", (string?)Named(name).Attribute("Style"));
         Assert.Equal("{StaticResource SidebarFooterToggleStyle}", (string?)Named("FlaggedToggle").Attribute("Style"));
         var toggle = Style("SidebarFooterToggleStyle");

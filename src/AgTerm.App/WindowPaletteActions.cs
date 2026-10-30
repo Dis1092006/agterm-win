@@ -16,7 +16,8 @@ public static class WindowPaletteAcceptance
         Func<Guid, CancellationToken, Task> executeCustomCommandAsync,
         Func<string?, CancellationToken, Task> setThemeAsync,
         CancellationToken cancellationToken = default,
-        Func<string, CancellationToken, Task>? executeInstallerCommandAsync = null)
+        Func<string, CancellationToken, Task>? executeInstallerCommandAsync = null,
+        Func<PaletteAppCommand, CancellationToken, Task>? executeAppCommandAsync = null)
     {
         switch (mode)
         {
@@ -38,6 +39,11 @@ public static class WindowPaletteAcceptance
                     executeInstallerCommandAsync is not null)
                 {
                     await executeInstallerCommandAsync(installerId, cancellationToken);
+                }
+                else if (WindowPaletteProjection.ParseAppCommand(item.Id) is { } appCommand &&
+                         executeAppCommandAsync is not null)
+                {
+                    await executeAppCommandAsync(appCommand, cancellationToken);
                 }
                 break;
             case WindowPaletteMode.CustomCommands:

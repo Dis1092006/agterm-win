@@ -1182,6 +1182,38 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public async Task Palette_reloads_use_the_application_global_keymap_and_config_paths()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        var firstConfigReloads = 0;
+        var secondConfigReloads = 0;
+
+        using var application = CreateApplication();
+        using var first = application.AttachWindow(firstId, GlobalOptions(() => ++firstConfigReloads));
+        using var second = application.AttachWindow(secondId, GlobalOptions(() => ++secondConfigReloads));
+        var firstKeymapReloads = 0;
+        var secondKeymapReloads = 0;
+        first.Actions.KeymapReloaded += _ => firstKeymapReloads++;
+        second.Actions.KeymapReloaded += _ => secondKeymapReloads++;
+
+        var keymap = await application.ReloadKeymapAsync();
+        var config = await application.ReloadConfigAsync();
+
+        Assert.True(keymap.Ok, keymap.Error);
+        Assert.True(config.Ok, config.Error);
+        Assert.Equal(1, firstKeymapReloads);
+        Assert.Equal(1, secondKeymapReloads);
+        Assert.Equal(1, firstConfigReloads);
+        Assert.Equal(1, secondConfigReloads);
+    }
+
+    [Fact]
     public async Task Local_theme_selection_uses_the_application_global_theme_path()
     {
         var firstId = Guid.NewGuid();
