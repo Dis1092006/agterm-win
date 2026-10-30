@@ -65,6 +65,17 @@ public sealed class PaletteController
         ReportSelectionChange(before);
     }
 
+    public void RefreshIndicators(IReadOnlyDictionary<Guid, AgentIndicator> indicators, AppSettings settings, bool liveSessions)
+    {
+        foreach (var row in _allItems)
+        {
+            AgentIndicator? indicator = liveSessions && Guid.TryParseExact(row.Id, "D", out var id)
+                ? indicators.GetValueOrDefault(id)
+                : null;
+            row.RefreshIndicator(indicator, settings);
+        }
+    }
+
     public void MoveSelection(int delta)
     {
         if (!IsOpen || _filteredItems.Count == 0 || delta == 0)

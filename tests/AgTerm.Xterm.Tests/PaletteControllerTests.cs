@@ -460,14 +460,14 @@ public sealed class PaletteViewSourceTests
         Assert.Contains("SizeChanged=\"OnPaletteSizeChanged\"", source, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.Name=\"Palette results\"", source, StringComparison.Ordinal);
         Assert.Contains("IsItemClickEnabled=\"True\"", source, StringComparison.Ordinal);
-        Assert.Contains("Text=\"{x:Bind StatusGlyph, Mode=OneWay}\"", source, StringComparison.Ordinal);
-        Assert.Contains("Converter={StaticResource PaletteStatusBrushConverter}", source, StringComparison.Ordinal);
+        Assert.Contains("local:SessionStatusGlyph", source, StringComparison.Ordinal);
+        Assert.Contains("ColorHex=\"{x:Bind StatusColor, Mode=OneWay}\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Loaded=\"OnStatusGlyphLoaded\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("WebView2", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Code_behind_accepts_only_immutable_presentation_items_and_handles_keyboard_and_focus()
+    public void Code_behind_accepts_presentation_snapshots_without_mutable_store_access_and_handles_keyboard_and_focus()
     {
         var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "PaletteView.xaml.cs"));
 
@@ -485,7 +485,7 @@ public sealed class PaletteViewSourceTests
         Assert.Contains("Cancelled", source, StringComparison.Ordinal);
         Assert.DoesNotContain("OnStatusGlyphLoaded", source, StringComparison.Ordinal);
         Assert.DoesNotContain("AppStore", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("Session", source, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"\bSession\b", source);
         Assert.DoesNotContain("BuiltinAction", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ILiveStoreCoordinator", source, StringComparison.Ordinal);
     }

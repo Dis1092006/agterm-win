@@ -1,10 +1,18 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using AgTerm.Core.Model;
+using AgTerm.Xterm;
 
 namespace AgTerm.App;
 
-public sealed record PaletteItemViewModel
+public sealed class PaletteItemViewModel : INotifyPropertyChanged
 {
+    private AgentIndicator _indicator;
+    private AppSettings _settings = new();
+    private bool _hasIndicator;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
     public PaletteItemViewModel(
         string id,
         string title,
@@ -24,21 +32,11 @@ public sealed record PaletteItemViewModel
         Subtitle = string.IsNullOrWhiteSpace(subtitle) ? null : subtitle;
         Shortcut = string.IsNullOrWhiteSpace(shortcut) ? null : shortcut;
         Badge = string.IsNullOrWhiteSpace(badge) ? null : badge;
-        Status = status;
-        StatusColor = string.IsNullOrWhiteSpace(statusColor) ? null : statusColor;
-        StatusShape = statusShape;
+        _hasIndicator = status is not null;
+        _indicator = new AgentIndicator(status ?? AgentStatus.Idle, Color: statusColor, Shape: statusShape);
 
         var searchKeys = Subtitle is null ? new[] { Title } : new[] { Title, Subtitle };
         SearchKeys = new ReadOnlyCollection<string>(searchKeys);
-        AutomationName = string.Join(", ", new[]
-            {
-                Title,
-                Subtitle,
-                Status is null ? null : $"{Status.Value.ToString().ToLowerInvariant()} status",
-                Badge,
-                Shortcut,
-            }
-            .Where(value => value is not null));
     }
 
     public string Id { get; }
@@ -64,25 +62,34 @@ public sealed record PaletteItemViewModel
 
     public string? Badge { get; }
 
-    public AgentStatus? Status { get; }
+    public AgentStatus? Status => _hasIndicator ? _indicator.Status : null;
 
-    public string? StatusColor { get; }
+    public string? StatusColor => _hasIndicator ? StatusGlyphPresentation.Color(_indicator, _settings) : null;
 
-    public StatusShape? StatusShape { get; }
+    public StatusShape? StatusShape => _hasIndicator ? StatusGlyphPresentation.Shape(_indicator, _settings) : null;
 
-    public string StatusGlyph => Status is null or AgentStatus.Idle
-        ? string.Empty
-        : StatusShape switch
-        {
-            Core.Model.StatusShape.Square => "■",
-            Core.Model.StatusShape.Triangle => "▲",
-            Core.Model.StatusShape.Diamond => "◆",
-            Core.Model.StatusShape.Capsule => "▬",
-            Core.Model.StatusShape.Star => "★",
-            _ => "●",
-        };
+    public string GlyphData => StatusGlyphPresentation.Data(StatusShape ?? Core.Model.StatusShape.Circle);
+
+    public bool HasStatusGlyph => Status is not null and not AgentStatus.Idle;
+
+    public void RefreshIndicator(AgentIndicator? indicator, AppSettings settings)
+    {
+        var next = indicator ?? _indicator;
+        if (next == _indicator && settings == _settings && (_hasIndicator || indicator is null)) return;
+        _indicator = next;
+        _hasIndicator |= indicator is not null;
+        _settings = settings;
+        foreach (var name in new[] { nameof(Status), nameof(StatusColor), nameof(StatusShape),
+                     nameof(GlyphData), nameof(HasStatusGlyph), nameof(AutomationName) })
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
 
     public IReadOnlyList<string> SearchKeys { get; }
 
-    public string AutomationName { get; }
+    public string AutomationName => string.Join(", ", new[]
+    {
+        Title, Subtitle,
+        HasStatusGlyph ? $"{Status!.Value.ToString().ToLowerInvariant()} status" : null,
+        Badge, Shortcut,
+    }.Where(value => value is not null));
 }

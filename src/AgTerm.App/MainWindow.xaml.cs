@@ -1555,6 +1555,7 @@ public sealed partial class MainWindow : Window
         _shownPickId = pending.Id;
         _terminalFocus.Cancel();
         PaletteOverlay.Open(PickPalette.Placeholder(pending), PickPalette.Items(pending), PickPalette.Options(pending), takeFocus: _windowIsActive);
+        PaletteOverlay.RefreshIndicators(_titleBarState.SessionIndicators, _settings, liveSessions: false);
     }
 
     /// <summary>The shown modal syncs first: its close releases the auto-follow lease and restores
@@ -1927,7 +1928,7 @@ public sealed partial class MainWindow : Window
     {
         RefreshUiAutoFollowSuppression();
         if (_switcher.IsActive)
-            SwitcherOverlay.Show(_switcher.Candidates, _switcher.Index);
+            SwitcherOverlay.Show(_switcher.Candidates, _switcher.Index, _settings);
         else
             SwitcherOverlay.Hide();
     }
@@ -2140,6 +2141,7 @@ public sealed partial class MainWindow : Window
                     PreserveInputOrderForEmptyQuery = snapshot.PreserveInputOrderForEmptyQuery,
                     InitialSelectionId = snapshot.InitialSelectionId,
                 });
+            PaletteOverlay.RefreshIndicators(_titleBarState.SessionIndicators, _settings, liveSessions: false);
         }
         catch
         {
@@ -2987,6 +2989,10 @@ public sealed partial class MainWindow : Window
     private void ApplyTitleBarState(TitleBarState state)
     {
         _titleBarState = state;
+        _switcher.RefreshIndicators(state.SessionIndicators);
+        PaletteOverlay.RefreshIndicators(state.SessionIndicators, _settings,
+            _openPaletteMode is WindowPaletteMode.Sessions or WindowPaletteMode.Attention && _shownPickId is null);
+        RefreshRecentSessionIndicators(_settings);
         RefreshTitles(_settings);
         RefreshTitleBarActions(_settings);
     }
@@ -3220,11 +3226,29 @@ public sealed partial class MainWindow : Window
         RecentSessionsFlyout.Items.Clear();
         foreach (var recent in _titleBarState.RecentSessions)
         {
-            var item = new MenuFlyoutItem { Text = $"{recent.Title} — {recent.Subtitle}" };
+            var indicator = recent.Indicator;
+            var row = new PaletteItemViewModel(recent.Id.ToString("D"), recent.Title, recent.Subtitle,
+                status: indicator.Status, statusColor: indicator.Color, statusShape: indicator.Shape);
+            row.RefreshIndicator(indicator, _settings);
+            var item = new MenuFlyoutItem
+            {
+                Text = $"{recent.Title} — {recent.Subtitle}",
+                Tag = row,
+                Style = (Style)RootGrid.Resources["RecentSessionItemStyle"],
+            };
+            item.SetBinding(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty,
+                new Microsoft.UI.Xaml.Data.Binding { Source = row, Path = new PropertyPath(nameof(row.AutomationName)) });
             var sessionId = recent.Id;
             item.Click += (_, _) => ObserveTaskFault(SelectRecentSessionAsync(sessionId), "Recent session select failed");
             RecentSessionsFlyout.Items.Add(item);
         }
+    }
+
+    private void RefreshRecentSessionIndicators(AppSettings settings)
+    {
+        foreach (var item in RecentSessionsFlyout.Items.OfType<MenuFlyoutItem>())
+            if (item.Tag is PaletteItemViewModel row && Guid.TryParseExact(row.Id, "D", out var id))
+                row.RefreshIndicator(_titleBarState.SessionIndicators.GetValueOrDefault(id), settings);
     }
 
     // upstream selectRecent: note activity, select, focus — the palette's session path
@@ -3290,6 +3314,9 @@ public sealed partial class MainWindow : Window
     {
         await ShowThemePresentationAsync(settings, presentation);
         _settings = settings;
+        PaletteOverlay.RefreshIndicators(_titleBarState.SessionIndicators, settings, liveSessions: false);
+        RefreshRecentSessionIndicators(settings);
+        OnSwitcherChanged();
         RefreshActivationShield();
         _rendererSettings = presentation.RendererSettings;
     }

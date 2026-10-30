@@ -1,3 +1,5 @@
+using AgTerm.Core.Model;
+
 namespace AgTerm.Xterm;
 
 /// <summary>The keys the Ctrl-Tab switcher listens to: Ctrl+Tab, Ctrl+Shift+Tab, Esc, and Ctrl's release.</summary>
@@ -26,6 +28,15 @@ public sealed class SessionSwitcher
 
     /// <summary>Raised after every change of IsActive, Candidates or Index.</summary>
     public event Action? Changed;
+
+    public void RefreshIndicators(IReadOnlyDictionary<Guid, AgentIndicator> indicators)
+    {
+        if (!IsActive) return;
+        var fresh = Candidates.Select(row => row with { Indicator = indicators.GetValueOrDefault(row.Id) }).ToArray();
+        if (Candidates.SequenceEqual(fresh)) return;
+        Candidates = fresh;
+        Changed?.Invoke();
+    }
 
     /// <summary>Ctrl+Tab (reverse: Ctrl+Shift+Tab). The first press snapshots the candidates and
     /// highlights the previous session; later presses move the highlight. A window that cannot switch

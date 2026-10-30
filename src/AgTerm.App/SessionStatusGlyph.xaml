@@ -1,0 +1,14 @@
+<UserControl
+    x:Class="AgTerm.App.SessionStatusGlyph"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AgTerm.App"
+    Width="13" Height="13"
+    IsHitTestVisible="False"
+    AutomationProperties.AccessibilityView="Raw">
+    <UserControl.Resources>
+        <local:PaletteStatusBrushConverter x:Key="StatusBrushConverter" />
+    </UserControl.Resources>
+    <Path Data="{x:Bind ShapeData, Mode=OneWay}"
+          Fill="{x:Bind ColorHex, Mode=OneWay, Converter={StaticResource StatusBrushConverter}}" />
+</UserControl>
