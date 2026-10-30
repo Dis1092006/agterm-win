@@ -110,6 +110,15 @@ public sealed class ControlDispatcher
                 if (items.Any(item => CommandRestore.HasControlCharacter(item.Label)
                         || (item.Subtitle is { } subtitle && CommandRestore.HasControlCharacter(subtitle))))
                     return Err("item text must not contain control characters");
+                foreach (var item in items)
+                {
+                    if (item.Status is { } status && AgentStatuses.FromWire(status) is null)
+                        return Err("invalid pick item status (idle|active|completed|blocked)");
+                    if (item.StatusColor is { } color && !WatermarkConfig.IsValidColorHex(color))
+                        return Err("invalid pick item color (expected #rrggbb)");
+                    if (item.StatusShape is { } shape && StatusShapes.FromWire(shape) is null)
+                        return Err($"invalid pick item shape ({StatusShapes.ValidNamesList})");
+                }
                 string? selection = null;
                 if (request.Args?.Selection is { } wanted)
                 {

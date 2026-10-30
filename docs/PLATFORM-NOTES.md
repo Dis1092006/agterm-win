@@ -578,7 +578,9 @@ Upstream closes a session as soon as its main shell exits, with any exit code. O
 
 ## Upstream behavior adopted beyond the pin
 
-The pin stays `7df70fe`. The entries below are upstream behavior changes to commands the port already implements, taken from upstream `ed831ab` (v0.36.0). Each names the upstream commit it follows.
+The pin stays `7df70fe`. The entries below name upstream behavior adopted beyond the pin. Most follow upstream `ed831ab` (v0.36.0); later additions name their own commit.
+
+- Session pickers follow upstream `dc1110bf` (v0.38.0): recent sessions, Ctrl-Tab, session and attention palettes, and caller-supplied picks draw a non-idle agent glyph on the right, with the sidebar's shape and color settings and per-call overrides. Picker glyphs do not blink. Session and attention palette rows update in place as status changes, without changing the query, order, selection or scroll position. Ctrl-Tab keeps its frozen candidate order while refreshing indicators. Windows uses gate-captured status snapshots instead of Swift Observation. Recent sessions keeps native `MenuFlyoutItem` rows with a trailing-glyph template, native menu keyboard/accessibility and dismissal behavior, and the existing auto-follow suppression. The three optional pick item strings `status`, `statusColor`, and `statusShape` are recorded in `parity/adopted.json`; absent fields are omitted from JSON. `pick.open` checks provided fields using upstream's exact errors, without echoing rejected values. CLI flags and pick result JSON are unchanged. The same upstream commit adds remote `zmx tree` status fields; those are not ported because agterm-win has no zmx or remote attachment.
 
 - `session.type` and `quick.type` refuse text with a NUL byte: `text must not contain a NUL byte` (upstream `6bc8a0b7`). ConPTY would pass the byte through, but the reply is part of the wire contract.
 - `session.type`, `session.text`, `font.inc|dec|reset` report `invalid pane: X` from the dispatcher, before target resolution (upstream `b3ef1baf`). The aliases upstream added with horizontal splits (`eb29d556`) are not adopted.

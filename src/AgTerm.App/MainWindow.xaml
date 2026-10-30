@@ -16,6 +16,65 @@
         </Grid.RowDefinitions>
 
         <Grid.Resources>
+            <Style x:Key="RecentSessionItemStyle" TargetType="MenuFlyoutItem"
+                   BasedOn="{StaticResource DefaultMenuFlyoutItemStyle}">
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="Padding" Value="12,8" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuFlyoutItem">
+                            <Grid x:Name="RowRoot" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"
+                                  BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                  DataContext="{TemplateBinding Tag}" CornerRadius="{TemplateBinding CornerRadius}"
+                                  Margin="{StaticResource MenuFlyoutItemMargin}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RowRoot.Background" Value="{ThemeResource MenuFlyoutItemBackgroundPointerOver}" />
+                                                <Setter Target="RowText.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPointerOver}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RowRoot.Background" Value="{ThemeResource MenuFlyoutItemBackgroundPressed}" />
+                                                <Setter Target="RowText.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPressed}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="RowRoot.Opacity" Value="0.4" />
+                                                <Setter Target="RowText.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundDisabled}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                    <VisualStateGroup x:Name="PaddingSizeStates">
+                                        <VisualState x:Name="DefaultPadding" />
+                                        <VisualState x:Name="NarrowPadding">
+                                            <VisualState.Setters>
+                                                <Setter Target="RowRoot.Padding" Value="{StaticResource MenuFlyoutItemThemePaddingNarrow}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="RowText" Text="{TemplateBinding Text}" VerticalAlignment="Center"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <local:SessionStatusGlyph Grid.Column="1" Margin="12,0,0,0"
+                                                          VerticalAlignment="Center"
+                                                          ShapeData="{Binding GlyphData}"
+                                                          ColorHex="{Binding StatusColor}"
+                                                          Shown="{Binding HasStatusGlyph}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <SolidColorBrush x:Key="OverlayOpaqueBackgroundBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
             <!-- the chrome colors, as upstream WindowContentView: the title bar and the sidebar show the
                  global terminal background, text and lines the terminal foreground. ApplyChrome sets

@@ -46,5 +46,10 @@
   "sessionNode": [
     { "name": "ask", "upstream": "1b765e69" },
     { "name": "hud", "upstream": "d0bec154" }
+  ],
+  "pickItem": [
+    { "name": "status", "upstream": "dc1110bf" },
+    { "name": "statusColor", "upstream": "dc1110bf" },
+    { "name": "statusShape", "upstream": "dc1110bf" }
   ]
 }

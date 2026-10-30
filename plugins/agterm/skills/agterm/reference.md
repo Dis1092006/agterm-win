@@ -740,14 +740,7 @@ no items needs `< /dev/null` or it blocks. Stdin that is not UTF-8 text or a JSO
 `stdin must be UTF-8 text or a JSON item array` (exit 1); a leading BOM is dropped. With no open window
 the open fails with `no open window`.
 
-The first non-whitespace input byte selects the format. `[` starts a JSON array of objects with required
-`id` and `label` strings plus an optional `subtitle`; any other input is split into lines, blank and
-whitespace-only lines are dropped, and each remaining line becomes both the id and label. Item ids must
-be unique, labels must not be empty, labels and subtitles may not contain control characters, and a
-picker accepts at most 1,000 items. An empty list is rejected with `pick.open requires at least one item`
-unless `--allow-custom` is set, which accepts it and opens a plain text prompt. Omitting `items` altogether
-is rejected with `pick.open requires items`, reachable only over the raw protocol: the CLI always sends the
-list it parsed, empty or not.
+The first non-whitespace input byte selects the format. `[` starts a JSON array of objects with required `id` and `label` strings plus optional `subtitle`, `status`, `statusColor`, and `statusShape` strings. The status fields draw a trailing glyph: `status` takes `idle|active|completed|blocked` (absent or `idle` draws none), `statusColor` takes `#rrggbb`, and `statusShape` takes `circle|square|triangle|diamond|capsule|star`. Shape and color use the sidebar settings when omitted. Invalid values are rejected, even when status is absent or idle. Any other input is split into lines, blank and whitespace-only lines are dropped, and each remaining line becomes both the id and label. Item ids must be unique, labels must not be empty, labels and subtitles may not contain control characters, and a picker accepts at most 1,000 items. An empty list is rejected with `pick.open requires at least one item` unless `--allow-custom` is set, which accepts it and opens a plain text prompt. Omitting `items` altogether is rejected with `pick.open requires items`, reachable only over the raw protocol: the CLI always sends the list it parsed, empty or not.
 
 The query matches item labels only; a subtitle is displayed but never searched, so consequence text on one
 row cannot filter out its safer neighbour. An empty query lists the items in the order the caller supplied

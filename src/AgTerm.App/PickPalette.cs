@@ -10,7 +10,9 @@ public static class PickPalette
     public static string Placeholder(PendingPick pick) => pick.Prompt ?? "Select\u2026";
 
     public static IReadOnlyList<PaletteItemViewModel> Items(PendingPick pick) =>
-        pick.Items.Select((item, index) => new PaletteItemViewModel(item.Id, item.Label, item.Subtitle) { SourceIndex = index })
+        pick.Items.Select((item, index) => new PaletteItemViewModel(item.Id, item.Label, item.Subtitle,
+                status: item.Indicator.Status, statusColor: item.Indicator.Color, statusShape: item.Indicator.Shape)
+            { SourceIndex = index })
             .ToArray();
 
     public static PaletteOpenOptions Options(PendingPick pick) => new()
