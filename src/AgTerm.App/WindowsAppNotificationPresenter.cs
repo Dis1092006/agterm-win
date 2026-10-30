@@ -8,28 +8,36 @@ internal sealed class WindowsAppNotificationPresenter : IDisposable
 {
     private readonly Action<string>? _log;
     private readonly AppNotificationManager? _manager;
+    private readonly Action<LiveNotificationTarget?>? _activated;
+    private readonly SemaphoreSlim _deliveryGate = new(1, 1);
 
-    public WindowsAppNotificationPresenter(Action<string>? log = null)
+    public WindowsAppNotificationPresenter(
+        Action<string>? log = null, Action<LiveNotificationTarget?>? activated = null)
     {
         _log = log;
+        _activated = activated;
+        AppNotificationManager? manager = null;
         try
         {
-            var manager = AppNotificationManager.Default;
+            manager = AppNotificationManager.Default;
+            manager.NotificationInvoked += OnNotificationInvoked;
             manager.Register();
             _manager = manager;
         }
         catch (Exception ex)
         {
+            if (manager is not null) manager.NotificationInvoked -= OnNotificationInvoked;
             _log?.Invoke($"Windows app notification registration failed: {ex.GetBaseException().Message}");
         }
     }
 
-    public bool TryShow(LiveBannerNotification notification)
+    public async Task<bool> TryShowAsync(LiveBannerNotification notification)
     {
         ArgumentNullException.ThrowIfNull(notification);
         if (_manager is null)
             return false;
 
+        await _deliveryGate.WaitAsync();
         try
         {
             var builder = new AppNotificationBuilder()
@@ -41,7 +49,15 @@ internal sealed class WindowsAppNotificationPresenter : IDisposable
             else
                 builder.MuteAudio();
 
-            _manager.Show(builder.BuildNotification());
+            if (notification.Target is { } target)
+                builder.AddArgument("target", target.Identity);
+            var toast = builder.BuildNotification();
+            if (notification.Target is { } identity)
+            {
+                toast.Tag = identity.ToastTag;
+                toast.Group = identity.ToastGroup;
+            }
+            _manager.Show(toast);
             return true;
         }
         catch (Exception ex)
@@ -49,6 +65,34 @@ internal sealed class WindowsAppNotificationPresenter : IDisposable
             _log?.Invoke($"Windows app notification failed: {ex.GetBaseException().Message}");
             return false;
         }
+        finally { _deliveryGate.Release(); }
+    }
+
+    private void OnNotificationInvoked(AppNotificationManager sender, AppNotificationActivatedEventArgs args) =>
+        HandleActivation(args);
+
+    internal void HandleActivation(AppNotificationActivatedEventArgs args)
+    {
+        var target = args.Arguments.TryGetValue("target", out var identity)
+            ? LiveNotificationTarget.Parse(identity) : null;
+        if (target is null)
+            _log?.Invoke("Notification activation has no valid pane target; activating the app.");
+        _activated?.Invoke(target);
+    }
+
+    public async Task ClearSessionAsync(Guid sessionId)
+    {
+        if (_manager is null) return;
+        await _deliveryGate.WaitAsync();
+        try
+        {
+            await _manager.RemoveByGroupAsync(sessionId.ToString("D").ToUpperInvariant());
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"Windows app notification removal failed: {ex.GetBaseException().Message}");
+        }
+        finally { _deliveryGate.Release(); }
     }
 
     public void Dispose()
@@ -58,6 +102,7 @@ internal sealed class WindowsAppNotificationPresenter : IDisposable
 
         try
         {
+            _manager.NotificationInvoked -= OnNotificationInvoked;
             _manager.Unregister();
         }
         catch (Exception ex)

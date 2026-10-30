@@ -35,6 +35,7 @@ public sealed record LiveWindowEntry(
 public sealed class LiveApplicationHost : IDisposable
 {
     private readonly Lock _gate = new();
+    private readonly TerminalNotificationLimiter _terminalNotificationLimiter = new();
     private readonly Lock _sidebarGate = new();
     private bool _autoHideInactiveSidebars;
     private readonly Lock _treeEventGate = new();
@@ -200,7 +201,10 @@ public sealed class LiveApplicationHost : IDisposable
                 return;
             }
             if (surface is XtermPaneSurface live)
+            {
+                live.Pane.Terminal.TerminalNotificationReceived += ObserveUnownedTerminalNotification;
                 _ = ObserveQuickExitAsync(live, options);
+            }
         }
         catch (Exception ex)
         {
@@ -439,6 +443,7 @@ public sealed class LiveApplicationHost : IDisposable
                     SocketPath = SocketPath,
                     WindowName = window.WindowName,
                     QuickTerminal = Quick,
+                    TerminalNotificationLimiter = _terminalNotificationLimiter,
                 },
                 window,
                 PipeName);
@@ -466,6 +471,55 @@ public sealed class LiveApplicationHost : IDisposable
             if (!_disposed && _openWindows.TryGetValue(windowId, out var window))
                 window.AcceptedPaneId = paneId;
         }
+    }
+
+    internal void ObserveUnownedTerminalNotification(TerminalOscReport report)
+    {
+        if (!report.Oversized &&
+            TerminalOscNotification.Parse(report.Identifier, report.Data, out _) is { } notification)
+            _terminalNotificationLimiter.Allow(notification);
+    }
+
+    public async Task<bool> RevealNotificationAsync(
+        LiveNotificationTarget target, CancellationToken cancellationToken = default)
+    {
+        var destination = await Task.Run(() =>
+        {
+            LiveWindowHost[] windows;
+            lock (_gate)
+            {
+                if (_disposed) return (Guid?)null;
+                windows = _openWindows.Values.ToArray();
+            }
+            foreach (var candidate in windows)
+            {
+                var ownsSession = false;
+                candidate.RunLocked(() => ownsSession = candidate.Store.SessionWithId(target.SessionId) is not null);
+                if (ownsSession) return candidate.WindowId;
+            }
+            lock (_gate)
+                return !_disposed && _windows.Any(entry => entry.Id == target.WindowId)
+                    ? target.WindowId : (Guid?)null;
+        }, cancellationToken).ConfigureAwait(false);
+        if (destination is not { } windowId || _windowController is null)
+            return false;
+        var response = await SelectWindowAsync(windowId.ToString("D"), cancellationToken).ConfigureAwait(false);
+        if (!response.Ok)
+            throw new InvalidOperationException(response.Error);
+        LiveWindowHost window;
+        LiveControlHost? attachment;
+        lock (_gate)
+        {
+            if (_disposed || !_openWindows.TryGetValue(windowId, out window!)) return false;
+            _attachments.TryGetValue(windowId, out attachment);
+        }
+        if (attachment is not null)
+            return await attachment.RevealNotificationAsync(target, cancellationToken).ConfigureAwait(false);
+        var revealed = false;
+        await Task.Run(() => window.RunLocked(() =>
+            revealed = LiveControlHost.SelectNotificationSession(window.Store, window.Actions, target)),
+            cancellationToken).ConfigureAwait(false);
+        return revealed;
     }
 
     public Task ReportActivatedAsync(Guid windowId)

@@ -5,6 +5,8 @@ using AgTerm.Xterm;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
+using Microsoft.Windows.AppNotifications;
 
 namespace AgTerm.App;
 
@@ -18,6 +20,11 @@ public partial class App : Application, ILiveWindowController
     private readonly TaskbarNotificationAttention _taskbarAttention =
         new(WindowsTaskbarFlash.IsApplicationForeground, WindowsTaskbarFlash.Apply);
     private IDisposable? _taskbarSettingsSubscription;
+    private readonly TaskCompletionSource _launchReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private WindowsAppNotificationPresenter? _notificationPresenter;
+
+    internal WindowsAppNotificationPresenter NotificationPresenter => _notificationPresenter
+        ?? throw new InvalidOperationException("Notification presenter is not initialized.");
 
     internal void OpenSettings()
     {
@@ -62,6 +69,9 @@ public partial class App : Application, ILiveWindowController
             WindowController = this,
         });
         _applicationHost = applicationHost;
+        _notificationPresenter = new WindowsAppNotificationPresenter(
+            message => System.Diagnostics.Trace.TraceWarning(message),
+            target => ObserveNotificationActivation(target));
         _taskbarSettingsSubscription = await applicationHost.Settings.SubscribeAsync((snapshot, _) =>
             RunOnUiAsync(() =>
             {
@@ -90,6 +100,42 @@ public partial class App : Application, ILiveWindowController
         if (_quickWindow.GlobalHotkeyError is { } hotkeyError)
             _windows.Values.First().ReportQuickFailure(new("Global hotkey unavailable", hotkeyError));
         applicationHost.Start();
+        _launchReady.TrySetResult();
+        var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
+        if (activation.Kind == ExtendedActivationKind.AppNotification)
+            HandleActivation(activation);
+    }
+
+    internal void HandleActivation(AppActivationArguments activation)
+    {
+        if (activation.Kind == ExtendedActivationKind.AppNotification &&
+            activation.Data is AppNotificationActivatedEventArgs notification)
+            NotificationPresenter.HandleActivation(notification);
+        else
+            ActivateFrontmostWindow();
+    }
+
+    private async void ObserveNotificationActivation(LiveNotificationTarget? target)
+    {
+        try { await RevealNotificationAsync(target); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.TraceError($"Notification activation failed: {ex}");
+            await RunOnUiAsync(() =>
+            {
+                ActiveMainWindow?.ReportQuickFailure(new("Notification activation failed", ex.GetBaseException().Message));
+                return Task.CompletedTask;
+            }, CancellationToken.None);
+        }
+    }
+
+    internal async Task RevealNotificationAsync(LiveNotificationTarget? target)
+    {
+        await _launchReady.Task;
+        if (target is not null && _applicationHost is { } host &&
+            await host.RevealNotificationAsync(target))
+            return;
+        ActivateFrontmostWindow();
     }
 
     public async Task OpenWindowAsync(Guid windowId, CancellationToken cancellationToken)
@@ -213,6 +259,7 @@ public partial class App : Application, ILiveWindowController
             _settingsWindow?.Close();
             _quickWindow?.Dispose();
             _quickWindow = null;
+            _notificationPresenter?.Dispose();
         }
     }
 

@@ -33,6 +33,102 @@ public class XtermPageLiveTests
         return (page, view);
     }
 
+    [Fact]
+    public async Task OSC_notifications_use_real_parser_terminators_and_preserve_cwd_and_readline_protocols()
+    {
+        var (page, _) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("osc", readlineMarker: true));
+        var reports = new EventRecorder<TerminalOscReport>();
+        var cwd = new EventRecorder<string>();
+        terminal.TerminalNotificationReceived += reports.Add;
+        terminal.CwdChanged += cwd.Add;
+        await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("\x1b]9;hel"));
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("lo\x07\x1b]777;notify;Title;Body;rest\x1b"));
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("\\\x1b]9;9;C:\\work\x07\x1b]7777;agterm-readline=1\x07\nOSC_DONE"));
+            return Task.FromResult(0);
+        });
+        await WaitForTextAsync(terminal, "OSC_DONE",
+            work => _webView.RunAsync(_ => work()));
+        Assert.Contains(reports, report => report.Identifier == 9 && report.Data == "hello");
+        Assert.Contains(reports, report => report.Identifier == 777 && report.Data == "notify;Title;Body;rest");
+        Assert.DoesNotContain(reports, report => report.Data.StartsWith("9;", StringComparison.Ordinal));
+        Assert.Equal("C:\\work", Assert.Single(cwd));
+        var text = await _webView.RunAsync(_ => terminal.ReadTextAsync(true, null));
+        Assert.DoesNotContain("hello", text);
+        Assert.DoesNotContain("Title", text);
+    }
+
+    [Theory]
+    [InlineData(2047, false)]
+    [InlineData(2048, true)]
+    public async Task OSC_bridge_bounds_payloads_before_crossing_the_native_message_channel(int length, bool oversized)
+    {
+        var (page, _) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("osc-limit"));
+        var reports = new EventRecorder<TerminalOscReport>();
+        terminal.TerminalNotificationReceived += reports.Add;
+        await _webView.RunAsync(_ =>
+        {
+            terminal.FeedOutput(Encoding.UTF8.GetBytes("\x1b]9;" + new string('a', length) + "\x07\nLIMIT_DONE"));
+            return Task.FromResult(0);
+        });
+        await WaitForTextAsync(terminal, "LIMIT_DONE", work => _webView.RunAsync(_ => work()));
+        var report = Assert.Single(reports);
+        Assert.Equal(oversized, report.Oversized);
+        Assert.Equal(oversized ? 0 : length, report.Data.Length);
+    }
+
+    [Theory]
+    [InlineData("\u001bc")]
+    [InlineData("\u001b[!p")]
+    public async Task Terminal_resets_clear_modify_other_keys_without_disabling_engine_keyboard_protocols(string reset)
+    {
+        var (page, view) = await BootPageAsync();
+        var terminal = await _webView.RunAsync(_ => page.OpenTerminalAsync("mok-reset"));
+        var data = new EventRecorder<string>();
+        terminal.DataReceived += value => { if (value.Length > 0) data.Add(value); };
+        async Task FeedAsync(string value)
+        {
+            await _webView.RunAsync(_ =>
+            {
+                terminal.FeedOutput(Encoding.UTF8.GetBytes(value));
+                return Task.FromResult(0);
+            });
+            await Task.Delay(150);
+        }
+        async Task<string> PressAsync()
+        {
+            var before = data.Count;
+            await _webView.RunAsync(async _ => await view.CoreWebView2.ExecuteScriptAsync(
+                """
+                (() => {
+                    const ev = new KeyboardEvent("keydown", {
+                        key: "Enter", code: "Enter", shiftKey: true, cancelable: true });
+                    Object.defineProperty(ev, "keyCode", { value: 13 });
+                    Object.defineProperty(ev, "which", { value: 13 });
+                    agterm.textareaFor("mok-reset").dispatchEvent(ev);
+                    agterm.textareaFor("mok-reset").dispatchEvent(new KeyboardEvent("keyup", {
+                        key: "Enter", code: "Enter", shiftKey: true, cancelable: true }));
+                    return true;
+                })()
+                """));
+            var until = Environment.TickCount64 + 5000;
+            while (data.Count <= before && Environment.TickCount64 < until) await Task.Delay(25);
+            Assert.True(data.Count > before, "No encoded key after terminal reset.");
+            return data[before];
+        }
+        await FeedAsync("\x1b[?9001h\x1b[>4;2m");
+        Assert.Equal("\x1b[27;2;13~", await PressAsync());
+        await FeedAsync(reset + "\x1b[?9001h");
+        Assert.EndsWith("_", await PressAsync());
+        await FeedAsync("\x1b[>1u");
+        Assert.Equal("\x1b[13;2u", await PressAsync());
+        await FeedAsync("\x1b[<u");
+        Assert.EndsWith("_", await PressAsync());
+    }
+
     private static async Task<string> WaitForTextAsync(XtermTerminal terminal, string contains,
         Func<Func<Task<string>>, Task<string>> onUi, int timeoutMs = 30000)
     {

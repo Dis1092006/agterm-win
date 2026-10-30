@@ -27,6 +27,53 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     // Ported from upstream ControlSidebarStatusUITests.testNotificationBadgeToggleHidesAndShowsBadge.
     // Covers render policy and host state, not rendered XAML or OS activation.
     [Fact]
+    public async Task Notification_click_selects_the_owning_pane_exits_zoom_and_clears_unseen()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var windowId = Assert.Single(application.Windows).Id;
+        var window = application.GetOpenWindow(windowId);
+        var session = window.Store.ActiveSession!;
+        window.RunLocked(() =>
+        {
+            session.HasSplit = true;
+            session.SplitSurface = new BadgeSurface("notification-split");
+            session.UnseenCount = 3;
+            window.Actions.Zoom.Set(ControlToggleMode.On,
+                new TerminalZoomTarget.Session(session.Id, TerminalZoomSurface.Primary));
+            window.Store.AddSession(window.Store.Workspaces[0].Id, _stateDir);
+        });
+        Assert.True(await application.RevealNotificationAsync(new(windowId, session.Id, NotificationPane.Split)));
+        Assert.Equal(session.Id, window.Store.SelectedSessionId);
+        Assert.True(session.SplitFocused);
+        Assert.Equal(0, session.UnseenCount);
+        Assert.Null(window.Actions.Zoom.Target);
+        Assert.Contains(windowId, controller.ActivationRequests);
+
+        window.RunLocked(() => session.HasSplit = false);
+        Assert.True(await application.RevealNotificationAsync(new(windowId, session.Id, NotificationPane.Split)));
+        Assert.False(session.SplitFocused);
+    }
+
+    [Fact]
+    public async Task Notification_click_reopens_a_saved_window_without_recreating_stale_sessions_or_windows()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var windowId = Assert.Single(application.Windows).Id;
+        var sessionId = application.GetOpenWindow(windowId).Store.ActiveSession!.Id;
+        await application.CloseWindowAsync(windowId);
+        Assert.False(Assert.Single(application.Windows).IsOpen);
+        Assert.True(await application.RevealNotificationAsync(new(windowId, sessionId, NotificationPane.Main)));
+        Assert.Contains(windowId, controller.Opened);
+        Assert.Equal(sessionId, application.GetOpenWindow(windowId).Store.SelectedSessionId);
+        Assert.False(await application.RevealNotificationAsync(new(windowId, Guid.NewGuid(), NotificationPane.Main)));
+        Assert.Single(application.GetOpenWindow(windowId).Store.Workspaces.SelectMany(workspace => workspace.Sessions));
+        Assert.False(await application.RevealNotificationAsync(new(Guid.NewGuid(), Guid.NewGuid(), NotificationPane.Main)));
+        Assert.Single(application.Windows);
+    }
+
+    [Fact]
     public void Notification_badge_toggle_hides_and_shows_badge_without_losing_unseen_count()
     {
         using var application = CreateApplication();
