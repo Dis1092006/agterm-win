@@ -290,6 +290,28 @@ public sealed class WindowPaletteProjectionTests
         Assert.Equal(placeholder, snapshot.Placeholder);
     }
 
+    // the theme palettes preview colors on the window, so a scrim would show them darker than they are
+    [Theory]
+    [InlineData(WindowPaletteMode.Sessions, true)]
+    [InlineData(WindowPaletteMode.Commands, true)]
+    [InlineData(WindowPaletteMode.CustomCommands, true)]
+    [InlineData(WindowPaletteMode.Attention, true)]
+    [InlineData(WindowPaletteMode.Themes, false)]
+    public void Only_the_theme_palette_opens_without_a_scrim(WindowPaletteMode mode, bool dimmed)
+    {
+        var snapshot = WindowPaletteProjection.Create(mode, TestStores.Scratch(), Keymap.Empty, StateProvider());
+
+        Assert.Equal(dimmed, snapshot.Dimmed);
+    }
+
+    [Fact]
+    public void The_workspace_theme_palette_opens_without_a_scrim()
+    {
+        var snapshot = WindowPaletteProjection.WorkspaceThemes(SmallCatalog(), "servers", currentTheme: null);
+
+        Assert.False(snapshot.Dimmed);
+    }
+
     [Fact]
     public void Stable_ids_round_trip_and_reject_other_item_kinds()
     {

@@ -43,6 +43,9 @@ public sealed partial class PaletteView : UserControl
             PalettePanel.Background = background;
     }
 
+    public void SetScrimTopInset(double inset) =>
+        Scrim.Margin = new Thickness(0, inset, 0, 0);
+
     public void Open(string placeholder, IReadOnlyList<PaletteItemViewModel> items)
     {
         Open(placeholder, items, preserveInputOrderForEmptyQuery: false);
@@ -67,6 +70,7 @@ public sealed partial class PaletteView : UserControl
         ArgumentNullException.ThrowIfNull(options);
 
         QueryBox.PlaceholderText = placeholder;
+        Scrim.Visibility = options.Dimmed ? Visibility.Visible : Visibility.Collapsed;
         Visibility = Visibility.Visible;
         ApplyAvailableHeight(ActualHeight);
         _controller.Open(items, options);

@@ -2151,6 +2151,7 @@ public sealed partial class MainWindow : Window
                 {
                     PreserveInputOrderForEmptyQuery = snapshot.PreserveInputOrderForEmptyQuery,
                     InitialSelectionId = snapshot.InitialSelectionId,
+                    Dimmed = snapshot.Dimmed,
                 });
             PaletteOverlay.RefreshIndicators(_titleBarState.SessionIndicators, _settings, liveSessions: false);
         }
@@ -3501,6 +3502,16 @@ public sealed partial class MainWindow : Window
         IconPaletteOverlay.SetPanelBackground(background);
         SwitcherOverlay.SetPanelBackground(background);
         AskOverlay.SetPanelBackground(background);
+    }
+
+    // The overlays span the window so a click on the title bar still closes them, but the scrim
+    // starts below the title bar, as upstream WindowContentView places its overlay layer.
+    private void OnShellSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var inset = RootGrid.RowDefinitions[0].ActualHeight;
+        PaletteOverlay.SetScrimTopInset(inset);
+        IconPaletteOverlay.SetScrimTopInset(inset);
+        KeybindingsOverlay.SetScrimTopInset(inset);
     }
 
     private void OnAdvancedEffectsEnabledChanged(UISettings sender, object args)

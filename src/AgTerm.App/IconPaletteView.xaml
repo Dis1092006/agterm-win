@@ -13,10 +13,14 @@
     </UserControl.Resources>
     <Grid>
         <Grid x:Name="DismissSurface"
-              Background="#66000000"
+              Background="Transparent"
               PointerPressed="OnDismissSurfacePointerPressed"
               Tapped="OnDismissSurfaceTapped"
-              AutomationProperties.AccessibilityView="Raw" />
+              AutomationProperties.AccessibilityView="Raw">
+            <Border x:Name="Scrim"
+                    Background="#33000000"
+                    IsHitTestVisible="False" />
+        </Grid>
 
         <Border x:Name="PalettePanel"
                 MaxWidth="520"
