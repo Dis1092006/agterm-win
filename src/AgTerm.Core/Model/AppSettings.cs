@@ -89,6 +89,16 @@ public sealed record AppSettings
 
     public bool TaskbarFlashEnabled() => DockBounce is "once" or "untilFocused";
 
+    public double? AutoFollowTimeout() => AutoFollowAttention switch
+    {
+        "s5" => 5,
+        "s10" => 10,
+        "s30" => 30,
+        "s60" => 60,
+        "m5" => 300,
+        _ => null,
+    };
+
     /// <summary>Windows keeps its title bar for hidden mode. Unknown values retain the upstream
     /// legacy fallback; an explicit hidden value always runs as compact.</summary>
     public Model.ToolbarMode EffectiveToolbarMode() => ToolbarMode switch

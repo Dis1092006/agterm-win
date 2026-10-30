@@ -4,6 +4,26 @@ namespace AgTerm.Xterm.Tests;
 
 public sealed class DeferredTerminalFocusTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_pane_change_during_a_modal_waits_for_both_release_and_activation(bool active)
+    {
+        var focus = new DeferredTerminalFocus();
+        var focused = 0;
+        focus.Request(active, () => focused++, modalOpen: true);
+        Assert.True(focus.Pending);
+        Assert.Equal(0, focused);
+        focus.Activated(modalOpen: true, () => focused++);
+        Assert.True(focus.Pending);
+        Assert.Equal(0, focused);
+        focus.Activated(modalOpen: false, () => focused++);
+        Assert.False(focus.Pending);
+        Assert.Equal(1, focused);
+        focus.Activated(modalOpen: false, () => focused++);
+        Assert.Equal(1, focused);
+    }
+
     [Fact]
     public void An_active_window_focuses_at_once_and_drops_a_pending_focus()
     {

@@ -15,8 +15,7 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        var deferred = new[] { "compactToolbar",
-            "autoFollowAttention", "autoFollowStayOnActive" };
+        var deferred = new[] { "compactToolbar" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
                 .OfType<System.Text.Json.Serialization.JsonPropertyNameAttribute>().SingleOrDefault()?.Name)

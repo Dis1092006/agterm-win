@@ -131,6 +131,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private readonly SoundCatalog _soundCatalog;
     private readonly Queue<LiveNotificationDelivery> _pendingNotificationDeliveries = new();
     private Task? _notificationDeliveryTask;
+    private int _uiAutoFollowSuppressionRequested;
+    private bool _uiAutoFollowSuppressionApplied;
 
     private abstract record LiveNotificationDelivery
     {
@@ -300,6 +302,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             Host.Bootstrap();
         }
         bootstrapScope.CompleteAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Host.RunLocked(() =>
+        {
+            Store.SetAutoFollowDispatcher(DispatchAutoFollow);
+            Store.AutoFollowed += sessionId => AutoFollowed?.Invoke(sessionId);
+            ApplyAutoFollowSettings(options.NotificationSettings);
+        });
     }
 
     public ILiveControlRuntime Host
@@ -643,6 +651,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public event Action? AttentionRequested;
 
+    /// <summary>Raised under the host gate; subscribers may enqueue UI work without waiting.</summary>
+    public event Action<Guid>? AutoFollowed;
+
     public event Action<string>? StatusNotificationRequested;
 
     public void SetNotificationSettings(AppSettings settings)
@@ -656,7 +667,74 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         {
             Host.Actions.ApplySettings(snapshot, _options.StateDir ?? PersistenceStore.DefaultDirectory);
             SetNotificationSettings(snapshot.Settings);
+            ApplyAutoFollowSettings(snapshot.Settings);
         }, cancellationToken);
+
+    private void ApplyAutoFollowSettings(AppSettings settings) =>
+        Store.SetAutoFollow(settings.AutoFollowTimeout(), settings.AutoFollowStayOnActive == true);
+
+    public Task NoteUserActivityAsync(CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(store => store.NoteUserActivity(), cancellationToken);
+
+    public Task SetUiAutoFollowSuppressedAsync(bool suppressed, CancellationToken cancellationToken = default)
+    {
+        Volatile.Write(ref _uiAutoFollowSuppressionRequested, suppressed ? 1 : 0);
+        return StoreCoordinator.MutateAsync(store =>
+        {
+            var requested = Volatile.Read(ref _uiAutoFollowSuppressionRequested) != 0;
+            if (requested == _uiAutoFollowSuppressionApplied) return;
+            _uiAutoFollowSuppressionApplied = requested;
+            if (requested) store.SuppressAutoFollow();
+            else store.ResumeAutoFollow();
+        }, cancellationToken);
+    }
+
+    public async Task<string?> RevealAutoFollowedAsync(
+        Guid sessionId, Func<bool> isKeyWindow, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(isKeyWindow);
+        string? paneId = null;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            if (!isKeyWindow() || store.IsAutoFollowSuppressed
+                || Volatile.Read(ref _uiAutoFollowSuppressionRequested) != 0
+                || Host.Actions.Zoom.Target is not null || Host.Actions.Quick.HoldsKey
+                || store.SelectedSessionId != sessionId || store.SessionWithId(sessionId) is not { } session
+                || session.AgentIndicator.Status != AgentStatus.Blocked)
+                return;
+            var pane = session.AgentIndicator.StatusPane;
+            if (pane != StatusPane.Scratch && session.ScratchActive) store.ToggleScratch(sessionId);
+            if (pane == StatusPane.Scratch && !session.ScratchActive) store.ToggleScratch(sessionId);
+            if (pane == StatusPane.Right && session.SplitSurface is not null && !session.SplitFocused)
+            {
+                session.SplitFocused = true;
+                store.Save();
+                store.NotifySidebar();
+            }
+            ReconcileSurfacesLocked();
+            paneId = session.TopmostSurface?.PaneToken;
+        }, cancellationToken).ConfigureAwait(false);
+        return paneId;
+    }
+
+    private void DispatchAutoFollow(Action work)
+    {
+        try
+        {
+            Host.RunLocked(() =>
+            {
+                if (Volatile.Read(ref _shutdownStarted) != 0
+                    || Volatile.Read(ref _uiAutoFollowSuppressionRequested) != 0) return;
+                work();
+                ReconcileSurfacesLocked();
+            });
+        }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"Auto-follow failed: {ex}");
+            _options.FailureReported?.Invoke(new LiveFailureNotice("Auto-follow failed", ex.Message));
+        }
+    }
 
     private void QueueZoomActiveChanged(bool active)
     {
@@ -1505,13 +1583,22 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 : OwnsSplitPane(session, surface) ? StatusPane.Right
                 : OwnsScratchPane(session, surface) ? StatusPane.Scratch
                 : null;
+            if (pane is not null) Store.NoteUserActivity();
             if (pane is { } owner && session!.AgentIndicator.ClearedBy(owner, isInterrupt))
                 Store.SetAgentIndicator(new AgentIndicator(), sessionId);
         }));
     }
 
-    private void BindOverlay(Guid sessionId, XtermPaneSurface surface) =>
+    private void BindOverlay(Guid sessionId, XtermPaneSurface surface)
+    {
+        surface.Pane.Terminal.UserKeystroke += isInterrupt => _ = _options.UserKeystrokeScheduler(() => Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) == 0
+                && ReferenceEquals(Store.SessionWithId(sessionId)?.OverlaySurface, surface))
+                Store.NoteUserActivity();
+        }));
         _ = CloseOverlayOnExitAsync(sessionId, surface);
+    }
 
     private void BindQuick(XtermPaneSurface surface) =>
         _ = CloseQuickOnExitAsync(surface);
@@ -1783,6 +1870,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private async Task ShutdownCoreAsync()
     {
         Interlocked.Exchange(ref _shutdownStarted, 1);
+        Host.RunLocked(() => Store.SetAutoFollow(null, false));
 
         Host.Stop();
 

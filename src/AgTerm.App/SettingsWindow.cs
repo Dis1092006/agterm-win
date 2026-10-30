@@ -186,12 +186,17 @@ internal sealed class SettingsWindow : Window
         switch (field.Control)
         {
             case SettingControl.Toggle:
-                var toggle = new ToggleSwitch { IsOn = value?.GetValue<bool>() ?? field.Default is true,
+                var toggle = new ToggleSwitch { IsOn = editor.ToggleValue(field.Key),
+                    IsEnabled = editor.IsEnabled(field.Key),
                     HorizontalAlignment = HorizontalAlignment.Left };
                 Identify(toggle, id, field.Label);
-                toggle.Toggled += async (_, _) => await RunAsync(() => field.Key == "followSystemAppearance"
-                    ? editor.SetFollowingAsync(toggle.IsOn, SystemDark())
-                    : editor.SetAsync(field.Key, toggle.IsOn));
+                toggle.Toggled += async (_, _) =>
+                {
+                    if (closed || !toggle.IsLoaded) return;
+                    await RunAsync(() => field.Key == "followSystemAppearance"
+                        ? editor.SetFollowingAsync(toggle.IsOn, SystemDark())
+                        : editor.SetToggleAsync(field.Key, toggle.IsOn));
+                };
                 row.Children.Add(toggle);
                 break;
             case SettingControl.Number:

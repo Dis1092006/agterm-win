@@ -153,6 +153,8 @@ grows downward), and `fullscreen`/`zoomed` (the read side of
 `window fullscreen`/`window zoom`, so a script can make those toggles idempotent) — all omitted for a
 closed window, but not the live `idleMs`, which is `tree`-only.
 
+Settings > Agent Status can auto-follow the oldest blocked session after 5, 10, 30, or 60 seconds, or 5 minutes idle. It is Disabled by default. "Auto-follow away from a running session" is on by default; turn it off to stay on an `active` session. A followed block is consumed until its status leaves and re-enters `blocked`. User input and attention changes restart the interval. Editors and modal UI suppress auto-follow; closing them alone does not restart it. A background window may change selection but does not raise itself or reveal the status pane; only the foreground window reveals it, and not while zoomed. `tree.autoFollowMs` and `window list` report the applied timeout.
+
 ## Addressing
 
 Commands that target a session or workspace take `--target` (default `active`):
