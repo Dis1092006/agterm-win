@@ -31,7 +31,8 @@ public sealed class SidebarThemeColorsSourceTests
 
         Assert.Contains("_rowThemes?.Observe(snapshot.Generation)", view, StringComparison.Ordinal);
         Assert.Contains("_rowThemes?.Saved(workspaceId, themeName, _controller?.RequestSnapshot() ?? 0)", view, StringComparison.Ordinal);
-        Assert.Contains("_settings.ShowSidebarThemeColors()", view, StringComparison.Ordinal);
+        Assert.Contains("_settings.EffectiveSidebarThemeStyle()", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("ShowSidebarThemeColors", view, StringComparison.Ordinal);
         Assert.Contains("IsListSelected = RowsList.SelectedItems.Contains(", view, StringComparison.Ordinal);
         // the list keeps an extended (Ctrl+click) selection across snapshots, as upstream re-selects
         // sidebarSelectionIDs after each update
@@ -114,7 +115,7 @@ public sealed class SidebarThemeColorsSourceTests
         var model = Source("SidebarRowViewModel.cs");
         var view = Source("SidebarView.xaml.cs");
 
-        Assert.Contains("SidebarRowLook.From(_rowThemes?.ColorsFor(row, _settings.ShowSidebarThemeColors()), _settings.EffectiveSidebarThemeStyle())", view, StringComparison.Ordinal);
+        Assert.Contains("SidebarRowLook.From(_rowThemes?.ColorsFor(row, style != SidebarThemeStyle.Off), style)", view, StringComparison.Ordinal);
         Assert.DoesNotContain("ColorsOf(", view, StringComparison.Ordinal);
         Assert.DoesNotContain("_colors", model, StringComparison.Ordinal);
         Assert.Contains("private bool IsColoredSelection => _look.Row is not null && IsListSelected;", model, StringComparison.Ordinal);

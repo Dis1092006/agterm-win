@@ -255,8 +255,11 @@ public sealed partial class SidebarView : UserControl
         RecolorRows();
     }
 
-    private SidebarRowLook LookOf(SidebarRow row) =>
-        SidebarRowLook.From(_rowThemes?.ColorsFor(row, _settings.ShowSidebarThemeColors()), _settings.EffectiveSidebarThemeStyle());
+    private SidebarRowLook LookOf(SidebarRow row)
+    {
+        var style = _settings.EffectiveSidebarThemeStyle();
+        return SidebarRowLook.From(_rowThemes?.ColorsFor(row, style != SidebarThemeStyle.Off), style);
+    }
 
     private void RecolorRows()
     {

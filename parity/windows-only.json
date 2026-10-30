@@ -17,8 +17,7 @@
     { "name": "icon", "reason": "Persists the workspace's own icon." }
   ],
   "settings": [
-    { "name": "sidebarThemeColors", "reason": "Turns off the theme colors on the sidebar rows of workspaces with their own theme." },
-    { "name": "sidebarThemeStyle", "reason": "Picks how the sidebar rows show their workspace theme: the whole row, a square on the right, or a block around the name." },
+    { "name": "sidebarThemeStyle", "reason": "Shows the theme of a workspace with its own theme on its sidebar rows: on the whole row or in a block around the name. Off when absent." },
     { "name": "restoreScrollback", "reason": "Turns off restoring each pane's previous output after a relaunch." },
     { "name": "overlayOpacity", "reason": "Sets overlay panel background opacity while Windows transparency effects are enabled." },
     { "name": "closeOnShellExit", "reason": "Keeps a shell pane open with its exit code when the shell exits, by default when the code is not 0." },

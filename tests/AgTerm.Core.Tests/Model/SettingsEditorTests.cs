@@ -100,6 +100,50 @@ public sealed class SettingsEditorTests : IDisposable
     }
 
     [Fact]
+    public void Sidebar_theme_colors_are_one_choice_that_defaults_to_off()
+    {
+        Assert.DoesNotContain(SettingsEditor.Fields, field => field.Key == "sidebarThemeColors");
+        var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "sidebarThemeStyle");
+        Assert.Equal("Appearance", field.Tab);
+        Assert.Equal("Workspace theme colors in sidebar", field.Label);
+        Assert.Equal(SettingControl.Choice, field.Control);
+        Assert.Null(field.Default);
+        Assert.Equal([null, "row", "label"], field.Choices!.Select(choice => choice.Value));
+        Assert.Equal(["Off", "Whole row", "Name label"], field.Choices!.Select(choice => choice.Label));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("row")]
+    [InlineData("label")]
+    public async Task Writing_the_sidebar_theme_style_removes_the_retired_key(string? style)
+    {
+        File.WriteAllText(Store.FilePath, """{"sidebarThemeColors":false,"sidebarThemeStyle":"label","future":42}""");
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+        if (style == "label") await editor.SetAsync("sidebarThemeStyle", "row");
+
+        await editor.SetAsync("sidebarThemeStyle", style);
+
+        var saved = JsonNode.Parse(File.ReadAllText(Store.FilePath))!.AsObject();
+        Assert.False(saved.ContainsKey("sidebarThemeColors"));
+        Assert.Equal(42, saved["future"]!.GetValue<int>());
+        Assert.Equal(style, saved["sidebarThemeStyle"]?.GetValue<string>());
+        Assert.Equal(style, editor.ChoiceValue("sidebarThemeStyle"));
+    }
+
+    [Fact]
+    public async Task Editing_another_field_keeps_the_retired_key_in_the_file()
+    {
+        File.WriteAllText(Store.FilePath, """{"sidebarThemeColors":false}""");
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        await editor.SetAsync("fontSize", 18d);
+
+        var saved = JsonNode.Parse(File.ReadAllText(Store.FilePath))!.AsObject();
+        Assert.False(saved["sidebarThemeColors"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public void Toolbar_choices_offer_only_normal_and_compact()
     {
         var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "toolbarMode");
@@ -344,8 +388,8 @@ public sealed class SettingsEditorTests : IDisposable
     [InlineData("closeOnShellExit", "graceful", "Successful exit only")]
     [InlineData("closeOnShellExit", "always", "Always")]
     [InlineData("closeOnShellExit", "never", "Never")]
-    [InlineData("sidebarThemeStyle", "row", "Row")]
-    [InlineData("sidebarThemeStyle", "label", "Label")]
+    [InlineData("sidebarThemeStyle", "row", "Whole row")]
+    [InlineData("sidebarThemeStyle", "label", "Name label")]
     [InlineData("activeStatusShape", "circle", "Circle")]
     [InlineData("blockedStatusShape", "square", "Square")]
     [InlineData("completedStatusShape", "triangle", "Triangle")]

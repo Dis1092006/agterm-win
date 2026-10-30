@@ -455,8 +455,7 @@ commandWait?, background?, surfaces?[] }`.
 | `rightClickPaste` | bool? | **on** (эмитится всегда) | рендер-ключ |
 | `inactivePaneMuteStrength` | int? (0..10) | 5 (=0.4 opacity) | приглушение неактивного пейна |
 | `sidebarBackgroundShift` | int? (0..10) | 5 (нейтраль) | тон фона сайдбара |
-| `sidebarThemeColors` | bool? | on | Windows-only: строки сайдбара у workspace со своей темой в цветах этой темы; `false` выключает |
-| `sidebarThemeStyle` | String? | `row` | Windows-only: как строки сайдбара показывают тему workspace: `row` (вся строка), `label` (блок вокруг имени); другое значение = `row` |
+| `sidebarThemeStyle` | String? | off | Windows-only: строки сайдбара у workspace со своей темой в цветах этой темы: `row` (вся строка), `label` (блок вокруг имени); без ключа или другое значение = off |
 | `restoreRunningCommand` | bool? | off | ре-ран команды при рестарте |
 | `inheritGlobalGhosttyConfig` | bool? | off | подмешивать глобальный конфиг движка |
 

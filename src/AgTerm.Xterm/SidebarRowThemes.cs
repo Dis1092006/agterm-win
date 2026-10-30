@@ -15,8 +15,9 @@ public sealed record SidebarRowLook(SidebarRowColors? Row, SidebarRowColors? Lab
         ? Default
         : style switch
         {
+            SidebarThemeStyle.Row => new(colors, null),
             SidebarThemeStyle.Label => new(null, colors),
-            _ => new(colors, null),
+            _ => Default,
         };
 }
 

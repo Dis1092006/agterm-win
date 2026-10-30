@@ -70,9 +70,7 @@ public sealed record AppSettings
     [JsonPropertyName("sidebarFontSize")] public double? SidebarFontSize { get; init; }
     [JsonPropertyName("hiddenInterfaceElements")] public IReadOnlyList<string>? HiddenInterfaceElements { get; init; }
     [JsonPropertyName("autoHideSidebarInactiveWindows")] public bool? AutoHideSidebarInactiveWindows { get; init; }
-    // Windows-only (parity/windows-only.json): absent means on
-    [JsonPropertyName("sidebarThemeColors")] public bool? SidebarThemeColors { get; init; }
-    // Windows-only (parity/windows-only.json): absent or unknown means row
+    // Windows-only (parity/windows-only.json): "row" or "label"; absent or unknown means off
     [JsonPropertyName("sidebarThemeStyle")] public string? SidebarThemeStyle { get; init; }
 
     /// <summary>Windows-only (not in the upstream surface): re-render each main/split pane's saved
@@ -155,11 +153,11 @@ public sealed record AppSettings
          other.BlockedStatusSoundName, other.RightClickPaste) &&
         (NewSessionDirectory, NewSessionCustomDirectory, ConfirmCloseSession, CloseGraceUndoEnabled,
          AutoFollowAttention, AutoFollowStayOnActive, SidebarFontSize,
-         AutoHideSidebarInactiveWindows, SidebarThemeColors, SidebarThemeStyle, RestoreScrollback, OverlayOpacity,
+         AutoHideSidebarInactiveWindows, SidebarThemeStyle, RestoreScrollback, OverlayOpacity,
          CloseOnShellExit) ==
         (other.NewSessionDirectory, other.NewSessionCustomDirectory, other.ConfirmCloseSession,
          other.CloseGraceUndoEnabled, other.AutoFollowAttention, other.AutoFollowStayOnActive,
-         other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors,
+         other.SidebarFontSize, other.AutoHideSidebarInactiveWindows,
          other.SidebarThemeStyle, other.RestoreScrollback, other.OverlayOpacity,
          other.CloseOnShellExit) &&
         CopyOnSelect == other.CopyOnSelect &&
@@ -170,17 +168,15 @@ public sealed record AppSettings
 
     public override int GetHashCode() => HashCode.Combine(FontFamily, FontSize, Theme, SidebarFontSize);
 
-    /// <summary>Whether sidebar rows of a workspace with its own theme show that theme's colors. A
-    /// method, not a property, so it is never written to settings.json.</summary>
-    public bool ShowSidebarThemeColors() => SidebarThemeColors != false;
-
-    /// <summary>The style of the sidebar theme colors. A value is matched exactly, like upstream's
-    /// enum decode of other settings.</summary>
+    /// <summary>How sidebar rows of a workspace with its own theme show that theme's colors. A value
+    /// is matched exactly, like upstream's enum decode of other settings; absent or unknown is off,
+    /// as upstream shows no theme colors on sidebar rows.</summary>
     // Model. qualifies the enum: inside this record the string property of the same name hides it
     public Model.SidebarThemeStyle EffectiveSidebarThemeStyle() => SidebarThemeStyle switch
     {
+        "row" => Model.SidebarThemeStyle.Row,
         "label" => Model.SidebarThemeStyle.Label,
-        _ => Model.SidebarThemeStyle.Row,
+        _ => Model.SidebarThemeStyle.Off,
     };
 
     /// <summary>Whether a chrome element is hidden. Everything is shown by default, so an element

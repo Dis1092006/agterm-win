@@ -35,7 +35,15 @@ public sealed class SidebarRowThemesTests
         Assert.Equal(new SidebarRowLook(null, SolarizedColors), SidebarRowLook.From(SolarizedColors, SidebarThemeStyle.Label));
     }
 
+    [Fact]
+    public void Off_gives_the_default_look_even_with_colors() =>
+        Assert.Equal(SidebarRowLook.Default, SidebarRowLook.From(SolarizedColors, SidebarThemeStyle.Off));
+
+    [Fact]
+    public void Off_is_the_default_style() => Assert.Equal(SidebarThemeStyle.Off, default(SidebarThemeStyle));
+
     [Theory]
+    [InlineData(SidebarThemeStyle.Off)]
     [InlineData(SidebarThemeStyle.Row)]
     [InlineData(SidebarThemeStyle.Label)]
     public void A_row_without_colors_gets_the_default_look_in_every_style(SidebarThemeStyle style) =>
