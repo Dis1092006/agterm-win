@@ -206,6 +206,28 @@ public class RendererSettingsSnapshotTests
         Assert.True(s.RightClickPaste);
     }
 
+    // ── CopyOnSelect ──────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(null, "selection")]
+    [InlineData("selection", "selection")]
+    [InlineData("clipboard", "clipboard")]
+    [InlineData("off", "off")]
+    [InlineData("future", "selection")]
+    public void CopyOnSelect_carries_the_effective_mode(string? raw, string mode)
+    {
+        var s = RendererSettingsSnapshot.From(new AppSettings { CopyOnSelect = raw });
+        Assert.Equal(mode, s.CopyOnSelect);
+    }
+
+    [Fact]
+    public void Different_copy_on_select_produces_unequal_snapshots()
+    {
+        var a = RendererSettingsSnapshot.From(new AppSettings());
+        var b = RendererSettingsSnapshot.From(new AppSettings { CopyOnSelect = "off" });
+        Assert.NotEqual(a, b);
+    }
+
     // ── ScreenReaderMode ──────────────────────────────────────────────────────
 
     [Fact]

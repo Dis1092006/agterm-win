@@ -84,8 +84,20 @@ public sealed record AppSettings
     /// <summary>Windows-only: whether a shell pane closes when its shell exits, "always", "graceful"
     /// (on exit code 0 only) or "never". Absent means graceful; see docs/PLATFORM-NOTES.md.</summary>
     [JsonPropertyName("closeOnShellExit")] public string? CloseOnShellExit { get; init; }
+    /// <summary>Windows-only: where a mouse selection is copied, "selection", "clipboard" or "off".
+    /// Absent or unknown means selection; see docs/PLATFORM-NOTES.md.</summary>
+    [JsonPropertyName("copyOnSelect"), JsonConverter(typeof(CopyOnSelectConverter))]
+    public string? CopyOnSelect { get; init; }
 
     [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
+
+    /// <summary>A value is matched exactly, like upstream's enum decode of other settings.</summary>
+    public CopyOnSelectMode EffectiveCopyOnSelect() => CopyOnSelect switch
+    {
+        "clipboard" => CopyOnSelectMode.Clipboard,
+        "off" => CopyOnSelectMode.Off,
+        _ => CopyOnSelectMode.Selection,
+    };
 
     public bool TaskbarFlashEnabled() => DockBounce is "once" or "untilFocused";
 
@@ -150,6 +162,7 @@ public sealed record AppSettings
          other.SidebarFontSize, other.AutoHideSidebarInactiveWindows, other.SidebarThemeColors,
          other.SidebarThemeStyle, other.RestoreScrollback, other.OverlayOpacity,
          other.CloseOnShellExit) &&
+        CopyOnSelect == other.CopyOnSelect &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&

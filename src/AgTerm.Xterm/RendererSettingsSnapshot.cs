@@ -26,6 +26,9 @@ public sealed record RendererSettingsSnapshot(
 
     public bool PreservePaneFontSizes { get; init; }
 
+    /// <summary>"selection", "clipboard" or "off": whether a mouse selection is copied.</summary>
+    public string CopyOnSelect { get; init; } = "selection";
+
     private const string DefaultFontFamily = "Cascadia Mono, Consolas, monospace";
     private const double DefaultFontSize = 14.0;
     // Theme/DarkTheme/FollowSystemAppearance resolution belongs to D3's live theme catalog.
@@ -80,6 +83,12 @@ public sealed record RendererSettingsSnapshot(
             CursorTextColor = theme?.CursorTextColor,
             SelectionForegroundColor = theme?.SelectionForegroundColor,
             PreservePaneFontSizes = preservePaneFontSizes,
+            CopyOnSelect = settings.EffectiveCopyOnSelect() switch
+            {
+                CopyOnSelectMode.Clipboard => "clipboard",
+                CopyOnSelectMode.Off => "off",
+                _ => "selection",
+            },
         };
     }
 }

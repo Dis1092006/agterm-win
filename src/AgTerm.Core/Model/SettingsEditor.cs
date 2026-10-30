@@ -35,6 +35,10 @@ public sealed class SettingsEditor
     [
         new("mouseScrollMultiplier", "General", "Scroll speed", SettingControl.Number, 3d, 1, 10),
         new("rightClickPaste", "General", "Right-click pastes", SettingControl.Toggle, true),
+        new("copyOnSelect", "General", "Copy on select", SettingControl.Choice, "selection",
+            Choices: [new(null, "Default (Selection buffer)"), new("selection", "Selection buffer"),
+                new("clipboard", "Selection buffer and clipboard"), new("off", "Off")],
+            Hint: "Middle-click pastes the selection buffer, or the clipboard when the selection is also copied there. Ctrl+C and right-click use the clipboard."),
         new("newSessionDirectory", "General", "New sessions open in", SettingControl.Choice, "home",
             Choices: [new(null, "Default (Home)"), new("home", "Home"),
                 new("currentSession", "Current session"), new("custom", "Custom")]),
@@ -113,6 +117,7 @@ public sealed class SettingsEditor
         "toolbarMode" => Draft.EffectiveToolbarMode() == ToolbarMode.Normal ? "normal" : "compact",
         "dockBounce" => Draft.TaskbarFlashEnabled() ? "once" : null,
         "autoFollowAttention" => Draft.AutoFollowTimeout() is not null ? Draft.AutoFollowAttention : null,
+        "copyOnSelect" => Draft.CopyOnSelect is "selection" or "clipboard" or "off" ? Draft.CopyOnSelect : null,
         _ => Value(key)?.GetValue<string>(),
     };
 

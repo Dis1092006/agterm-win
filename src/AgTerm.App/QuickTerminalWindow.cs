@@ -35,6 +35,7 @@ internal sealed class QuickTerminalWindow : Window, IDisposable
     private bool _shown;
     private bool _zoomed;
     private bool _disposed;
+    private bool _pasteDialogOpen;
     private IntPtr _previousForeground;
     private IntPtr _monitor;
     private IDisposable? _settingsSubscription;
@@ -226,6 +227,18 @@ internal sealed class QuickTerminalWindow : Window, IDisposable
                         catch (Exception ex) { Report("Quick terminal copy failed", ex.Message); }
                     };
                     page.PasteRequested += _ => Observe(Task.Run(() => _surface?.PerformBindingAction("paste_from_clipboard")));
+                    page.SelectionCopied += (_, text) =>
+                    {
+                        if (!_application.SelectionBuffer.Store(text, Settings.EffectiveCopyOnSelect())) return;
+                        try
+                        {
+                            var data = new DataPackage();
+                            data.SetText(text);
+                            Clipboard.SetContent(data);
+                        }
+                        catch (Exception) { } // a clipboard another process holds open copies nothing
+                    };
+                    page.SelectionPasteRequested += (_, bracketed) => ObservePaste(bracketed);
                     await PublishChordsAsync();
                 }
                 await ApplySettingsAsync();
@@ -325,6 +338,47 @@ internal sealed class QuickTerminalWindow : Window, IDisposable
             catch (Exception ex) { completion.TrySetException(ex); }
         })) completion.TrySetException(new InvalidOperationException("The quick terminal dispatcher is unavailable."));
         return completion.Task;
+    }
+
+    private async void ObservePaste(bool bracketed)
+    {
+        try
+        {
+            await _application.SelectionBuffer.PasteAsync(
+                Settings.EffectiveCopyOnSelect(),
+                bracketed,
+                ReadClipboardTextAsync,
+                async text =>
+                {
+                    // WinUI allows one open ContentDialog; a second middle-click meanwhile pastes nothing
+                    if (_pasteDialogOpen || _view?.XamlRoot is not { } root) return false;
+                    _pasteDialogOpen = true;
+                    try
+                    {
+                        return await PasteConfirmationDialog.Create(root, text, bracketed).ShowAsync()
+                            == ContentDialogResult.Primary;
+                    }
+                    finally { _pasteDialogOpen = false; }
+                },
+                text => _surface?.Pane.Terminal.PasteAsync(text) ?? Task.CompletedTask);
+        }
+        catch (Exception ex)
+        {
+            if (!_disposed) Report("Quick terminal paste failed", ex.GetBaseException().Message);
+        }
+    }
+
+    private static async Task<string?> ReadClipboardTextAsync()
+    {
+        try
+        {
+            var content = Clipboard.GetContent();
+            return content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : null;
+        }
+        catch (Exception)
+        {
+            return null; // an unreadable clipboard pastes nothing
+        }
     }
 
     private async void Observe(Task task)

@@ -41,7 +41,11 @@ public sealed class DialogKeysTests
         Assert.Contains("_nativeDialogs--;", body, StringComparison.Ordinal);
         Assert.Equal(2, Count(body, "RefreshUiAutoFollowSuppression();"));
         Assert.Equal(1, Count(code, ".ShowAsync()"));
-        Assert.Equal(Count(code, "new ContentDialog"), Count(code, "ShowDialogAsync(dialog)"));
+        // the middle-click paste dialog is built in its own file and shown here like the others
+        var builder = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "PasteConfirmationDialog.cs"));
+        Assert.Equal(0, Count(builder, ".ShowAsync()"));
+        Assert.Equal(Count(code, "new ContentDialog") + Count(code, "PasteConfirmationDialog.Create("),
+            Count(code, "ShowDialogAsync(dialog)"));
     }
 
     private static int Count(string text, string value)
