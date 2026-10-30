@@ -34,7 +34,7 @@ public sealed class SidebarRowNestingSourceTests
         Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
         Assert.Contains("Visibility=\"{x:Bind GridIconVisibility, Mode=OneWay}\"", icon, StringComparison.Ordinal);
         Assert.Contains("Margin=\"0,0,6,0\"", icon, StringComparison.Ordinal);
-        Assert.Contains("<Setter Property=\"Stroke\" Value=\"{ThemeResource TextFillColorSecondaryBrush}\" />", icon, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"Stroke\" Value=\"{StaticResource SidebarSecondaryBrush}\" />", icon, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class SidebarRowNestingSourceTests
         Assert.Contains("Width=\"16\"", icon, StringComparison.Ordinal);
         Assert.Contains("Margin=\"0,0,6,0\"", icon, StringComparison.Ordinal);
         Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
-        Assert.Contains("<Setter Property=\"Foreground\" Value=\"{ThemeResource TextFillColorSecondaryBrush}\" />", icon, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"Foreground\" Value=\"{StaticResource SidebarSecondaryBrush}\" />", icon, StringComparison.Ordinal);
     }
 
     [Fact]

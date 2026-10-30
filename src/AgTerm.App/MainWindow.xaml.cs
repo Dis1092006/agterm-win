@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using AgTerm.Core.Install;
 using AgTerm.Core.Keymap;
@@ -8,6 +9,7 @@ using AgTerm.Core.Protocol;
 using AgTerm.ControlServer;
 using AgTerm.Terminal;
 using AgTerm.Xterm;
+using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -68,6 +70,9 @@ public sealed partial class MainWindow : Window
     private IDisposable? _settingsSubscription;
     private readonly ThemeCatalog _themeCatalog = ThemeCatalog.Default;
     private readonly UISettings _uiSettings = new();
+    private readonly AccessibilitySettings _accessibilitySettings = new();
+    private LiveThemePresentation _chromePresentation;
+    private AppSettings _chromeSettings;
     private readonly WindowsAppNotificationPresenter _notificationPresenter;
     private LiveNotificationTarget? _notificationBannerTarget;
     private readonly WindowsNotificationSound _notificationSounds;
@@ -181,7 +186,6 @@ public sealed partial class MainWindow : Window
         _notificationPresenter = ((App)Application.Current).NotificationPresenter;
         _notificationSounds = new WindowsNotificationSound(new SoundCatalog(_applicationHost.Settings.StateDirectory),
             new NotificationSuppression(new WindowsNotificationSuppressionSources()));
-        ApplyThemeChrome(initialTheme.UseDarkChrome);
         ApplyOverlayPanelBackground(_settings);
         if (ThemeCatalogFailureNotice.From(_themeCatalog.Errors) is { } themeFilesFailure)
             ShowFailure(themeFilesFailure);
@@ -247,6 +251,7 @@ public sealed partial class MainWindow : Window
         var nativeWindowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
         _appWindow = AppWindow.GetFromWindowId(nativeWindowId);
+        ApplyChromeColors(initialTheme, _settings);
         ApplyAppIcon();
         _fullscreen = new FullscreenController(ApplyFullscreen);
         _appWindow.Changed += OnAppWindowChanged;
@@ -3332,7 +3337,7 @@ public sealed partial class MainWindow : Window
         Sidebar.ApplySettings(settings);
         ApplyInterfaceElements(settings);
         ApplyComposition(presentation.RendererSettings);
-        ApplyThemeChrome(presentation.UseDarkChrome);
+        ApplyChromeColors(presentation, settings);
         ApplyOverlayPanelBackground(settings);
     }
 
@@ -3458,7 +3463,11 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             if (!_closedCompletion.Task.IsCompleted)
+            {
                 ApplyAppIcon();
+                // a high contrast switch changes the system colors too
+                ApplyChromeColors(_chromePresentation, _chromeSettings);
+            }
             ObserveTaskFault(ApplySystemAppearanceAsync(), "System theme apply failed");
         });
     }
@@ -3472,10 +3481,35 @@ public sealed partial class MainWindow : Window
         return luminance < 0.5;
     }
 
-    private void ApplyThemeChrome(bool useDarkChrome)
+    /// <summary>Paints the title bar and the sidebar in the global theme, as upstream
+    /// WindowContentView: the terminal background behind them, the terminal foreground for text,
+    /// glyphs and lines. High contrast takes the system window colors instead.</summary>
+    [MemberNotNull(nameof(_chromePresentation), nameof(_chromeSettings))]
+    private void ApplyChromeColors(LiveThemePresentation presentation, AppSettings settings)
     {
-        RootGrid.RequestedTheme = useDarkChrome ? ElementTheme.Dark : ElementTheme.Light;
+        _chromePresentation = presentation;
+        _chromeSettings = settings;
+        var palette = _accessibilitySettings.HighContrast
+            ? ChromePalette.HighContrast(
+                ToChromeColor(_uiSettings.UIElementColor(UIElementType.Window)),
+                ToChromeColor(_uiSettings.UIElementColor(UIElementType.WindowText)))
+            : ChromePalette.From(presentation, settings);
+        RootGrid.RequestedTheme = palette.UseDarkChrome ? ElementTheme.Dark : ElementTheme.Light;
+        SetChromeBrush("ChromeBackgroundBrush", palette.Background);
+        SetChromeBrush("ChromeForegroundBrush", palette.Foreground);
+        SetChromeBrush("ChromeSecondaryBrush", palette.Secondary);
+        SetChromeBrush("ChromeHairlineBrush", palette.Hairline);
+        SetChromeBrush("ChromeGroupDividerBrush", palette.GroupDivider);
+        Sidebar.ApplyChrome(palette);
+        _appWindow.TitleBar.PreferredTheme = palette.UseDarkChrome ? TitleBarTheme.Dark : TitleBarTheme.Light;
+        _appWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
+        _appWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
     }
+
+    private void SetChromeBrush(string key, ChromeColor color) =>
+        ((SolidColorBrush)RootGrid.Resources[key]).Color = Color.FromArgb(color.A, color.R, color.G, color.B);
+
+    private static ChromeColor ToChromeColor(Color color) => new(color.A, color.R, color.G, color.B);
 
     private async Task ShowNotificationAsync(LiveBannerNotification notification)
     {

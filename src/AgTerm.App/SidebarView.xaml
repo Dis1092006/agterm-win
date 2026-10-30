@@ -3,7 +3,91 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:AgTerm.App">
-    <Grid Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+    <!-- the chrome colors, as upstream draws the sidebar: the terminal foreground for text and glyphs,
+         at 0.6 for secondary icons, 0.1 for hover and 0.15 for the pill and a press. ApplyChrome sets
+         the colors; every use shares these instances -->
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="SidebarForegroundBrush" Color="#FFCCCCCC" />
+        <SolidColorBrush x:Key="SidebarSecondaryBrush" Color="#99CCCCCC" />
+        <SolidColorBrush x:Key="SidebarHoverBrush" Color="#1ACCCCCC" />
+        <SolidColorBrush x:Key="SidebarPillBrush" Color="#26CCCCCC" />
+        <SolidColorBrush x:Key="SidebarWashBrush" Color="Transparent" />
+        <SolidColorBrush x:Key="SidebarTransparentBrush" Color="Transparent" />
+
+        <StaticResource x:Key="ListViewItemForeground" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ListViewItemForegroundPointerOver" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ListViewItemForegroundPressed" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="SidebarForegroundBrush" />
+
+        <!-- upstream's borderless buttons: no fill or frame at rest, the glyph in the chrome
+             foreground in every state; a light fill on hover and press keeps the pointer visible -->
+        <StaticResource x:Key="ButtonForeground" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ButtonForegroundDisabled" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ButtonBackground" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="SidebarHoverBrush" />
+        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SidebarPillBrush" />
+        <StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ButtonBorderBrush" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ButtonBorderBrushDisabled" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonForeground" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundPointerOver" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundPressed" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundDisabled" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonForegroundCheckedDisabled" ResourceKey="SidebarForegroundBrush" />
+        <StaticResource x:Key="ToggleButtonBackground" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="SidebarHoverBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="SidebarPillBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundDisabled" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="SidebarHoverBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="SidebarPillBrush" />
+        <StaticResource x:Key="ToggleButtonBackgroundCheckedDisabled" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrush" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrushPointerOver" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrushPressed" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrushDisabled" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="SidebarTransparentBrush" />
+        <StaticResource x:Key="ToggleButtonBorderBrushCheckedDisabled" ResourceKey="SidebarTransparentBrush" />
+
+        <!-- upstream bottomBar's 24x22 glyph frame -->
+        <Style x:Key="SidebarFooterButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource SidebarForegroundBrush}" />
+        </Style>
+        <Style x:Key="SidebarFooterToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource SidebarForegroundBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <!-- transparent: the window's split view pane paints the theme background once, so a
+         translucent theme is not stacked twice -->
+    <Grid x:Name="SidebarRoot" Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -11,7 +95,7 @@
 
         <Border x:Name="BackgroundShiftOverlay"
                 Grid.RowSpan="2"
-                Background="Transparent"
+                Background="{StaticResource SidebarWashBrush}"
                 IsHitTestVisible="False" />
 
         <ListView x:Name="RowsList"
@@ -88,7 +172,7 @@
                             <!-- in a style, so clearing the theme stroke on a default row falls back to it -->
                             <Path.Style>
                                 <Style TargetType="Path">
-                                    <Setter Property="Stroke" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <Setter Property="Stroke" Value="{StaticResource SidebarSecondaryBrush}" />
                                 </Style>
                             </Path.Style>
                         </Path>
@@ -114,7 +198,7 @@
                                   Visibility="{x:Bind GridIconVisibility, Mode=OneWay}">
                                 <Path.Style>
                                     <Style TargetType="Path">
-                                        <Setter Property="Stroke" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Setter Property="Stroke" Value="{StaticResource SidebarSecondaryBrush}" />
                                     </Style>
                                 </Path.Style>
                             </Path>
@@ -129,7 +213,7 @@
                                       Visibility="{x:Bind WorkspaceGlyphVisibility, Mode=OneWay}">
                                 <FontIcon.Style>
                                     <Style TargetType="FontIcon">
-                                        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                                        <Setter Property="Foreground" Value="{StaticResource SidebarSecondaryBrush}" />
                                     </Style>
                                 </FontIcon.Style>
                             </FontIcon>
@@ -249,77 +333,86 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <!-- bottom bar: flagged-view toggle + focus pill -->
-        <Grid Grid.Row="1" Padding="8,4,8,6" ColumnSpacing="6"
-              BorderThickness="0,1,0,0"
-              BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+        <!-- upstream bottomBar: the add controls on the left; the focus pill and the flagged-view
+             toggle on the right. The port keeps Clear flagged next to the toggle: nothing else in
+             the window clears the flags. No line above it, as upstream -->
+        <Grid x:Name="SidebarFooter" Grid.Row="1" Padding="6,4,6,4">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <ToggleButton x:Name="FlaggedToggle"
-                          Grid.Column="0"
-                          Padding="6,2,6,2"
-                          Click="OnFlaggedToggleClick"
-                          AutomationProperties.Name="Flagged sessions"
-                          ToolTipService.ToolTip="Flagged view">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          Glyph="&#xE7C1;" FontSize="12" />
-            </ToggleButton>
-                    <Button x:Name="ClearFlaggedButton"
-                        Grid.Column="1"
-                        Padding="6,2,6,2"
+            <StackPanel x:Name="SidebarFooterLeading" Orientation="Horizontal" Spacing="2">
+                <!-- upstream rectangle.stack.badge.plus: a stack of rectangles with a plus -->
+                <Button x:Name="NewWorkspaceButton"
+                        Style="{StaticResource SidebarFooterButtonStyle}"
+                        Click="OnNewWorkspaceClick"
+                        AutomationProperties.Name="New workspace"
+                        ToolTipService.ToolTip="New workspace">
+                    <Path Data="M3.5,0.5 H12.5 M1.5,2.5 H14.5 M0.5,4.5 H15.5 V14.5 H0.5 Z M8,7 V12 M5.5,9.5 H10.5"
+                          Stroke="{StaticResource SidebarForegroundBrush}"
+                          StrokeThickness="1"
+                          Width="16" Height="15" />
+                </Button>
+                <!-- upstream's New Session menu (add-session): plus.rectangle, a terminal rect with a
+                     plus, drawn as a Path like the rows' icons -->
+                <Button x:Name="NewSessionButton"
+                        Style="{StaticResource SidebarFooterButtonStyle}"
+                        AutomationProperties.Name="Add session"
+                        AutomationProperties.AutomationId="add-session"
+                        ToolTipService.ToolTip="New Session">
+                    <Path Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,5 V10 M5.5,7.5 H10.5"
+                          Stroke="{StaticResource SidebarForegroundBrush}"
+                          StrokeThickness="1"
+                          Width="16" Height="15" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="TopEdgeAlignedLeft">
+                            <MenuFlyoutItem Text="New Session" Click="OnFooterNewSessionClick" />
+                            <MenuFlyoutItem Text="Open Directory…" Click="OnFooterOpenDirectoryClick" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+            <StackPanel x:Name="SidebarFooterTrailing" Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                <Button x:Name="FocusPill"
+                        Style="{StaticResource SidebarFooterButtonStyle}"
+                        Visibility="Collapsed"
+                        AutomationProperties.Name="Clear workspace focus"
+                        ToolTipService.ToolTip="Clear focus"
+                        Click="OnFocusPillClick">
+                    <Border Background="{StaticResource SidebarPillBrush}" CornerRadius="9" Padding="7,2,7,2">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock x:Name="FocusPillText"
+                                       FontSize="12"
+                                       MaxWidth="120"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" />
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      Glyph="&#xE711;" FontSize="9" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </Button>
+                <Button x:Name="ClearFlaggedButton"
+                        Style="{StaticResource SidebarFooterButtonStyle}"
                         Visibility="Collapsed"
                         Click="OnClearFlaggedClick"
                         AutomationProperties.Name="Clear flagged sessions"
                         ToolTipService.ToolTip="Clear flagged sessions">
                     <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          Glyph="&#xE711;" FontSize="10" />
-                    </Button>
-            <Button x:Name="FocusPill"
-                        Grid.Column="2"
-                    Padding="6,2,6,2"
-                    Visibility="Collapsed"
-                    AutomationProperties.Name="Clear workspace focus"
-                    Click="OnFocusPillClick">
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <TextBlock x:Name="FocusPillText" FontSize="11" />
-                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              Glyph="&#xE711;" FontSize="9" />
-                </StackPanel>
-            </Button>
-            <Button x:Name="NewWorkspaceButton"
-                    Grid.Column="4"
-                    Padding="6,2,6,2"
-                    Click="OnNewWorkspaceClick"
-                    AutomationProperties.Name="New workspace"
-                    ToolTipService.ToolTip="New workspace">
-                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                          Glyph="&#xE710;" FontSize="12" />
-            </Button>
-            <!-- upstream's New Session menu (add-session): a terminal rect with a plus, the session
-                 icon's shape drawn as a Path like the rows' -->
-            <Button x:Name="NewSessionButton"
-                    Grid.Column="5"
-                    Padding="6,2,6,2"
-                    AutomationProperties.Name="Add session"
-                    AutomationProperties.AutomationId="add-session"
-                    ToolTipService.ToolTip="New Session">
-                <Path Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,5 V10 M5.5,7.5 H10.5"
-                      Stroke="{ThemeResource TextFillColorPrimaryBrush}"
-                      StrokeThickness="1"
-                      Width="16" Height="15" />
-                <Button.Flyout>
-                    <MenuFlyout Placement="TopEdgeAlignedRight">
-                        <MenuFlyoutItem Text="New Session" Click="OnFooterNewSessionClick" />
-                        <MenuFlyoutItem Text="Open Directory…" Click="OnFooterOpenDirectoryClick" />
-                    </MenuFlyout>
-                </Button.Flyout>
-            </Button>
+                              Glyph="&#xE711;" FontSize="10" />
+                </Button>
+                <!-- upstream flag / flag.fill; a ToggleButton so UI Automation reports the view -->
+                <ToggleButton x:Name="FlaggedToggle"
+                              Style="{StaticResource SidebarFooterToggleStyle}"
+                              Click="OnFlaggedToggleClick"
+                              AutomationProperties.Name="Flagged sessions"
+                              ToolTipService.ToolTip="Flagged view">
+                    <Path x:Name="FlaggedGlyph"
+                          Data="M3.5,0.5 V14.5 M3.5,1.5 H13 L10.5,5 L13,8.5 H3.5 Z"
+                          Stroke="{StaticResource SidebarForegroundBrush}"
+                          StrokeThickness="1"
+                          Width="16" Height="15" />
+                </ToggleButton>
+            </StackPanel>
         </Grid>
     </Grid>
 </UserControl>
