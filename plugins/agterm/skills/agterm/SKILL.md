@@ -422,7 +422,7 @@ control command, the socket `dashboard` command is unchanged.
 
 **pick**: `pick [--prompt TEXT] [--query TEXT] [--select ID] [--allow-custom] [--follow] [--window W] [--no-block]`
 reads choices from stdin and opens the target window's native fuzzy picker. Supply nonblank lines (each line
-is both the id and label) or a JSON array of `{id,label,subtitle?}` items; typing matches labels only, and an
+is both the id and label) or a JSON array of `{id,label,subtitle?,status?,statusColor?,statusShape?}` items; the status fields draw a trailing glyph using the same values as `session status` (absent or `idle` draws none). Typing matches labels only, and an
 empty query keeps the supplied order, so without `--select` the caller's first item is the one Enter runs. `--query` prefills
 the field and filters on open, which re-ranks and drops that order. `--select ID` opens with that item
 highlighted and scrolled into view (it must name a supplied item; a `--query` that hides it leaves the first

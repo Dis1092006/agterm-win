@@ -29,6 +29,14 @@ public class PickCommandsTests
     }
 
     [Fact]
+    public void OpenForwardsItemStatusFields()
+    {
+        const string json = """{"id":"a","label":"Alpha","status":"blocked","statusColor":"#ff8800","statusShape":"star"}""";
+        var request = ParseOpen("pick").MakeRequest(Utf8($"[{json}]"));
+        Assert.Equal(json, ControlJson.Serialize(Assert.Single(request.Args!.Items!)));
+    }
+
+    [Fact]
     public void OpenTakesBareLinesAsIdAndLabelAndDropsBlankLines()
     {
         var items = ParseOpen("pick").MakeRequest(Utf8("one\r\n  \n two " + (char)0x2028 + "three\n")).Args!.Items!;

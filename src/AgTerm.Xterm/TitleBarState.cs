@@ -1,4 +1,5 @@
 using AgTerm.Core.Model;
+using System.Collections.Frozen;
 
 namespace AgTerm.Xterm;
 
@@ -21,7 +22,10 @@ public enum TitleBarAttention
 }
 
 /// <summary>One row of the recent-sessions menu: the session's name and "workspace · detail".</summary>
-public sealed record TitleBarRecentSession(Guid Id, string Title, string Subtitle);
+public sealed record TitleBarRecentSession(Guid Id, string Title, string Subtitle)
+{
+    public AgentIndicator Indicator { get; init; }
+}
 
 /// <summary>
 /// What the title bar's trailing buttons draw, read from the window's store under the host gate:
@@ -37,6 +41,9 @@ public sealed record TitleBarState(
     IReadOnlyList<TitleBarRecentSession> SwitcherSessions)
 {
     public string SubtitleDetail { get; init; } = string.Empty;
+
+    public IReadOnlyDictionary<Guid, AgentIndicator> SessionIndicators { get; init; } =
+        FrozenDictionary<Guid, AgentIndicator>.Empty;
 
     /// <summary>Upstream SessionSwitcher.maxCandidates: the recent list is capped like Ctrl-Tab's.</summary>
     public const int MaxRecentSessions = 10;
@@ -56,6 +63,8 @@ public sealed record TitleBarState(
             SwitcherOf(store))
         {
             SubtitleDetail = active?.SubtitleDetail ?? string.Empty,
+            SessionIndicators = store.Workspaces.SelectMany(w => w.Sessions)
+                .ToFrozenDictionary(s => s.Id, s => s.AgentIndicator),
         };
     }
 
@@ -93,6 +102,7 @@ public sealed record TitleBarState(
                     id,
                     session.DisplayName,
                     $"{store.WorkspaceForSession(id)?.Name ?? ""} · {session.SubtitleDetail}")
+                    { Indicator = session.AgentIndicator }
                 : null)
             .OfType<TitleBarRecentSession>()
             .ToList();

@@ -50,7 +50,7 @@ public sealed class SessionSwitcherWiringSourceTests
         Assert.Contains("_switcher.Cancel();", MethodBody(window, "private void OnWindowActivated("), StringComparison.Ordinal);
         Assert.Contains("if (snapshot.DashboardOpen) _switcher.Cancel();", window, StringComparison.Ordinal);
         var changed = MethodBody(window, "private void OnSwitcherChanged()");
-        Assert.Contains("SwitcherOverlay.Show(_switcher.Candidates, _switcher.Index);", changed, StringComparison.Ordinal);
+        Assert.Contains("SwitcherOverlay.Show(_switcher.Candidates, _switcher.Index, _settings);", changed, StringComparison.Ordinal);
         Assert.Contains("SwitcherOverlay.Hide();", changed, StringComparison.Ordinal);
     }
 

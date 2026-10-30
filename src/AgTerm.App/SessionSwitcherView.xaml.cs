@@ -1,4 +1,5 @@
 using AgTerm.Xterm;
+using AgTerm.Core.Model;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -24,11 +25,11 @@ public sealed partial class SessionSwitcherView : UserControl
             SwitcherPanel.Background = background;
     }
 
-    public void Show(IReadOnlyList<TitleBarRecentSession> candidates, int index)
+    public void Show(IReadOnlyList<TitleBarRecentSession> candidates, int index, AppSettings settings)
     {
         Rows.Children.Clear();
         for (var i = 0; i < candidates.Count; i++)
-            Rows.Children.Add(Row(candidates[i], selected: i == index));
+            Rows.Children.Add(Row(candidates[i], selected: i == index, settings));
         Visibility = Visibility.Visible;
     }
 
@@ -38,7 +39,7 @@ public sealed partial class SessionSwitcherView : UserControl
         Rows.Children.Clear();
     }
 
-    private Border Row(TitleBarRecentSession session, bool selected)
+    private Border Row(TitleBarRecentSession session, bool selected, AppSettings settings)
     {
         var text = new StackPanel { Spacing = 1 };
         text.Children.Add(new TextBlock { Text = session.Title, TextTrimming = TextTrimming.CharacterEllipsis });
@@ -49,12 +50,29 @@ public sealed partial class SessionSwitcherView : UserControl
             Opacity = 0.7,
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
+        var indicator = session.Indicator;
+        var presentation = new PaletteItemViewModel(session.Id.ToString("D"), session.Title, session.Subtitle,
+            status: indicator.Status, statusColor: indicator.Color, statusShape: indicator.Shape);
+        presentation.RefreshIndicator(indicator, settings);
+        var content = new Grid { ColumnSpacing = 10 };
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.Children.Add(text);
+        var glyph = new SessionStatusGlyph
+        {
+            ShapeData = presentation.GlyphData,
+            ColorHex = presentation.StatusColor,
+            Shown = presentation.HasStatusGlyph,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(glyph, 1);
+        content.Children.Add(glyph);
         var row = new Border
         {
             Style = (Style)Resources[selected ? "SwitcherSelectedRowStyle" : "SwitcherRowStyle"],
-            Child = text,
+            Child = content,
         };
-        AutomationProperties.SetName(row, session.Title);
+        AutomationProperties.SetName(row, presentation.AutomationName);
         if (selected)
             AutomationProperties.SetItemStatus(row, "Selected");
         return row;

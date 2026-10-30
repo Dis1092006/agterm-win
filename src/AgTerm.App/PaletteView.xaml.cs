@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using AgTerm.Core.Model;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -30,6 +31,9 @@ public sealed partial class PaletteView : UserControl
     public event Action<PaletteItemViewModel?>? SelectionChanged;
 
     public bool IsOpen => _controller.IsOpen;
+
+    public void RefreshIndicators(IReadOnlyDictionary<Guid, AgentIndicator> indicators, AppSettings settings, bool liveSessions) =>
+        _controller.RefreshIndicators(indicators, settings, liveSessions);
 
     public void SetPanelBackground(Brush? background)
     {

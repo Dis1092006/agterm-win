@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Core.Protocol;
 
@@ -15,6 +16,22 @@ public sealed record ControlPickItem
 
     [JsonPropertyName("subtitle")]
     public string? Subtitle { get; init; }
+
+    [JsonPropertyName("status")]
+    public string? Status { get; init; }
+
+    [JsonPropertyName("statusColor")]
+    public string? StatusColor { get; init; }
+
+    [JsonPropertyName("statusShape")]
+    public string? StatusShape { get; init; }
+
+    [JsonIgnore]
+    public AgentIndicator Indicator =>
+        Status is { } raw && AgentStatuses.FromWire(raw) is { } status && status != AgentStatus.Idle
+            ? new AgentIndicator(status, Color: StatusColor,
+                Shape: StatusShape is { } shape ? StatusShapes.FromWire(shape) : null)
+            : new AgentIndicator();
 }
 
 /// <summary>The state or terminal outcome pick.result reports.</summary>

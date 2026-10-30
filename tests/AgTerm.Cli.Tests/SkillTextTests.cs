@@ -15,6 +15,19 @@ public class SkillTextTests
     private static readonly string[] SkillFiles = ["SKILL.md", "reference.md", "examples.md", "troubleshooting.md"];
 
     [Fact]
+    public void Pick_documents_optional_trailing_status_fields()
+    {
+        Assert.Contains("{id,label,subtitle?,status?,statusColor?,statusShape?}", ReadSkill("SKILL.md"));
+        var reference = ReadSkill("reference.md");
+        var pick = reference[reference.IndexOf("The first non-whitespace input byte", StringComparison.Ordinal)..];
+        pick = pick[..pick.IndexOf("`pick.open requires items`", StringComparison.Ordinal)];
+        foreach (var field in new[] { "`status`", "`statusColor`", "`statusShape`" })
+            Assert.Contains(field, pick);
+        Assert.Contains("trailing", pick);
+        Assert.Contains("idle", pick);
+    }
+
+    [Fact]
     public void Skill_frontmatter_names_the_skill_agterm_and_the_marker_is_present()
     {
         var text = ReadSkill("SKILL.md");

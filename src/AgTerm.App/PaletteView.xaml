@@ -6,9 +6,6 @@
     Visibility="Collapsed"
     SizeChanged="OnPaletteSizeChanged"
     AutomationProperties.Name="Palette">
-    <UserControl.Resources>
-        <local:PaletteStatusBrushConverter x:Key="PaletteStatusBrushConverter" />
-    </UserControl.Resources>
     <Grid>
         <Grid x:Name="DismissSurface"
               Background="#66000000"
@@ -80,18 +77,12 @@
                                   ColumnSpacing="10"
                                   AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="16" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0"
-                                           Text="{x:Bind StatusGlyph, Mode=OneWay}"
-                                           Foreground="{Binding StatusColor, Converter={StaticResource PaletteStatusBrushConverter}}"
-                                           VerticalAlignment="Center"
-                                           HorizontalAlignment="Center"
-                                           AutomationProperties.AccessibilityView="Raw" />
-                                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}"
@@ -99,16 +90,21 @@
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="2"
+                                <TextBlock Grid.Column="1"
                                            Text="{x:Bind Badge, Mode=OneWay}"
                                            FontSize="11"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="3"
+                                <TextBlock Grid.Column="2"
                                            Text="{x:Bind Shortcut, Mode=OneWay}"
                                            FontSize="12"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center" />
+                                <local:SessionStatusGlyph Grid.Column="3"
+                                                          ShapeData="{x:Bind GlyphData, Mode=OneWay}"
+                                                          ColorHex="{x:Bind StatusColor, Mode=OneWay}"
+                                                          Shown="{x:Bind HasStatusGlyph, Mode=OneWay}"
+                                                          VerticalAlignment="Center" />
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
