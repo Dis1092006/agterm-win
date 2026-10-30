@@ -1735,6 +1735,9 @@ public sealed class HeadlessControlActions : IControlActions
     public event Action<Keymap>? KeymapReloaded;
     public event Action<HeadlessThemeUpdate>? ThemeUpdateRequested;
 
+    /// <summary>The keymap.conf the actions load; ApplySettings can move it to a new config directory.</summary>
+    public string KeymapPath => Volatile.Read(ref _keymap).Path;
+
     /// <summary>Called under the host gate. Restart-only and deferred settings are not applied here.</summary>
     public void ApplySettings(SettingsSnapshot snapshot, string defaultConfigDirectory)
     {
@@ -1916,8 +1919,7 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolvePlacementStore(window, store =>
         {
-            if (store.SidebarMode != SidebarMode.Flagged)
-                store.SetWorkspacesExpanded(store.Workspaces.Select(w => w.Id).ToHashSet());
+            store.ExpandAllWorkspaces();
             return Ok();
         });
     }
@@ -1928,14 +1930,7 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolvePlacementStore(window, store =>
         {
-            if (store.SidebarMode != SidebarMode.Flagged)
-            {
-                var keep = new HashSet<Guid>();
-                if (store.SelectedSessionId is { } selected
-                    && store.WorkspaceForSession(selected) is { } active)
-                    keep.Add(active.Id);
-                store.SetWorkspacesExpanded(keep);
-            }
+            store.CollapseOtherWorkspaces();
             return Ok();
         });
     }

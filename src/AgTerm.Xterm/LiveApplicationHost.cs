@@ -347,6 +347,20 @@ public sealed class LiveApplicationHost : IDisposable
             ?? new ControlResponse { Ok = false, Error = "no such window: active" };
     }
 
+    /// <summary>Sends keymap.reload to every window, the way the palette's Reload Keymap row
+    /// does, so it gets the same answer agtermctl would.</summary>
+    public async Task<ControlResponse> ReloadKeymapAsync(CancellationToken cancellationToken = default) =>
+        await DispatchAppGlobalAsync(new ControlRequest { Cmd = Command.KeymapReload }, cancellationToken)
+            .ConfigureAwait(false)
+        ?? new ControlResponse { Ok = false, Error = "no such window: active" };
+
+    /// <summary>Sends config.reload to every window, the way the palette's Reload Config row
+    /// does, so it gets the same answer agtermctl would.</summary>
+    public async Task<ControlResponse> ReloadConfigAsync(CancellationToken cancellationToken = default) =>
+        await DispatchAppGlobalAsync(new ControlRequest { Cmd = Command.ConfigReload }, cancellationToken)
+            .ConfigureAwait(false)
+        ?? new ControlResponse { Ok = false, Error = "no such window: active" };
+
     /// <summary>Sends workspace.theme to one window, the way its sidebar's theme palette saves, so
     /// the palette gets the same answer and errors agtermctl would.</summary>
     public async Task<ControlResponse> SetWorkspaceThemeAsync(

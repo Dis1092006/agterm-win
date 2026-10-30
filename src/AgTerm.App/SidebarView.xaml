@@ -334,8 +334,7 @@
         </ListView>
 
         <!-- upstream bottomBar: the add controls on the left; the focus pill and the flagged-view
-             toggle on the right. The port keeps Clear flagged next to the toggle: nothing else in
-             the window clears the flags. No line above it, as upstream -->
+             toggle on the right. No line above it, as upstream -->
         <Grid x:Name="SidebarFooter" Grid.Row="1" Padding="6,4,6,4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -390,15 +389,6 @@
                                       Glyph="&#xE711;" FontSize="9" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>
-                </Button>
-                <Button x:Name="ClearFlaggedButton"
-                        Style="{StaticResource SidebarFooterButtonStyle}"
-                        Visibility="Collapsed"
-                        Click="OnClearFlaggedClick"
-                        AutomationProperties.Name="Clear flagged sessions"
-                        ToolTipService.ToolTip="Clear flagged sessions">
-                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                              Glyph="&#xE711;" FontSize="10" />
                 </Button>
                 <!-- upstream flag / flag.fill; a ToggleButton so UI Automation reports the view -->
                 <ToggleButton x:Name="FlaggedToggle"

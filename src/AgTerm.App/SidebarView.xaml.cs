@@ -141,9 +141,6 @@ public sealed partial class SidebarView : UserControl
         // upstream mutes the disabled toggle by hand: its glyph keeps the chrome foreground
         FlaggedToggle.IsEnabled = flagged || snapshot.FlaggedCount > 0;
         FlaggedToggle.Opacity = FlaggedToggle.IsEnabled ? 1 : 0.35;
-        ClearFlaggedButton.Visibility = snapshot.FlaggedCount > 0
-            ? Visibility.Visible
-            : Visibility.Collapsed;
         FocusPill.Visibility = snapshot.FocusedWorkspaceName is null
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -673,9 +670,6 @@ public sealed partial class SidebarView : UserControl
 
     private void OnFlaggedToggleClick(object sender, RoutedEventArgs e) =>
         _controller?.ToggleFlaggedView();
-
-    private void OnClearFlaggedClick(object sender, RoutedEventArgs e) =>
-        _controller?.RequestClearFlags();
 
     private void OnFocusPillClick(object sender, RoutedEventArgs e) => _controller?.ClearFocus();
 

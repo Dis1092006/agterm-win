@@ -723,10 +723,10 @@ public sealed class SidebarWorkflowTests : IDisposable
         Assert.Contains("_settings.CloseGraceUndoEnabled ?? true", mainWindow, StringComparison.Ordinal);
         Assert.Contains("request.PrimaryButtonText", mainWindow, StringComparison.Ordinal);
         Assert.Contains("RequestCloseSessions", sidebar, StringComparison.Ordinal);
-        Assert.Contains("RequestClearFlags", sidebar, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"ClearFlaggedButton\"", sidebarXaml, StringComparison.Ordinal);
-        Assert.Contains("AutomationProperties.Name=\"Clear flagged sessions\"", sidebarXaml,
-            StringComparison.Ordinal);
+        // Clear Flagged is a palette row now; it still confirms through the sidebar controller
+        Assert.Contains("_sidebar?.RequestClearFlags()", mainWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClearFlaggedButton", sidebarXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ClearFlagged", sidebar, StringComparison.Ordinal);
     }
 
     [Fact]

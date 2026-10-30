@@ -94,7 +94,7 @@ public sealed class WindowPaletteProjectionTests
     }
 
     [Fact]
-    public void Commands_end_with_the_installer_items_whatever_the_router_state()
+    public void Commands_end_with_the_app_rows_and_the_installer_items_whatever_the_router_state()
     {
         var snapshot = WindowPaletteProjection.Create(
             WindowPaletteMode.Commands,
@@ -104,12 +104,91 @@ public sealed class WindowPaletteProjectionTests
 
         Assert.Equal(
             [
+                ("app:edit-keymap", "Edit Keymap"),
+                ("app:reload-keymap", "Reload Keymap"),
+                ("app:reload-config", "Reload Config"),
+                ("app:expand-workspaces", "Expand Workspaces"),
+                ("app:collapse-workspaces", "Collapse Workspaces"),
                 (InstallerCommands.InstallCommandLineToolId, InstallerCommands.InstallCommandLineTool),
                 (InstallerCommands.InstallAgentSkillId, InstallerCommands.InstallAgentSkill),
                 (InstallerCommands.InstallAgentStatusHooksId, InstallerCommands.InstallAgentStatusHooks),
             ],
             snapshot.Items.Select(item => (item.Id, item.Title)));
         Assert.All(snapshot.Items, item => Assert.Null(item.Shortcut));
+    }
+
+    [Fact]
+    public void Commands_offer_clear_flagged_and_clear_focus_only_when_there_is_something_to_clear()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var session = store.AddSession(workspace.Id, @"C:\work")!;
+
+        static string[] AppRowIds(AppStore store) => WindowPaletteProjection.Create(
+                WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items
+            .Where(item => item.Id.StartsWith("app:clear-", StringComparison.Ordinal))
+            .Select(item => item.Id)
+            .ToArray();
+
+        Assert.Empty(AppRowIds(store));
+
+        session.Flagged = true;
+        Assert.Equal(["app:clear-flagged"], AppRowIds(store));
+
+        session.Flagged = false;
+        store.FocusedWorkspaceId = workspace.Id;
+        Assert.Equal(["app:clear-focus"], AppRowIds(store));
+
+        session.Flagged = true;
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider());
+        Assert.Equal(
+            [("app:clear-flagged", "Clear Flagged"), ("app:clear-focus", "Clear Focus")],
+            snapshot.Items
+                .Where(item => item.Id.StartsWith("app:clear-", StringComparison.Ordinal))
+                .Select(item => (item.Id, item.Title)));
+    }
+
+    [Fact]
+    public void Commands_offer_expand_and_collapse_only_in_the_workspace_tree()
+    {
+        var store = TestStores.Scratch();
+        store.SidebarMode = SidebarMode.Flagged;
+
+        var ids = WindowPaletteProjection.Create(
+            WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items.Select(item => item.Id);
+
+        Assert.DoesNotContain("app:expand-workspaces", ids);
+        Assert.DoesNotContain("app:collapse-workspaces", ids);
+        Assert.Contains("app:edit-keymap", ids);
+        Assert.Contains("app:reload-keymap", ids);
+        Assert.Contains("app:reload-config", ids);
+    }
+
+    [Fact]
+    public void App_rows_are_neither_builtin_actions_nor_installer_items()
+    {
+        var rows = new (string Id, PaletteAppCommand Command)[]
+        {
+            ("app:edit-keymap", PaletteAppCommand.EditKeymap),
+            ("app:reload-keymap", PaletteAppCommand.ReloadKeymap),
+            ("app:reload-config", PaletteAppCommand.ReloadConfig),
+            ("app:clear-flagged", PaletteAppCommand.ClearFlagged),
+            ("app:clear-focus", PaletteAppCommand.ClearFocus),
+            ("app:expand-workspaces", PaletteAppCommand.ExpandWorkspaces),
+            ("app:collapse-workspaces", PaletteAppCommand.CollapseWorkspaces),
+        };
+        Assert.Equal(rows.Select(row => row.Command), PaletteAppCommands.All);
+        foreach (var (id, command) in rows)
+        {
+            Assert.Equal(id, PaletteAppCommands.Id(command));
+            Assert.Equal(command, WindowPaletteProjection.ParseAppCommand(id));
+            Assert.Null(WindowPaletteProjection.ParseAction(id));
+            Assert.Null(WindowPaletteProjection.ParseInstallerCommand(id));
+        }
+        Assert.Null(WindowPaletteProjection.ParseAppCommand(InstallerCommands.InstallAgentSkillId));
+        Assert.Null(WindowPaletteProjection.ParseAppCommand(BuiltinAction.ToggleFlaggedView.WireName()));
+        Assert.Null(WindowPaletteProjection.ParseAppCommand("app:edit-ghostty-config"));
     }
 
     [Fact]
@@ -468,6 +547,91 @@ public sealed class WindowPaletteAcceptanceTests
             });
 
         Assert.Equal(1, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Theory]
+    [InlineData("app:edit-keymap", PaletteAppCommand.EditKeymap)]
+    [InlineData("app:reload-keymap", PaletteAppCommand.ReloadKeymap)]
+    [InlineData("app:reload-config", PaletteAppCommand.ReloadConfig)]
+    [InlineData("app:clear-flagged", PaletteAppCommand.ClearFlagged)]
+    [InlineData("app:clear-focus", PaletteAppCommand.ClearFocus)]
+    [InlineData("app:expand-workspaces", PaletteAppCommand.ExpandWorkspaces)]
+    [InlineData("app:collapse-workspaces", PaletteAppCommand.CollapseWorkspaces)]
+    public async Task App_rows_run_the_app_command_handler_and_restore_focus(
+        string itemId,
+        PaletteAppCommand expected)
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.Commands,
+            Item(itemId),
+            UnexpectedSessionAsync,
+            UnexpectedActionAsync,
+            UnexpectedCustomCommandAsync,
+            UnexpectedThemeAsync,
+            cancellationSource.Token,
+            executeInstallerCommandAsync: (_, _) =>
+                throw new InvalidOperationException("The installer handler should not be called."),
+            executeAppCommandAsync: (actual, cancellationToken) =>
+            {
+                calls++;
+                Assert.Equal(expected, actual);
+                Assert.Equal(cancellationSource.Token, cancellationToken);
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(1, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Theory]
+    [InlineData(WindowPaletteMode.Sessions, "app:clear-flagged")]
+    [InlineData(WindowPaletteMode.CustomCommands, "app:edit-keymap")]
+    [InlineData(WindowPaletteMode.Themes, "app:reload-config")]
+    [InlineData(WindowPaletteMode.Commands, "app:edit-ghostty-config")]
+    public async Task App_ids_outside_the_commands_mode_or_unknown_do_not_run_the_app_handler(
+        WindowPaletteMode mode,
+        string itemId)
+    {
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            mode,
+            Item(itemId),
+            (_, _) =>
+            {
+                calls++;
+                return Task.FromResult(true);
+            },
+            (_, _) =>
+            {
+                calls++;
+                return Task.FromResult(true);
+            },
+            (_, _) =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            },
+            (_, _) =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            },
+            CancellationToken.None,
+            (_, _) =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            },
+            (_, _) =>
+            {
+                calls++;
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(0, calls);
         Assert.True(result.RestoreTerminalFocus);
     }
 

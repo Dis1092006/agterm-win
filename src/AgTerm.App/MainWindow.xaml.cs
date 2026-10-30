@@ -101,6 +101,7 @@ public sealed partial class MainWindow : Window
     private TerminalHudPlacement? _presentedHud; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
+    private KeymapEditOverlay? _keymapEditOverlay;
     private WindowCommandRouter? _commandRouter; // UI-thread confined
     private LiveSelectionSnapshot _selection = new(null, null); // UI-thread confined
     private SidebarSnapshot? _latestSidebarSnapshot; // UI-thread confined
@@ -335,6 +336,7 @@ public sealed partial class MainWindow : Window
             _contentDialogs.Dispose();
             _settingsReloadCoordinator.Dispose();
             _settingsSubscription?.Dispose();
+            _keymapEditOverlay?.Dispose();
             _applicationHost.Settings.Changed -= OnSettingsChanged;
             _layoutCoordinator.Dispose();
             ObserveTaskFault(
@@ -991,6 +993,10 @@ public sealed partial class MainWindow : Window
             // read on the UI thread at each new session, so a config.reload applies at once
             settings: () => _settings);
         _sidebar = sidebar;
+        _keymapEditOverlay = new KeymapEditOverlay(
+            host.StoreCoordinator,
+            () => _applicationHost.ReloadKeymapAsync(),
+            (context, ex) => System.Diagnostics.Debug.WriteLine($"{context}: {ex}"));
 
         static WindowCommandHandler Sync(Func<bool> canExecute, Action execute)
         {
@@ -2432,10 +2438,58 @@ public sealed partial class MainWindow : Window
                 new CustomCommandExecutionRequest(commandId, CustomCommandSource.Palette),
                 cancellationToken),
             (themeName, cancellationToken) => SavePaletteThemeAsync(themeName, cancellationToken),
-            executeInstallerCommandAsync: (installerId, _) => RunInstallerAsync(installerId));
+            executeInstallerCommandAsync: (installerId, _) => RunInstallerAsync(installerId),
+            executeAppCommandAsync: ExecutePaletteAppCommandAsync);
 
         if (result.RestoreTerminalFocus)
             FocusActiveTerminal();
+    }
+
+    /// <summary>The palette rows with no builtin action (upstream PaletteCatalog PaletteCommand).</summary>
+    private async Task ExecutePaletteAppCommandAsync(PaletteAppCommand command, CancellationToken cancellationToken)
+    {
+        if (_host is not { } host)
+            return;
+
+        switch (command)
+        {
+            case PaletteAppCommand.EditKeymap:
+                if (_keymapEditOverlay is { } editor)
+                {
+                    var keymapPath = host.Host.Actions.KeymapPath;
+                    await editor.OpenAsync(
+                        keymapPath,
+                        ConfigEditor.Command(Path.GetFileName(keymapPath)),
+                        cancellationToken);
+                }
+                break;
+            case PaletteAppCommand.ReloadKeymap:
+                ReportPaletteReload("Keymap could not be reloaded",
+                    await _applicationHost.ReloadKeymapAsync(cancellationToken));
+                break;
+            case PaletteAppCommand.ReloadConfig:
+                ReportPaletteReload("Config could not be reloaded",
+                    await _applicationHost.ReloadConfigAsync(cancellationToken));
+                break;
+            case PaletteAppCommand.ClearFlagged:
+                _sidebar?.RequestClearFlags();
+                break;
+            case PaletteAppCommand.ClearFocus:
+                _sidebar?.ClearFocus();
+                break;
+            case PaletteAppCommand.ExpandWorkspaces:
+                await host.StoreCoordinator.MutateAsync(store => store.ExpandAllWorkspaces(), cancellationToken);
+                break;
+            case PaletteAppCommand.CollapseWorkspaces:
+                await host.StoreCoordinator.MutateAsync(store => store.CollapseOtherWorkspaces(), cancellationToken);
+                break;
+        }
+    }
+
+    private void ReportPaletteReload(string title, ControlResponse response)
+    {
+        if (!response.Ok)
+            ShowFailure(new LiveFailureNotice(title, response.Error ?? "reload failed"));
     }
 
     private async Task<bool> SavePaletteThemeAsync(string? themeName, CancellationToken cancellationToken)
