@@ -109,8 +109,6 @@ public sealed partial class MainWindow : Window
     private Guid? _selectedSessionId; // UI-thread confined
     private long _layoutGeneration; // UI-thread confined
     private long _searchPresentationGeneration; // UI-thread confined
-    private bool _terminalOnlyPresentation;
-    private bool _terminalCompositionOnly;
     private AppWindowPresenterKind _restorePresenterKind = AppWindowPresenterKind.Default;
     private bool _draggingDivider;
     private bool _closeWithoutShutdown;
@@ -254,7 +252,7 @@ public sealed partial class MainWindow : Window
         _appWindow = AppWindow.GetFromWindowId(nativeWindowId);
         ApplyChromeColors(initialTheme, _settings);
         ApplyAppIcon();
-        _fullscreen = new FullscreenController(ApplyFullscreen);
+        _fullscreen = new FullscreenController(ApplyFullscreen, PresentFullscreenChrome);
         _appWindow.Changed += OnAppWindowChanged;
         RestoreWindowFrame();
         Activated += OnWindowActivated;
@@ -659,9 +657,7 @@ public sealed partial class MainWindow : Window
         if (!args.DidPresenterChange)
             return;
 
-        var isFullscreen = sender.Presenter.Kind == AppWindowPresenterKind.FullScreen;
-        _fullscreen.Synchronize(isFullscreen);
-        SetTerminalOnlyPresentation(isFullscreen || _terminalCompositionOnly);
+        _fullscreen.Synchronize(sender.Presenter.Kind == AppWindowPresenterKind.FullScreen);
     }
 
     private async Task ShutdownForCloseAsync()
@@ -880,9 +876,6 @@ public sealed partial class MainWindow : Window
                 // a split toggle or a divider drag moves the pane a question is anchored to
                 ObserveTaskFault(UpdateAskAnchorAsync(), "Ask anchor update failed");
                 _selectedSessionId = snapshot.SessionId;
-                SetTerminalCompositionOnly(
-                    !string.IsNullOrWhiteSpace(snapshot.ZoomPaneId)
-                    || snapshot.DashboardOpen);
                 SubmitLayout();
                 SubmitSearchPresentation(previousSelection, snapshot);
                 PresentTerminalAsk(snapshot.TerminalAsk);
@@ -979,8 +972,6 @@ public sealed partial class MainWindow : Window
             _selection = startup.Selection;
             PresentPaneThemes(startup.Selection);
             _selectedSessionId = startup.Selection.SessionId;
-            SetTerminalCompositionOnly(
-                !string.IsNullOrWhiteSpace(startup.Selection.ZoomPaneId));
             foreach (var surface in startup.CommittedSurfaces)
                 MountSurface(surface);
             SubmitLayout();
@@ -1320,9 +1311,6 @@ public sealed partial class MainWindow : Window
         _latestSidebarSnapshot = snapshot;
         ApplyPendingClose(snapshot.PendingClose);
         ApplyTitleBarState(snapshot.TitleBar);
-        if (_terminalOnlyPresentation)
-            return;
-
         ApplySidebarChrome(snapshot);
     }
 
@@ -1360,25 +1348,12 @@ public sealed partial class MainWindow : Window
         ShellSplitView.IsPaneOpen = snapshot.SidebarVisible;
     }
 
-    internal void SetTerminalOnlyPresentation(bool enabled)
+    // full screen hides the title bar row; the sidebar keeps following sidebarVisible
+    private void PresentFullscreenChrome(bool isFullscreen)
     {
-        if (_terminalOnlyPresentation == enabled)
-            return;
-
-        _terminalOnlyPresentation = enabled;
-        VisualStateManager.GoToState(
-            ShellSplitView,
-            enabled ? "TerminalOnlyPresentation" : "StandardPresentation",
-            useTransitions: false);
-
-        if (!enabled && _latestSidebarSnapshot is { } snapshot)
-            ApplySidebarChrome(snapshot);
-    }
-
-    private void SetTerminalCompositionOnly(bool enabled)
-    {
-        _terminalCompositionOnly = enabled;
-        SetTerminalOnlyPresentation(enabled || _fullscreen.IsFullscreen);
+        var titleBar = isFullscreen ? Visibility.Collapsed : Visibility.Visible;
+        AppTitleBar.Visibility = titleBar;
+        TitleBarHairline.Visibility = titleBar;
     }
 
     private void ApplyFullscreen(bool enabled)
@@ -1404,8 +1379,6 @@ public sealed partial class MainWindow : Window
                 : _restorePresenterKind;
             _appWindow.SetPresenter(restoreKind);
         }
-
-        SetTerminalOnlyPresentation(enabled || _terminalCompositionOnly);
     }
 
     /// <summary>Applies title/subtitle from a Single/Split base layout and updates the accepted

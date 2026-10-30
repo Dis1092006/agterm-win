@@ -378,9 +378,6 @@ public sealed class MainWindowSplitWiringTests
         var quickWindow = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "QuickTerminalWindow.cs"));
         Assert.Contains("new XtermPage(new WinRtScriptHost(", quickWindow, StringComparison.Ordinal);
         Assert.Matches(
-            @"SetTerminalCompositionOnly\(\s*!string\.IsNullOrWhiteSpace\(snapshot\.ZoomPaneId\)\s+\|\| snapshot\.DashboardOpen\);",
-            source);
-        Assert.Matches(
             @"SetAcceptedPane\(layered\.Layer\.PaneId\);\s+FocusActiveTerminal\(\);",
             source);
         Assert.Matches(

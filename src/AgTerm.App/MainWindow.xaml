@@ -311,16 +311,6 @@
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
-                <VisualStateGroup x:Name="PresentationStates">
-                    <VisualState x:Name="StandardPresentation" />
-                    <VisualState x:Name="TerminalOnlyPresentation">
-                        <VisualState.Setters>
-                            <Setter Target="AppTitleBar.Visibility" Value="Collapsed" />
-                            <Setter Target="TitleBarHairline.Visibility" Value="Collapsed" />
-                            <Setter Target="ShellSplitView.IsPaneOpen" Value="False" />
-                        </VisualState.Setters>
-                    </VisualState>
-                </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
             <SplitView.Pane>
                 <!-- transparent: PaneBackground paints the theme background once -->
