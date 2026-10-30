@@ -74,6 +74,10 @@ public sealed record LiveControlHostOptions
     /// <summary>Reports whether the current callback is running on the owning UI thread.</summary>
     public Func<bool> IsUiThread { get; init; } = static () => false;
 
+    public Func<bool> HasTerminalKeyboardFocus { get; init; } = static () => false;
+
+    internal TerminalNotificationLimiter TerminalNotificationLimiter { get; init; } = new();
+
     /// <summary>The UI half of realization: create a renderer (a WebView2 pane) and open the
     /// surface over it, ON the WebView2 UI thread. The host calls it from the dispatch thread and
     /// blocks (bounded) — the implementation must marshal internally and must NOT touch the host
@@ -131,6 +135,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private readonly SoundCatalog _soundCatalog;
     private readonly Queue<LiveNotificationDelivery> _pendingNotificationDeliveries = new();
     private Task? _notificationDeliveryTask;
+    private int _pendingTerminalNotifications;
+    private TimeSpan? _lastTerminalNotificationDiagnostic;
     private int _uiAutoFollowSuppressionRequested;
     private bool _uiAutoFollowSuppressionApplied;
 
@@ -139,6 +145,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         public sealed record Attention : LiveNotificationDelivery;
         public sealed record Banner(LiveBannerNotification Notification) : LiveNotificationDelivery;
         public sealed record Status(string SoundName) : LiveNotificationDelivery;
+        public sealed record Terminal(IHeadlessSurface Source, TerminalOscNotification Notification) : LiveNotificationDelivery;
+        public sealed record Focused(IHeadlessSurface Source) : LiveNotificationDelivery;
+        public sealed record Clear(Guid SessionId) : LiveNotificationDelivery;
     }
 
     public LiveControlHost(LiveControlHostOptions options)
@@ -260,6 +269,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 {
                     return;
                 }
+                paneSurface.Pane.Terminal.TerminalNotificationReceived += report =>
+                    ReportTerminalNotification(paneSurface, report);
+                paneSurface.Pane.Terminal.TerminalFocused += () => ReportTerminalFocused(paneSurface);
 
                 if (request.Kind == LiveSurfaceKind.Main && request.SessionId is { } sessionId)
                 {
@@ -649,6 +661,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public event Action<LiveBannerNotification>? NotificationRequested;
 
+    public event Action<Guid>? SessionNotificationsCleared;
+
     public event Action? AttentionRequested;
 
     /// <summary>Raised under the host gate; subscribers may enqueue UI work without waiting.</summary>
@@ -715,6 +729,36 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             paneId = session.TopmostSurface?.PaneToken;
         }, cancellationToken).ConfigureAwait(false);
         return paneId;
+    }
+
+    internal async Task<bool> RevealNotificationAsync(
+        LiveNotificationTarget target, CancellationToken cancellationToken)
+    {
+        var revealed = false;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            revealed = SelectNotificationSession(store, Actions, target);
+            if (revealed)
+            {
+                QueueZoomActiveChanged(false);
+                QueueZoomChanged();
+                QueueDashboardChanged();
+            }
+        }, cancellationToken).ConfigureAwait(false);
+        return revealed;
+    }
+
+    internal static bool SelectNotificationSession(
+        AppStore store, HeadlessControlActions actions, LiveNotificationTarget target)
+    {
+        if (store.SessionWithId(target.SessionId) is not { } session) return false;
+        actions.Zoom.Clear();
+        actions.Dashboard.Close();
+        actions.Quick.Hide();
+        store.NoteUserActivity();
+        session.SplitFocused = target.Pane == NotificationPane.Split && session.HasSplit;
+        store.SelectSession(session.Id);
+        return true;
     }
 
     private void DispatchAutoFollow(Action work)
@@ -919,7 +963,89 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }
     }
 
-    private bool QueueNotificationRequested(LiveNotificationRequest request)
+    internal bool ReportTerminalNotification(IHeadlessSurface source, TerminalOscReport report)
+    {
+        if (Volatile.Read(ref _shutdownStarted) != 0)
+            return false;
+        if (report.Oversized)
+        {
+            LogTerminalNotificationRejection("terminal notification payload exceeds 2047 UTF-8 bytes");
+            return false;
+        }
+        var notification = TerminalOscNotification.Parse(report.Identifier, report.Data, out var error);
+        if (notification is null)
+        {
+            if (error is not null) LogTerminalNotificationRejection(error);
+            return false;
+        }
+        if (!_options.TerminalNotificationLimiter.Allow(notification))
+            return false;
+        if (report.Focused && _options.HasTerminalKeyboardFocus())
+            return false;
+        lock (_focusRequestLock)
+        {
+            if (_pendingTerminalNotifications >= 64)
+            {
+                LogTerminalNotificationRejection("Terminal notification queue is full; notification discarded.");
+                return false;
+            }
+            if (Volatile.Read(ref _shutdownStarted) != 0)
+                return false;
+            _pendingTerminalNotifications++;
+            QueueNotificationDelivery(new LiveNotificationDelivery.Terminal(source, notification));
+        }
+        return true;
+    }
+
+    internal bool ReportTerminalFocused(IHeadlessSurface source)
+    {
+        if (Volatile.Read(ref _shutdownStarted) != 0 || !_options.HasTerminalKeyboardFocus())
+            return false;
+        QueueNotificationDelivery(new LiveNotificationDelivery.Focused(source));
+        return true;
+    }
+
+    private void LogTerminalNotificationRejection(string message)
+    {
+        lock (_focusRequestLock)
+        {
+            var now = _notificationClock();
+            if (_lastTerminalNotificationDiagnostic is { } last && now - last < TimeSpan.FromSeconds(1))
+                return;
+            _lastTerminalNotificationDiagnostic = now;
+        }
+        _options.Log?.Invoke(message);
+    }
+
+    private void AcceptTerminalNotification(LiveNotificationDelivery.Terminal delivery)
+    {
+        Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0) return;
+            var session = TerminalNotificationOwner(delivery.Source);
+            if (session is null) return;
+            var title = delivery.Notification.EffectiveTitle(session.DisplayName);
+            Store.RecordNotificationEvent(session.Id, title, delivery.Notification.Body, useSessionNameFallback: false);
+            session.UnseenCount++;
+            Store.NotifySidebar();
+            QueueNotificationRequested(new(session.Id, title, delivery.Notification.Body),
+                new(WindowId, session.Id, ReferenceEquals(session.SplitSurface, delivery.Source)
+                    ? NotificationPane.Split : NotificationPane.Main));
+        });
+    }
+
+    private Session? TerminalNotificationOwner(IHeadlessSurface source)
+    {
+        var owners = Store.Workspaces.SelectMany(workspace => workspace.Sessions)
+            .Where(session => ReferenceEquals(session.Surface, source) || ReferenceEquals(session.SplitSurface, source))
+            .Take(2).ToArray();
+        return owners.Length == 1 ? owners[0] : null;
+    }
+
+    private bool QueueNotificationRequested(LiveNotificationRequest request) =>
+        QueueNotificationRequested(request, new(WindowId, request.SessionId, NotificationPane.Main));
+
+    private bool QueueNotificationRequested(LiveNotificationRequest request, LiveNotificationTarget? target)
     {
         if (Volatile.Read(ref _shutdownStarted) != 0)
         {
@@ -933,7 +1059,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         if (notification is null)
             return false;
 
-        QueueNotificationDelivery(new LiveNotificationDelivery.Banner(notification));
+        QueueNotificationDelivery(new LiveNotificationDelivery.Banner(notification with { Target = target }));
         return true;
     }
 
@@ -1026,6 +1152,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 }
 
                 notification = _pendingNotificationDeliveries.Dequeue();
+                if (notification is LiveNotificationDelivery.Terminal)
+                    _pendingTerminalNotifications--;
             }
 
             try
@@ -1040,6 +1168,22 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                         break;
                     case LiveNotificationDelivery.Status status:
                         StatusNotificationRequested?.Invoke(status.SoundName);
+                        break;
+                    case LiveNotificationDelivery.Terminal terminal:
+                        AcceptTerminalNotification(terminal);
+                        break;
+                    case LiveNotificationDelivery.Focused focused:
+                        Host.RunLocked(() =>
+                        {
+                            if (TerminalNotificationOwner(focused.Source) is { } owner)
+                            {
+                                Store.ClearUnseen(owner.Id);
+                                QueueNotificationDelivery(new LiveNotificationDelivery.Clear(owner.Id));
+                            }
+                        });
+                        break;
+                    case LiveNotificationDelivery.Clear clear:
+                        SessionNotificationsCleared?.Invoke(clear.SessionId);
                         break;
                 }
             }

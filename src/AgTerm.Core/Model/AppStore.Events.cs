@@ -40,11 +40,11 @@ public sealed partial class AppStore
     /// <summary>Records an accepted terminal/control notification in the app event ring and returns
     /// its effective title. An unresolved session returns null and emits nothing. Delivery gating
     /// belongs to the caller.</summary>
-    public string? RecordNotificationEvent(Guid forSession, string title, string body)
+    public string? RecordNotificationEvent(Guid forSession, string title, string body, bool useSessionNameFallback = true)
     {
         if (SessionWithId(forSession) is not { } session
             || WorkspaceForSession(forSession) is not { } workspace) return null;
-        var effectiveTitle = title.Length == 0 ? session.DisplayName : title;
+        var effectiveTitle = useSessionNameFallback && title.Length == 0 ? session.DisplayName : title;
         EmitControlEvent(ControlEventKind.Notify, workspace.Id, forSession,
             new ControlEventPayload { Name = session.DisplayName, Title = effectiveTitle, Body = body });
         return effectiveTitle;

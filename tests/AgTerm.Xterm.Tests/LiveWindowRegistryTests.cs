@@ -23,6 +23,45 @@ public sealed class LiveWindowRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Terminal_notification_budget_is_shared_across_attached_windows()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, SnapshotWithSession("alpha", Guid.NewGuid()));
+        WriteWindowSnapshot(secondId, SnapshotWithSession("beta", Guid.NewGuid()));
+        WriteIndex(secondId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication();
+        LiveControlHostOptions Options() => new()
+        {
+            OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
+            NotificationSettings = new AppSettings { NotificationsEnabled = false },
+        };
+        using var first = application.AttachWindow(firstId, Options());
+        using var second = application.AttachWindow(secondId, Options());
+        Assert.True(first.ReportTerminalNotification(
+            Assert.IsAssignableFrom<IHeadlessSurface>(first.Store.ActiveSession!.Surface),
+            new(9, "first window", false)));
+        Assert.False(second.ReportTerminalNotification(
+            Assert.IsAssignableFrom<IHeadlessSurface>(second.Store.ActiveSession!.Surface),
+            new(9, "second window", false)));
+    }
+
+    [Fact]
+    public void App_owned_quick_terminal_consumes_budget_without_delivering_a_notification()
+    {
+        using var application = CreateApplication();
+        var id = application.ActiveWindowId!.Value;
+        using var host = application.AttachWindow(id, new LiveControlHostOptions
+        {
+            OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
+        });
+        application.ObserveUnownedTerminalNotification(new(9, "quick", false));
+        Assert.False(host.ReportTerminalNotification(new FakeSurface(), new(9, "main", false)));
+    }
+
+    [Fact]
     public async Task Enabling_active_window_sidebars_applies_immediately_and_persists_each_changed_window()
     {
         var firstId = Guid.NewGuid();

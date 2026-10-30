@@ -47,7 +47,7 @@ public sealed class SingleInstanceSourceTests
     {
         var program = Source("src", "AgTerm.App", "Program.cs");
         Assert.Matches(new Regex(
-            @"var instance = AppInstance\.FindOrRegisterForKey\(SingleInstanceKey\.For\(PersistenceStore\.DefaultDirectory\)\);\s*if \(!instance\.IsCurrent\)\s*\{(?:\s*//[^\n]*)*\s*RedirectActivationTo\(instance\);\s*return;\s*\}\s*instance\.Activated \+= \(_, _\) => \(Application\.Current as App\)\?\.ActivateFrontmostWindow\(\);\s*Application\.Start\("),
+            @"var instance = AppInstance\.FindOrRegisterForKey\(SingleInstanceKey\.For\(PersistenceStore\.DefaultDirectory\)\);\s*if \(!instance\.IsCurrent\)\s*\{(?:\s*//[^\n]*)*\s*RedirectActivationTo\(instance\);\s*return;\s*\}\s*instance\.Activated \+= \(_, activation\) => \(Application\.Current as App\)\?\.HandleActivation\(activation\);\s*Application\.Start\("),
             program);
         // only the process the user just started may hand the foreground to the running one
         Assert.Matches(new Regex(

@@ -69,6 +69,7 @@ public sealed partial class MainWindow : Window
     private readonly ThemeCatalog _themeCatalog = ThemeCatalog.Default;
     private readonly UISettings _uiSettings = new();
     private readonly WindowsAppNotificationPresenter _notificationPresenter;
+    private LiveNotificationTarget? _notificationBannerTarget;
     private readonly WindowsNotificationSound _notificationSounds;
     private readonly SemaphoreSlim _themeApplyGate = new(1, 1);
     private AppSettings _settings; // UI-thread confined
@@ -177,8 +178,7 @@ public sealed partial class MainWindow : Window
         InstallAgentStatusHooksItem.Text = InstallerCommands.InstallAgentStatusHooks;
         ApplyInterfaceElements(_settings);
         _switcher.Changed += OnSwitcherChanged;
-        _notificationPresenter = new WindowsAppNotificationPresenter(
-            message => System.Diagnostics.Trace.TraceWarning(message));
+        _notificationPresenter = ((App)Application.Current).NotificationPresenter;
         _notificationSounds = new WindowsNotificationSound(new SoundCatalog(_applicationHost.Settings.StateDirectory),
             new NotificationSuppression(new WindowsNotificationSuppressionSources()));
         ApplyThemeChrome(initialTheme.UseDarkChrome);
@@ -327,7 +327,6 @@ public sealed partial class MainWindow : Window
             _pageAttemptCancellation.Dispose();
             _notificationBannerCancellation?.Cancel();
             _notificationBannerCancellation?.Dispose();
-            _notificationPresenter.Dispose();
             _contentDialogs.Dispose();
             _settingsReloadCoordinator.Dispose();
             _settingsSubscription?.Dispose();
@@ -834,7 +833,10 @@ public sealed partial class MainWindow : Window
                     NotificationSettings = _settings,
                     RestoreRunningCommand = _settings.RestoreRunningCommand == true,
                     FailureReported = QueueFailureNotice,
+                    Log = message => System.Diagnostics.Trace.TraceWarning(message),
                     IsUiThread = () => DispatcherQueue.HasThreadAccess,
+                    HasTerminalKeyboardFocus = () => _windowIsActive && IsTerminalFocused()
+                        && WindowsTaskbarFlash.IsForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)),
                     BootstrapCancellationToken = _bootstrapCancellation.Token,
                     // Null when the scripts are absent from the layout: shells then spawn bare,
                     // which works but never reports a cwd (PLATFORM-NOTES).
@@ -903,7 +905,9 @@ public sealed partial class MainWindow : Window
         host.AttentionRequested += () => ObserveTaskFault(
             ((App)Application.Current).RequestTaskbarAttentionAsync(_windowId), "Taskbar attention failed");
         host.NotificationRequested += notification => DispatcherQueue.TryEnqueue(() =>
-            ShowNotification(notification));
+            ObserveTaskFault(ShowNotificationAsync(notification), "Notification delivery failed"));
+        host.SessionNotificationsCleared += sessionId => DispatcherQueue.TryEnqueue(() =>
+            ObserveTaskFault(ClearNotificationSessionAsync(sessionId), "Notification removal failed"));
         host.StatusNotificationRequested += soundName => DispatcherQueue.TryEnqueue(() =>
             PlayNotificationSound(soundName, "session.status"));
 
@@ -3446,9 +3450,9 @@ public sealed partial class MainWindow : Window
         RootGrid.RequestedTheme = useDarkChrome ? ElementTheme.Dark : ElementTheme.Light;
     }
 
-    private void ShowNotification(LiveBannerNotification notification)
+    private async Task ShowNotificationAsync(LiveBannerNotification notification)
     {
-        var shown = _notificationPresenter.TryShow(notification);
+        var shown = await _notificationPresenter.TryShowAsync(notification);
         if (NotificationAudioPolicy.PlayFromApp(notification.SoundName, shown))
             PlayNotificationSound(notification.SoundName, "notify");
         if (shown)
@@ -3458,6 +3462,15 @@ public sealed partial class MainWindow : Window
             ? ProductIdentity.Name
             : notification.Title;
         NotificationBanner.Message = notification.Body;
+        _notificationBannerTarget = notification.Target;
+        NotificationBanner.ActionButton = null;
+        if (notification.Target is { } target)
+        {
+            var button = new HyperlinkButton { Content = "Open session" };
+            button.Click += (_, _) => ObserveTaskFault(
+                ((App)Application.Current).RevealNotificationAsync(target), "Notification activation failed");
+            NotificationBanner.ActionButton = button;
+        }
         NotificationBanner.IsOpen = true;
 
         _notificationBannerCancellation?.Cancel();
@@ -3467,6 +3480,18 @@ public sealed partial class MainWindow : Window
         ObserveTaskFault(
             CloseNotificationBannerAsync(cancellation),
             "Notification banner close failed");
+    }
+
+    private async Task ClearNotificationSessionAsync(Guid sessionId)
+    {
+        if (_notificationBannerTarget?.SessionId == sessionId)
+        {
+            _notificationBannerCancellation?.Cancel();
+            NotificationBanner.IsOpen = false;
+            NotificationBanner.ActionButton = null;
+            _notificationBannerTarget = null;
+        }
+        await _notificationPresenter.ClearSessionAsync(sessionId);
     }
 
     private void ReportSettingsReloadFailure(Exception exception)

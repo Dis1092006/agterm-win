@@ -163,6 +163,24 @@ public class XtermPageTests
     }
 
     [Fact]
+    public async Task OSC_notification_and_actual_focus_messages_route_only_to_known_panes()
+    {
+        var page = await InitializedAsync();
+        var one = await page.OpenTerminalAsync("p1");
+        var two = await page.OpenTerminalAsync("p2");
+        var notifications = new List<TerminalOscReport>();
+        var focuses = 0;
+        one.TerminalNotificationReceived += _ => Assert.Fail("wrong notification pane");
+        two.TerminalNotificationReceived += notifications.Add;
+        two.TerminalFocused += () => focuses++;
+        _host.RaiseMessage("""{"type":"terminalNotification","paneId":"p2","identifier":777,"data":"notify;t;b","focused":true}""");
+        _host.RaiseMessage("""{"type":"terminalNotification","paneId":"gone","identifier":9,"data":"stale","focused":false}""");
+        _host.RaiseMessage("""{"type":"terminalFocused","paneId":"p2"}""");
+        Assert.Equal(new TerminalOscReport(777, "notify;t;b", true), Assert.Single(notifications));
+        Assert.Equal(1, focuses);
+    }
+
+    [Fact]
     public async Task Messages_route_to_the_terminal_with_the_matching_pane_id()
     {
         var page = await InitializedAsync();

@@ -728,13 +728,14 @@ public sealed class LiveNotificationTests
         Assert.Contains("host.StatusNotificationRequested +=", source, StringComparison.Ordinal);
         Assert.Contains("WindowsAppNotificationPresenter", source, StringComparison.Ordinal);
         Assert.Contains("_notificationSounds.TryPlayAsync", source, StringComparison.Ordinal);
-        var show = source[source.IndexOf("private void ShowNotification(", StringComparison.Ordinal)..];
+        var show = source[source.IndexOf("private async Task ShowNotificationAsync(", StringComparison.Ordinal)..];
         show = show[..show.IndexOf("private ", 1, StringComparison.Ordinal)];
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(show, "PlayNotificationSound\\("));
         var presenter = File.ReadAllText(Path.Combine(root, "src", "AgTerm.App", "WindowsAppNotificationPresenter.cs"));
         Assert.Contains(".MuteAudio()", presenter, StringComparison.Ordinal);
         Assert.Contains("SetAudioEvent(AppNotificationSoundEvent.Default)", presenter, StringComparison.Ordinal);
         Assert.Contains("NotificationAudioPolicy.PlayFromApp", show, StringComparison.Ordinal);
+        Assert.Contains("await _notificationPresenter.TryShowAsync(notification)", show, StringComparison.Ordinal);
         Assert.DoesNotContain("TryPlay", presenter, StringComparison.Ordinal);
     }
 
