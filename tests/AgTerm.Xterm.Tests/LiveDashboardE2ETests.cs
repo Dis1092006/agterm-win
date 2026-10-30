@@ -450,7 +450,6 @@ public sealed class LiveDashboardE2ETests
         Assert.Contains("[BuiltinAction.Dashboard] = Async(", source, StringComparison.Ordinal);
         Assert.Contains("host.ToggleDashboardAsync()", source, StringComparison.Ordinal);
         Assert.Contains("case TerminalLayout.Dashboard dashboard:", source, StringComparison.Ordinal);
-        Assert.Contains("|| snapshot.DashboardOpen", source, StringComparison.Ordinal);
     }
 
     [Fact]

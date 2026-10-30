@@ -456,7 +456,7 @@ public sealed class LiveSurfaceZoomE2ETests
     }
 
     [Fact]
-    public void MainWindow_routes_zoom_action_layout_and_terminal_only_presentation()
+    public void MainWindow_routes_zoom_action_and_layout()
     {
         var source = File.ReadAllText(Path.Combine(
             FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
@@ -464,7 +464,6 @@ public sealed class LiveSurfaceZoomE2ETests
         Assert.Contains("[BuiltinAction.ToggleTerminalZoom] = Async(", source, StringComparison.Ordinal);
         Assert.Contains("host.ToggleTerminalZoomAsync()", source, StringComparison.Ordinal);
         Assert.Contains("case TerminalLayout.Zoomed zoomed:", source, StringComparison.Ordinal);
-        Assert.Contains("snapshot.ZoomPaneId", source, StringComparison.Ordinal);
     }
 
     private static LiveControlHost CreateHost(string stateDir) => new(new LiveControlHostOptions

@@ -87,8 +87,9 @@ public sealed class ThemeChromeSourceTests
         Assert.Contains("VerticalAlignment=\"Bottom\"", hairline, StringComparison.Ordinal);
         Assert.Contains("IsHitTestVisible=\"False\"", hairline, StringComparison.Ordinal);
         Assert.Contains("Background=\"{StaticResource ChromeHairlineBrush}\"", hairline, StringComparison.Ordinal);
-        Assert.Contains("<Setter Target=\"TitleBarHairline.Visibility\" Value=\"Collapsed\" />",
-            Between(xaml, "<VisualState x:Name=\"TerminalOnlyPresentation\">", "</VisualState>"), StringComparison.Ordinal);
+        Assert.Contains("TitleBarHairline.Visibility = titleBar;",
+            MethodBody(Source("MainWindow.xaml.cs"), "private void PresentFullscreenChrome(bool isFullscreen)"),
+            StringComparison.Ordinal);
 
         Assert.Contains("Background=\"{StaticResource ChromeHairlineBrush}\"",
             Between(xaml, "<local:SidebarResizeHandle x:Name=\"SidebarDivider\"", "</local:SidebarResizeHandle>"),

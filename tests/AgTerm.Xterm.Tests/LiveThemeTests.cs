@@ -388,6 +388,49 @@ public sealed class FullscreenControllerTests
         Assert.True(controller.IsFullscreen);
         Assert.Equal([true, true], transitions);
     }
+
+    [Fact]
+    public void Chrome_follows_each_toggle_and_not_a_failed_one()
+    {
+        var chrome = new List<bool>();
+        var controller = new FullscreenController(_ => { }, chrome.Add);
+
+        controller.Toggle();
+        controller.Toggle();
+
+        Assert.Equal([true, false], chrome);
+
+        var failingChrome = new List<bool>();
+        var failing = new FullscreenController(_ => throw new InvalidOperationException("presenter failed"), failingChrome.Add);
+        Assert.Throws<InvalidOperationException>(() => failing.Toggle());
+        Assert.Empty(failingChrome);
+    }
+
+    [Fact]
+    public void Chrome_follows_an_external_presenter_change_once()
+    {
+        var chrome = new List<bool>();
+        var controller = new FullscreenController(_ => { }, chrome.Add);
+
+        controller.Synchronize(isFullscreen: true);
+        controller.Synchronize(isFullscreen: true);
+        controller.Synchronize(isFullscreen: false);
+
+        Assert.Equal([true, false], chrome);
+    }
+
+    [Fact]
+    public void A_presenter_change_raised_inside_the_toggle_presents_the_chrome_once()
+    {
+        var chrome = new List<bool>();
+        FullscreenController? controller = null;
+        controller = new FullscreenController(next => controller!.Synchronize(next), chrome.Add);
+
+        controller.Toggle();
+
+        Assert.True(controller.IsFullscreen);
+        Assert.Equal([true], chrome);
+    }
 }
 
 public sealed class LiveNotificationTests
