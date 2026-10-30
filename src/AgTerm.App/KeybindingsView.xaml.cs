@@ -22,6 +22,9 @@ public sealed partial class KeybindingsView : UserControl
             KeybindingsPanel.Background = background;
     }
 
+    public void SetScrimTopInset(double inset) =>
+        Scrim.Margin = new Thickness(0, inset, 0, 0);
+
     public void Open(IReadOnlyList<KeybindingGroup> groups)
     {
         _controller.Open(groups);

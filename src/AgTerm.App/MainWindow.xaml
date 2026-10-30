@@ -288,6 +288,7 @@
                    IsPaneOpen="True"
                    OpenPaneLength="220"
                    Background="Transparent"
+                   SizeChanged="OnShellSizeChanged"
                    PaneBackground="{StaticResource ChromeBackgroundBrush}">
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup x:Name="WindowWidthStates">

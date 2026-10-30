@@ -61,6 +61,9 @@ public sealed partial class IconPaletteView : UserControl
             PalettePanel.Background = background;
     }
 
+    public void SetScrimTopInset(double inset) =>
+        Scrim.Margin = new Thickness(0, inset, 0, 0);
+
     public void NoteActivation() => _activationClicks.Activated(Environment.TickCount64);
 
     public void Open(string? currentIcon)

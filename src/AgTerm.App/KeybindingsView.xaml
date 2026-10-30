@@ -11,7 +11,10 @@
     <UserControl.Resources>
         <CollectionViewSource x:Name="GroupedRows" IsSourceGrouped="True" ItemsPath="Items" />
     </UserControl.Resources>
-    <Grid Background="#66000000">
+    <Grid Background="Transparent">
+        <Border x:Name="Scrim"
+                Background="#33000000"
+                IsHitTestVisible="False" />
         <Border x:Name="KeybindingsPanel" MaxWidth="840" MaxHeight="700" Margin="24,48,24,24" Padding="20"
                 Style="{StaticResource OverlayPanelStyle}"
                 BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"

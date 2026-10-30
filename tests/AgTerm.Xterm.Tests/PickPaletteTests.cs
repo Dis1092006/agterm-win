@@ -21,6 +21,13 @@ public sealed class PickPaletteTests
     }
 
     [Fact]
+    public void A_pick_opens_over_the_scrim_like_the_other_palettes()
+    {
+        Assert.True(new PaletteOpenOptions().Dimmed);
+        Assert.True(PickPalette.Options(Pick(new[] { Item("a", "Alpha") })).Dimmed);
+    }
+
+    [Fact]
     public void Empty_query_keeps_the_callers_order_and_enter_picks_the_first_item()
     {
         var controller = Open(Pick(new[] { Item("z", "Zulu"), Item("a", "Alpha") }));

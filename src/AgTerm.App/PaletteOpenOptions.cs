@@ -13,4 +13,6 @@ public sealed record PaletteOpenOptions
     public string? InitialSelectionId { get; init; }
 
     public bool AllowCustomAnswer { get; init; }
+
+    public bool Dimmed { get; init; } = true;
 }

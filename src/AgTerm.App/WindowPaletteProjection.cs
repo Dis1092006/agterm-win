@@ -20,7 +20,12 @@ public sealed record WindowPaletteSnapshot(
     string Placeholder,
     IReadOnlyList<PaletteItemViewModel> Items,
     bool PreserveInputOrderForEmptyQuery = false,
-    string? InitialSelectionId = null);
+    string? InitialSelectionId = null)
+{
+    // Windows-only: a theme preview shows the real window colors, so the theme palettes open
+    // without the scrim the other palettes use.
+    public bool Dimmed => Mode is not (WindowPaletteMode.Themes or WindowPaletteMode.WorkspaceTheme);
+}
 
 public static class WindowPaletteProjection
 {

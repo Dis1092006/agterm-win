@@ -5,8 +5,9 @@ namespace AgTerm.Xterm.Tests;
 public sealed class OverlayPanelSourceTests
 {
     [Theory]
-    [InlineData("KeybindingsView", "KeybindingsPanel", "#66000000")]
-    [InlineData("PaletteView", "PalettePanel", "#66000000")]
+    [InlineData("KeybindingsView", "KeybindingsPanel", "#33000000")]
+    [InlineData("PaletteView", "PalettePanel", "#33000000")]
+    [InlineData("IconPaletteView", "PalettePanel", "#33000000")]
     [InlineData("SessionSwitcherView", "SwitcherPanel", "#33000000")]
     [InlineData("AskView", "Panel", "#33000000")]
     public void Every_panel_uses_the_same_background_policy_without_fading_contents(
