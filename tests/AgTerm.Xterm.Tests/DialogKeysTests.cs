@@ -30,12 +30,16 @@ public sealed class DialogKeysTests
     {
         var code = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
 
-        var show = code.IndexOf("private static async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)", StringComparison.Ordinal);
+        var show = code.IndexOf("private async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)", StringComparison.Ordinal);
         Assert.True(show >= 0, "ShowDialogAsync not found");
         var body = code[show..];
         body = body[..body.IndexOf("\n    }", StringComparison.Ordinal)];
         Assert.Contains("DialogKeys.IgnoresKey(", body, StringComparison.Ordinal);
         Assert.Contains("dialog.ShowAsync()", body, StringComparison.Ordinal);
+        Assert.Contains("_nativeDialogs++;", body, StringComparison.Ordinal);
+        Assert.Contains("finally", body, StringComparison.Ordinal);
+        Assert.Contains("_nativeDialogs--;", body, StringComparison.Ordinal);
+        Assert.Equal(2, Count(body, "RefreshUiAutoFollowSuppression();"));
         Assert.Equal(1, Count(code, ".ShowAsync()"));
         Assert.Equal(Count(code, "new ContentDialog"), Count(code, "ShowDialogAsync(dialog)"));
     }

@@ -107,6 +107,23 @@ public sealed class LiveSplitE2ETests : IDisposable
                 $"window.chrome.webview.postMessage({{type:'cwd',paneId:{paneId},uri:{uri}}})"));
     }
 
+    [Fact]
+    public async Task Real_user_keystrokes_note_activity_but_control_injection_does_not()
+    {
+        XtermPaneSurface surface = null!;
+        _host.Host.RunLocked(() =>
+        {
+            surface = Assert.IsType<XtermPaneSurface>(_host.Store.ActiveSession!.Surface);
+            Assert.Null(_host.Store.ControlTree().IdleMs);
+        });
+        CtlOk("session", "type", "x");
+        _host.Host.RunLocked(() => Assert.Null(_host.Store.ControlTree().IdleMs));
+        await KeyInPaneAsync(surface.PaneToken!, "y", "KeyY");
+        var work = await _statusClears.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await work.WaitAsync(TimeSpan.FromSeconds(5));
+        _host.Host.RunLocked(() => Assert.NotNull(_host.Store.ControlTree().IdleMs));
+    }
+
     /// <summary>Waits for the exact split surface created by the split command.</summary>
     private async Task<XtermPaneSurface> EnableSplitAndWaitForRealizationAsync()
     {

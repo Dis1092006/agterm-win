@@ -112,6 +112,11 @@ public sealed partial class MainWindow : Window
     private string? _shownPickId;
     private string? _shownAskId;
     private bool _windowIsActive;
+    private bool _sidebarRenaming;
+    private bool _sidebarPopupOpen;
+    private bool _recentSessionsOpen;
+    private bool _editingText;
+    private int _nativeDialogs;
     private readonly DeferredTerminalFocus _terminalFocus = new();
     private WindowPaletteMode? _openPaletteMode;
     private readonly ThemePalettePreview _themePreview;
@@ -140,6 +145,31 @@ public sealed partial class MainWindow : Window
         _paneThemes = new PaneThemeAssigner(_themeCatalog.Resolve);
 
         InitializeComponent();
+        Sidebar.RenameStateChanged += editing =>
+        {
+            _sidebarRenaming = editing;
+            RefreshUiAutoFollowSuppression();
+        };
+        Sidebar.PopupStateChanged += open =>
+        {
+            _sidebarPopupOpen = open;
+            RefreshUiAutoFollowSuppression();
+        };
+        Sidebar.NativeDialogStateChanged += open =>
+        {
+            _nativeDialogs += open ? 1 : -1;
+            RefreshUiAutoFollowSuppression();
+        };
+        RecentSessionsFlyout.Closed += (_, _) =>
+        {
+            _recentSessionsOpen = false;
+            RefreshUiAutoFollowSuppression();
+        };
+        Content.GettingFocus += (_, args) =>
+        {
+            _editingText = args.NewFocusedElement is TextBox or PasswordBox or RichEditBox;
+            RefreshUiAutoFollowSuppression();
+        };
         _activationClickReleaseTimer.Tick += (_, _) => RefreshActivationShield();
         RefreshActivationShield();
         InstallCommandLineToolItem.Text = InstallerCommands.InstallCommandLineTool;
@@ -553,7 +583,7 @@ public sealed partial class MainWindow : Window
             AskOverlay.FocusPanel();
         if (KeybindingsOverlay.IsOpen)
             KeybindingsOverlay.FocusQuery();
-        _terminalFocus.Activated(modalOpen: AnyPaletteOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);
+        RestorePendingTerminalFocus();
     }
 
     private void RefreshActivationShield()
@@ -819,6 +849,9 @@ public sealed partial class MainWindow : Window
 
         _host = host;
         _hostReady.TrySetResult(host);
+        RefreshUiAutoFollowSuppression();
+        host.AutoFollowed += sessionId => DispatcherQueue.TryEnqueue(() =>
+            ObserveTaskFault(RevealAutoFollowedAsync(sessionId), "Auto-follow pane reveal failed"));
         host.StoreCoordinator.SelectionSnapshotChanged += snapshot =>
         {
             DispatcherQueue.TryEnqueue(() =>
@@ -1204,7 +1237,7 @@ public sealed partial class MainWindow : Window
         });
     }
 
-    private static async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)
+    private async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)
     {
         // tunnelling, so a repeat never reaches the focused button or the dialog's own Enter handling
         dialog.PreviewKeyDown += (_, e) =>
@@ -1212,7 +1245,15 @@ public sealed partial class MainWindow : Window
             if (DialogKeys.IgnoresKey((int)e.Key, e.KeyStatus.WasKeyDown))
                 e.Handled = true;
         };
-        return await dialog.ShowAsync();
+        _nativeDialogs++;
+        RefreshUiAutoFollowSuppression();
+        try { return await dialog.ShowAsync(); }
+        finally
+        {
+            _nativeDialogs--;
+            _editingText = false;
+            RefreshUiAutoFollowSuppression();
+        }
     }
 
     private SidebarCloseOptions CurrentSidebarCloseOptions() => new(
@@ -1400,7 +1441,12 @@ public sealed partial class MainWindow : Window
         // the palette is modal for the keyboard; its close returns focus to the accepted pane
         if (AnyPaletteOpen || KeybindingsOverlay.IsOpen)
             return;
-        _terminalFocus.Request(_windowIsActive, () => TerminalView.Focus(FocusState.Programmatic));
+        _terminalFocus.Request(_windowIsActive, () => TerminalView.Focus(FocusState.Programmatic),
+            modalOpen: UiAutoFollowSuppressed
+                || !WindowsTaskbarFlash.IsForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)));
+        if (!_windowIsActive || UiAutoFollowSuppressed) return;
+        var foreground = WindowsTaskbarFlash.IsForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        if (!foreground) return;
         if (_surfaces.TryGetValue(paneId, out var surface))
         {
             ObserveTaskFault(
@@ -1793,6 +1839,7 @@ public sealed partial class MainWindow : Window
     // so a click on an empty part of the title bar moved the keyboard focus out of the terminal.
     private void OnRootPointerReleased(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
     {
+        NoteUserActivity();
         e.Handled = true;
     }
 
@@ -1803,6 +1850,7 @@ public sealed partial class MainWindow : Window
     private void OnRootPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         if (IsTerminalFocused()) return;
+        NoteUserActivity();
         if (e.Key == VirtualKey.F1 && IsKeyDown(VirtualKey.Control) && IsKeyDown(VirtualKey.Shift)
             && !IsKeyDown(VirtualKey.Menu))
         {
@@ -1831,6 +1879,7 @@ public sealed partial class MainWindow : Window
 
     private void HandleSwitcherKey(SessionSwitcherKey key)
     {
+        NoteUserActivity();
         switch (key)
         {
             case SessionSwitcherKey.Tab or SessionSwitcherKey.ReverseTab:
@@ -1872,6 +1921,7 @@ public sealed partial class MainWindow : Window
 
     private void OnSwitcherChanged()
     {
+        RefreshUiAutoFollowSuppression();
         if (_switcher.IsActive)
             SwitcherOverlay.Show(_switcher.Candidates, _switcher.Index);
         else
@@ -1889,6 +1939,45 @@ public sealed partial class MainWindow : Window
     private bool IsTextInputFocused() =>
         Content?.XamlRoot is { } root &&
         Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) is TextBox or PasswordBox or RichEditBox;
+
+    private bool UiAutoFollowSuppressed =>
+        _sidebarRenaming || _sidebarPopupOpen || _recentSessionsOpen || _editingText
+        || _nativeDialogs != 0 || _switcher.IsActive;
+
+    private void RefreshUiAutoFollowSuppression()
+    {
+        if (_host is { } host && !_bootstrapCancellation.IsCancellationRequested)
+            ObserveTaskFault(host.SetUiAutoFollowSuppressedAsync(UiAutoFollowSuppressed,
+                _bootstrapCancellation.Token), "Auto-follow suppression failed");
+        if (!UiAutoFollowSuppressed)
+            DispatcherQueue.TryEnqueue(RestorePendingTerminalFocus);
+    }
+
+    private void RestorePendingTerminalFocus()
+    {
+        if (!_windowIsActive || UiAutoFollowSuppressed || _applicationHost.Quick.HoldsKey
+            || _bootstrapCancellation.IsCancellationRequested) return;
+        if (!WindowsTaskbarFlash.IsForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))) return;
+        _terminalFocus.Activated(modalOpen: AnyPaletteOpen || AskOverlay.IsOpen || KeybindingsOverlay.IsOpen, FocusActiveTerminal);
+    }
+
+    private void NoteUserActivity()
+    {
+        if (_host is { } host && !_bootstrapCancellation.IsCancellationRequested)
+            ObserveTaskFault(host.NoteUserActivityAsync(_bootstrapCancellation.Token), "User activity update failed");
+    }
+
+    private async Task RevealAutoFollowedAsync(Guid sessionId)
+    {
+        if (_host is not { } host || !_windowIsActive || UiAutoFollowSuppressed
+            || _bootstrapCancellation.IsCancellationRequested) return;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var paneId = await host.RevealAutoFollowedAsync(sessionId,
+            () => WindowsTaskbarFlash.IsForegroundWindow(hwnd), _bootstrapCancellation.Token);
+        if (paneId is not null && _acceptedPaneId == paneId && _selection.SessionId == sessionId
+            && _windowIsActive && !UiAutoFollowSuppressed && WindowsTaskbarFlash.IsForegroundWindow(hwnd))
+            FocusTerminal(paneId);
+    }
 
     /// <summary>A WinUI key event as a keymap-space physical chord (null = not hotkey material).</summary>
     private static PhysicalChord? PhysicalFromKey(VirtualKey key)
@@ -1908,6 +1997,7 @@ public sealed partial class MainWindow : Window
     {
         if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen)
             return false;
+        NoteUserActivity();
         var hotkeyState = generation is { } value
             ? _hotkeyStates.Resolve(value)
             : _hotkeyStates.Active;
@@ -1956,8 +2046,18 @@ public sealed partial class MainWindow : Window
         picker.FileTypeFilter.Add("*");
         WinRT.Interop.InitializeWithWindow.Initialize(picker,
             WinRT.Interop.WindowNative.GetWindowHandle(this));
-        if (await picker.PickSingleFolderAsync() is { } folder)
-            _sidebar?.NewSessionInActiveWorkspace(folder.Path);
+        _nativeDialogs++;
+        RefreshUiAutoFollowSuppression();
+        try
+        {
+            if (await picker.PickSingleFolderAsync() is { } folder)
+                _sidebar?.NewSessionInActiveWorkspace(folder.Path);
+        }
+        finally
+        {
+            _nativeDialogs--;
+            RefreshUiAutoFollowSuppression();
+        }
     }
 
     private void OnSettingsClick(object sender, RoutedEventArgs args) => OpenSettings();
@@ -2701,6 +2801,9 @@ public sealed partial class MainWindow : Window
         {
             return;
         }
+        if (!_windowIsActive
+            || !WindowsTaskbarFlash.IsForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)))
+            return;
 
         ObserveTaskFault(
             host.ApplyPaneFocusAsync(paneId),
@@ -3108,6 +3211,8 @@ public sealed partial class MainWindow : Window
     // upstream's recent-sessions popover as a menu: the MRU other sessions, rebuilt each time it opens
     private void OnRecentSessionsFlyoutOpening(object? sender, object e)
     {
+        _recentSessionsOpen = true;
+        RefreshUiAutoFollowSuppression();
         RecentSessionsFlyout.Items.Clear();
         foreach (var recent in _titleBarState.RecentSessions)
         {

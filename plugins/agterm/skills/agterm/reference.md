@@ -625,7 +625,7 @@ All twelve are read-only projections of GUI state.
 
 - `window new [name]` — create and open a window; returns its id. Wire: `window.new`.
 - `window list` — `result.windows`, each with `id`, `name`, `open`, `active`, `autoFollowMs` (the
-  window's Auto-follow timeout in milliseconds, omitted when Auto-follow is disabled), and
+  window's applied Auto-follow timeout in milliseconds, omitted when Auto-follow is disabled), and
   `sidebarVisible` (whether that window's sidebar is shown, read from the open window's store — omitted
   for a closed window with no live store), and `geometry` (the open window's live frame `{x, y, width,
   height, display}` in the SAME units `window move`/`window resize` take — `x`/`y` top-left relative to

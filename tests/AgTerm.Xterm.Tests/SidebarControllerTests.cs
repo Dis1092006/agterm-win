@@ -57,6 +57,14 @@ public sealed class SidebarControllerTests : IDisposable
         _coordinator.MutateAsync(action).GetAwaiter().GetResult();
 
     [Fact]
+    public void Manual_selection_notes_user_activity()
+    {
+        Assert.Null(_host.Store.ControlTree().IdleMs);
+        _controller.Select(Latest.SelectedSessionId!.Value);
+        Assert.NotNull(_host.Store.ControlTree().IdleMs);
+    }
+
+    [Fact]
     public void Start_broadcasts_the_bootstrap_snapshot()
     {
         Assert.NotEmpty(_snapshots);

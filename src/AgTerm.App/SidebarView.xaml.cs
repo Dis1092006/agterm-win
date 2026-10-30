@@ -50,6 +50,10 @@ public sealed partial class SidebarView : UserControl
     /// terminal after the select lands.</summary>
     public event Action? RowActivated;
 
+    public event Action<bool>? RenameStateChanged;
+    public event Action<bool>? PopupStateChanged;
+    public event Action<bool>? NativeDialogStateChanged;
+
     /// <summary>The workspace row's Theme… item. MainWindow opens the theme palette for that
     /// workspace.</summary>
     public event Action<Guid>? WorkspaceThemeRequested;
@@ -395,6 +399,7 @@ public sealed partial class SidebarView : UserControl
     {
         CancelRename();
         _editing = row;
+        RenameStateChanged?.Invoke(true);
         // flagged mode decorates the label with " : workspace" — seed the BARE name so the tail
         // can't get committed into the custom name (upstream pin)
         var label = row.Label;
@@ -470,6 +475,7 @@ public sealed partial class SidebarView : UserControl
         var text = row.EditText;
         _editing = null;
         row.IsEditing = false;
+        RenameStateChanged?.Invoke(false);
         if (text != _editingOriginal)
         {
             if (row.IsSession) _controller?.RenameSession(row.Id, text);
@@ -483,6 +489,7 @@ public sealed partial class SidebarView : UserControl
         if (_editing is not { } row) return;
         _editing = null;
         row.IsEditing = false;
+        RenameStateChanged?.Invoke(false);
     }
 
     private SidebarRowViewModel? FocusedRow()
@@ -530,6 +537,8 @@ public sealed partial class SidebarView : UserControl
         if (row is null) return;
 
         var flyout = row.IsWorkspace ? WorkspaceMenu(row) : SessionMenu(row);
+        flyout.Opening += (_, _) => PopupStateChanged?.Invoke(true);
+        flyout.Closed += (_, _) => PopupStateChanged?.Invoke(false);
         if (e.TryGetPosition(RowsList, out var point))
         {
             flyout.ShowAt(RowsList, point);
@@ -639,8 +648,13 @@ public sealed partial class SidebarView : UserControl
         WinRT.Interop.InitializeWithWindow.Initialize(picker,
             WinRT.Interop.WindowNative.GetWindowHandle(_ownerWindow
                 ?? throw new InvalidOperationException("Sidebar has no owning window.")));
-        if (await picker.PickSingleFolderAsync() is { } folder)
-            _controller?.NewSession(workspaceId, folder.Path);
+        NativeDialogStateChanged?.Invoke(true);
+        try
+        {
+            if (await picker.PickSingleFolderAsync() is { } folder)
+                _controller?.NewSession(workspaceId, folder.Path);
+        }
+        finally { NativeDialogStateChanged?.Invoke(false); }
     }
 
     private static MenuFlyoutItem Item(string text, Action action)

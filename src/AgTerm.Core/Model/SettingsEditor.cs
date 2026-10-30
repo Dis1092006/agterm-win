@@ -87,6 +87,11 @@ public sealed class SettingsEditor
         new("completedStatusShape", "Agent Status", "Completed shape", SettingControl.Choice, "circle", Choices: ShapeChoices),
         new("blockedStatusSoundName", "Agent Status", "Blocked sound", SettingControl.Choice, Choices: SoundChoices,
             Hint: "Plays when a session becomes blocked. None disables this default. An explicit status sound takes priority. Add WAV files to the sounds folder in the state directory."),
+        new("autoFollowAttention", "Agent Status", "Auto-follow blocked sessions", SettingControl.Choice,
+            Choices: [new(null, "Disabled"), new("s5", "5 sec idle"), new("s10", "10 sec idle"),
+                new("s30", "30 sec idle"), new("s60", "60 sec idle"), new("m5", "5 min idle")]),
+        new("autoFollowStayOnActive", "Agent Status", "Auto-follow away from a running session",
+            SettingControl.Toggle, false, Hint: "Only applies while auto-follow is on."),
         new("configDirectory", "Key Mapping", "Keymap directory", SettingControl.Directory,
             Hint: "Default is the state directory. Changing it reloads keymap.conf in every window."),
     ];
@@ -107,8 +112,19 @@ public sealed class SettingsEditor
     {
         "toolbarMode" => Draft.EffectiveToolbarMode() == ToolbarMode.Normal ? "normal" : "compact",
         "dockBounce" => Draft.TaskbarFlashEnabled() ? "once" : null,
+        "autoFollowAttention" => Draft.AutoFollowTimeout() is not null ? Draft.AutoFollowAttention : null,
         _ => Value(key)?.GetValue<string>(),
     };
+
+    public bool ToggleValue(string key) => key == "autoFollowStayOnActive"
+        ? Draft.AutoFollowStayOnActive != true
+        : Value(key)?.GetValue<bool>() ?? Fields.Single(field => field.Key == key).Default is true;
+
+    public bool IsEnabled(string key) =>
+        key != "autoFollowStayOnActive" || Draft.AutoFollowTimeout() is not null;
+
+    public Task SetToggleAsync(string key, bool value) =>
+        SetAsync(key, key == "autoFollowStayOnActive" ? !value : value);
 
     public async Task SetAsync(string key, object? value)
     {

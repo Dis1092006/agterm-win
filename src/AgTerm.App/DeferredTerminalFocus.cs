@@ -9,10 +9,10 @@ public sealed class DeferredTerminalFocus
     public bool Pending { get; private set; }
 
     /// <summary>An active window focuses at once, which also satisfies a focus still waiting for an
-    /// activation; a background window keeps the focus for the next activation.</summary>
-    public void Request(bool windowIsActive, Action focus)
+    /// activation; a background window or an open modal keeps the request pending.</summary>
+    public void Request(bool windowIsActive, Action focus, bool modalOpen = false)
     {
-        if (!windowIsActive)
+        if (!windowIsActive || modalOpen)
         {
             Pending = true;
             return;

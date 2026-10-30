@@ -139,7 +139,11 @@ public sealed class SidebarController : IDisposable
     // MARK: - gestures (all mutations route through ILiveStoreCoordinator)
 
     public void Select(Guid sessionId, IReadOnlyList<Guid>? sidebarSelection = null) =>
-        Mutate(store => store.SelectSession(sessionId, sidebarSelection));
+        Mutate(store =>
+        {
+            store.NoteUserActivity();
+            store.SelectSession(sessionId, sidebarSelection);
+        });
 
     public void ToggleWorkspaceCollapse(Guid workspaceId) => Mutate(store =>
     {

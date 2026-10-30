@@ -12,6 +12,13 @@ public sealed partial class AppStore
     /// notification. The host resolves the owning window and moves keyboard focus into the target.</summary>
     public event Action<Guid>? AutoFollowed;
 
+    private Action<Action> _autoFollowDispatcher = static work => work();
+    private long _autoFollowGeneration;
+
+    /// <summary>The host serializes deferred work with every other store mutation.</summary>
+    public void SetAutoFollowDispatcher(Action<Action> dispatch) =>
+        _autoFollowDispatcher = dispatch ?? throw new ArgumentNullException(nameof(dispatch));
+
     /// <summary>Records user interaction with this window (a keystroke or a manual selection).
     /// Stamps LastActivityAt UNCONDITIONALLY so the idle metric is independent of the feature being
     /// enabled, then — only when a timeout is configured — arms the debouncer to fire AutoFollowFire
@@ -23,7 +30,7 @@ public sealed partial class AppStore
         LastActivityAt = DateTimeOffset.UtcNow;
         if (AutoFollowTimeout is not { } timeout)
         {
-            AutoFollowDebouncer.Cancel();
+            CancelAutoFollow();
             return;
         }
         ArmAutoFollow(timeout);
@@ -34,6 +41,8 @@ public sealed partial class AppStore
     /// bool) lets the several suppressors overlap.</summary>
     public void SuppressAutoFollow() => AutoFollowSuppressionCount += 1;
 
+    public bool IsAutoFollowSuppressed => AutoFollowSuppressionCount != 0;
+
     /// <summary>Lifts one auto-follow suppression. Clamped at zero so an unbalanced extra resume
     /// can't drive the count negative and wedge the gate. Does NOT re-arm the debouncer — the next
     /// keystroke or attention change re-arms normally.</summary>
@@ -43,7 +52,18 @@ public sealed partial class AppStore
     /// and the status-change re-arm all share: schedule AutoFollowFire after delay seconds.</summary>
     private void ArmAutoFollow(double after)
     {
-        AutoFollowDebouncer.Schedule(after, AutoFollowFire);
+        var generation = ++_autoFollowGeneration;
+        AutoFollowDebouncer.Schedule(after, () => _autoFollowDispatcher(() =>
+        {
+            if (generation == _autoFollowGeneration && AutoFollowTimeout is not null)
+                AutoFollowFire();
+        }));
+    }
+
+    private void CancelAutoFollow()
+    {
+        _autoFollowGeneration++;
+        AutoFollowDebouncer.Cancel();
     }
 
     /// <summary>
@@ -62,7 +82,7 @@ public sealed partial class AppStore
         AutoFollowTimeout = timeout;
         if (timeout is not { } enabled)
         {
-            AutoFollowDebouncer.Cancel(); // disable: drop the pending fire
+            CancelAutoFollow();
             return;
         }
         // (re-)arm on the off->on enable, a changed grace, OR a changed stayOnActive: each can
