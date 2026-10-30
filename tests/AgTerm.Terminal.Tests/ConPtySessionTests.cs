@@ -116,6 +116,34 @@ public class ConPtySessionTests : IDisposable
     }
 
     [Fact]
+    public async Task CommandLine_reaches_cmd_unchanged_with_quotes_and_a_quoted_path_with_spaces()
+    {
+        var dir = Directory.CreateTempSubdirectory("agterm cmdline ");
+        try
+        {
+            var script = Path.Combine(dir.FullName, "say hi.cmd");
+            File.WriteAllText(script, "@echo ARGS=[%~1] [%~2]\r\n@exit /b 7\r\n");
+            var command = $"echo \"quoted text\" & \"{script}\" \"two words\" x";
+            var pty = StartWith(new ConPtyStartInfo
+            {
+                Argv = WindowsCommandLine.CmdShellArgv(Cmd, command),
+                CommandLine = WindowsCommandLine.ForCmdShell(Cmd, command),
+            });
+
+            Assert.Equal(7, await pty.Exited.WaitAsync(ChildBudget));
+            await pty.OutputCompleted.WaitAsync(ChildBudget);
+            var text = Snapshot();
+            Assert.Contains("\"quoted text\"", text);
+            Assert.DoesNotContain("\\\"", text);
+            Assert.Contains("ARGS=[two words] [x]", text);
+        }
+        finally
+        {
+            try { dir.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public async Task Child_starts_in_the_requested_cwd()
     {
         var cwd = Path.GetTempPath().TrimEnd('\\');

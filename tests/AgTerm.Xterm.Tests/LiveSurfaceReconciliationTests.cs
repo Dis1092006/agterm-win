@@ -142,7 +142,7 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
             Cmd = Command.SessionOverlayOpen,
             Args = new ControlArgs
             {
-                Command = "overlay-tool --flag",
+                Command = "\"overlay tool.cmd\" --flag \"a b\"",
                 Cwd = overlayCwd,
             },
         }));
@@ -160,13 +160,10 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
             new[] { "test-shell.exe" }, 19, readClipboard);
         AssertRequest(captured, LiveSurfaceKind.Scratch, sessionId, mainCwd,
             new[] { "scratch-tool", "--flag" }, 19, readClipboard);
+        var comspec = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe";
         AssertRequest(captured, LiveSurfaceKind.Overlay, sessionId, overlayCwd,
-            new[]
-            {
-                Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",
-                "/c",
-                "overlay-tool --flag",
-            }, 19, readClipboard);
+            new[] { comspec, "/s", "/c", "\"overlay tool.cmd\" --flag \"a b\"" }, 19, readClipboard,
+            commandLine: comspec + " /s /c \"\"overlay tool.cmd\" --flag \"a b\"\"");
         AssertRequest(captured, LiveSurfaceKind.Quick, null, mainCwd,
             new[] { "test-shell.exe" }, 19, readClipboard);
 
@@ -754,12 +751,14 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
         string cwd,
         IReadOnlyList<string> argv,
         double baseFontSize,
-        Func<string?> readClipboard)
+        Func<string?> readClipboard,
+        string? commandLine = null)
     {
         var request = Assert.Single(requests, request => request.Kind == kind);
         Assert.Equal(sessionId, request.SessionId);
         Assert.Equal(cwd, request.Options.Cwd);
         Assert.Equal(argv, request.Options.Argv);
+        Assert.Equal(commandLine, request.Options.CommandLine);
         Assert.Equal(baseFontSize, request.Options.BaseFontSize);
         Assert.Same(readClipboard, request.Options.ReadClipboard);
     }

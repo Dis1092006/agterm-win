@@ -9,6 +9,9 @@ public sealed record TerminalPaneOptions
 {
     public required IReadOnlyList<string> Argv { get; init; }
 
+    /// <summary>The exact CreateProcessW command line; null quotes Argv (see ConPtyStartInfo).</summary>
+    public string? CommandLine { get; init; }
+
     public string? Cwd { get; init; }
 
     /// <summary>Extra child environment (e.g. the terminal identity and the surface's AGTERM_* set).</summary>
@@ -122,6 +125,7 @@ public sealed class TerminalPane : IDisposable
             pty = ConPtySession.Start(new ConPtyStartInfo
             {
                 Argv = options.Argv,
+                CommandLine = options.CommandLine,
                 Cwd = options.Cwd,
                 ExtraEnvironment = options.ExtraEnvironment,
                 RemoveEnvironment = options.RemoveEnvironment,

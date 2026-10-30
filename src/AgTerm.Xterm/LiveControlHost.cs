@@ -1436,6 +1436,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     {
         IReadOnlyList<string> argv;
         string? cwd;
+        string? commandLine = null;
         string? initialInput = null;
         Guid? sessionId;
         var baseFontSize = session.FontSize ?? _currentBaseFontSize;
@@ -1531,12 +1532,11 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     return null;
                 }
 
-                argv =
-                [
-                    Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe",
-                    "/c",
-                    overlayCommand,
-                ];
+                // cmd.exe does not read argv-style \" escapes, so the command goes to it as raw
+                // text after /s /c, the way upstream hands its string to sh -c.
+                var comspec = Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe";
+                argv = WindowsCommandLine.CmdShellArgv(comspec, overlayCommand);
+                commandLine = WindowsCommandLine.ForCmdShell(comspec, overlayCommand);
                 cwd = session.OverlayCwd ?? session.EffectiveCwd;
                 sessionId = session.Id;
                 break;
@@ -1556,6 +1556,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             new XtermSurfaceOptions
             {
                 Argv = argv.ToArray(),
+                CommandLine = commandLine,
                 Cwd = ExistingDirectoryOrNull(cwd),
                 InitialInput = initialInput,
                 BaseFontSize = baseFontSize,

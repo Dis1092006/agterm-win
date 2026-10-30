@@ -12,6 +12,9 @@ public sealed class XtermSurfaceOptions
 {
     public required IReadOnlyList<string> Argv { get; init; }
 
+    /// <summary>The exact CreateProcessW command line; null quotes Argv (see ConPtyStartInfo).</summary>
+    public string? CommandLine { get; init; }
+
     public string? Cwd { get; init; }
 
     /// <summary>Optional startup keystrokes injected after the child is spawned and cancellation
@@ -120,6 +123,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
             pane = await TerminalPane.OpenAsync(page, token, new TerminalPaneOptions
             {
                 Argv = options.Argv,
+                CommandLine = options.CommandLine,
                 Cwd = options.Cwd,
                 ExtraEnvironment = extraEnvironment,
                 RemoveEnvironment = removeEnvironment,

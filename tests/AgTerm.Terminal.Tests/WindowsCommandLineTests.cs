@@ -35,6 +35,26 @@ public class WindowsCommandLineTests
         Assert.Throws<ArgumentException>(() => WindowsCommandLine.FromArgv(Array.Empty<string>()));
     }
 
+    // cmd.exe does not read \" as a quote, so ForCmdShell leaves the command as it is and only
+    // adds the outer quotes that /s strips.
+    [Theory]
+    [InlineData("cmd.exe", "echo hi", "cmd.exe /s /c \"echo hi\"")]
+    [InlineData("cmd.exe", "\"C:\\a b\\t.cmd\" \"x y\" & echo \"q\"",
+        "cmd.exe /s /c \"\"C:\\a b\\t.cmd\" \"x y\" & echo \"q\"\"")]
+    [InlineData("C:\\Win Dir\\cmd.exe", "dir", "\"C:\\Win Dir\\cmd.exe\" /s /c \"dir\"")]
+    [InlineData("cmd.exe", "", "cmd.exe /s /c \"\"")]
+    public void ForCmdShell_passes_the_command_to_cmd_unchanged(string comspec, string command, string expected)
+    {
+        Assert.Equal(expected, WindowsCommandLine.ForCmdShell(comspec, command));
+    }
+
+    [Fact]
+    public void CmdShellArgv_describes_the_child_ForCmdShell_starts()
+    {
+        Assert.Equal(["cmd.exe", "/s", "/c", "echo \"a b\""],
+            WindowsCommandLine.CmdShellArgv("cmd.exe", "echo \"a b\""));
+    }
+
     [Theory]
     [InlineData(new[] { "captured-tool", "--resume" }, true)]
     [InlineData(new[] { "ls", "C:\\dir with space\\x" }, true)]

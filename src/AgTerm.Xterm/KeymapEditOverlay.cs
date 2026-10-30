@@ -4,7 +4,8 @@ namespace AgTerm.Xterm;
 /// The palette's Edit Keymap row (upstream AppActions.editKeymap and keymapEditOverlaySession):
 /// opens the editor command in a 95% floating overlay over the active session and reloads the
 /// keymap once that overlay closes. The overlay runs in the keymap's directory, so the command
-/// names the file without a path and needs no quotes.
+/// names the file without a path. An editor value from %VISUAL% or %EDITOR% may still carry a
+/// quoted path; the overlay hands the line to cmd.exe unchanged.
 /// </summary>
 public sealed class KeymapEditOverlay : IDisposable
 {
