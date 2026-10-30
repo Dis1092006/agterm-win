@@ -29,6 +29,7 @@ public sealed partial class SidebarView : UserControl
     private SidebarController? _controller;
     private SidebarRowThemes? _rowThemes;
     private readonly SidebarRowIcons _rowIcons = new();
+    private readonly SolidColorBrush _rowIconFill = new(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
     private Window? _ownerWindow;
     private AppSettings _settings = new();
     private Keymap _keymap = Keymap.Empty;
@@ -82,7 +83,6 @@ public sealed partial class SidebarView : UserControl
         }
 
         RefreshRealizedRowAutomationNames();
-        ApplyBackgroundShiftOverlay();
         // upstream WindowContentView.shows(_:) for the footer buttons the port draws
         NewWorkspaceButton.Visibility = VisibleUnless(settings, InterfaceElement.NewWorkspace);
         NewSessionButton.Visibility = VisibleUnless(settings, InterfaceElement.NewSession);
@@ -123,7 +123,7 @@ public sealed partial class SidebarView : UserControl
             _items.Clear();
             foreach (var row in snapshot.Rows)
                 _items.Add(new SidebarRowViewModel(row, _settings, snapshot.Mode, SurfaceStatusOf(snapshot, row), LookOf(row),
-                    _rowIcons.IconNameFor(row)));
+                    _rowIcons.IconNameFor(row)) { DefaultIconFill = _rowIconFill });
         }
         else
         {
@@ -134,9 +134,13 @@ public sealed partial class SidebarView : UserControl
 
         RefreshRealizedRowAutomationNames();
         SyncSelection(snapshot);
-        FlaggedToggle.IsChecked = snapshot.Mode == SidebarMode.Flagged;
+        var flagged = snapshot.Mode == SidebarMode.Flagged;
+        FlaggedToggle.IsChecked = flagged;
+        FlaggedGlyph.Fill = flagged ? FlaggedGlyph.Stroke : null;
         ApplyFlaggedHint();
-        FlaggedToggle.IsEnabled = snapshot.Mode == SidebarMode.Flagged || snapshot.FlaggedCount > 0;
+        // upstream mutes the disabled toggle by hand: its glyph keeps the chrome foreground
+        FlaggedToggle.IsEnabled = flagged || snapshot.FlaggedCount > 0;
+        FlaggedToggle.Opacity = FlaggedToggle.IsEnabled ? 1 : 0.35;
         ClearFlaggedButton.Visibility = snapshot.FlaggedCount > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -157,23 +161,24 @@ public sealed partial class SidebarView : UserControl
         }
     }
 
-    private void ApplyBackgroundShiftOverlay()
+    /// <summary>The window chrome colors: the theme foreground for text and glyphs, the sidebar
+    /// background shift as a wash, and the light or dark controls for the washed color (upstream
+    /// ThemeBrightness), so the chevrons, the scroll bar and the focus visuals stay readable.</summary>
+    public void ApplyChrome(ChromePalette palette)
     {
-        var shift = AppSettings.SidebarShiftAmount(
-            _settings.SidebarBackgroundShift ?? AppSettings.DefaultSidebarBackgroundShift);
-        var alpha = Math.Abs(shift);
-        if (alpha <= 0)
-        {
-            BackgroundShiftOverlay.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
-            return;
-        }
-
-        var channel = shift > 0 ? (byte)0x00 : (byte)0xFF;
-        var opacity = (byte)Math.Clamp(Math.Round(alpha * 255.0), 0, 255);
-        BackgroundShiftOverlay.Background = new SolidColorBrush(
-            Color.FromArgb(opacity, channel, channel, channel));
+        RequestedTheme = palette.SidebarIsDark ? ElementTheme.Dark : ElementTheme.Light;
+        SetBrush("SidebarForegroundBrush", palette.Foreground);
+        SetBrush("SidebarSecondaryBrush", palette.Secondary);
+        SetBrush("SidebarHoverBrush", palette.Hairline);
+        SetBrush("SidebarPillBrush", palette.PillFill);
+        SetBrush("SidebarWashBrush", palette.SidebarWash);
+        _rowIconFill.Color = ToColor(palette.Foreground with { A = 0x60 });
     }
 
+    private void SetBrush(string key, ChromeColor color) =>
+        ((SolidColorBrush)Resources[key]).Color = ToColor(color);
+
+    private static Color ToColor(ChromeColor color) => Color.FromArgb(color.A, color.R, color.G, color.B);
     private static SidebarSurfaceStatus SurfaceStatusOf(SidebarSnapshot snapshot, SidebarRow row)
     {
         if (row.Kind != SidebarRowKind.Session)

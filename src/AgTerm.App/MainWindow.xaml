@@ -17,6 +17,14 @@
 
         <Grid.Resources>
             <SolidColorBrush x:Key="OverlayOpaqueBackgroundBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
+            <!-- the chrome colors, as upstream WindowContentView: the title bar and the sidebar show the
+                 global terminal background, text and lines the terminal foreground. ApplyChrome sets
+                 the colors -->
+            <SolidColorBrush x:Key="ChromeBackgroundBrush" Color="#FF0C0C0C" />
+            <SolidColorBrush x:Key="ChromeForegroundBrush" Color="#FFCCCCCC" />
+            <SolidColorBrush x:Key="ChromeSecondaryBrush" Color="#99CCCCCC" />
+            <SolidColorBrush x:Key="ChromeHairlineBrush" Color="#1ACCCCCC" />
+            <SolidColorBrush x:Key="ChromeGroupDividerBrush" Color="#40CCCCCC" />
             <Style x:Key="TitleBarActionButtonStyle" TargetType="Button">
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="BorderThickness" Value="0" />
@@ -26,7 +34,7 @@
                 <Setter Property="VerticalAlignment" Value="Center" />
             </Style>
             <Style x:Key="TitleBarGlyphStyle" TargetType="Path">
-                <Setter Property="Stroke" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="Stroke" Value="{StaticResource ChromeForegroundBrush}" />
                 <Setter Property="StrokeThickness" Value="1" />
                 <Setter Property="Width" Value="16" />
                 <Setter Property="Height" Value="15" />
@@ -48,7 +56,7 @@
                 <Setter Property="Height" Value="16" />
                 <Setter Property="Margin" Value="4,0,4,0" />
                 <Setter Property="VerticalAlignment" Value="Center" />
-                <Setter Property="Fill" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                <Setter Property="Fill" Value="{StaticResource ChromeGroupDividerBrush}" />
             </Style>
         </Grid.Resources>
 
@@ -56,11 +64,22 @@
                   Grid.Row="0"
                   Title="agterm-win"
                   IsPaneToggleButtonVisible="True"
-                  Background="Transparent">
+                  Background="{StaticResource ChromeBackgroundBrush}">
             <!-- TitleBar grows to TitleBarExpandedHeight (48) once it has header content, which left
                  the caption buttons at the top of a tall bar. The buttons below fit the compact 32 -->
             <TitleBar.Resources>
                 <x:Double x:Key="TitleBarExpandedHeight">32</x:Double>
+                <!-- the title, the pane toggle and the action glyphs in the chrome foreground -->
+                <StaticResource x:Key="TitleBarForegroundBrush" ResourceKey="ChromeForegroundBrush" />
+                <StaticResource x:Key="TitleBarSubtitleForegroundBrush" ResourceKey="ChromeSecondaryBrush" />
+                <StaticResource x:Key="TitleBarDeactivatedForegroundBrush" ResourceKey="ChromeSecondaryBrush" />
+                <StaticResource x:Key="TitleBarSubtitleDeactivatedForegroundBrush" ResourceKey="ChromeSecondaryBrush" />
+                <StaticResource x:Key="TitleBarPaneToggleButtonForeground" ResourceKey="ChromeForegroundBrush" />
+                <StaticResource x:Key="TitleBarPaneToggleButtonForegroundPointerOver" ResourceKey="ChromeForegroundBrush" />
+                <StaticResource x:Key="TitleBarPaneToggleButtonForegroundPressed" ResourceKey="ChromeForegroundBrush" />
+                <StaticResource x:Key="ButtonForeground" ResourceKey="ChromeForegroundBrush" />
+                <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="ChromeForegroundBrush" />
+                <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="ChromeForegroundBrush" />
             </TitleBar.Resources>
             <TitleBar.Content>
                 <StackPanel x:Name="ToolbarLabels"
@@ -71,11 +90,12 @@
                     <TextBlock x:Name="ToolbarTitle"
                                FontSize="13"
                                FontWeight="SemiBold"
+                               Foreground="{StaticResource ChromeForegroundBrush}"
                                TextTrimming="CharacterEllipsis"
                                AutomationProperties.AutomationId="toolbar-title" />
                     <TextBlock x:Name="ToolbarSubtitle"
                                FontSize="11"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Foreground="{StaticResource ChromeSecondaryBrush}"
                                TextTrimming="CharacterEllipsis"
                                AutomationProperties.AutomationId="toolbar-subtitle" />
                 </StackPanel>
@@ -113,7 +133,7 @@
                         <Grid>
                             <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z" />
                             <Path x:Name="ScratchFill" Style="{StaticResource TitleBarGlyphStyle}"
-                                  Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                  Fill="{StaticResource ChromeForegroundBrush}"
                                   Data="M3,5 H13 V10 H3 Z" />
                         </Grid>
                     </Button>
@@ -124,10 +144,10 @@
                             AutomationProperties.AutomationId="split-toggle">
                         <Grid>
                             <Path x:Name="SplitLeftFill" Style="{StaticResource TitleBarGlyphStyle}"
-                                  Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                  Fill="{StaticResource ChromeForegroundBrush}"
                                   Data="M0.5,2.5 H8 V12.5 H0.5 Z" />
                             <Path x:Name="SplitRightFill" Style="{StaticResource TitleBarGlyphStyle}"
-                                  Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                  Fill="{StaticResource ChromeForegroundBrush}"
                                   Data="M8,2.5 H15.5 V12.5 H8 Z" />
                             <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5" />
                         </Grid>
@@ -194,6 +214,13 @@
                 </StackPanel>
             </TitleBar.RightHeader>
         </TitleBar>
+        <!-- upstream's hairline under the title bar (chromeText at 0.1) -->
+        <Border x:Name="TitleBarHairline"
+                Grid.Row="0"
+                Height="1"
+                VerticalAlignment="Bottom"
+                IsHitTestVisible="False"
+                Background="{StaticResource ChromeHairlineBrush}" />
 
         <SplitView x:Name="ShellSplitView"
                    Grid.Row="1"
@@ -202,7 +229,7 @@
                    IsPaneOpen="True"
                    OpenPaneLength="220"
                    Background="Transparent"
-                   PaneBackground="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+                   PaneBackground="{StaticResource ChromeBackgroundBrush}">
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup x:Name="WindowWidthStates">
                     <VisualState x:Name="NarrowWindow">
@@ -229,13 +256,15 @@
                     <VisualState x:Name="TerminalOnlyPresentation">
                         <VisualState.Setters>
                             <Setter Target="AppTitleBar.Visibility" Value="Collapsed" />
+                            <Setter Target="TitleBarHairline.Visibility" Value="Collapsed" />
                             <Setter Target="ShellSplitView.IsPaneOpen" Value="False" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>
             </VisualStateManager.VisualStateGroups>
             <SplitView.Pane>
-                <Grid Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
+                <!-- transparent: PaneBackground paints the theme background once -->
+                <Grid Background="Transparent">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition x:Name="SidebarColumn" Width="220" />
                     </Grid.ColumnDefinitions>
@@ -252,7 +281,7 @@
                             PointerReleased="OnDividerReleased">
                         <Border Width="1"
                                 HorizontalAlignment="Center"
-                                Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                                Background="{StaticResource ChromeHairlineBrush}" />
                     </local:SidebarResizeHandle>
                 </Grid>
             </SplitView.Pane>

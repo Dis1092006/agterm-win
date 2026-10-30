@@ -197,10 +197,14 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         ? "M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5"
         : "M0.5,2.5 H15.5 V12.5 H0.5 Z";
 
+    /// <summary>The fill of a flagged default row's icon. The sidebar shares one brush in the theme
+    /// foreground across its rows and recolors it with the theme.</summary>
+    public Brush DefaultIconFill { get; init; } = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
+
     public Brush IconFill => SidebarSessionIcon.IsFilled(_row.Flagged, _mode)
         ? _look.Row is { } colors
             ? BrushFrom(colors.Foreground, alpha: 0x60)
-            : new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF))
+            : DefaultIconFill
         : new SolidColorBrush(Colors.Transparent);
 
     // agent-status glyph (idle → hidden; shape/color resolved per-call → settings → defaults)
