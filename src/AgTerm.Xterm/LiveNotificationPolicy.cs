@@ -7,7 +7,8 @@ public sealed record LiveBannerNotification(
     Guid SessionId,
     string Title,
     string Body,
-    string? SoundName);
+    string? SoundName,
+    LiveNotificationTarget? Target = null);
 
 public sealed class SoundThrottle
 {

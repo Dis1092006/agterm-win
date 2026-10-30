@@ -66,6 +66,10 @@ public sealed class XtermTerminal
     /// <summary>OSC 7 / OSC 9;9 cwd report, already parsed to a local path.</summary>
     public event Action<string>? CwdChanged;
 
+    public event Action<TerminalOscReport>? TerminalNotificationReceived;
+
+    public event Action? TerminalFocused;
+
     /// <summary>Raw VT output from the pty → xterm.write (base64 over the message channel;
     /// xterm decodes UTF-8 itself, so chunk boundaries inside a rune are safe).</summary>
     public void FeedOutput(ReadOnlyMemory<byte> chunk) =>
@@ -153,6 +157,12 @@ public sealed class XtermTerminal
                 break;
             case "cwd" when msg.Uri is not null:
                 if (CwdReport.Parse(msg.Uri) is { } path) CwdChanged?.Invoke(path);
+                break;
+            case "terminalNotification" when msg is { Identifier: { } identifier, Data: { } data, Focused: { } focused }:
+                TerminalNotificationReceived?.Invoke(new(identifier, data, focused, msg.Oversized == true));
+                break;
+            case "terminalFocused":
+                TerminalFocused?.Invoke();
                 break;
         }
     }

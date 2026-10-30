@@ -679,6 +679,9 @@ internal sealed record BridgeMessage
     [JsonPropertyName("type")] public string? Type { get; init; }
     [JsonPropertyName("paneId")] public string? PaneId { get; init; }
     [JsonPropertyName("data")] public string? Data { get; init; }
+    [JsonPropertyName("identifier")] public int? Identifier { get; init; }
+    [JsonPropertyName("focused")] public bool? Focused { get; init; }
+    [JsonPropertyName("oversized")] public bool? Oversized { get; init; }
     [JsonPropertyName("cols")] public int? Cols { get; init; }
     [JsonPropertyName("rows")] public int? Rows { get; init; }
     [JsonPropertyName("title")] public string? Title { get; init; }

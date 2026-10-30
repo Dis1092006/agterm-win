@@ -43,6 +43,14 @@ public class AppStoreEventTests : IDisposable
     }
 
     [Fact]
+    public void Resolved_notification_title_can_be_empty_without_reapplying_the_session_name()
+    {
+        var (_, store) = MakeWindowStore(new ControlEventRing());
+        var title = store.RecordNotificationEvent(store.ActiveSession!.Id, "", "body", useSessionNameFallback: false);
+        Assert.Equal("", title);
+    }
+
+    [Fact]
     public void EveryWindowStoreFeedsOneAppRunRingWithStampedIdentity()
     {
         var ring = new ControlEventRing(runId: Run, now: () => DateTimeOffset.FromUnixTimeSeconds(50));

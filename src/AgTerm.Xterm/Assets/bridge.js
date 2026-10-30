@@ -367,6 +367,24 @@ function emitPaneFocus(paneId) {
     visibleLayout.focusedPaneId = paneId;
 }
 
+function terminalHasKeyboardFocus(paneId) {
+  const pane = panes.get(paneId);
+  return !externalInputOwner && document.hasFocus() &&
+    getVisiblePaneIds().includes(paneId) &&
+    pane?.term.textarea === document.activeElement;
+}
+
+function reportTerminalFocus() {
+  for (const paneId of getVisiblePaneIds()) {
+    if (terminalHasKeyboardFocus(paneId)) {
+      post({ type: "terminalFocused", paneId });
+      return;
+    }
+  }
+}
+
+window.addEventListener("focus", reportTerminalFocus);
+
 function focusPane(paneId, emitEvent) {
   if (externalInputOwner) return false;
   const pane = panes.get(paneId);
@@ -3007,6 +3025,7 @@ function openPane(paneId, opts) {
   // Any user/programmatic focus transition on a pane is surfaced to host orchestration.
   el.addEventListener("focusin", () => {
     if (programmaticFocusPaneId !== paneId) emitPaneFocus(paneId);
+    reportTerminalFocus();
   });
 
   // only a pointer counts as a click: a WebView2 focus restore and a host refocus also fire focusin
@@ -3053,6 +3072,13 @@ function openPane(paneId, opts) {
     }
     return false;
   });
+  const resetKeyboard = () => {
+    pane.modifyOtherKeys = 0;
+    queueMicrotask(syncKeyboardPrecedence);
+    return false;
+  };
+  term.parser.registerEscHandler({ final: "c" }, resetKeyboard);
+  term.parser.registerCsiHandler({ intermediates: "!", final: "p" }, resetKeyboard);
 
   // OSC 0/1/2 → session title (manual VT parsing is banned; xterm's handler is the source)
   term.onTitleChange((title) => post({ type: "title", paneId, title }));
@@ -3069,8 +3095,19 @@ function openPane(paneId, opts) {
   term.parser.registerOscHandler(9, (data) => {
     if (data.startsWith("9;"))
       post({ type: "cwd", paneId, uri: data.slice(2) });
+    else
+      reportNotification(9, data);
     return false;
   });
+  term.parser.registerOscHandler(777, (data) => {
+    reportNotification(777, data);
+    return false;
+  });
+  function reportNotification(identifier, data) {
+    const oversized = data.length > 2047 || new TextEncoder().encode(data).length > 2047;
+    post({ type: "terminalNotification", paneId, identifier,
+      data: oversized ? "" : data, oversized, focused: terminalHasKeyboardFocus(paneId) });
+  }
 
   // OSC 7777 — integration.ps1's private readline marker:
   // "agterm-readline=1[;paste=shift-insert|ctrl-v]" before PSReadLine reads a line,

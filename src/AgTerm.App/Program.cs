@@ -23,7 +23,7 @@ public static class Program
             RedirectActivationTo(instance);
             return;
         }
-        instance.Activated += (_, _) => (Application.Current as App)?.ActivateFrontmostWindow();
+        instance.Activated += (_, activation) => (Application.Current as App)?.HandleActivation(activation);
         Application.Start(_ =>
         {
             SynchronizationContext.SetSynchronizationContext(
