@@ -378,7 +378,7 @@ public sealed class LiveOverlayE2ETests : IDisposable
         Assert.Contains("55", result);
     }
 
-    // Q3.2: the overlay command runs through cmd's shell semantics (COMSPEC /c), so operators like
+    // Q3.2: the overlay command runs through cmd's shell semantics (COMSPEC /s /c), so operators like
     // && work as shell text rather than being split as literal argv; the overlay wire has no --pane
     // selector, so the output is read through the live surface object directly.
     [Fact]
@@ -394,6 +394,31 @@ public sealed class LiveOverlayE2ETests : IDisposable
         Assert.Contains("SECOND", text);
 
         CloseOverlayOk(sessionId);
+    }
+
+    // cmd.exe does not read \" as a quote, so the host must hand it the command text unchanged:
+    // a quoted path with spaces, quoted arguments and a quoted echo all have to survive.
+    [Fact]
+    public async Task Overlay_command_with_quotes_and_a_quoted_path_with_spaces_runs_unchanged()
+    {
+        WaitForText(">");
+        var sessionId = ReadLocked(() => _host.Host.Store.SelectedSessionId!.Value);
+        var dir = Directory.CreateDirectory(Path.Combine(_stateDir, "tool dir")).FullName;
+        var script = Path.Combine(dir, "say hi.cmd");
+        File.WriteAllText(script, "@echo ARGS=[%~1] [%~2]\r\n@exit /b 7\r\n");
+
+        var surface = await OpenOverlayAsync(
+            sessionId, $"echo \"quoted text\" & \"{script}\" \"two words\" x", wait: true);
+        Assert.Equal(7, await surface.Pane.Exited.WaitAsync(TimeSpan.FromSeconds(15)));
+
+        var text = WaitForOverlayText(surface, "ARGS=");
+        Assert.Contains("ARGS=[two words] [x]", text);
+        Assert.Contains("\"quoted text\"", text);
+        Assert.DoesNotContain("\\\"", text);
+
+        CloseOverlayOk(sessionId);
+        var result = CtlOk("session", "overlay", "result", "--target", sessionId.ToString());
+        Assert.Contains("7", result);
     }
 
     [Fact]

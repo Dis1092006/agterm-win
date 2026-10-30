@@ -9,9 +9,14 @@ namespace AgTerm.Terminal;
 public sealed record ConPtyStartInfo
 {
     /// <summary>The child's argv. argv[0] is the program (execed directly — no shell wrapping,
-    /// per the §6 --command contract); the list is turned into a CreateProcessW command line with
-    /// CommandLineToArgvW-inverse quoting.</summary>
+    /// per the §6 --command contract); unless <see cref="CommandLine"/> is set, the list is turned
+    /// into a CreateProcessW command line with CommandLineToArgvW-inverse quoting.</summary>
     public required IReadOnlyList<string> Argv { get; init; }
+
+    /// <summary>The exact CreateProcessW command line, used instead of quoting <see cref="Argv"/>
+    /// when set. For a child that parses its own line, such as cmd.exe (see
+    /// WindowsCommandLine.ForCmdShell). Argv still describes the child.</summary>
+    public string? CommandLine { get; init; }
 
     /// <summary>Working directory for the child; null = inherit the host's.</summary>
     public string? Cwd { get; init; }
@@ -73,7 +78,7 @@ public sealed class ConPtySession : IDisposable
 
     public static ConPtySession Start(ConPtyStartInfo info)
     {
-        var commandLine = WindowsCommandLine.FromArgv(info.Argv);
+        var commandLine = info.CommandLine ?? WindowsCommandLine.FromArgv(info.Argv);
 
         if (!ConPtyNative.CreatePipe(out var ptyInputRead, out var ourInputWrite, IntPtr.Zero, 0))
             throw new Win32Exception();

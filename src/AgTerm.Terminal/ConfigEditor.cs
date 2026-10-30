@@ -3,8 +3,8 @@ namespace AgTerm.Terminal;
 /// <summary>
 /// The editor command for a config file (upstream ConfigPaths.editorCommand): %VISUAL%, then
 /// %EDITOR%, then Microsoft Edit (edit.exe) when it is on PATH, then notepad.exe. The command
-/// names the file only, so the caller runs it in the file's directory and the line needs no
-/// quotes.
+/// names the file only, so the caller runs it in the file's directory. The editor value is used
+/// as written and may carry its own quotes.
 /// </summary>
 public static class ConfigEditor
 {

@@ -4,7 +4,7 @@ namespace AgTerm.Terminal.Tests;
 /// The editor the palette's Edit Keymap row opens in an overlay (upstream
 /// ConfigPaths.editorCommand: $VISUAL, then $EDITOR, then a fallback). On Windows the fallback is
 /// Microsoft Edit (edit.exe) when it is on PATH, then Notepad. The command names the file only;
-/// the overlay runs in the file's directory so the line needs no quotes.
+/// the overlay runs in the file's directory, so the file name needs no path.
 /// </summary>
 public class ConfigEditorTests
 {

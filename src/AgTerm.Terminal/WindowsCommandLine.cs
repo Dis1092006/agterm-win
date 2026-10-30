@@ -24,6 +24,16 @@ public static class WindowsCommandLine
 
     private const string InertPunctuation = " _-./\\:+~";
 
+    /// <summary>The CreateProcessW line that runs <paramref name="command"/> in cmd.exe unchanged.
+    /// cmd takes everything after /c as raw text and does not read \" as a quote, so FromArgv cannot
+    /// carry a command with quotes. /s makes cmd strip exactly the outer pair added here.</summary>
+    public static string ForCmdShell(string comspec, string command) =>
+        FromArgv([comspec]) + " /s /c \"" + command + "\"";
+
+    /// <summary>The child that <see cref="ForCmdShell"/> starts, as argv after cmd's own parsing.</summary>
+    public static IReadOnlyList<string> CmdShellArgv(string comspec, string command) =>
+        [comspec, "/s", "/c", command];
+
     /// <summary>FromArgv quotes for CreateProcess only. A line typed into pwsh or cmd is parsed by that
     /// shell as well, and pwsh treats more than the ASCII punctuation as syntax (curly quotes close a
     /// string), so an allowlist is the only safe form: letters, digits and a few path characters.</summary>
