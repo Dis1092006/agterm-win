@@ -712,6 +712,8 @@ public sealed partial class MainWindow : Window
             throw new OperationCanceledException("The terminal page was replaced during initialization.");
         page.PasteRequested += OnPagePasteRequested;
         page.CopyRequested += OnPageCopyRequested;
+        page.SelectionCopied += OnPageSelectionCopied;
+        page.SelectionPasteRequested += OnPageSelectionPasteRequested;
         page.SplitResized += OnPageSplitResized;
         page.PaneFocusChanged += OnPagePaneFocusChanged;
         page.SearchUpdated += OnPageSearchUpdated;
@@ -2846,6 +2848,34 @@ public sealed partial class MainWindow : Window
         ObserveTaskFault(
             PasteIntoSurfaceAsync(surface),
             "Right-click paste failed");
+    }
+
+    private void OnPageSelectionCopied(string paneToken, string text)
+    {
+        if (_surfaces.ContainsKey(paneToken)
+            && _applicationHost.SelectionBuffer.Store(text, _settings.EffectiveCopyOnSelect()))
+            OnPageCopyRequested(paneToken, text);
+    }
+
+    private void OnPageSelectionPasteRequested(string paneToken, bool bracketed)
+    {
+        if (!_surfaces.TryGetValue(paneToken, out var surface))
+        {
+            return;
+        }
+
+        ObserveTaskFault(
+            _applicationHost.SelectionBuffer.PasteAsync(
+                _settings.EffectiveCopyOnSelect(),
+                bracketed,
+                ReadClipboardTextOnUiAsync,
+                text => _contentDialogs.RunAsync(async () =>
+                {
+                    var dialog = PasteConfirmationDialog.Create(Content.XamlRoot, text, bracketed);
+                    return await ShowDialogAsync(dialog) == ContentDialogResult.Primary;
+                }),
+                text => surface.Pane.Terminal.PasteAsync(text)),
+            "Middle-click paste failed");
     }
 
     private void OnPageSplitResized(string leftPaneId, string rightPaneId, double ratio)

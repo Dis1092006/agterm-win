@@ -493,4 +493,47 @@ public class XtermPageTests
         _host.RaiseMessage("""{"type":"pasteRequested"}""");
         Assert.Single(pasted);
     }
+
+    // ── Selection buffer routing ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task SelectionCopied_fires_for_known_pane_with_text_only()
+    {
+        var page = await InitializedAsync();
+        await page.OpenTerminalAsync("p1");
+        var copied = new List<(string Pane, string Text)>();
+        page.SelectionCopied += (pane, text) => copied.Add((pane, text));
+
+        _host.RaiseMessage("""{"type":"selectionCopied","paneId":"p1","text":"abc"}""");
+        _host.RaiseMessage("""{"type":"selectionCopied","paneId":"p1","text":""}""");
+        _host.RaiseMessage("""{"type":"selectionCopied","paneId":"ghost","text":"abc"}""");
+        _host.RaiseMessage("""{"type":"selectionCopied","paneId":"p1"}""");
+
+        Assert.Equal([("p1", "abc")], copied);
+    }
+
+    [Fact]
+    public async Task SelectionPasteRequested_fires_for_known_pane_with_its_bracketed_paste_mode()
+    {
+        var page = await InitializedAsync();
+        await page.OpenTerminalAsync("p1");
+        var requests = new List<(string Pane, bool Bracketed)>();
+        page.SelectionPasteRequested += (pane, bracketed) => requests.Add((pane, bracketed));
+
+        _host.RaiseMessage("""{"type":"selectionPasteRequested","paneId":"p1","bracketed":true}""");
+        _host.RaiseMessage("""{"type":"selectionPasteRequested","paneId":"p1"}""");
+        _host.RaiseMessage("""{"type":"selectionPasteRequested","paneId":"ghost","bracketed":true}""");
+
+        Assert.Equal([("p1", true), ("p1", false)], requests);
+    }
+
+    [Fact]
+    public async Task ApplyRendererSettings_carries_copy_on_select()
+    {
+        var page = await InitializedAsync();
+
+        await page.ApplyRendererSettingsAsync(RendererSettingsSnapshot.From(new AppSettings { CopyOnSelect = "off" }));
+
+        Assert.Contains("\"copyOnSelect\":\"off\"", Assert.Single(_host.Scripts, s => s.Contains("agterm.applyRendererSettings")));
+    }
 }

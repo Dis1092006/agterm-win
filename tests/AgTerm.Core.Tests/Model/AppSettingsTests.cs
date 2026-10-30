@@ -180,6 +180,7 @@ public class AppSettingsTests : IDisposable
             SidebarThemeColors = false,
             SidebarThemeStyle = "label",
             RestoreScrollback = false,
+            CopyOnSelect = "off",
         };
         store.Save(settings);
         Assert.Equal(settings, new SettingsStore(_dir).Load());

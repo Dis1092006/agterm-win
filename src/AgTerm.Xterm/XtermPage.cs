@@ -250,6 +250,14 @@ public sealed class XtermPage
     /// so the host does it.</summary>
     public event Action<string, string>? CopyRequested;
 
+    /// <summary>A mouse selection finished in a known pane, or the pane selected all: the pane id
+    /// and the selected text, for the selection buffer.</summary>
+    public event Action<string, string>? SelectionCopied;
+
+    /// <summary>A middle-click in a known pane: the pane id and whether the pane has bracketed
+    /// paste on.</summary>
+    public event Action<string, bool>? SelectionPasteRequested;
+
     public event Action<string>? PaneFocusChanged;
 
     public event Action<string, string, double>? SplitResized;
@@ -579,6 +587,22 @@ public sealed class XtermPage
             return;
         }
 
+        if (msg?.Type == "selectionCopied")
+        {
+            if (msg.PaneId is { } selectedPaneId
+                && _terminals.ContainsKey(selectedPaneId)
+                && msg.Text is { Length: > 0 } selectedText)
+                SelectionCopied?.Invoke(selectedPaneId, selectedText);
+            return;
+        }
+
+        if (msg?.Type == "selectionPasteRequested")
+        {
+            if (msg.PaneId is { } middlePaneId && _terminals.ContainsKey(middlePaneId))
+                SelectionPasteRequested?.Invoke(middlePaneId, msg.Bracketed == true);
+            return;
+        }
+
         if (msg?.Type == "paneFocus")
         {
             if (msg.PaneId is { } focusedPaneId && _terminals.ContainsKey(focusedPaneId))
@@ -700,6 +724,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("rightPaneId")] public string? RightPaneId { get; init; }
     [JsonPropertyName("ratio")] public double? Ratio { get; init; }
     [JsonPropertyName("text")] public string? Text { get; init; }
+    [JsonPropertyName("bracketed")] public bool? Bracketed { get; init; }
     [JsonPropertyName("needle")] public string? Needle { get; init; }
     [JsonPropertyName("count")] public int? Count { get; init; }
     [JsonPropertyName("selected")] public int? Selected { get; init; }

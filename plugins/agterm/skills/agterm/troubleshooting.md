@@ -56,6 +56,12 @@ so Ctrl+C still sends an interrupt (0x03). Ctrl+V, Ctrl+Shift+V and Shift+Insert
 text. A clipboard with no text pastes nothing. Right-click pastes too, unless `settings.json` sets
 `"rightClickPaste": false`. There is no select-all chord; use `agtermctl session select-all`.
 
+A mouse selection goes to agterm-win's own selection buffer, and a middle-click pastes it (multi-line
+text asks first when the program has bracketed paste off). The Windows clipboard changes only with
+Ctrl+C or when `settings.json` sets `"copyOnSelect": "clipboard"`; `"off"` keeps selections nowhere.
+`agtermctl session select-all` also fills the selection buffer, and the Windows clipboard too in
+`"clipboard"` mode.
+
 ### "My session restore override didn't fire"
 
 You set `session restore` but the pane came back as a plain shell (or re-ran the old captured command).

@@ -41,6 +41,7 @@
     <Compile Include="..\..\src\AgTerm.App\TaskbarNotificationAttention.cs" Link="App\TaskbarNotificationAttention.cs" />
     <Compile Include="..\..\src\AgTerm.App\SingleInstanceKey.cs" Link="App\SingleInstanceKey.cs" />
     <Compile Include="..\..\src\AgTerm.App\DialogKeys.cs" Link="App\DialogKeys.cs" />
+    <Compile Include="..\..\src\AgTerm.App\PasteConfirmation.cs" Link="App\PasteConfirmation.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteController.cs" Link="App\PaletteController.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteAutoFollowLease.cs" Link="App\PaletteAutoFollowLease.cs" />
     <Compile Include="..\..\src\AgTerm.App\PaletteItemViewModel.cs" Link="App\PaletteItemViewModel.cs" />

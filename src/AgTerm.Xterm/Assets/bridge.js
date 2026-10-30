@@ -300,6 +300,7 @@ const DEFAULT_RENDERER_SETTINGS = Object.freeze({
   scrollSensitivity: 3,
   scrollback: 10000,
   rightClickPaste: true,
+  copyOnSelect: "selection",
   screenReaderMode: false,
   ansiColors: null,
   preservePaneFontSizes: false,
@@ -1314,6 +1315,9 @@ function normalizeRendererSettings(payload, fallback) {
       source.rightClickPaste,
       fallback.rightClickPaste,
     ),
+    copyOnSelect: ["selection", "clipboard", "off"].includes(source.copyOnSelect)
+      ? source.copyOnSelect
+      : fallback.copyOnSelect,
     screenReaderMode: normalizeBoolean(
       source.screenReaderMode,
       fallback.screenReaderMode,
@@ -1589,6 +1593,7 @@ function getRendererSettings(paneId) {
     scrollSensitivity: termOptions.scrollSensitivity,
     scrollback: termOptions.scrollback,
     rightClickPaste: rendererSettings.rightClickPaste,
+    copyOnSelect: rendererSettings.copyOnSelect,
     screenReaderMode: !!termOptions.screenReaderMode,
     ansiColors:
       effective.ansiColors === null
@@ -2516,6 +2521,36 @@ function setHotkeyManifest(manifest) {
 
 const post = (msg) => window.chrome.webview.postMessage(msg);
 
+// Copy on select (docs/PLATFORM-NOTES.md "Selection buffer and middle-click paste"): a left press
+// in a pane arms it, and the release - anywhere, a drag can leave the pane - hands the finished
+// selection to the host. The copy waits a tick so xterm has settled the selection on its own
+// mouseup. A search match also selects text but never passes through here, so it is not copied.
+let selectionPressPaneId = null;
+
+function postSelectionCopied(paneId) {
+  if (rendererSettings.copyOnSelect === "off") return;
+  const pane = panes.get(paneId);
+  const text = pane ? pane.term.getSelection() : "";
+  if (text) post({ type: "selectionCopied", paneId, text });
+}
+
+// The program gets the mouse while it has reporting on; Shift takes it back for the terminal,
+// the same override xterm applies to selection.
+function mouseReported(term, ev) {
+  return term.modes.mouseTrackingMode !== "none" && !ev.shiftKey;
+}
+
+document.addEventListener(
+  "mouseup",
+  (ev) => {
+    if (ev.button !== 0 || selectionPressPaneId === null) return;
+    const paneId = selectionPressPaneId;
+    selectionPressPaneId = null;
+    setTimeout(() => postSelectionCopied(paneId), 0);
+  },
+  true,
+);
+
 document.addEventListener("keydown", onDashboardKeyDown, true);
 container.addEventListener("pointerdown", onDashboardPointerDown, true);
 container.addEventListener("click", onDashboardClick, true);
@@ -2888,6 +2923,28 @@ function openPane(paneId, opts) {
       if (!rendererSettings.rightClickPaste) return;
       if (ev.preventDefault) ev.preventDefault();
       if (!sendReadlinePaste(null)) post({ type: "pasteRequested", paneId });
+    },
+    true,
+  );
+
+  // A left press arms copy on select. A middle press asks the host to paste the selection buffer;
+  // it is stopped here so xterm does not take focus (upstream leaves focus alone on a middle
+  // click) and Chromium does not start autoscroll. With mouse reporting on, both go to the program.
+  el.addEventListener(
+    "mousedown",
+    (ev) => {
+      if (mouseReported(pane.term, ev)) return;
+      if (ev.button === 0) {
+        selectionPressPaneId = paneId;
+      } else if (ev.button === 1) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        post({
+          type: "selectionPasteRequested",
+          paneId,
+          bracketed: !!pane.term.modes.bracketedPasteMode,
+        });
+      }
     },
     true,
   );
@@ -3376,6 +3433,7 @@ window.agterm = {
   selectAll: (paneId) =>
     withPane(paneId, (p) => {
       p.term.selectAll();
+      postSelectionCopied(paneId);
       return true;
     }),
   serialize: (paneId) => withPane(paneId, (p) => p.serializeAddon.serialize()),

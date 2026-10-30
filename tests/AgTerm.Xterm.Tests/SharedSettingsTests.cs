@@ -179,6 +179,21 @@ public sealed class SharedSettingsTests : IDisposable
     }
 
     [Fact]
+    public void The_application_owns_one_selection_buffer_that_starts_empty()
+    {
+        using var application = new LiveApplicationHost(new LiveApplicationHostOptions
+        {
+            StateDir = directory, HomeDirectory = directory, PipeName = "agterm-selection-" + Guid.NewGuid().ToString("N"),
+        });
+        Assert.Null(application.SelectionBuffer.Text);
+
+        application.SelectionBuffer.Store("picked", CopyOnSelectMode.Selection);
+
+        Assert.Same(application.SelectionBuffer, application.SelectionBuffer);
+        Assert.Equal("picked", application.SelectionBuffer.Text);
+    }
+
+    [Fact]
     public async Task Config_reload_queues_one_shared_apply_and_preserves_its_wire_reply()
     {
         using var application = new LiveApplicationHost(new LiveApplicationHostOptions

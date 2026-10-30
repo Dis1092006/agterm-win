@@ -289,6 +289,9 @@ public sealed class LiveApplicationHost : IDisposable
     public ControlEventRing Ring { get; }
     public SettingsCoordinator Settings { get; }
 
+    /// <summary>The selection buffer every window and the quick terminal share; memory only.</summary>
+    public SelectionBuffer SelectionBuffer { get; } = new();
+
     public IReadOnlyList<RecentClosedItem> RecentClosedItems => _recentClosedStore.Load();
 
     public string PipeName { get; }
