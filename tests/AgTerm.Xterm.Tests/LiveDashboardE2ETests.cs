@@ -210,6 +210,188 @@ public sealed class LiveDashboardE2ETests
         }
     }
 
+    // upstream GhosttySurfaceView at 7df70fe (268-285, 484-497): a sized dashboard gives each member
+    // a font override. A font chord resizes the selected session's active surface from that size,
+    // reportFontSize drops the change, and closing the dashboard returns the pane to its own size.
+    [Fact]
+    public async Task Font_chords_on_a_sized_dashboard_resize_the_selected_tile_and_not_its_pane()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-dashboard-font-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            Guid firstId = default;
+            Guid secondId = default;
+            FakeSurface firstMain = null!;
+            FakeSurface secondMain = null!;
+            host.Host.RunLocked(() =>
+            {
+                var first = Assert.IsType<Session>(host.Host.Store.ActiveSession);
+                var workspace = Assert.Single(host.Host.Store.Workspaces);
+                var second = host.Host.Store.AddSession(workspace.Id, stateDir, select: false)!;
+                firstId = first.Id;
+                secondId = second.Id;
+                first.Surface = firstMain = new FakeSurface("first-main");
+                second.Surface = secondMain = new FakeSurface("second-main");
+                var open = host.Host.Actions.SetDashboard(
+                    [firstId.ToString("D"), secondId.ToString("D")],
+                    window: null,
+                    close: false,
+                    new DashboardFontMode.Fixed(11),
+                    mru: false);
+                Assert.True(open.Ok, open.Error);
+            });
+            var snapshots = new EventRecorder<LiveSelectionSnapshot>();
+            host.StoreCoordinator.SelectionSnapshotChanged += snapshots.Add;
+            var firstTile = new DashboardMember(firstId, TerminalZoomSurface.Primary);
+
+            await host.PerformFontActionAsync("increase_font_size:1");
+            await host.PerformFontActionAsync("increase_font_size:1");
+
+            Assert.Equal(
+                [KeyValuePair.Create(firstTile, 13.0)],
+                ReadLocked(host, () => host.Host.Actions.Dashboard.CellFontSizes.ToArray()));
+            Assert.Equal(11, ReadLocked(host, () => host.Host.Actions.Dashboard.AppliedFontSize));
+            await WaitUntilAsync(() => snapshots.Count > 0 &&
+                snapshots[^1].DashboardCells?.FirstOrDefault()?.FontSize == 13, TimeSpan.FromSeconds(5));
+            var cells = Assert.IsAssignableFrom<IReadOnlyList<TerminalDashboardCell>>(snapshots[^1].DashboardCells);
+            Assert.Equal([13.0, null], cells.Select(cell => cell.FontSize));
+            Assert.Equal(11, snapshots[^1].DashboardFontSize);
+
+            await host.PerformFontActionAsync("reset_font_size");
+            Assert.Empty(ReadLocked(host, () => host.Host.Actions.Dashboard.CellFontSizes.ToArray()));
+
+            await host.PerformFontActionAsync("decrease_font_size:1");
+            Assert.Equal(10, ReadLocked(host, () => host.Host.Actions.Dashboard.CellFontSizes[firstTile]));
+
+            await host.CloseDashboardAsync();
+            Assert.Empty(ReadLocked(host, () => host.Host.Actions.Dashboard.CellFontSizes.ToArray()));
+            Assert.Empty(firstMain.BindingActions);
+            Assert.Empty(secondMain.BindingActions);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    // upstream Session.activeSurface: the split when it has focus. The wire font command takes the
+    // same path. The size stays at least one point, the smallest size a tile can carry.
+    [Fact]
+    public async Task Dashboard_font_targets_the_focused_split_and_the_wire_command_and_stays_positive()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-dashboard-font-split-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            Guid firstId = default;
+            Guid secondId = default;
+            var surfaces = new List<FakeSurface>();
+            host.Host.RunLocked(() =>
+            {
+                var first = Assert.IsType<Session>(host.Host.Store.ActiveSession);
+                var workspace = Assert.Single(host.Host.Store.Workspaces);
+                var second = host.Host.Store.AddSession(workspace.Id, stateDir, select: false)!;
+                firstId = first.Id;
+                secondId = second.Id;
+                FakeSurface Track(FakeSurface surface) { surfaces.Add(surface); return surface; }
+                first.Surface = Track(new FakeSurface("first-main"));
+                first.SplitSurface = Track(new FakeSurface("first-split"));
+                first.HasSplit = true;
+                first.SplitFocused = true;
+                second.Surface = Track(new FakeSurface("second-main"));
+                var open = host.Host.Actions.SetDashboard(
+                    [firstId.ToString("D"), secondId.ToString("D")],
+                    window: null,
+                    close: false,
+                    new DashboardFontMode.Fixed(2),
+                    mru: false);
+                Assert.True(open.Ok, open.Error);
+            });
+
+            await host.PerformFontActionAsync("decrease_font_size:1");
+            await host.PerformFontActionAsync("decrease_font_size:1");
+            host.Host.RunLocked(() =>
+            {
+                var wire = host.Host.Actions.Font(secondId.ToString("D"), null, null, "increase_font_size:2");
+                Assert.True(wire.Ok, wire.Error);
+            });
+
+            Assert.Equal(
+                new Dictionary<DashboardMember, double>
+                {
+                    [new DashboardMember(firstId, TerminalZoomSurface.Split)] = 1,
+                    [new DashboardMember(secondId, TerminalZoomSurface.Primary)] = 4,
+                },
+                ReadLocked(host, () => host.Host.Actions.Dashboard.CellFontSizes.ToDictionary()));
+            Assert.All(surfaces, surface => Assert.Empty(surface.BindingActions));
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    // upstream handleDashboardFontChange re-applies the overrides when the members change and on a
+    // config reload, so a tile's chord size is gone. With the untouched mode there is no override.
+    [Fact]
+    public async Task Dashboard_tile_font_resets_on_member_change_and_base_font_and_untouched_uses_the_pane()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-dashboard-font-reset-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            Guid firstId = default;
+            Guid secondId = default;
+            FakeSurface firstMain = null!;
+            host.Host.RunLocked(() =>
+            {
+                var first = Assert.IsType<Session>(host.Host.Store.ActiveSession);
+                var workspace = Assert.Single(host.Host.Store.Workspaces);
+                var second = host.Host.Store.AddSession(workspace.Id, stateDir, select: false)!;
+                firstId = first.Id;
+                secondId = second.Id;
+                first.Surface = firstMain = new FakeSurface("first-main");
+                first.SplitSurface = new FakeSurface("first-split");
+                first.HasSplit = true;
+                second.Surface = new FakeSurface("second-main");
+            });
+            async Task OpenAsync(DashboardFontMode mode) => await host.StoreCoordinator.MutateAsync(_ =>
+            {
+                var open = host.Host.Actions.SetDashboard(
+                    [firstId.ToString("D"), secondId.ToString("D")], null, false, mode, false);
+                Assert.True(open.Ok, open.Error);
+            });
+            int CellCount() => ReadLocked(host, () => host.Host.Actions.Dashboard.CellFontSizes.Count);
+
+            await OpenAsync(new DashboardFontMode.Fixed(11));
+            await host.PerformFontActionAsync("increase_font_size:1");
+            Assert.Equal(1, CellCount());
+            await host.StoreCoordinator.MutateAsync(store => store.CloseSplitPane(firstId));
+            Assert.True(ReadLocked(host, () => host.Host.Actions.Dashboard.IsOpen));
+            Assert.Equal(0, CellCount());
+
+            await host.PerformFontActionAsync("increase_font_size:1");
+            Assert.Equal(1, CellCount());
+            await host.ApplyBaseFontSizeAsync(15);
+            Assert.Equal(0, CellCount());
+
+            await host.PerformFontActionAsync("increase_font_size:1");
+            await OpenAsync(new DashboardFontMode.Fixed(11));
+            Assert.Equal(0, CellCount());
+            Assert.Empty(firstMain.BindingActions);
+
+            await OpenAsync(new DashboardFontMode.Untouched());
+            await host.PerformFontActionAsync("increase_font_size:1");
+            Assert.Equal(0, CellCount());
+            Assert.Equal(["increase_font_size:1"], firstMain.BindingActions);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
     [Fact]
     public async Task Dashboard_reconciles_closed_split_and_sessions_and_closes_when_empty()
     {
@@ -584,6 +766,28 @@ public sealed class LiveDashboardE2ETests
             script);
     }
 
+    [Fact]
+    public async Task Dashboard_layout_serializes_a_tile_font_size_on_its_cell_only()
+    {
+        var scriptHost = new FakeScriptHost { ScriptResult = _ => "true" };
+        var page = new XtermPage(scriptHost);
+        var cells = new[]
+        {
+            new TerminalDashboardCell("first-pane", "A:left", 12.5),
+            new TerminalDashboardCell("second-pane", "B:right"),
+        };
+
+        Assert.True(await page.ApplyLayoutAsync(
+            new TerminalLayout.Dashboard(7, cells, "A:left", 10)));
+
+        var script = Assert.Single(scriptHost.Scripts, item => item.Contains("agterm.applyLayout"));
+        Assert.Contains(
+            "\"cells\":[{\"paneId\":\"first-pane\",\"controlRef\":\"A:left\",\"fontSize\":12.5},{\"paneId\":\"second-pane\",\"controlRef\":\"B:right\"}]",
+            script);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TerminalDashboardCell("p", "A:left", 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new TerminalDashboardCell("p", "A:left", double.NaN));
+    }
+
     private static LiveControlHost CreateHost(string stateDir, double baseFontSize = 14) => new(new LiveControlHostOptions
     {
         StateDir = stateDir,
@@ -632,6 +836,17 @@ public sealed class LiveDashboardE2ETests
         return result;
     }
 
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("Condition not met within the timeout.");
+            await Task.Delay(25);
+        }
+    }
+
     private static int AutoFollowSuppressionCount(AppStore store) =>
         (int)(typeof(AppStore).GetField(
             "AutoFollowSuppressionCount",
@@ -648,13 +863,18 @@ public sealed class LiveDashboardE2ETests
 
     private sealed class FakeSurface(string? paneToken) : IHeadlessSurface
     {
+        public List<string> BindingActions { get; } = [];
         public string? PaneToken => paneToken;
         public bool Inject(string text) => true;
         public string? ReadScreenText(bool all, int? lines) => string.Empty;
         public string? SelectedText => null;
         public void SelectAll() { }
         public bool Paste() => true;
-        public bool PerformBindingAction(string action) => true;
+        public bool PerformBindingAction(string action)
+        {
+            BindingActions.Add(action);
+            return true;
+        }
         public void PromoteToPrimaryPane() { }
         public void Teardown() { }
     }
@@ -744,6 +964,61 @@ public sealed class LiveDashboardPageTests(WebView2Fixture webView)
     }
 
     [Fact]
+    public async Task Dashboard_cell_font_sizes_one_tile_and_single_restores_the_session_font()
+    {
+        var page = await webView.CreatePageAsync();
+        await webView.RunAsync(_ => page.OpenTerminalAsync("tile-one", fontSize: 17));
+        await webView.RunAsync(_ => page.OpenTerminalAsync("tile-two", fontSize: 21));
+
+        Assert.True(await ApplyAsync(page, new TerminalLayout.Dashboard(
+            1,
+            [
+                new TerminalDashboardCell("tile-one", "A:left", 13),
+                new TerminalDashboardCell("tile-two", "B:left"),
+            ],
+            "A:left",
+            9)));
+        Assert.Equal(13, await FontSizeAsync(page, "tile-one"));
+        Assert.Equal(9, await FontSizeAsync(page, "tile-two"));
+
+        Assert.True(await ApplyAsync(page, new TerminalLayout.Dashboard(
+            2,
+            [
+                new TerminalDashboardCell("tile-one", "A:left"),
+                new TerminalDashboardCell("tile-two", "B:left"),
+            ],
+            "A:left",
+            9)));
+        Assert.Equal(9, await FontSizeAsync(page, "tile-one"));
+
+        Assert.True(await ApplyAsync(page, new TerminalLayout.Dashboard(
+            3,
+            [
+                new TerminalDashboardCell("tile-one", "A:left", 13),
+                new TerminalDashboardCell("tile-two", "B:left"),
+            ],
+            "A:left",
+            9)));
+        Assert.True(await ApplyAsync(page,
+            new TerminalLayout.Single(4, "tile-one", "session")));
+        Assert.Equal(17, await FontSizeAsync(page, "tile-one"));
+        Assert.Equal(21, await FontSizeAsync(page, "tile-two"));
+
+        Assert.True(await ApplyAsync(page, new TerminalLayout.Dashboard(
+            5,
+            [
+                new TerminalDashboardCell("tile-one", "A:left", 13),
+                new TerminalDashboardCell("tile-two", "B:left"),
+            ],
+            "A:left",
+            9)));
+        await webView.RunAsync(_ => page.ExecuteScriptAsync(
+            "agterm.applyRendererSettings({ fontSize: 20 })"));
+        Assert.Equal(13, await FontSizeAsync(page, "tile-one"));
+        Assert.Equal(9, await FontSizeAsync(page, "tile-two"));
+    }
+
+    [Fact]
     public async Task Dashboard_keyboard_and_click_report_highlight_activation_and_close()
     {
         var page = await webView.CreatePageAsync();
@@ -781,7 +1056,7 @@ public sealed class LiveDashboardPageTests(WebView2Fixture webView)
                         new PhysicalChord(true, false, true, "d"),
                     ],
                     []),
-                dashboardToggleSingles: [new PhysicalChord(true, false, true, "d")]));
+                dashboardPassthroughSingles: [new PhysicalChord(true, false, true, "d")]));
             return true;
         });
 
@@ -827,6 +1102,75 @@ public sealed class LiveDashboardPageTests(WebView2Fixture webView)
         await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    // upstream DashboardView at 7df70fe: the key catcher handles arrows, Return and Escape, but menu
+    // key equivalents run first, so close session, zoom, full screen, font size and the dashboard
+    // toggle still reach the window. Every other key, a gated chord included, is swallowed.
+    [Fact]
+    public async Task Dashboard_passes_enabled_window_chords_through_and_swallows_the_rest()
+    {
+        var page = await webView.CreatePageAsync();
+        var terminalData = new EventRecorder<string>();
+        foreach (var paneId in new[] { "pass-one", "pass-two" })
+        {
+            var terminal = await webView.RunAsync(_ => page.OpenTerminalAsync(paneId));
+            terminal.DataReceived += terminalData.Add;
+        }
+        var cells = new[]
+        {
+            new TerminalDashboardCell("pass-one", "A:left"),
+            new TerminalDashboardCell("pass-two", "B:left"),
+        };
+        var activations = new EventRecorder<string>();
+        var builtinHits = new EventRecorder<(string PaneId, PhysicalChord Chord)>();
+        page.DashboardActivated += activations.Add;
+        page.BuiltinHotkeyPressed += hit => builtinHits.Add((hit.PaneId, hit.Chord));
+
+        var closeSession = new PhysicalChord(false, true, false, "w");
+        var zoom = new PhysicalChord(true, false, true, "return");
+        var fullscreen = new PhysicalChord(false, true, false, "return");
+        var biggerFont = new PhysicalChord(false, true, false, "=");
+        var resetFont = new PhysicalChord(false, true, false, "0");
+        var dashboard = new PhysicalChord(true, false, true, "d");
+        var settings = new PhysicalChord(true, false, false, ",");
+        var newSession = new PhysicalChord(false, true, false, "n");
+        PhysicalChord[] passthrough = [closeSession, zoom, fullscreen, biggerFont, resetFont, dashboard, settings];
+        await webView.RunAsync(async _ =>
+        {
+            Assert.True(await page.SetHotkeyManifestAsync(
+                new HotkeyManifest(1, 1500, [.. passthrough, newSession], []),
+                dashboardPassthroughSingles: passthrough));
+            return true;
+        });
+        Assert.True(await ApplyAsync(page,
+            new TerminalLayout.Dashboard(1, cells, "B:left")));
+
+        await webView.RunAsync(_ => page.ExecuteScriptAsync(
+            "agterm.dispatchKey('pass-one', {key:'n',altKey:true})"));
+        await Task.Delay(150);
+        Assert.Empty(builtinHits);
+
+        foreach (var key in new[]
+        {
+            "{key:'w',altKey:true}",
+            "{key:'Enter',ctrlKey:true,shiftKey:true}",
+            "{key:'Enter',altKey:true}",
+            "{key:'=',altKey:true}",
+            "{key:'0',altKey:true}",
+            "{key:'\u0432',code:'KeyD',ctrlKey:true,shiftKey:true}",
+            "{key:',',ctrlKey:true}",
+        })
+        {
+            await webView.RunAsync(_ => page.ExecuteScriptAsync(
+                $"agterm.dispatchKey('pass-one', {key})"));
+        }
+        await WaitUntilAsync(() => builtinHits.Count == passthrough.Length, TimeSpan.FromSeconds(5));
+        Assert.Equal(passthrough, builtinHits.Select(hit => hit.Chord));
+        Assert.All(builtinHits, hit => Assert.Equal("pass-two", hit.PaneId));
+        await Task.Delay(150);
+        Assert.Empty(activations);
+        Assert.Empty(terminalData);
+    }
+
     [Fact]
     public async Task Stale_and_invalid_dashboard_payloads_do_not_replace_visible_grid()
     {
@@ -850,6 +1194,8 @@ public sealed class LiveDashboardPageTests(WebView2Fixture webView)
             "{type:'dashboard',generation:3,cells:[{paneId:'reject-one',controlRef:'A:left'},{paneId:'reject-one',controlRef:'B:left'}],highlightedControlRef:'A:left'}",
             "{type:'dashboard',generation:3,cells:[{paneId:'reject-one',controlRef:'A:left'}],highlightedControlRef:'A:left',fontSize:0}",
             "{type:'dashboard',generation:3,cells:[{paneId:'reject-one',controlRef:'A:left'}],highlightedControlRef:'A:left',extra:true}",
+            "{type:'dashboard',generation:3,cells:[{paneId:'reject-one',controlRef:'A:left',fontSize:0}],highlightedControlRef:'A:left'}",
+            "{type:'dashboard',generation:3,cells:[{paneId:'reject-one',controlRef:'A:left',fontSize:'12'}],highlightedControlRef:'A:left'}",
         };
         foreach (var payload in invalidPayloads)
         {

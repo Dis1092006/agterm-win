@@ -421,7 +421,17 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public Task PerformFontActionAsync(string action, CancellationToken cancellationToken = default) =>
         StoreCoordinator.MutateAsync(
-            _ => Host.Actions.Font(null, null, null, action),
+            store =>
+            {
+                // upstream Session.activeSurface: on the dashboard the chord resizes the focused
+                // split's tile when the selected session has one.
+                var pane = Host.Actions.Dashboard.IsOpen
+                    && store.SelectedSessionId is { } selectedId
+                    && store.SessionWithId(selectedId) is { SplitFocused: true, SplitSurface: not null }
+                        ? "right"
+                        : null;
+                Host.Actions.Font(null, null, pane, action);
+            },
             cancellationToken);
 
     public Task ToggleQuickTerminalAsync(CancellationToken cancellationToken = default) =>

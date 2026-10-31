@@ -25,6 +25,20 @@ public static class ModalActionGate
     // disabled, so AppKit hands the key to the terminal view)
     public static bool PassesThroughInZoom(BuiltinAction action) =>
         !Allows(action, zoomActive: true, dashboardOpen: false);
+
+    // the dashboard page swallows plain keys, but a chord whose action stays enabled on the dashboard
+    // reaches the window (upstream menu key equivalents run before the key catcher's keyDown)
+    public static bool PassesThroughOnDashboard(BuiltinAction action) =>
+        Allows(action, zoomActive: false, dashboardOpen: true);
+
+    // the published chords the dashboard page hands to the window: an enabled action's chord and the
+    // Settings chord. A custom command's chord stays swallowed (docs/PLATFORM-NOTES.md).
+    public static IReadOnlyList<PhysicalChord> DashboardPassthroughChords(
+        HotkeyRouter router, Keymap keymap, HotkeyManifest manifest) =>
+        manifest.BuiltinSingles
+            .Where(chord => SettingsShortcuts.Opens(keymap, chord) ||
+                router.Handle(chord) is { } action && PassesThroughOnDashboard(action))
+            .ToArray();
 }
 
 public enum ModalChromeMode

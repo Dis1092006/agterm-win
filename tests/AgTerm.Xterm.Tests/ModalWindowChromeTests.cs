@@ -66,6 +66,38 @@ public sealed class ModalActionGateTests
         Assert.False(ModalActionGate.PassesThroughInZoom(action));
     }
 
+    // upstream DashboardView's key catcher swallows plain keys, but menu key equivalents still reach the
+    // enabled menu items, so these chords leave the dashboard page for the window
+    [Theory]
+    [MemberData(nameof(AllActions))]
+    public void A_chord_enabled_on_the_dashboard_passes_through_its_page(BuiltinAction action)
+    {
+        Assert.Equal(AlwaysAllowed.Contains(action) || action == BuiltinAction.Dashboard,
+            ModalActionGate.PassesThroughOnDashboard(action));
+    }
+
+    [Fact]
+    public void The_dashboard_page_lets_through_the_published_chords_of_enabled_actions_and_settings()
+    {
+        var keymap = Keymap.Empty;
+        var router = new HotkeyRouter(keymap);
+        var manifest = SettingsShortcuts.AddToManifest(keymap, router.CreateManifest(1, _ => true));
+
+        var chords = ModalActionGate.DashboardPassthroughChords(router, keymap, manifest);
+
+        Assert.Contains(new PhysicalChord(false, true, false, "w"), chords);
+        Assert.Contains(new PhysicalChord(true, false, true, "return"), chords);
+        Assert.Contains(new PhysicalChord(false, true, false, "return"), chords);
+        Assert.Contains(new PhysicalChord(false, true, false, "-"), chords);
+        Assert.Contains(new PhysicalChord(true, false, true, "d"), chords);
+        Assert.Contains(new PhysicalChord(true, false, false, ","), chords);
+        Assert.Contains(new PhysicalChord(false, true, false, ","), chords);
+        Assert.Contains(new PhysicalChord(false, true, false, "0"), chords);
+        Assert.DoesNotContain(new PhysicalChord(false, true, false, "n"), chords);
+        Assert.DoesNotContain(new PhysicalChord(false, true, false, "s"), chords);
+        Assert.All(chords, chord => Assert.Contains(chord, manifest.BuiltinSingles));
+    }
+
     [Fact]
     public void Ui_actions_are_enabled_only_outside_zoom_and_the_dashboard()
     {

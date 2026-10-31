@@ -123,7 +123,24 @@ public sealed class HeadlessDashboard
 
     public DashboardFontMode FontMode { get; private set; } = new DashboardFontMode.Untouched();
 
-    public double? AppliedFontSize { get; set; }
+    private readonly Dictionary<DashboardMember, double> _cellFontSizes = [];
+    private double? _appliedFontSize;
+
+    /// <summary>Setting it drops every tile's chord size: upstream re-applies the dashboard
+    /// override to each member when the applied size is set.</summary>
+    public double? AppliedFontSize
+    {
+        get => _appliedFontSize;
+        set
+        {
+            _appliedFontSize = value;
+            _cellFontSizes.Clear();
+        }
+    }
+
+    /// <summary>Tiles a font chord resized on a sized dashboard (upstream dashboardFontOverride
+    /// changed on that surface). Not saved, and dropped when the overrides are re-applied.</summary>
+    public IReadOnlyDictionary<DashboardMember, double> CellFontSizes => _cellFontSizes;
 
     public bool IsOpen => Members.Count > 0;
 
@@ -163,10 +180,42 @@ public sealed class HeadlessDashboard
         }
 
         Members = survivors;
+        _cellFontSizes.Clear();
         if (Highlighted is not { } highlighted || !survivors.Contains(highlighted))
             Highlighted = survivors[0];
         return true;
     }
+
+    /// <summary>Apply a font binding action to a member's tile, from its chord size or the applied
+    /// size. A reset drops the chord size, so the tile shows the applied size again. The size stays
+    /// at least one point, as ghostty clamps it.</summary>
+    public bool AdjustCellFontSize(DashboardMember member, string action)
+    {
+        if (AppliedFontSize is not { } applied || !Members.Contains(member))
+            return false;
+        if (action == "reset_font_size")
+        {
+            _cellFontSizes.Remove(member);
+            return true;
+        }
+        var current = _cellFontSizes.GetValueOrDefault(member, applied);
+        double target;
+        if (ParseFontStep(action, "increase_font_size:") is { } up)
+            target = current + up;
+        else if (ParseFontStep(action, "decrease_font_size:") is { } down)
+            target = current - down;
+        else
+            return false;
+        _cellFontSizes[member] = Math.Max(1, target);
+        return true;
+    }
+
+    private static double? ParseFontStep(string action, string prefix) =>
+        action.StartsWith(prefix, StringComparison.Ordinal) &&
+        double.TryParse(action.AsSpan(prefix.Length), System.Globalization.CultureInfo.InvariantCulture,
+            out var step)
+            ? step
+            : null;
 }
 
 /// <summary>In-memory theme slots — the headless stand-in for the upstream SettingsModel theme
@@ -1320,6 +1369,18 @@ public sealed class HeadlessControlActions : IControlActions
                     break;
                 default:
                     return Err($"invalid pane: {pane}");
+            }
+            var member = ReferenceEquals(chosen, session.Surface) && chosen is not null
+                ? new DashboardMember(id, TerminalZoomSurface.Primary)
+                : ReferenceEquals(chosen, session.SplitSurface) && chosen is not null
+                    ? new DashboardMember(id, TerminalZoomSurface.Split)
+                    : (DashboardMember?)null;
+            // upstream: a dashboard member carries dashboardFontOverride, and a font change on it
+            // resizes the tile without reporting the size to the session.
+            if (member is { } tile && Dashboard.AdjustCellFontSize(tile, action))
+            {
+                _dashboardChanged?.Invoke();
+                return OkId(id);
             }
             if (chosen is not IHeadlessSurface surface)
                 return Err("session not realized");

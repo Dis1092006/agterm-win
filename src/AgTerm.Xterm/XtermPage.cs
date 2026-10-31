@@ -309,7 +309,7 @@ public sealed class XtermPage
     public async Task<bool> SetHotkeyManifestAsync(
         Core.Keymap.HotkeyManifest manifest,
         IReadOnlyList<Core.Keymap.PhysicalChord>? zoomPassthroughSingles = null,
-        IReadOnlyList<Core.Keymap.PhysicalChord>? dashboardToggleSingles = null)
+        IReadOnlyList<Core.Keymap.PhysicalChord>? dashboardPassthroughSingles = null)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.Generation < 0)
@@ -324,7 +324,7 @@ public sealed class XtermPage
             manifest.BuiltinSingles,
             manifest.CustomBindings,
             ZoomPassthroughSingles = zoomPassthroughSingles ?? Array.Empty<Core.Keymap.PhysicalChord>(),
-            DashboardToggleSingles = dashboardToggleSingles ?? Array.Empty<Core.Keymap.PhysicalChord>(),
+            DashboardPassthroughSingles = dashboardPassthroughSingles ?? Array.Empty<Core.Keymap.PhysicalChord>(),
         }, RendererSettingsScriptLiteral);
         var raw = await _host.ExecuteScriptAsync($"agterm.setHotkeyManifest({payload})")
             .ConfigureAwait(false);
@@ -374,6 +374,8 @@ public sealed class XtermPage
                     writer.WriteStartObject();
                     writer.WriteString("paneId", cell.PaneId);
                     writer.WriteString("controlRef", cell.ControlRef);
+                    if (cell.FontSize is { } cellFontSize)
+                        writer.WriteNumber("fontSize", cellFontSize);
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();

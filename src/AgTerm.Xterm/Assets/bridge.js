@@ -23,7 +23,7 @@
 //     text/selection/selectAll/serialize/serializeForRestore/fit/search/searchClose/paste/setFontSize/getFontSize/focus —
 //     each takes paneId first; every call on an unknown paneId returns null. Page-global:
 //     agterm.setHotkeyManifest({generation,leaderTimeoutMs,builtinSingles,customBindings,
-//       zoomPassthroughSingles,dashboardToggleSingles}) — atomic hotkey table.
+//       zoomPassthroughSingles,dashboardPassthroughSingles}) — atomic hotkey table.
 //     agterm.setChords([{ctrl,alt,shift,key}]) — compatibility built-in-only hotkey table.
 //     agterm.setSwitcherActive(bool): whether the window's Ctrl-Tab switch is still in progress.
 //     agterm.applyRendererSettings(settings), agterm.getRendererSettings(paneId),
@@ -58,7 +58,7 @@ let hotkeyGeneration = 0;
 let switcherActive = false;
 let customHotkeyBindings = [];
 let zoomPassthroughChords = [];
-let dashboardToggleChords = [];
+let dashboardPassthroughChords = [];
 let armedCustomChords = [];
 let customLeaderTimer = null;
 let customLeaderTimeoutMs = 1500;
@@ -937,7 +937,7 @@ function validateDashboardLayout(layout) {
   const seenControlRefs = new Set();
   const cells = [];
   for (const cell of layout.cells) {
-    if (!hasOnlyKeys(cell, ["paneId", "controlRef"])) return null;
+    if (!hasOnlyKeys(cell, ["paneId", "controlRef", "fontSize"])) return null;
     const paneId = normalizeKnownPaneId(cell.paneId);
     if (
       !paneId ||
@@ -945,11 +945,22 @@ function validateDashboardLayout(layout) {
       cell.controlRef.length === 0
     )
       return null;
+    if (
+      cell.fontSize !== undefined &&
+      (typeof cell.fontSize !== "number" ||
+        !Number.isFinite(cell.fontSize) ||
+        cell.fontSize <= 0)
+    )
+      return null;
     if (seenPaneIds.has(paneId) || seenControlRefs.has(cell.controlRef))
       return null;
     seenPaneIds.add(paneId);
     seenControlRefs.add(cell.controlRef);
-    cells.push({ paneId, controlRef: cell.controlRef });
+    cells.push({
+      paneId,
+      controlRef: cell.controlRef,
+      fontSize: cell.fontSize ?? null,
+    });
   }
 
   const highlighted = cells.find(
@@ -988,8 +999,9 @@ function applyDashboardPresentation(dashboard) {
       cell.controlRef === dashboard.highlightedControlRef,
     );
     pane.el.dataset.dashboardControlRef = cell.controlRef;
-    if (dashboard.fontSize !== null)
-      pane.term.options.fontSize = dashboard.fontSize;
+    // a tile resized by a font chord on the dashboard keeps its own size
+    const fontSize = cell.fontSize ?? dashboard.fontSize;
+    if (fontSize !== null) pane.term.options.fontSize = fontSize;
   }
 
   setVisibleLayout({
@@ -1054,7 +1066,28 @@ function onDashboardKeyDown(ev) {
     ArrowUp: "up",
     ArrowDown: "down",
   };
-  if (directions[ev.key]) {
+  // a window chord the dashboard keeps enabled wins over its own keys (upstream menu key
+  // equivalents run before the key catcher), so Alt+Enter is full screen, not activate
+  const key = keymapKey(ev);
+  const chord = key
+    ? { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key }
+    : null;
+  if (
+    chord &&
+    dashboardPassthroughChords.some((candidate) =>
+      samePhysicalChord(candidate, chord),
+    )
+  ) {
+    post({
+      type: "chord",
+      paneId: visibleLayout.highlightedPaneId,
+      generation: hotkeyGeneration,
+      ctrl: chord.ctrl,
+      alt: chord.alt,
+      shift: chord.shift,
+      key: chord.key,
+    });
+  } else if (directions[ev.key]) {
     moveDashboardHighlight(directions[ev.key]);
   } else if (ev.key === "Enter") {
     post({
@@ -1063,32 +1096,6 @@ function onDashboardKeyDown(ev) {
     });
   } else if (ev.key === "Escape") {
     post({ type: "dashboardClose" });
-  } else {
-    const key = normalizeKey(ev.key);
-    const chord = key
-      ? {
-          ctrl: ev.ctrlKey,
-          alt: ev.altKey,
-          shift: ev.shiftKey,
-          key,
-        }
-      : null;
-    if (
-      chord &&
-      dashboardToggleChords.some((candidate) =>
-        samePhysicalChord(candidate, chord),
-      )
-    ) {
-      post({
-        type: "chord",
-        paneId: visibleLayout.highlightedPaneId,
-        generation: hotkeyGeneration,
-        ctrl: chord.ctrl,
-        alt: chord.alt,
-        shift: chord.shift,
-        key: chord.key,
-      });
-    }
   }
   if (ev.preventDefault) ev.preventDefault();
   if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
@@ -1531,11 +1538,14 @@ function applyRendererSettingsToPane(pane, settings, fontSizeOverride) {
 }
 
 function paneFontSize(paneId, pane) {
-  return visibleLayout?.type === "dashboard" &&
-    visibleLayout.paneIds.includes(paneId) &&
-    visibleLayout.fontSize !== null
-    ? visibleLayout.fontSize
-    : pane.sessionFontSize;
+  if (
+    visibleLayout?.type !== "dashboard" ||
+    !visibleLayout.paneIds.includes(paneId) ||
+    visibleLayout.fontSize === null
+  )
+    return pane.sessionFontSize;
+  const cell = visibleLayout.cells.find((c) => c.paneId === paneId);
+  return cell?.fontSize ?? visibleLayout.fontSize;
 }
 
 function applyRendererSettings(settings) {
@@ -2481,9 +2491,9 @@ function setHotkeyManifest(manifest) {
     (manifest.zoomPassthroughSingles !== undefined &&
       (!Array.isArray(manifest.zoomPassthroughSingles) ||
         !manifest.zoomPassthroughSingles.every(validatePhysicalChord))) ||
-    (manifest.dashboardToggleSingles !== undefined &&
-      (!Array.isArray(manifest.dashboardToggleSingles) ||
-        !manifest.dashboardToggleSingles.every(validatePhysicalChord))) ||
+    (manifest.dashboardPassthroughSingles !== undefined &&
+      (!Array.isArray(manifest.dashboardPassthroughSingles) ||
+        !manifest.dashboardPassthroughSingles.every(validatePhysicalChord))) ||
     !Array.isArray(manifest.customBindings)
   )
     return false;
@@ -2512,7 +2522,7 @@ function setHotkeyManifest(manifest) {
   zoomPassthroughChords = (manifest.zoomPassthroughSingles || []).map(
     (chord) => ({ ...chord }),
   );
-  dashboardToggleChords = (manifest.dashboardToggleSingles || []).map(
+  dashboardPassthroughChords = (manifest.dashboardPassthroughSingles || []).map(
     (chord) => ({ ...chord }),
   );
   customHotkeyBindings = customBindings;
@@ -3485,7 +3495,7 @@ window.agterm = {
     interceptChords = items || [];
     customHotkeyBindings = [];
     zoomPassthroughChords = [];
-    dashboardToggleChords = [];
+    dashboardPassthroughChords = [];
     return interceptChords.length;
   },
   setHotkeyManifest,

@@ -1785,13 +1785,12 @@ public sealed partial class MainWindow : Window
             var zoomPassthroughSingles = pending.Router.InterceptChords
                 .Where(chord => pending.Router.Handle(chord) is { } action && ModalActionGate.PassesThroughInZoom(action))
                 .ToArray();
-            var dashboardToggleSingles = pending.Router.InterceptChords
-                .Where(chord => pending.Router.Handle(chord) == BuiltinAction.Dashboard)
-                .ToArray();
+            var dashboardPassthroughSingles = ModalActionGate.DashboardPassthroughChords(
+                pending.Router, keymap, manifest);
             if (await page.SetHotkeyManifestAsync(
                     manifest,
                     zoomPassthroughSingles,
-                    dashboardToggleSingles))
+                    dashboardPassthroughSingles))
             {
                 _hotkeyStates.Commit(pending.Generation);
                 _keymap = keymap;
