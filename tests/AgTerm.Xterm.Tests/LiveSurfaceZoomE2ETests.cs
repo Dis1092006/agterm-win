@@ -230,6 +230,31 @@ public sealed class LiveSurfaceZoomE2ETests
     }
 
     [Fact]
+    public async Task ExitTerminalZoomAsync_clears_the_session_zoom()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-zoom-exit-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            host.Host.RunLocked(() =>
+                Assert.IsType<Session>(host.Host.Store.ActiveSession).Surface =
+                    new FakeSurface("main-token"));
+            await host.ToggleTerminalZoomAsync();
+            Assert.NotNull(ReadLocked(host, () => host.Host.Actions.Zoom.Target));
+
+            await host.ExitTerminalZoomAsync();
+
+            Assert.Null(ReadLocked(host, () => host.Host.Actions.Zoom.Target));
+            await host.ExitTerminalZoomAsync();
+            Assert.Null(ReadLocked(host, () => host.Host.Actions.Zoom.Target));
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public void Named_pipe_zoom_modes_tree_readback_and_errors_match_the_wire_contract()
     {
         var stateDir = Directory.CreateTempSubdirectory("agterm-live-zoom-wire-").FullName;

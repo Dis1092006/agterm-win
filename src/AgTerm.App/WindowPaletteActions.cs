@@ -17,8 +17,18 @@ public static class WindowPaletteAcceptance
         Func<string?, CancellationToken, Task> setThemeAsync,
         CancellationToken cancellationToken = default,
         Func<string, CancellationToken, Task>? executeInstallerCommandAsync = null,
-        Func<PaletteAppCommand, CancellationToken, Task>? executeAppCommandAsync = null)
+        Func<PaletteAppCommand, CancellationToken, Task>? executeAppCommandAsync = null,
+        bool uiActionsEnabled = true)
     {
+        // upstream runPaletteCommand and the row actions at 7df70fe: while zoom or the dashboard is
+        // modal only the zoom toggle row runs; theme rows are not gated
+        if (!uiActionsEnabled && mode != WindowPaletteMode.Themes &&
+            !(mode == WindowPaletteMode.Commands &&
+              WindowPaletteProjection.ParseAction(item.Id) == BuiltinAction.ToggleTerminalZoom))
+        {
+            return new(true);
+        }
+
         switch (mode)
         {
             case WindowPaletteMode.Sessions:

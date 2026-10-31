@@ -13,8 +13,9 @@ public sealed class InterfaceElementsSourceTests
 
         var apply = MethodBody(window, "private void ApplyInterfaceElements(AppSettings settings)");
         Assert.Contains(
-            "AppTitleBar.IsPaneToggleButtonVisible = !settings.IsInterfaceElementHidden(InterfaceElement.SidebarToggle);",
+            "_sidebarToggleShown = !settings.IsInterfaceElementHidden(InterfaceElement.SidebarToggle);",
             apply, StringComparison.Ordinal);
+        Assert.Contains("ApplyModalChrome();", apply, StringComparison.Ordinal);
         Assert.Contains("ApplyInterfaceElements(settings);",
             MethodBody(window, "private async Task ShowThemePresentationAsync("), StringComparison.Ordinal);
         Assert.Contains("ApplyInterfaceElements(_settings);", window, StringComparison.Ordinal);

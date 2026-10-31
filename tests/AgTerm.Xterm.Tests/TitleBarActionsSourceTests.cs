@@ -36,7 +36,12 @@ public sealed class TitleBarActionsSourceTests
         var header = xaml[start..xaml.IndexOf("</TitleBar.RightHeader>", start, StringComparison.Ordinal)];
         var help = header.IndexOf("AutomationProperties.AutomationId=\"help-button\"", StringComparison.Ordinal);
         Assert.True(help > header.IndexOf("quick-terminal-toggle", StringComparison.Ordinal), "help-button must follow quick-terminal-toggle");
-        Assert.Equal(-1, header.IndexOf("<Button x:Name=", help, StringComparison.Ordinal));
+        // the modal exit buttons sit after the TitleBarActions panel, so Help stays last inside it
+        var actionsEnd = header.IndexOf("</StackPanel>", help, StringComparison.Ordinal);
+        Assert.Equal(
+            header.IndexOf("<Button x:Name=\"TerminalZoomExitButton\"", StringComparison.Ordinal),
+            header.IndexOf("<Button x:Name=", help, StringComparison.Ordinal));
+        Assert.True(actionsEnd < header.IndexOf("<Button x:Name=", help, StringComparison.Ordinal));
 
         var button = header[header.LastIndexOf("<Button", help, StringComparison.Ordinal)..];
         Assert.Contains("x:Name=\"HelpButton\"", button, StringComparison.Ordinal);

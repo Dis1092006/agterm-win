@@ -161,114 +161,137 @@
             </TitleBar.Content>
             <!-- upstream titlebarTrailingActions: recent sessions + attention | scratch + split |
                  dashboard + quick terminal. MainWindow.RefreshTitleBarActions sets visibility, the
-                 dividers and the glyph states; the shapes are Paths like the sidebar's icons -->
+                 dividers and the glyph states; the shapes are Paths like the sidebar's icons.
+                 Zoom and the dashboard collapse TitleBarActions and show one exit button instead
+                 (upstream zoomTitlebar / dashboardTitlebar); MainWindow.ApplyModalChrome switches them -->
             <TitleBar.RightHeader>
                 <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center" Margin="0,0,6,0">
-                    <Button x:Name="RecentSessionsButton"
+                    <StackPanel x:Name="TitleBarActions" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                        <Button x:Name="RecentSessionsButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                AutomationProperties.Name="Recent sessions"
+                                AutomationProperties.AutomationId="recent-sessions-button"
+                                ToolTipService.ToolTip="Recent sessions (Ctrl+Tab)">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE81C;" FontSize="14" />
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="RecentSessionsFlyout"
+                                            Placement="BottomEdgeAlignedRight"
+                                            Opening="OnRecentSessionsFlyoutOpening" />
+                            </Button.Flyout>
+                        </Button>
+                        <Button x:Name="AttentionButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                Click="OnAttentionClick"
+                                AutomationProperties.Name="Attention"
+                                AutomationProperties.AutomationId="attention-button">
+                            <FontIcon x:Name="AttentionGlyph" FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xEA8F;" FontSize="14" />
+                        </Button>
+                        <Rectangle x:Name="DividerAfterA" Style="{StaticResource TitleBarDividerStyle}" />
+                        <Button x:Name="ScratchButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                Click="OnScratchClick"
+                                AutomationProperties.Name="Scratch"
+                                AutomationProperties.AutomationId="scratch-toggle">
+                            <Grid>
+                                <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z" />
+                                <Path x:Name="ScratchFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                      Fill="{StaticResource ChromeForegroundBrush}"
+                                      Data="M3,5 H13 V10 H3 Z" />
+                            </Grid>
+                        </Button>
+                        <Button x:Name="SplitButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                Click="OnSplitClick"
+                                AutomationProperties.Name="Split"
+                                AutomationProperties.AutomationId="split-toggle">
+                            <Grid>
+                                <Path x:Name="SplitLeftFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                      Fill="{StaticResource ChromeForegroundBrush}"
+                                      Data="M0.5,2.5 H8 V12.5 H0.5 Z" />
+                                <Path x:Name="SplitRightFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                      Fill="{StaticResource ChromeForegroundBrush}"
+                                      Data="M8,2.5 H15.5 V12.5 H8 Z" />
+                                <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5" />
+                            </Grid>
+                        </Button>
+                        <Rectangle x:Name="DividerAfterB" Style="{StaticResource TitleBarDividerStyle}" />
+                        <Button x:Name="DashboardButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                Click="OnDashboardClick"
+                                AutomationProperties.Name="Dashboard"
+                                AutomationProperties.AutomationId="dashboard-toggle-button"
+                                ToolTipService.ToolTip="Dashboard">
+                            <Grid>
+                                <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5 M0.5,7.5 H15.5" />
+                                <Rectangle x:Name="DashboardOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
+                            </Grid>
+                        </Button>
+                        <Button x:Name="QuickTerminalButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                Click="OnQuickTerminalClick"
+                                AutomationProperties.Name="Quick Terminal"
+                                AutomationProperties.AutomationId="quick-terminal-toggle"
+                                ToolTipService.ToolTip="Quick Terminal">
+                            <Grid>
+                                <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE756;" FontSize="14" />
+                                <Rectangle x:Name="QuickTerminalOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
+                            </Grid>
+                        </Button>
+                        <Button Style="{StaticResource TitleBarActionButtonStyle}"
+                                AutomationProperties.Name="Settings"
+                                AutomationProperties.AutomationId="settings-button"
+                                ToolTipService.ToolTip="Settings (Alt+, or Ctrl+,)"
+                                Click="OnSettingsClick">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE713;" FontSize="14" />
+                        </Button>
+                        <!-- upstream's Help menu installers; always shown. MainWindow sets the item texts from
+                             InstallerCommands, which the palette and the skill text also use -->
+                        <Button x:Name="HelpButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                AutomationProperties.Name="Help"
+                                AutomationProperties.AutomationId="help-button"
+                                ToolTipService.ToolTip="Help">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE897;" FontSize="14" />
+                            <Button.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                    <MenuFlyoutItem Text="Settings" Click="OnSettingsClick"
+                                                    KeyboardAcceleratorTextOverride="Alt+, / Ctrl+," />
+                                    <MenuFlyoutItem Text="Keyboard Shortcuts"
+                                                    KeyboardAcceleratorTextOverride="Ctrl+Shift+F1"
+                                                    AutomationProperties.AutomationId="keyboard-shortcuts"
+                                                    Click="OnKeyboardShortcutsClick" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem x:Name="InstallCommandLineToolItem"
+                                                    AutomationProperties.AutomationId="install-command-line-tool"
+                                                    Click="OnInstallCommandLineToolClick" />
+                                    <MenuFlyoutItem x:Name="InstallAgentSkillItem"
+                                                    AutomationProperties.AutomationId="install-agent-skill"
+                                                    Click="OnInstallAgentSkillClick" />
+                                    <MenuFlyoutItem x:Name="InstallAgentStatusHooksItem"
+                                                    AutomationProperties.AutomationId="install-agent-status-hooks"
+                                                    Click="OnInstallAgentStatusHooksClick" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+                    <Button x:Name="TerminalZoomExitButton"
                             Style="{StaticResource TitleBarActionButtonStyle}"
-                            AutomationProperties.Name="Recent sessions"
-                            AutomationProperties.AutomationId="recent-sessions-button"
-                            ToolTipService.ToolTip="Recent sessions (Ctrl+Tab)">
-                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE81C;" FontSize="14" />
-                        <Button.Flyout>
-                            <MenuFlyout x:Name="RecentSessionsFlyout"
-                                        Placement="BottomEdgeAlignedRight"
-                                        Opening="OnRecentSessionsFlyoutOpening" />
-                        </Button.Flyout>
+                            Visibility="Collapsed"
+                            Click="OnTerminalZoomExitClick"
+                            AutomationProperties.Name="Exit Terminal Zoom"
+                            AutomationProperties.AutomationId="terminal-zoom-exit">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE73F;" FontSize="14" />
                     </Button>
-                    <Button x:Name="AttentionButton"
+                    <!-- upstream draws an xmark here; Windows uses the zoom glyph so it does not sit
+                         next to the window's close button as a second X -->
+                    <Button x:Name="DashboardExitButton"
                             Style="{StaticResource TitleBarActionButtonStyle}"
-                            Click="OnAttentionClick"
-                            AutomationProperties.Name="Attention"
-                            AutomationProperties.AutomationId="attention-button">
-                        <FontIcon x:Name="AttentionGlyph" FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xEA8F;" FontSize="14" />
-                    </Button>
-                    <Rectangle x:Name="DividerAfterA" Style="{StaticResource TitleBarDividerStyle}" />
-                    <Button x:Name="ScratchButton"
-                            Style="{StaticResource TitleBarActionButtonStyle}"
-                            Click="OnScratchClick"
-                            AutomationProperties.Name="Scratch"
-                            AutomationProperties.AutomationId="scratch-toggle">
-                        <Grid>
-                            <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z" />
-                            <Path x:Name="ScratchFill" Style="{StaticResource TitleBarGlyphStyle}"
-                                  Fill="{StaticResource ChromeForegroundBrush}"
-                                  Data="M3,5 H13 V10 H3 Z" />
-                        </Grid>
-                    </Button>
-                    <Button x:Name="SplitButton"
-                            Style="{StaticResource TitleBarActionButtonStyle}"
-                            Click="OnSplitClick"
-                            AutomationProperties.Name="Split"
-                            AutomationProperties.AutomationId="split-toggle">
-                        <Grid>
-                            <Path x:Name="SplitLeftFill" Style="{StaticResource TitleBarGlyphStyle}"
-                                  Fill="{StaticResource ChromeForegroundBrush}"
-                                  Data="M0.5,2.5 H8 V12.5 H0.5 Z" />
-                            <Path x:Name="SplitRightFill" Style="{StaticResource TitleBarGlyphStyle}"
-                                  Fill="{StaticResource ChromeForegroundBrush}"
-                                  Data="M8,2.5 H15.5 V12.5 H8 Z" />
-                            <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5" />
-                        </Grid>
-                    </Button>
-                    <Rectangle x:Name="DividerAfterB" Style="{StaticResource TitleBarDividerStyle}" />
-                    <Button x:Name="DashboardButton"
-                            Style="{StaticResource TitleBarActionButtonStyle}"
-                            Click="OnDashboardClick"
-                            AutomationProperties.Name="Dashboard"
-                            AutomationProperties.AutomationId="dashboard-toggle-button"
-                            ToolTipService.ToolTip="Dashboard">
-                        <Grid>
-                            <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5 M0.5,7.5 H15.5" />
-                            <Rectangle x:Name="DashboardOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
-                        </Grid>
-                    </Button>
-                    <Button x:Name="QuickTerminalButton"
-                            Style="{StaticResource TitleBarActionButtonStyle}"
-                            Click="OnQuickTerminalClick"
-                            AutomationProperties.Name="Quick Terminal"
-                            AutomationProperties.AutomationId="quick-terminal-toggle"
-                            ToolTipService.ToolTip="Quick Terminal">
-                        <Grid>
-                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE756;" FontSize="14" />
-                            <Rectangle x:Name="QuickTerminalOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
-                        </Grid>
-                    </Button>
-                    <Button Style="{StaticResource TitleBarActionButtonStyle}"
-                            AutomationProperties.Name="Settings"
-                            AutomationProperties.AutomationId="settings-button"
-                            ToolTipService.ToolTip="Settings (Alt+, or Ctrl+,)"
-                            Click="OnSettingsClick">
-                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE713;" FontSize="14" />
-                    </Button>
-                    <!-- upstream's Help menu installers; always shown. MainWindow sets the item texts from
-                         InstallerCommands, which the palette and the skill text also use -->
-                    <Button x:Name="HelpButton"
-                            Style="{StaticResource TitleBarActionButtonStyle}"
-                            AutomationProperties.Name="Help"
-                            AutomationProperties.AutomationId="help-button"
-                            ToolTipService.ToolTip="Help">
-                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE897;" FontSize="14" />
-                        <Button.Flyout>
-                            <MenuFlyout Placement="BottomEdgeAlignedRight">
-                                <MenuFlyoutItem Text="Settings" Click="OnSettingsClick"
-                                                KeyboardAcceleratorTextOverride="Alt+, / Ctrl+," />
-                                <MenuFlyoutItem Text="Keyboard Shortcuts"
-                                                KeyboardAcceleratorTextOverride="Ctrl+Shift+F1"
-                                                AutomationProperties.AutomationId="keyboard-shortcuts"
-                                                Click="OnKeyboardShortcutsClick" />
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem x:Name="InstallCommandLineToolItem"
-                                                AutomationProperties.AutomationId="install-command-line-tool"
-                                                Click="OnInstallCommandLineToolClick" />
-                                <MenuFlyoutItem x:Name="InstallAgentSkillItem"
-                                                AutomationProperties.AutomationId="install-agent-skill"
-                                                Click="OnInstallAgentSkillClick" />
-                                <MenuFlyoutItem x:Name="InstallAgentStatusHooksItem"
-                                                AutomationProperties.AutomationId="install-agent-status-hooks"
-                                                Click="OnInstallAgentStatusHooksClick" />
-                            </MenuFlyout>
-                        </Button.Flyout>
+                            Visibility="Collapsed"
+                            Click="OnDashboardExitClick"
+                            AutomationProperties.Name="Exit Dashboard"
+                            AutomationProperties.AutomationId="dashboard-exit"
+                            ToolTipService.ToolTip="Exit Dashboard (Esc)">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE73F;" FontSize="14" />
                     </Button>
                 </StackPanel>
             </TitleBar.RightHeader>

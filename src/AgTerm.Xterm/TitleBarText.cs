@@ -23,6 +23,9 @@ public static class TitleBarText
     public static string OsTitle(string? session, string? customWindowName) =>
         ProductIdentity.WindowTitle(Join(session, customWindowName));
 
+    // upstream dashboardWindowTitle: not gated by the interface elements, no session part
+    public static string Dashboard(string? customWindowName) => Join("Dashboard", customWindowName);
+
     public static double ToolbarHeight(AppSettings settings) =>
         settings.EffectiveToolbarMode() == ToolbarMode.Normal ? 48 : 32;
 

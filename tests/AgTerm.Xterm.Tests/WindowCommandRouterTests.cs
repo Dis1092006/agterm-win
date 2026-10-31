@@ -178,6 +178,40 @@ public class WindowCommandRouterTests
         Assert.False(router.CanExecute((BuiltinAction)999));
     }
 
+    // --- gate (upstream uiActionsEnabled) ---
+
+    [Fact]
+    public async Task A_gated_action_cannot_execute_and_its_handler_does_not_run()
+    {
+        var calls = 0;
+        var gateOpen = false;
+        var router = new WindowCommandRouter(AllNoOpHandlers(
+                replace: BuiltinAction.NewSession,
+                replacement: new WindowCommandHandler(() => true, () => { calls++; return Task.CompletedTask; })),
+            action => gateOpen || action != BuiltinAction.NewSession);
+
+        Assert.Equal(new WindowCommandState(Implemented: true, CanExecute: false),
+            router.GetState(BuiltinAction.NewSession));
+        Assert.False(await router.ExecuteAsync(BuiltinAction.NewSession));
+        Assert.Equal(0, calls);
+        Assert.True(router.CanExecute(BuiltinAction.CloseSession));
+
+        gateOpen = true;
+        Assert.True(await router.ExecuteAsync(BuiltinAction.NewSession));
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void An_open_gate_still_respects_the_handler_predicate()
+    {
+        var router = new WindowCommandRouter(AllNoOpHandlers(
+                replace: BuiltinAction.NewSession,
+                replacement: new WindowCommandHandler(() => false, () => Task.CompletedTask)),
+            _ => true);
+
+        Assert.False(router.CanExecute(BuiltinAction.NewSession));
+    }
+
     // --- ExecuteAsync ---
 
     [Fact]

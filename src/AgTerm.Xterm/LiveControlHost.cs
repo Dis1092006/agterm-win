@@ -445,6 +445,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             },
             cancellationToken);
 
+    // the title-bar exit button: upstream terminalZoom.clear(); Off is a no-op without a zoom
+    public Task ExitTerminalZoomAsync(CancellationToken cancellationToken = default) =>
+        StoreCoordinator.MutateAsync(
+            _ => Host.Actions.SetSurfaceZoom("active", null, ControlToggleMode.Off),
+            cancellationToken);
+
     public Task ToggleDashboardAsync(CancellationToken cancellationToken = default) =>
         StoreCoordinator.MutateAsync(
             _ =>
