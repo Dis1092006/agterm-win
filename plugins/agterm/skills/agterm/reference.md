@@ -137,8 +137,9 @@ position?, repeats?}` object; `kind` is `image`/`text`/`color` — omitted when 
 when zero), `fontSize`/`splitFontSize`/`scratchFontSize` (the LIVE font size in points of each pane —
 the read side of `font --pane`; each omitted when that pane isn't realized. `fontSize` tracks the
 default/left target (the main pane, or the promoted split survivor once the primary exits — the same pane
-`font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes and a
-promoted survivor are live-only — read them back here rather than from the snapshot), and `surfaces` (array
+`font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes are
+live-only (a promoted survivor saves the changes it gets after the promotion) — read them back here rather
+than from the snapshot), and `surfaces` (array
 of `{id, kind, active, visible}` where `kind` is `left`|`right`|`scratch`|`overlay`).
 The surface `id` is the address for `surface zoom`; hidden-but-alive split/scratch surfaces are included
 so a script can zoom them without changing split/scratch visibility first. Caveat: `active`/`visible`
@@ -719,7 +720,8 @@ Font size is optional and mutually exclusive: `--font-size N` sets an absolute c
 `fontSize`, shrinking as the grid grows so a dense 3×3 stays readable. Omit both to leave each pane's own
 font untouched. The applied size and mode read back on the tree's top-level `dashboardFontSize` /
 `dashboardFontMode`; the member pane refs and the highlighted cell read back on `dashboardMembers` /
-`dashboardHighlighted` (each a `<session-id>:left`/`<session-id>:right` pane ref).
+`dashboardHighlighted` (each a `<session-id>:left`/`<session-id>:right` pane ref). While a dashboard with
+a font size is open, a member pane's `fontSize`/`splitFontSize` reads the size its cell shows.
 
 The dashboard and terminal zoom are **mutually exclusive**: opening a dashboard closes any active zoom,
 and a zoom becoming active while the dashboard is open closes the dashboard. Opening (and closing) the
@@ -931,7 +933,10 @@ surface's font to change, like `session type`
 and `session text`: omitted or `left` is the main pane, `right` the split pane (errors with `session has
 no split pane` when the session has no split), `scratch` the session's scratch terminal (settable even
 while hidden). No `other` value. Only the MAIN pane's size is persisted across relaunch; a split/scratch
-pane's font change is live-only. The GUI chords are Alt++ / Alt+- / Alt+0. Read the
+pane's font change is live-only. A font change saves the size; until the first one the session has no saved
+size and opens at the base font size. `config reload` clears every saved size. The GUI chords are Alt++ /
+Alt+- / Alt+0; they act on the pane that has keyboard focus (main, split, scratch or overlay), or on the
+selected session's active pane when the focus is outside the terminal. Read the
 resulting size back from
 `tree` — `fontSize` (main), `splitFontSize`, `scratchFontSize`, each in points and omitted when that pane
 isn't realized.

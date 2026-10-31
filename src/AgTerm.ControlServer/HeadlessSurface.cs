@@ -43,6 +43,21 @@ public interface IHeadlessSurface : ITerminalSurface
     /// <summary>False while the pane has no terminal behind it (pending realize, output stopped).
     /// session.selectall and session.copy check it; Paste reports the same state by returning false.</summary>
     bool IsRealized => true;
+
+    /// <summary>The pane's own live font size in points (upstream currentFontSize), or null when the
+    /// surface does not know it. The tree reports it as fontSize / splitFontSize / scratchFontSize.</summary>
+    double? FontSize => null;
+}
+
+/// <summary>
+/// A pane that reports its own font size changes (upstream GhosttySurfaceView.onFontSizeChange).
+/// The live host writes the report into session.fontSize while the pane holds the main slot.
+/// </summary>
+public interface IFontSizeReportingSurface
+{
+    /// <summary>The pane's new size in points, raised by its own font actions (increase, decrease,
+    /// reset), never by a base font change or by pane creation.</summary>
+    event Action<double>? FontSizeChanged;
 }
 
 /// <summary>
@@ -51,7 +66,7 @@ public interface IHeadlessSurface : ITerminalSurface
 /// the quick-terminal slot are populated externally). Settable screen text / selection model what a
 /// real terminal would show; injected text and binding actions are recorded for assertions.
 /// </summary>
-public sealed class FakeSurface : IHeadlessSurface
+public sealed class FakeSurface : IHeadlessSurface, IFontSizeReportingSurface
 {
     /// <summary>The stable spawn token (the shell's baked AGTERM_PANE_ID) used by the --pane-id
     /// resolution in session.status / session.restore. Null = a shell that exports none.</summary>
@@ -86,6 +101,14 @@ public sealed class FakeSurface : IHeadlessSurface
 
     public bool IsRealized => Realized;
 
+    /// <summary>The pane's own font size the tree reports; null = unknown.</summary>
+    public double? FontSize { get; set; }
+
+    /// <summary>The size reset_font_size returns to.</summary>
+    public double BaseFontSize { get; set; } = 13;
+
+    public event Action<double>? FontSizeChanged;
+
     public bool Inject(string text)
     {
         if (!Realized) return false;
@@ -116,12 +139,34 @@ public sealed class FakeSurface : IHeadlessSurface
         return true;
     }
 
+    /// <summary>Records the action and steps FontSize like the real pane: increase/decrease by the
+    /// step, reset back to BaseFontSize. An unset FontSize starts from BaseFontSize.</summary>
     public bool PerformBindingAction(string action)
     {
         if (!Realized) return false;
         BindingActions.Add(action);
+        var current = FontSize ?? BaseFontSize;
+        double? next = action switch
+        {
+            "reset_font_size" => BaseFontSize,
+            _ when FontStep(action, "increase_font_size:") is { } up => current + up,
+            _ when FontStep(action, "decrease_font_size:") is { } down => current - down,
+            _ => null,
+        };
+        if (next is { } size)
+        {
+            FontSize = size;
+            FontSizeChanged?.Invoke(size);
+        }
         return true;
     }
+
+    private static double? FontStep(string action, string prefix) =>
+        action.StartsWith(prefix, StringComparison.Ordinal)
+        && double.TryParse(action[prefix.Length..], System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var step)
+            ? step
+            : null;
 
     public void Teardown() => TeardownCount += 1;
 

@@ -46,7 +46,7 @@ public sealed class XtermSurfaceOptions
 /// and blocks (bounded) — a timeout or a torn-down pane reports as "not realized" (false/null),
 /// which the arms map to the pinned wire errors, never a crash.
 /// </summary>
-public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurface, ILiveShutdownSurface, IScrollbackSurface, IDisposable
+public sealed class XtermPaneSurface : IHeadlessSurface, IFontSizeReportingSurface, ICompletedExitCodeSurface, ILiveShutdownSurface, IScrollbackSurface, IDisposable
 {
     private static readonly TimeSpan UiCallBudget = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(5);
@@ -78,6 +78,10 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
 
     /// <summary>The pane's live font size (the tree read-back's fontSize source).</summary>
     public double FontSize { get; private set; }
+
+    double? IHeadlessSurface.FontSize => FontSize;
+
+    public event Action<double>? FontSizeChanged;
 
     /// <summary>Completes when teardown starts, which may be later than the child process exit for
     /// a retained --wait surface.</summary>
@@ -223,6 +227,7 @@ public sealed class XtermPaneSurface : IHeadlessSurface, ICompletedExitCodeSurfa
         var applied = OnUi(async () => (double?)await Pane.Terminal.SetFontSizeAsync(target));
         if (applied is not { } size) return false;
         FontSize = size;
+        FontSizeChanged?.Invoke(size);
         return true;
     }
 

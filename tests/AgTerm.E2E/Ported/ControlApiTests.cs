@@ -965,6 +965,57 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
         Assert.True(response["ok"]!.GetValue<bool>(), $"font.inc on the active session should succeed: {response.ToJsonString()}");
     }
 
+    // upstream ControlServer tree: fontSize / splitFontSize / scratchFontSize are each pane's live
+    // size (currentFontSize), omitted when that pane is missing or not realized.
+    [Fact]
+    public void TreeReportsLiveFontSizePerPane()
+    {
+        var sessionId = ActiveSessionId();
+        var session = Host.Store.SessionWithId(Guid.Parse(sessionId))!;
+        var main = Attach(Host, sessionId);
+        main.FontSize = 14;
+
+        var single = SessionNode(SendCommand("""{"cmd":"tree"}"""), sessionId)!;
+        Assert.Equal(14, single["fontSize"]!.GetValue<double>());
+        Assert.Null(single["splitFontSize"]);
+        Assert.Null(single["scratchFontSize"]);
+
+        Assert.True(SendCommand($$$"""{"cmd":"session.split","target":"{{{sessionId}}}","args":{"mode":"on"}}""")
+            ["ok"]!.GetValue<bool>(), "split on should succeed");
+        session.SplitSurface = new FakeSurface { FontSize = 12 };
+        Assert.True(SendCommand($$$"""{"cmd":"session.scratch","target":"{{{sessionId}}}","args":{"mode":"on"}}""")
+            ["ok"]!.GetValue<bool>(), "scratch on should succeed");
+        session.ScratchSurface = new FakeSurface { FontSize = 16 };
+
+        var all = SessionNode(SendCommand("""{"cmd":"tree"}"""), sessionId)!;
+        Assert.Equal(14, all["fontSize"]!.GetValue<double>());
+        Assert.Equal(12, all["splitFontSize"]!.GetValue<double>());
+        Assert.Equal(16, all["scratchFontSize"]!.GetValue<double>());
+
+        main.Realized = false;
+        Assert.Null(SessionNode(SendCommand("""{"cmd":"tree"}"""), sessionId)!["fontSize"]);
+    }
+
+    // upstream reads the size the pane renders: on a dashboard with a font size that is the tile
+    // size (dashboardFontOverride), including a tile resized by a font command. Closing the
+    // dashboard reports the pane's own size again.
+    [Fact]
+    public void TreeFontSizeReportsDashboardTileSize()
+    {
+        var sessionId = ActiveSessionId();
+        var main = Attach(Host, sessionId);
+        main.FontSize = 14;
+
+        SendOk($$$"""{"cmd":"dashboard","args":{"targets":["{{{sessionId}}}"],"fontSize":9}}""");
+        Assert.Equal(9, SessionNode(SendCommand("""{"cmd":"tree"}"""), sessionId)!["fontSize"]!.GetValue<double>());
+
+        SendOk($$$"""{"cmd":"font.inc","target":"{{{sessionId}}}"}""");
+        Assert.Equal(10, SessionNode(SendCommand("""{"cmd":"tree"}"""), sessionId)!["fontSize"]!.GetValue<double>());
+
+        SendOk("""{"cmd":"dashboard","args":{"close":true}}""");
+        Assert.Equal(14, SessionNode(SendCommand("""{"cmd":"tree"}"""), sessionId)!["fontSize"]!.GetValue<double>());
+    }
+
     // an invalid mode returns an error and does NOT flip state.
     [Fact]
     public void InvalidQuickModeErrors()

@@ -170,6 +170,30 @@ public class XtermPaneSurfaceTests
         Assert.Equal(14, surface.FontSize);
     }
 
+    // upstream onFontSizeChange, narrowed: only the pane's own font actions report a size. A base
+    // font change does not, so it never pins the base size into session.fontSize.
+    [Fact]
+    public async Task Font_binding_actions_report_the_new_size_and_a_base_change_does_not()
+    {
+        using var surface = await OpenAsync(new XtermSurfaceOptions
+        {
+            Argv = new[] { Cmd },
+            BaseFontSize = 14,
+        });
+        WaitForScreen(surface, ">");
+        var reported = new List<double>();
+        surface.FontSizeChanged += reported.Add;
+
+        surface.ApplyBaseFontSize(18);
+        Assert.Empty(reported);
+
+        Assert.True(surface.PerformBindingAction("increase_font_size:1"));
+        Assert.True(surface.PerformBindingAction("decrease_font_size:1"));
+        Assert.True(surface.PerformBindingAction("increase_font_size:2"));
+        Assert.True(surface.PerformBindingAction("reset_font_size"));
+        Assert.Equal([19.0, 18.0, 20.0, 18.0], reported);
+    }
+
     [Fact]
     public async Task Pane_token_is_baked_into_the_shell_environment()
     {

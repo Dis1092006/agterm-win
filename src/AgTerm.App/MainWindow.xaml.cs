@@ -107,6 +107,7 @@ public sealed partial class MainWindow : Window
     private SidebarController? _sidebar;
     private KeymapEditOverlay? _keymapEditOverlay;
     private WindowCommandRouter? _commandRouter; // UI-thread confined
+    private string? _hotkeySourcePaneId; // the page pane that received the chord being executed
     private LiveSelectionSnapshot _selection = new(null, null); // UI-thread confined
     private SidebarSnapshot? _latestSidebarSnapshot; // UI-thread confined
     private string? _acceptedPaneId; // UI-thread confined
@@ -1056,9 +1057,9 @@ public sealed partial class MainWindow : Window
                 async () => _ = await _applicationHost.ReopenLatestRecentClosedAsync(_windowId)),
             [BuiltinAction.UndoClose] = Sync(() => true, sidebar.UndoClose),
             [BuiltinAction.ClearStatus] = Sync(HasSelectedSession, sidebar.ClearActiveStatus),
-            [BuiltinAction.IncreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("increase_font_size:1")),
-            [BuiltinAction.DecreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("decrease_font_size:1")),
-            [BuiltinAction.ResetFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("reset_font_size")),
+            [BuiltinAction.IncreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("increase_font_size:1", _hotkeySourcePaneId)),
+            [BuiltinAction.DecreaseFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("decrease_font_size:1", _hotkeySourcePaneId)),
+            [BuiltinAction.ResetFontSize] = Async(HasSelectedSession, () => host.PerformFontActionAsync("reset_font_size", _hotkeySourcePaneId)),
             [BuiltinAction.ToggleSidebar] = Sync(() => true, sidebar.ToggleSidebarVisible),
             [BuiltinAction.ToggleSplit] = Async(
                 HasSelectedSession,
@@ -1497,7 +1498,7 @@ public sealed partial class MainWindow : Window
         page.KeyboardShortcutsRequested += () => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
             ToggleKeybindingsAsync(), "Keyboard shortcuts failed"));
         page.BuiltinHotkeyPressed += hit => DispatcherQueue.TryEnqueue(() =>
-            HandleChord(hit.Chord, hit.Generation));
+            HandleChord(hit.Chord, hit.Generation, hit.PaneId));
         page.SwitcherKeyPressed += key => DispatcherQueue.TryEnqueue(() => HandleSwitcherKey(key));
         page.CustomCommandPressed += hit => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
             ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(
@@ -1990,7 +1991,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Dispatch a physical chord through the router to the same mutators the control
     /// socket drives. Returns whether an action fired.</summary>
-    private bool HandleChord(PhysicalChord physical, long? generation = null)
+    private bool HandleChord(PhysicalChord physical, long? generation = null, string? sourcePaneId = null)
     {
         if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen)
             return false;
@@ -2006,10 +2007,10 @@ public sealed partial class MainWindow : Window
         if (hotkeyState?.Router.Handle(physical) is not { } action)
             return false;
 
-        return ExecuteBuiltinHotkey(action);
+        return ExecuteBuiltinHotkey(action, sourcePaneId);
     }
 
-    internal bool ExecuteBuiltinHotkey(BuiltinAction action)
+    internal bool ExecuteBuiltinHotkey(BuiltinAction action, string? sourcePaneId = null)
     {
         if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen)
             return false;
@@ -2017,11 +2018,19 @@ public sealed partial class MainWindow : Window
         if (router is null || !router.CanExecute(action))
             return false;
 
-        ObserveTaskFault(
-            AnyPaletteOpen && _shownPickId is null && PaletteKeys.ClosesPaletteFirst(action)
-                ? ClosePaletteThenExecuteAsync(router, action)
-                : router.ExecuteAsync(action),
-            $"Hotkey action {action} failed");
+        Task execution;
+        if (AnyPaletteOpen && _shownPickId is null && PaletteKeys.ClosesPaletteFirst(action))
+        {
+            execution = ClosePaletteThenExecuteAsync(router, action);
+        }
+        else
+        {
+            // The handlers read the pane synchronously, before their first await.
+            _hotkeySourcePaneId = sourcePaneId;
+            try { execution = router.ExecuteAsync(action); }
+            finally { _hotkeySourcePaneId = null; }
+        }
+        ObserveTaskFault(execution, $"Hotkey action {action} failed");
         return true;
     }
 

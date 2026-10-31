@@ -265,6 +265,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             options.RealizeBudget,
             (request, realizedSurface) =>
             {
+                if (request.SessionId is { } fontSessionId
+                    && request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split
+                    && realizedSurface is IFontSizeReportingSurface reporting)
+                {
+                    BindFontSize(fontSessionId, reporting);
+                }
                 if (realizedSurface is not XtermPaneSurface paneSurface)
                 {
                     return;
@@ -419,20 +425,44 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     public void Start() => Host.Start();
 
-    public Task PerformFontActionAsync(string action, CancellationToken cancellationToken = default) =>
+    /// <summary>A font chord. upstream focusedSurface(): the terminal with keyboard focus, which is
+    /// the pane the page says received the key, else the selected session's active pane. On the
+    /// dashboard the chord keeps resizing the selected session's tile.</summary>
+    public Task PerformFontActionAsync(string action, string? sourcePaneId = null,
+        CancellationToken cancellationToken = default) =>
         StoreCoordinator.MutateAsync(
             store =>
             {
-                // upstream Session.activeSurface: on the dashboard the chord resizes the focused
-                // split's tile when the selected session has one.
-                var pane = Host.Actions.Dashboard.IsOpen
-                    && store.SelectedSessionId is { } selectedId
-                    && store.SessionWithId(selectedId) is { SplitFocused: true, SplitSurface: not null }
-                        ? "right"
-                        : null;
-                Host.Actions.Font(null, null, pane, action);
+                if (Host.Actions.Dashboard.IsOpen)
+                {
+                    // upstream Session.activeSurface: on the dashboard the chord resizes the focused
+                    // split's tile when the selected session has one.
+                    var pane = store.SelectedSessionId is { } selectedId
+                        && store.SessionWithId(selectedId) is { SplitFocused: true, SplitSurface: not null }
+                            ? "right"
+                            : null;
+                    Host.Actions.Font(null, null, pane, action);
+                    return;
+                }
+                var surface = SurfaceWithPaneToken(store, sourcePaneId) ?? store.ActiveSession?.ActiveSurface;
+                (surface as IHeadlessSurface)?.PerformBindingAction(action);
             },
             cancellationToken);
+
+    private static ITerminalSurface? SurfaceWithPaneToken(AppStore store, string? paneToken)
+    {
+        if (paneToken is null)
+            return null;
+        foreach (var session in store.Workspaces.SelectMany(workspace => workspace.Sessions))
+        {
+            foreach (var surface in new[] { session.Surface, session.SplitSurface, session.ScratchSurface, session.OverlaySurface })
+            {
+                if (surface?.PaneToken == paneToken)
+                    return surface;
+            }
+        }
+        return null;
+    }
 
     public Task ToggleQuickTerminalAsync(CancellationToken cancellationToken = default) =>
         StoreCoordinator.MutateAsync(
@@ -1689,6 +1719,16 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }));
         _ = CloseOnExitAsync(sessionId, surface);
     }
+
+    /// <summary>upstream onFontSizeChange → store.setFontSize: only the pane in the main slot saves
+    /// its size. A split pane saves nothing until it is promoted into the main slot. The pane
+    /// reports from its own font actions, which already run under the host gate.</summary>
+    private void BindFontSize(Guid sessionId, IFontSizeReportingSurface surface) =>
+        surface.FontSizeChanged += size => Host.RunLocked(() =>
+        {
+            if (ReferenceEquals(Host.Store.SessionWithId(sessionId)?.Surface, surface))
+                Host.Store.SetFontSize(sessionId, size);
+        });
 
     private void BindSplit(Guid sessionId, XtermPaneSurface surface)
     {

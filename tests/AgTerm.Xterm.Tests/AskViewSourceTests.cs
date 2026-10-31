@@ -30,7 +30,7 @@ public sealed class AskViewSourceTests
     {
         var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
         Assert.Matches(new Regex(
-            @"private bool HandleChord\(PhysicalChord physical, long\? generation = null\)\s*\{\s*if \(AskOverlay\.IsOpen \|\| KeybindingsOverlay\.IsOpen\)\s*return false;"),
+            @"private bool HandleChord\(PhysicalChord physical, long\? generation = null, string\? sourcePaneId = null\)\s*\{\s*if \(AskOverlay\.IsOpen \|\| KeybindingsOverlay\.IsOpen\)\s*return false;"),
             source);
         Assert.Matches(new Regex(
             @"private void FocusTerminal\(string paneId\)\s*\{\s*if \(_applicationHost\.Quick\.HoldsKey\) return;\s*if \(AskOverlay\.IsOpen\)\s*\{\s*(//[^
