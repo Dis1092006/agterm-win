@@ -914,6 +914,34 @@ public sealed class WindowPaletteActionsTests
             selection, CustomCommandSource.Hotkey, "overlay"));
     }
 
+    // upstream CustomCommandRunner.runNoSurface at 7df70fe (256-266): a chord on the dashboard has no
+    // surface it fired from, so it runs as run(_:) does, in the selected session's focused pane and
+    // not in the highlighted tile.
+    [Fact]
+    public void Dashboard_hotkey_drops_the_tile_pane_and_uses_the_selected_focused_pane()
+    {
+        var selection = new LiveSelectionSnapshot(
+            Guid.NewGuid(),
+            "session",
+            MainPaneId: "main",
+            SplitPaneId: "split",
+            IsSplit: true);
+        var commandId = Guid.NewGuid();
+        var chord = new PhysicalChord(false, true, false, "f");
+
+        var fromTile = CustomCommandExecutionRequest.FromHotkey(
+            new CustomHotkeyEvent("split", commandId, 3, chord, Dashboard: true));
+        Assert.Equal(new CustomCommandExecutionRequest(commandId, CustomCommandSource.Hotkey, null, 3), fromTile);
+        Assert.Equal("main", WindowPaletteActions.CustomCommandPaneId(
+            selection, fromTile.Source, fromTile.PaneId));
+        Assert.Equal("split", WindowPaletteActions.CustomCommandPaneId(
+            selection with { SplitFocused = true }, fromTile.Source, fromTile.PaneId));
+
+        var fromPane = CustomCommandExecutionRequest.FromHotkey(
+            new CustomHotkeyEvent("split", commandId, 3, chord));
+        Assert.Equal(new CustomCommandExecutionRequest(commandId, CustomCommandSource.Hotkey, "split", 3), fromPane);
+    }
+
     [Fact]
     public async Task Command_acceptance_rechecks_router_CanExecute_after_palette_open()
     {

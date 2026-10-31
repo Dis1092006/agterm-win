@@ -668,7 +668,8 @@ public sealed class MainWindowCustomCommandWiringTests
         Assert.Contains("page.SetHotkeyManifestAsync", source, StringComparison.Ordinal);
         Assert.Contains("page.BuiltinHotkeyPressed +=", source, StringComparison.Ordinal);
         Assert.Contains("page.CustomCommandPressed +=", source, StringComparison.Ordinal);
-        Assert.Contains("ExecuteCustomCommandAsync", source, StringComparison.Ordinal);
+        Assert.Contains("ExecuteCustomCommandAsync(CustomCommandExecutionRequest.FromHotkey(hit))", source,
+            StringComparison.Ordinal);
         Assert.Contains("CustomCommandSource.Hotkey", source, StringComparison.Ordinal);
         Assert.Contains("CustomCommandSource.Palette", source, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);

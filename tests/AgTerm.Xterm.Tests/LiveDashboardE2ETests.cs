@@ -1171,6 +1171,131 @@ public sealed class LiveDashboardPageTests(WebView2Fixture webView)
         Assert.Empty(terminalData);
     }
 
+    // upstream CustomCommandRunner at 7df70fe (44-48, 95-151, 256-266): the local key monitor runs
+    // before the dashboard's key catcher, so a custom chord or a leader fires on the grid too. It
+    // fires with no surface, and the host runs it in the selected session.
+    [Fact]
+    public async Task Dashboard_fires_custom_chords_and_leaders_as_dashboard_hotkeys()
+    {
+        var page = await webView.CreatePageAsync();
+        var terminalData = new EventRecorder<string>();
+        foreach (var paneId in new[] { "custom-one", "custom-two" })
+        {
+            var terminal = await webView.RunAsync(_ => page.OpenTerminalAsync(paneId));
+            terminal.DataReceived += terminalData.Add;
+        }
+        var cells = new[]
+        {
+            new TerminalDashboardCell("custom-one", "A:left"),
+            new TerminalDashboardCell("custom-two", "B:left"),
+        };
+        var highlights = new EventRecorder<string>();
+        var customHits = new EventRecorder<CustomHotkeyEvent>();
+        page.DashboardHighlighted += highlights.Add;
+        page.CustomCommandPressed += customHits.Add;
+        var single = Guid.NewGuid();
+        var leader = Guid.NewGuid();
+        await webView.RunAsync(_ => page.SetHotkeyManifestAsync(new HotkeyManifest(
+            1, 1500, [],
+            [
+                new(single, [new(false, true, false, "f")]),
+                new(leader, [new(true, false, false, "k"), new(false, false, false, "b")]),
+            ])));
+        Assert.True(await ApplyAsync(page,
+            new TerminalLayout.Dashboard(1, cells, "B:left")));
+
+        foreach (var key in new[] { "{key:'f',altKey:true}", "{key:'k',ctrlKey:true}", "{key:'b'}" })
+        {
+            await webView.RunAsync(_ => page.ExecuteScriptAsync(
+                $"agterm.dispatchKey('custom-one', {key})"));
+        }
+        await WaitUntilAsync(() => customHits.Count == 2, TimeSpan.FromSeconds(5));
+
+        Assert.Equal([single, leader], customHits.Select(hit => hit.CommandId));
+        Assert.All(customHits, hit => Assert.True(hit.Dashboard));
+        Assert.All(customHits, hit => Assert.Equal("custom-two", hit.PaneId));
+        Assert.Equal(new PhysicalChord(false, false, false, "b"), customHits[1].Chord);
+        await Task.Delay(150);
+        Assert.Empty(highlights);
+        Assert.Empty(terminalData);
+    }
+
+    // upstream CustomCommandRunner.handleKeyDown at 7df70fe (120-151): Escape with a leader armed only
+    // drops the leader. An armed chord is tried first and a miss retries at the root. A key that
+    // matches nothing passes on to the key catcher or to a window chord.
+    [Fact]
+    public async Task Dashboard_leader_escape_tail_and_miss_follow_the_upstream_key_monitor()
+    {
+        var page = await webView.CreatePageAsync();
+        foreach (var paneId in new[] { "lead-one", "lead-two" })
+            await webView.RunAsync(_ => page.OpenTerminalAsync(paneId));
+        var cells = new[]
+        {
+            new TerminalDashboardCell("lead-one", "A:left"),
+            new TerminalDashboardCell("lead-two", "B:left"),
+        };
+        var highlights = new EventRecorder<string>();
+        var customHits = new EventRecorder<CustomHotkeyEvent>();
+        var builtinHits = new EventRecorder<PhysicalChord>();
+        var closes = 0;
+        page.DashboardHighlighted += highlights.Add;
+        page.CustomCommandPressed += customHits.Add;
+        page.BuiltinHotkeyPressed += hit => builtinHits.Add(hit.Chord);
+        page.DashboardClosed += () => Interlocked.Increment(ref closes);
+        var closeSession = new PhysicalChord(false, true, false, "w");
+        var biggerFont = new PhysicalChord(false, true, false, "=");
+        var arrowTail = Guid.NewGuid();
+        var builtinTail = Guid.NewGuid();
+        var rootSingle = Guid.NewGuid();
+        await webView.RunAsync(async _ =>
+        {
+            Assert.True(await page.SetHotkeyManifestAsync(
+                new HotkeyManifest(1, 1500, [closeSession, biggerFont],
+                [
+                    new(arrowTail, [new(true, false, false, "k"), new(false, false, false, "left")]),
+                    new(builtinTail, [new(true, false, false, "k"), closeSession]),
+                    new(rootSingle, [new(false, true, false, "g")]),
+                ]),
+                dashboardPassthroughSingles: [closeSession, biggerFont]));
+            return true;
+        });
+        Assert.True(await ApplyAsync(page,
+            new TerminalLayout.Dashboard(1, cells, "A:left")));
+        Task KeyAsync(string key) => webView.RunAsync(_ => page.ExecuteScriptAsync(
+            $"agterm.dispatchKey('lead-one', {key})"));
+
+        await KeyAsync("{key:'k',ctrlKey:true}");
+        await DispatchDocumentKeyAsync(page, "Escape");
+        await KeyAsync("{key:'ArrowLeft'}");
+        await Task.Delay(150);
+        Assert.Equal(0, Volatile.Read(ref closes));
+        Assert.Empty(customHits);
+
+        await KeyAsync("{key:'k',ctrlKey:true}");
+        await KeyAsync("{key:'ArrowLeft'}");
+        await KeyAsync("{key:'k',ctrlKey:true}");
+        await KeyAsync("{key:'w',altKey:true}");
+        await KeyAsync("{key:'k',ctrlKey:true}");
+        await KeyAsync("{key:'g',altKey:true}");
+        await WaitUntilAsync(() => customHits.Count == 3, TimeSpan.FromSeconds(5));
+        Assert.Equal([arrowTail, builtinTail, rootSingle], customHits.Select(hit => hit.CommandId));
+        Assert.Empty(builtinHits);
+        Assert.Empty(highlights);
+
+        await KeyAsync("{key:'k',ctrlKey:true}");
+        await KeyAsync("{key:'ArrowRight'}");
+        await WaitUntilAsync(() => highlights.Count == 1, TimeSpan.FromSeconds(5));
+        Assert.Equal("B:left", highlights[0]);
+        await KeyAsync("{key:'k',ctrlKey:true}");
+        await KeyAsync("{key:'=',altKey:true}");
+        await WaitUntilAsync(() => builtinHits.Count == 1, TimeSpan.FromSeconds(5));
+        Assert.Equal(biggerFont, builtinHits[0]);
+        Assert.Equal(3, customHits.Count);
+
+        await DispatchDocumentKeyAsync(page, "Escape");
+        await WaitUntilAsync(() => Volatile.Read(ref closes) == 1, TimeSpan.FromSeconds(5));
+    }
+
     [Fact]
     public async Task Stale_and_invalid_dashboard_payloads_do_not_replace_visible_grid()
     {

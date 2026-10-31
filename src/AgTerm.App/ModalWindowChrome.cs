@@ -32,7 +32,7 @@ public static class ModalActionGate
         Allows(action, zoomActive: false, dashboardOpen: true);
 
     // the published chords the dashboard page hands to the window: an enabled action's chord and the
-    // Settings chord. A custom command's chord stays swallowed (docs/PLATFORM-NOTES.md).
+    // Settings chord. Custom-command chords are not gated; the page sends them on its own.
     public static IReadOnlyList<PhysicalChord> DashboardPassthroughChords(
         HotkeyRouter router, Keymap keymap, HotkeyManifest manifest) =>
         manifest.BuiltinSingles

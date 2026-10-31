@@ -14,7 +14,8 @@ public sealed record CustomHotkeyEvent(
     string PaneId,
     Guid CommandId,
     long Generation,
-    PhysicalChord Chord);
+    PhysicalChord Chord,
+    bool Dashboard = false);
 
 public sealed record BuiltinHotkeyEvent(
     string PaneId,

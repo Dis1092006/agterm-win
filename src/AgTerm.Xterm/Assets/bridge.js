@@ -1066,35 +1066,52 @@ function onDashboardKeyDown(ev) {
     ArrowUp: "up",
     ArrowDown: "down",
   };
-  // a window chord the dashboard keeps enabled wins over its own keys (upstream menu key
-  // equivalents run before the key catcher), so Alt+Enter is full screen, not activate
+  // upstream CustomCommandRunner's key monitor runs first: Escape only drops an armed leader, and a
+  // custom chord or leader fires with no surface (the host runs it in the selected session). A
+  // window chord the dashboard keeps enabled wins over the grid keys (upstream menu key
+  // equivalents run before the key catcher), so Alt+Enter is full screen, not activate.
   const key = keymapKey(ev);
   const chord = key
     ? { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key }
     : null;
+  const paneId = visibleLayout.highlightedPaneId;
+  const customWasArmed = armedCustomChords.length > 0;
+  let handled = false;
+  if (ev.key === "Escape" && customWasArmed) {
+    resetCustomLeader();
+    handled = true;
+  } else if (chord && customWasArmed) {
+    handled = processCustomChord(paneId, chord, true, true);
+  }
   if (
+    !handled &&
     chord &&
     dashboardPassthroughChords.some((candidate) =>
       samePhysicalChord(candidate, chord),
     )
   ) {
+    resetCustomLeader();
     post({
       type: "chord",
-      paneId: visibleLayout.highlightedPaneId,
+      paneId,
       generation: hotkeyGeneration,
       ctrl: chord.ctrl,
       alt: chord.alt,
       shift: chord.shift,
       key: chord.key,
     });
-  } else if (directions[ev.key]) {
+    handled = true;
+  } else if (!handled && chord && !customWasArmed) {
+    handled = processCustomChord(paneId, chord, true, true);
+  }
+  if (!handled && directions[ev.key]) {
     moveDashboardHighlight(directions[ev.key]);
-  } else if (ev.key === "Enter") {
+  } else if (!handled && ev.key === "Enter") {
     post({
       type: "dashboardActivate",
       controlRef: visibleLayout.highlightedControlRef,
     });
-  } else if (ev.key === "Escape") {
+  } else if (!handled && ev.key === "Escape") {
     post({ type: "dashboardClose" });
   }
   if (ev.preventDefault) ev.preventDefault();
@@ -2426,7 +2443,7 @@ function armCustomLeader(chords) {
   customLeaderTimer = setTimeout(resetCustomLeader, customLeaderTimeoutMs);
 }
 
-function processCustomChord(paneId, chord, allowRootRetry) {
+function processCustomChord(paneId, chord, allowRootRetry, dashboard = false) {
   const candidate = [...armedCustomChords, chord];
   const exact = customHotkeyBindings.find(
     (binding) =>
@@ -2435,7 +2452,7 @@ function processCustomChord(paneId, chord, allowRootRetry) {
   );
   if (exact) {
     resetCustomLeader();
-    post({
+    const message = {
       type: "customHotkey",
       paneId,
       generation: hotkeyGeneration,
@@ -2444,7 +2461,9 @@ function processCustomChord(paneId, chord, allowRootRetry) {
       alt: chord.alt,
       shift: chord.shift,
       key: chord.key,
-    });
+    };
+    if (dashboard) message.dashboard = true;
+    post(message);
     return true;
   }
 
@@ -2462,7 +2481,7 @@ function processCustomChord(paneId, chord, allowRootRetry) {
   const wasArmed = armedCustomChords.length > 0;
   resetCustomLeader();
   return wasArmed && allowRootRetry
-    ? processCustomChord(paneId, chord, false)
+    ? processCustomChord(paneId, chord, false, dashboard)
     : false;
 }
 

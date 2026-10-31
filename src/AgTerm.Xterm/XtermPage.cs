@@ -541,7 +541,8 @@ public sealed class XtermPage
                     msg.Ctrl ?? false,
                     msg.Alt ?? false,
                     msg.Shift ?? false,
-                    customKey)));
+                    customKey),
+                msg.Dashboard ?? false));
             return;
         }
         if (msg is { Type: "askIntent", AskId: { } askId } && AskIntentFrom(msg) is { } intent)
@@ -722,6 +723,7 @@ internal sealed record BridgeMessage
     [JsonPropertyName("meta")] public bool? Meta { get; init; }
     [JsonPropertyName("generation")] public long? Generation { get; init; }
     [JsonPropertyName("customCommandId")] public string? CustomCommandId { get; init; }
+    [JsonPropertyName("dashboard")] public bool? Dashboard { get; init; }
     [JsonPropertyName("leftPaneId")] public string? LeftPaneId { get; init; }
     [JsonPropertyName("rightPaneId")] public string? RightPaneId { get; init; }
     [JsonPropertyName("ratio")] public double? Ratio { get; init; }
