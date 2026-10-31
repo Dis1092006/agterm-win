@@ -360,6 +360,12 @@ public class XtermPageTests
         Assert.Equal(commandId, observed.CommandId);
         Assert.Equal(7, observed.Generation);
         Assert.Equal(new(false, false, false, "b"), observed.Chord);
+        Assert.False(observed.Dashboard);
+
+        _host.RaiseMessage($$"""
+            {"type":"customHotkey","paneId":"p1","generation":7,"customCommandId":"{{commandId:D}}","ctrl":false,"alt":false,"shift":false,"key":"b","dashboard":true}
+            """);
+        Assert.True(observed!.Dashboard);
     }
 
     [Fact]

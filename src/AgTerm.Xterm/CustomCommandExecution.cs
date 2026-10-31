@@ -20,7 +20,11 @@ public sealed record CustomCommandExecutionRequest(
     string? PaneId = null,
     long? HotkeyGeneration = null,
     string Selection = "",
-    Guid? SessionId = null);
+    Guid? SessionId = null)
+{
+    public static CustomCommandExecutionRequest FromHotkey(CustomHotkeyEvent hit) =>
+        new(hit.CommandId, CustomCommandSource.Hotkey, hit.Dashboard ? null : hit.PaneId, hit.Generation);
+}
 
 public sealed record CustomCommandWindowContext(
     Guid WindowId,

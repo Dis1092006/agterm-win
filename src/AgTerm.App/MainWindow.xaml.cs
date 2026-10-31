@@ -1501,11 +1501,7 @@ public sealed partial class MainWindow : Window
             HandleChord(hit.Chord, hit.Generation, hit.PaneId));
         page.SwitcherKeyPressed += key => DispatcherQueue.TryEnqueue(() => HandleSwitcherKey(key));
         page.CustomCommandPressed += hit => DispatcherQueue.TryEnqueue(() => ObserveTaskFault(
-            ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(
-                hit.CommandId,
-                CustomCommandSource.Hotkey,
-                hit.PaneId,
-                hit.Generation)),
+            ExecuteCustomCommandAsync(CustomCommandExecutionRequest.FromHotkey(hit)),
             $"Custom command {hit.CommandId} failed"));
         host.Host.Actions.CustomCommandRunner = (store, sessionId, command) => RunCustomCommandFromPipe(host, store, sessionId, command);
         if (_keymapReloadHandler is not null)
