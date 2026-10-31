@@ -38,17 +38,34 @@ public class AppStoreExpandCollapseTests
         Assert.False(c.IsExpanded);
     }
 
+    // upstream collapseOthers keeps store.currentWorkspaceID, which falls back to the last workspace.
     [Fact]
-    public void CollapseOtherWorkspacesWithoutASelectionCollapsesAll()
+    public void CollapseOtherWorkspacesWithoutASelectionKeepsTheLastWorkspace()
     {
         var store = AppStoreFixtures.MakeStore();
-        var a = store.AddWorkspace("a");
-        var b = store.AddWorkspace("b");
+        var a = store.AddWorkspace("a", clearFocus: false);
+        var b = store.AddWorkspace("b", clearFocus: false);
 
         store.CollapseOtherWorkspaces();
 
         Assert.False(a.IsExpanded);
-        Assert.False(b.IsExpanded);
+        Assert.True(b.IsExpanded);
+    }
+
+    // upstream 0106275a: a foreground-created workspace is the current one until the selection changes.
+    [Fact]
+    public void CollapseOtherWorkspacesKeepsAForegroundCreatedWorkspace()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var work = store.AddWorkspace("work");
+        var session = store.AddSession(work.Id, "/work")!;
+        store.SelectSession(session.Id);
+        var fresh = store.AddWorkspace("fresh");
+
+        store.CollapseOtherWorkspaces();
+
+        Assert.False(work.IsExpanded);
+        Assert.True(fresh.IsExpanded);
     }
 
     [Fact]

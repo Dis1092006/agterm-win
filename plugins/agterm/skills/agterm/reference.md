@@ -80,6 +80,7 @@ cursor, transport, or server error and does not retry forever while the app is a
 - `--target` defaults to `active` (the selected session / current workspace). Accepts a full UUID
   (case-insensitive) or a unique prefix. Zero matches → `no such <noun>: <target>`; ambiguous prefix →
   `ambiguous <noun> prefix '<target>' → <ids>` (the error lists candidates).
+- For a WORKSPACE, `active` is where a new session lands: one created in the foreground (the GUI's New Workspace, or `workspace new` without `--collapsed`) until the selection CHANGES — to a different session or to none at all, as when you close the last one — or `workspace select` names another, it is deleted, or focusing another workspace hides it. Hiding drops it for good, so `workspace focus off` does not restore it. Reselecting the already-selected session does not count: `session select`, `overlay open --follow` and single-session `session go` leave it in place. `workspace select` on an EMPTY workspace has no session to select, so it takes the target instead (and unfocuses another focused workspace to reveal it). Else the selected session's workspace, else the last one. A background create (`workspace new --collapsed`, `session new --create-workspace --no-select`) never takes it. The tree workspace node's `active` flag reads the SELECTED session's workspace only, so right after a foreground create it can name a different workspace than `--target active` resolves to; address by id when the two must agree.
 - **For an agent, `active` is the USER's GUI-selected session, not yours.** Your shell is
   `$AGTERM_SESSION_ID`; the user is usually on a different session while you work. Pass
   `--target "$AGTERM_SESSION_ID"` on any session-scoped command (`overlay open`, `scratch`, `type`,
@@ -191,9 +192,9 @@ All twelve are read-only projections of GUI state.
 - `workspace select [--target] [--window W]`. Wire: `workspace.select`.
 - `workspace move --to up|down|top|bottom [--target] [--window W]` — reorder among siblings. Wire:
   `workspace.move`. Missing
-  or invalid `--to` errors. Note: `--target active` resolves to the current workspace, which with no
-  selected session falls back to the last workspace; address a specific workspace by id to step the
-  same one.
+  or invalid `--to` errors. Note: `--target active` resolves to the current workspace — a
+  foreground-created workspace that still holds the target, else the selected session's, else
+  the last one; address a specific workspace by id to step the same one.
 - `workspace focus [on|off|toggle] [--target] [--window W]` — collapse the sidebar tree to a single
   workspace's subtree (hiding the others), or restore the full tree; returns the workspace id. Wire:
   `workspace.focus`. `on`
@@ -205,7 +206,7 @@ All twelve are read-only projections of GUI state.
 - `workspace collapse [--target] [--window W]` — collapse ONE workspace's subtree in the sidebar tree
   (hide its sessions); returns the workspace id. Wire: `workspace.collapse`. The per-workspace
   counterpart of `sidebar collapse`
-  (which collapses ALL but the active workspace) — this targets exactly the addressed workspace and does
+  (which collapses ALL but the current workspace) — this targets exactly the addressed workspace and does
   not depend on which one is active. Idempotent. Persisted. Read back from the tree workspace node's
   `collapsed` flag.
 - `workspace expand [--target] [--window W]` — expand ONE workspace's subtree (show its sessions);
@@ -873,8 +874,8 @@ Defaults to the frontmost window; `--window` (id / prefix / `active`) targets an
 script can expand a background window's tree. Idempotent (a clean no-op when all are already expanded);
 a graceful no-op in `flagged` mode (no workspace rows); a named-but-closed window errors.
 
-`agtermctl sidebar collapse [--window W]` — collapse every workspace EXCEPT the active one (the
-workspace of the active session), which stays expanded and is scrolled into view. Wire:
+`agtermctl sidebar collapse [--window W]` — collapse every workspace EXCEPT the current one (the same
+resolution as `--target active`), which stays expanded and is scrolled into view. Wire:
 `sidebar.collapse`. Same `--window`
 selector and defaults as `expand`. Idempotent; a graceful no-op in `flagged` mode; a named-but-closed
 window errors.

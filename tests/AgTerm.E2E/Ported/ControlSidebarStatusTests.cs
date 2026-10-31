@@ -228,7 +228,7 @@ public class ControlSidebarStatusTests : ControlApiTestCase
             "--no-select --create-workspace must preserve the focused workspace (not clear it via auto-reveal)");
     }
 
-    // sidebar.collapse collapses every workspace except the active session's — the others' session rows
+    // sidebar.collapse collapses every workspace except the current one — the others' session rows
     // leave the AX tree while the active workspace's stay; sidebar.expand re-expands every workspace and
     // restores them.
     [Fact]
@@ -272,6 +272,23 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         Assert.True(expand["ok"]!.GetValue<bool>(), $"sidebar.expand should succeed: {expand.ToJsonString()}");
         Assert.Null(WorkspaceNode(firstWsID)["collapsed"]);
         Assert.Null(WorkspaceNode(secondWsID)["collapsed"]); // the collapsed workspace's session returns
+    }
+
+    // upstream 0106275a: sidebar.collapse keeps the current workspace, and a workspace created in the
+    // foreground is the current one until the selection changes.
+    [Fact]
+    public void SidebarCollapseKeepsAForegroundCreatedWorkspace()
+    {
+        var tree = SendCommand("""{"cmd":"tree"}""");
+        var firstWsID = tree["result"]!["tree"]!["workspaces"]![0]!["id"]!.GetValue<string>();
+        var fresh = SendCommand("""{"cmd":"workspace.new","args":{"name":"fresh"}}""");
+        var freshWsID = fresh["result"]!["id"]!.GetValue<string>();
+
+        var collapse = SendCommand("""{"cmd":"sidebar.collapse"}""");
+
+        Assert.Equal("""{"ok":true}""", collapse.ToJsonString());
+        Assert.Equal(true, WorkspaceNode(firstWsID)["collapsed"]?.GetValue<bool>());
+        Assert.Null(WorkspaceNode(freshWsID)["collapsed"]);
     }
 
     // session.status sets a session's agent indicator: a valid state returns ok + the resolved id, an
