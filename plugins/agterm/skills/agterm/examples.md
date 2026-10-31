@@ -339,15 +339,17 @@ agtermctl workspace focus toggle --target a1b2                # flip focus on an
 agtermctl workspace focus off                                 # restore the full tree
 ```
 
+Every mode acts on `--target`, which defaults to `active` — the CURRENT workspace: one that holds the target because you created it in the foreground or ran `workspace select` on it while it was empty, else the selected session's, else the last. That is not whatever the previous line addressed, so always name the workspace you mean. Focusing another workspace hides a target-holding one and hands targeting back, so `active` here and `active` a line later can differ.
+
 ## Expand or collapse the sidebar tree
 
-Open every workspace at once, or collapse all but the active one (the workspace of the active session,
+Open every workspace at once, or collapse all but the current one (the same resolution as `--target active`,
 which stays expanded and scrolled into view) to cut clutter. Defaults to the frontmost window; pass
 `--window` to target any open window. A no-op in flagged mode.
 
 ```bash
 agtermctl sidebar expand                                 # expand every workspace (frontmost window)
-agtermctl sidebar collapse                               # collapse all but the active workspace
+agtermctl sidebar collapse                               # collapse all but the current workspace
 agtermctl sidebar collapse --window "$AGTERM_WINDOW_ID"  # collapse a specific window's sidebar
 ```
 

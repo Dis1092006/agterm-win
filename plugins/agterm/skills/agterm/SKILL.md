@@ -159,7 +159,8 @@ Settings > Agent Status can auto-follow the oldest blocked session after 5, 10, 
 
 Commands that target a session or workspace take `--target` (default `active`):
 
-- `active` — the selected session / current workspace.
+- `active` — the selected session / current workspace. For a workspace, one just created in the
+  foreground comes first; see reference.md "Addressing".
 - a full UUID (case-insensitive), or a unique **prefix** of one (git-style). Zero matches → `notFound`
   error; two or more → `ambiguous` error listing candidates.
 
@@ -458,7 +459,7 @@ frontmost-window-only (no `--target`/`--window`/`--pane`).
 **sidebar** — `[show|hide|toggle]` (visibility; read back from the tree's `sidebarVisible`) ·
 `mode [tree|flagged|toggle]` (flip between the workspace tree and the flat flagged working-set list; read
 back from the tree's top-level `sidebarMode`) · `expand [--window W]` (expand every workspace) ·
-`collapse [--window W]` (collapse all workspaces except the active one, which stays expanded).
+`collapse [--window W]` (collapse all workspaces except the current one, which stays expanded).
 Visibility/mode act on the frontmost window; `expand`/`collapse` default to the frontmost but take a
 `--window` selector to target any open window.
 

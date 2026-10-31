@@ -28,6 +28,25 @@ public class SkillTextTests
     }
 
     [Fact]
+    public void Active_workspace_rule_follows_the_foreground_create()
+    {
+        var reference = ReadSkill("reference.md");
+        var addressing = reference[reference.IndexOf("## Addressing", StringComparison.Ordinal)..];
+        addressing = addressing[..addressing.IndexOf("## tree", StringComparison.Ordinal)];
+        Assert.Contains("For a WORKSPACE, `active`", addressing);
+        Assert.Contains("`workspace new` without `--collapsed`", addressing);
+        Assert.Contains("`workspace select`", addressing);
+        Assert.Contains("else the last one", addressing);
+
+        var examples = ReadSkill("examples.md");
+        var focus = examples[examples.IndexOf("## Focus a single workspace", StringComparison.Ordinal)..];
+        focus = focus[..focus.IndexOf("## Build a collapsed workspace", StringComparison.Ordinal)];
+        Assert.Contains("`--target`, which defaults to `active`", focus);
+        Assert.DoesNotContain("the workspace of the active session", focus);
+        Assert.Contains("same resolution as `--target active`", focus);
+    }
+
+    [Fact]
     public void Skill_frontmatter_names_the_skill_agterm_and_the_marker_is_present()
     {
         var text = ReadSkill("SKILL.md");

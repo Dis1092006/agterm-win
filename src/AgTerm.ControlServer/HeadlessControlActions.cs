@@ -1924,8 +1924,8 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
-    /// <summary>sidebar.collapse: collapse every workspace except the active one (the active
-    /// session's workspace stays expanded). Graceful no-op in flagged mode.</summary>
+    /// <summary>sidebar.collapse: collapse every workspace except the current one (the same
+    /// resolution as --target active). Graceful no-op in flagged mode.</summary>
     public ControlResponse CollapseSidebar(string? window)
     {
         return ResolvePlacementStore(window, store =>

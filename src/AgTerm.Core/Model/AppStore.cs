@@ -928,14 +928,14 @@ public sealed partial class AppStore
         SetWorkspacesExpanded(Workspaces.Select(w => w.Id).ToHashSet());
     }
 
-    /// <summary>Collapses every workspace except the active session's (wire sidebar.collapse, palette
-    /// Collapse Workspaces). A no-op in flagged mode.</summary>
+    /// <summary>Collapses every workspace except the current one (wire sidebar.collapse, palette
+    /// Collapse Workspaces), the same resolution as --target active. A no-op in flagged mode.</summary>
     public void CollapseOtherWorkspaces()
     {
         if (SidebarMode == SidebarMode.Flagged) return;
         var keep = new HashSet<Guid>();
-        if (SelectedSessionId is { } selected && WorkspaceForSession(selected) is { } active)
-            keep.Add(active.Id);
+        if (CurrentWorkspaceId is { } current)
+            keep.Add(current);
         SetWorkspacesExpanded(keep);
     }
 
