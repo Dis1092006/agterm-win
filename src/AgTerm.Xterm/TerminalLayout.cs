@@ -2,19 +2,26 @@ namespace AgTerm.Xterm;
 
 public sealed record TerminalDashboardCell
 {
-    public TerminalDashboardCell(string paneId, string controlRef)
+    public TerminalDashboardCell(string paneId, string controlRef, double? fontSize = null)
     {
         if (string.IsNullOrWhiteSpace(paneId))
             throw new ArgumentException("Pane id is required.", nameof(paneId));
         if (string.IsNullOrWhiteSpace(controlRef))
             throw new ArgumentException("Control reference is required.", nameof(controlRef));
+        if (fontSize is { } size && (!double.IsFinite(size) || size <= 0))
+            throw new ArgumentOutOfRangeException(nameof(fontSize), "Font size must be finite and positive.");
         PaneId = paneId.Trim();
         ControlRef = controlRef.Trim();
+        FontSize = fontSize;
     }
 
     public string PaneId { get; }
 
     public string ControlRef { get; }
+
+    /// <summary>The tile's own size after a font chord on the dashboard; null uses the dashboard
+    /// size.</summary>
+    public double? FontSize { get; }
 }
 
 public sealed record TerminalLayer

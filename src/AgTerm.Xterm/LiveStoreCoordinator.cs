@@ -471,7 +471,12 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
                 _ => null,
             };
             if (!string.IsNullOrWhiteSpace(paneId))
-                cells.Add(new TerminalDashboardCell(paneId, member.ControlRef));
+            {
+                cells.Add(new TerminalDashboardCell(
+                    paneId,
+                    member.ControlRef,
+                    _host.Actions.Dashboard.CellFontSizes.TryGetValue(member, out var size) ? size : null));
+            }
         }
         return cells.ToArray();
     }
