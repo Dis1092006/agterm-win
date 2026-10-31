@@ -126,7 +126,11 @@ public sealed class WebView2FixtureTests
             view.Dispose();
             return Task.CompletedTask;
         });
-        await browser.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(60));
+        // The browser exits in about 230 ms on an idle machine. When other work keeps every core
+        // busy, it took 30 s to 227 s: its threads (and those of its child processes) run at base
+        // priority 4 and get CPU time only when Windows boosts starved threads, and the processes
+        // cannot finish exiting until those threads run. The exit is correct, only slow.
+        await browser.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(300));
         fixture.Dispose();
 
         Assert.True(SpinWait.SpinUntil(

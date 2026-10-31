@@ -192,6 +192,14 @@ public sealed class TerminalOutputPump : IDisposable, IAsyncDisposable
         {
             await _channel.Writer.WriteAsync(segment, cancellationToken).ConfigureAwait(false);
         }
+        catch (ChannelClosedException)
+        {
+            // Dispose or a consumer failure closed the channel after the budget check: report it the
+            // way a write that starts after it does
+            ReleaseReservation(segment.Length, signalWaiters: true);
+            ThrowIfWriteNotAllowed();
+            throw;
+        }
         catch
         {
             ReleaseReservation(segment.Length, signalWaiters: true);

@@ -170,8 +170,15 @@ public sealed class LivePortedE2ETests : IDisposable
         {
             if (File.Exists(marker))
             {
-                content = File.ReadAllText(marker).Trim();
-                if (content == "FOCUSED") return;
+                try
+                {
+                    content = File.ReadAllText(marker).Trim();
+                    if (content == "FOCUSED") return;
+                }
+                catch (IOException)
+                {
+                    // cmd.exe still holds the file open from its redirect
+                }
             }
             Thread.Sleep(100);
         }
