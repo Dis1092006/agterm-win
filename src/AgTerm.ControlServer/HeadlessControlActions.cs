@@ -494,10 +494,13 @@ public sealed class HeadlessControlActions : IControlActions
     {
         return ResolvePlacementStore(window, store =>
         {
-            // headless extras: foreground/font callbacks stay null (no live process/engine to
-            // inspect — the fields are omitted, like an upstream never-realized surface); quick,
-            // zoom, and dashboard read the headless controllers.
+            // headless extras: foreground stays null (no live process to inspect); the font fields
+            // read each pane's live size (omitted when unrealized); quick, zoom, and dashboard read
+            // the headless controllers.
             var tree = store.ControlTree(
+                fontSize: session => LiveFontSize(session, session.AddressableSurface),
+                splitFontSize: session => LiveFontSize(session, session.SplitSurface),
+                scratchFontSize: session => LiveFontSize(session, session.ScratchSurface),
                 quickVisible: () => Quick.Visible,
                 zoomedSurface: () => Quick.IsZoomed ? "quick" : Zoom.Target?.ControlId,
                 dashboardMembers: () => Dashboard.IsOpen
@@ -1370,11 +1373,7 @@ public sealed class HeadlessControlActions : IControlActions
                 default:
                     return Err($"invalid pane: {pane}");
             }
-            var member = ReferenceEquals(chosen, session.Surface) && chosen is not null
-                ? new DashboardMember(id, TerminalZoomSurface.Primary)
-                : ReferenceEquals(chosen, session.SplitSurface) && chosen is not null
-                    ? new DashboardMember(id, TerminalZoomSurface.Split)
-                    : (DashboardMember?)null;
+            var member = DashboardMemberFor(id, session, chosen);
             // upstream: a dashboard member carries dashboardFontOverride, and a font change on it
             // resizes the tile without reporting the size to the session.
             if (member is { } tile && Dashboard.AdjustCellFontSize(tile, action))
@@ -1388,6 +1387,28 @@ public sealed class HeadlessControlActions : IControlActions
                 return Err("session not realized");
             return OkId(id);
         });
+    }
+
+    /// <summary>The dashboard cell a pane surface would occupy: the main slot is Primary, the split
+    /// slot is Split, anything else (scratch, overlay, none) has no cell.</summary>
+    private static DashboardMember? DashboardMemberFor(Guid id, Session session, ITerminalSurface? surface) =>
+        surface is null ? null
+        : ReferenceEquals(surface, session.Surface) ? new DashboardMember(id, TerminalZoomSurface.Primary)
+        : ReferenceEquals(surface, session.SplitSurface) ? new DashboardMember(id, TerminalZoomSurface.Split)
+        : null;
+
+    /// <summary>The size a pane renders at, as the tree reports it (upstream currentFontSize reads
+    /// ghostty's font_size): a tile on a sized dashboard shows its chord size or the applied size,
+    /// otherwise the pane's own size. Null when the pane is missing or not realized.</summary>
+    private double? LiveFontSize(Session session, ITerminalSurface? surface)
+    {
+        if (surface is not IHeadlessSurface pane || !pane.IsRealized)
+            return null;
+        if (Dashboard.IsOpen && Dashboard.AppliedFontSize is { } applied &&
+            DashboardMemberFor(session.Id, session, surface) is { } member &&
+            Dashboard.Members.Contains(member))
+            return Dashboard.CellFontSizes.GetValueOrDefault(member, applied);
+        return pane.FontSize;
     }
 
     /// <summary>Async in the interface because the upstream arm bounded-polls for surface

@@ -113,7 +113,7 @@ public sealed class PaletteKeysTests
         Assert.Contains("PaletteKeys.PassesToWindow(", keyDown, StringComparison.Ordinal);
         Assert.Contains("_shownPickId", keyDown, StringComparison.Ordinal);
         var handleChord = Method(code, "private bool HandleChord(");
-        Assert.Contains("ExecuteBuiltinHotkey(action)", handleChord, StringComparison.Ordinal);
+        Assert.Contains("ExecuteBuiltinHotkey(action, sourcePaneId)", handleChord, StringComparison.Ordinal);
         var executeBuiltin = Method(code, "internal bool ExecuteBuiltinHotkey(");
         Assert.Contains("PaletteKeys.ClosesPaletteFirst(", executeBuiltin, StringComparison.Ordinal);
     }
