@@ -62,6 +62,7 @@
     <Compile Include="..\..\src\AgTerm.App\ThemePaletteSlot.cs" Link="App\ThemePaletteSlot.cs" />
     <Compile Include="..\..\src\AgTerm.App\ThemePalettePreview.cs" Link="App\ThemePalettePreview.cs" />
     <Compile Include="..\..\src\AgTerm.App\WindowCommandRouter.cs" Link="App\WindowCommandRouter.cs" />
+    <Compile Include="..\..\src\AgTerm.App\ModalWindowChrome.cs" Link="App\ModalWindowChrome.cs" />
     <Compile Include="..\..\src\AgTerm.App\SettingsReloadCoordinator.cs" Link="App\SettingsReloadCoordinator.cs" />
     <Compile Include="..\..\src\AgTerm.App\FullscreenController.cs" Link="App\FullscreenController.cs" />
     <Compile Include="..\..\src\AgTerm.App\DeferredTerminalFocus.cs" Link="App\DeferredTerminalFocus.cs" />

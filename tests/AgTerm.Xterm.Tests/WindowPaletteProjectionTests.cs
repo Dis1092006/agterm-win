@@ -705,6 +705,76 @@ public sealed class WindowPaletteAcceptanceTests
         Assert.True(result.RestoreTerminalFocus);
     }
 
+    [Theory]
+    [InlineData(WindowPaletteMode.Sessions, "SESSION")]
+    [InlineData(WindowPaletteMode.Attention, "SESSION")]
+    [InlineData(WindowPaletteMode.Commands, "new_session")]
+    [InlineData(WindowPaletteMode.Commands, "close_session")]
+    [InlineData(WindowPaletteMode.Commands, "toggle_fullscreen")]
+    [InlineData(WindowPaletteMode.Commands, "app:reload-config")]
+    [InlineData(WindowPaletteMode.Commands, InstallerCommands.InstallAgentSkillId)]
+    [InlineData(WindowPaletteMode.CustomCommands, "CUSTOM")]
+    public async Task With_ui_actions_disabled_a_row_runs_nothing_and_restores_focus(
+        WindowPaletteMode mode,
+        string itemId)
+    {
+        itemId = itemId
+            .Replace("SESSION", Guid.NewGuid().ToString("D"), StringComparison.Ordinal)
+            .Replace("CUSTOM", $"custom-{Guid.NewGuid():D}", StringComparison.Ordinal);
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            mode,
+            Item(itemId),
+            (_, _) => { calls++; return Task.FromResult(true); },
+            (_, _) => { calls++; return Task.FromResult(true); },
+            (_, _) => { calls++; return Task.CompletedTask; },
+            (_, _) => { calls++; return Task.CompletedTask; },
+            CancellationToken.None,
+            (_, _) => { calls++; return Task.CompletedTask; },
+            (_, _) => { calls++; return Task.CompletedTask; },
+            uiActionsEnabled: false);
+
+        Assert.Equal(0, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Fact]
+    public async Task With_ui_actions_disabled_the_zoom_toggle_row_still_runs()
+    {
+        var calls = 0;
+        await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.Commands,
+            Item(BuiltinAction.ToggleTerminalZoom.WireName()),
+            UnexpectedSessionAsync,
+            (action, _) =>
+            {
+                calls++;
+                Assert.Equal(BuiltinAction.ToggleTerminalZoom, action);
+                return Task.FromResult(true);
+            },
+            UnexpectedCustomCommandAsync,
+            UnexpectedThemeAsync,
+            uiActionsEnabled: false);
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task With_ui_actions_disabled_a_theme_row_still_applies()
+    {
+        var calls = 0;
+        await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.Themes,
+            Item("theme:Dracula"),
+            UnexpectedSessionAsync,
+            UnexpectedActionAsync,
+            UnexpectedCustomCommandAsync,
+            (_, _) => { calls++; return Task.CompletedTask; },
+            uiActionsEnabled: false);
+
+        Assert.Equal(1, calls);
+    }
+
     [Fact]
     public async Task Handler_cancellation_is_propagated()
     {
@@ -908,7 +978,7 @@ public sealed class MainWindowPaletteWiringTests
         Assert.Contains("FinishPaletteCloseAsync(restoreFocus: false)", source, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);
         Assert.Contains("_paletteTransitions.RunAsync", source, StringComparison.Ordinal);
-        Assert.Contains("() => !host.ZoomActive", source, StringComparison.Ordinal);
+        Assert.Contains("ModalActionGate.Allows(action, host.ZoomActive, _selection.DashboardOpen)", source, StringComparison.Ordinal);
         Assert.Contains("host.ZoomActiveChanged +=", source, StringComparison.Ordinal);
         Assert.Contains("RefreshInterceptChords", source, StringComparison.Ordinal);
     }

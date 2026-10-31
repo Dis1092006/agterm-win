@@ -105,7 +105,9 @@ public sealed class WindowCommandRouter
 
     private readonly IReadOnlyDictionary<BuiltinAction, WindowCommandHandler> handlers;
 
-    public WindowCommandRouter(IReadOnlyDictionary<BuiltinAction, WindowCommandHandler> handlers)
+    public WindowCommandRouter(
+        IReadOnlyDictionary<BuiltinAction, WindowCommandHandler> handlers,
+        Func<BuiltinAction, bool>? gate = null)
     {
         ArgumentNullException.ThrowIfNull(handlers);
 
@@ -126,7 +128,10 @@ public sealed class WindowCommandRouter
         }
 
         this.handlers = new ReadOnlyDictionary<BuiltinAction, WindowCommandHandler>(copy);
+        this.gate = gate;
     }
+
+    private readonly Func<BuiltinAction, bool>? gate;
 
     public WindowCommandState GetState(BuiltinAction action)
     {
@@ -136,7 +141,9 @@ public sealed class WindowCommandRouter
         }
 
         var handler = handlers[action];
-        return new WindowCommandState(Implemented: true, CanExecute: handler.CanExecute());
+        return new WindowCommandState(
+            Implemented: true,
+            CanExecute: (gate?.Invoke(action) ?? true) && handler.CanExecute());
     }
 
     public bool CanExecute(BuiltinAction action)

@@ -83,6 +83,10 @@ public sealed partial class MainWindow : Window
     private string? _sessionTitle;
     // the window's user-set name (null for an auto "window N" name), from window.rename
     private string? _customWindowName;
+    // zoom and the dashboard strip the title bar and hide the sidebar (ApplyModalChrome); UI-thread confined
+    private ModalChromeMode _modalChrome = ModalChromeMode.None;
+    private bool _sidebarVisible = true;
+    private bool _sidebarToggleShown = true;
     // what the title bar buttons draw, from the latest sidebar snapshot
     private TitleBarState _titleBarState = TitleBarState.Empty;
     // the armed keymap, for the shortcut each chrome button's tooltip names
@@ -266,6 +270,8 @@ public sealed partial class MainWindow : Window
         });
         _layoutCoordinator.LayoutAccepted += (_, layout) =>
         {
+            _modalChrome = ModalWindowChrome.ModeOf(layout);
+            ApplyModalChrome();
             switch (layout)
             {
                 case TerminalLayout.Single single:
@@ -1094,22 +1100,22 @@ public sealed partial class MainWindow : Window
                 () => true,
                 () => _applicationHost.ToggleQuickAsync()),
             [BuiltinAction.SessionPalette] = Async(
-                () => !host.ZoomActive,
+                () => true,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.Sessions)),
             [BuiltinAction.CommandPalette] = Async(
-                () => !host.ZoomActive,
+                () => true,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.Commands)),
             [BuiltinAction.CustomCommandPalette] = Async(
-                () => !host.ZoomActive,
+                () => true,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.CustomCommands)),
             [BuiltinAction.ShowAttention] = Async(
-                () => !host.ZoomActive,
+                () => true,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.Attention)),
             [BuiltinAction.Dashboard] = Async(
-                () => !host.ZoomActive,
+                () => true,
                 () => host.ToggleDashboardAsync()),
             [BuiltinAction.SelectTheme] = Async(
-                () => !host.ZoomActive,
+                () => true,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.Themes)),
             [BuiltinAction.ToggleFullscreen] = Sync(
                 () => true,
@@ -1145,7 +1151,9 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.NextAttentionSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.NextAttention)),
             [BuiltinAction.FirstSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.First)),
             [BuiltinAction.LastSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.Last)),
-        });
+        },
+        // upstream uiActionsEnabled: zoom and the dashboard disable the window's UI actions
+        action => ModalActionGate.Allows(action, host.ZoomActive, _selection.DashboardOpen));
 
         DispatcherQueue.TryEnqueue(() =>
         {
@@ -1345,7 +1353,8 @@ public sealed partial class MainWindow : Window
             ShellSplitView.OpenPaneLength = width;
         }
 
-        ShellSplitView.IsPaneOpen = snapshot.SidebarVisible;
+        _sidebarVisible = snapshot.SidebarVisible;
+        ApplyModalChrome();
     }
 
     // full screen hides the title bar row; the sidebar keeps following sidebarVisible
@@ -1772,8 +1781,9 @@ public sealed partial class MainWindow : Window
                 action => WindowCommandRouter.ActionImplementations.TryGetValue(action, out var implemented) &&
                     implemented);
             manifest = SettingsShortcuts.AddToManifest(keymap, manifest);
+            // a chord whose action zoom disables reaches the zoomed terminal (upstream disabled menu items)
             var zoomPassthroughSingles = pending.Router.InterceptChords
-                .Where(chord => pending.Router.Handle(chord) is { } action && IsPaletteAction(action))
+                .Where(chord => pending.Router.Handle(chord) is { } action && ModalActionGate.PassesThroughInZoom(action))
                 .ToArray();
             var dashboardToggleSingles = pending.Router.InterceptChords
                 .Where(chord => pending.Router.Handle(chord) == BuiltinAction.Dashboard)
@@ -1805,12 +1815,6 @@ public sealed partial class MainWindow : Window
             _hotkeyManifestGate.Release();
         }
     }
-
-    private static bool IsPaletteAction(BuiltinAction action) => action is
-        BuiltinAction.SessionPalette or
-        BuiltinAction.CommandPalette or
-        BuiltinAction.CustomCommandPalette or
-        BuiltinAction.ShowAttention;
 
     private void OnRootKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
@@ -1899,9 +1903,12 @@ public sealed partial class MainWindow : Window
         ObserveTaskFault(ToggleKeybindingsAsync(), "Keyboard shortcuts failed");
     }
 
-    // upstream canSwitch (uiActionsEnabled): not while a palette, a question or the dashboard has the keys
+    // upstream canSwitch (uiActionsEnabled): not while a palette, a question, zoom or the dashboard has the keys
     private bool CanSwitchSessions() =>
-        !AnyPaletteOpen && !AskOverlay.IsOpen && !KeybindingsOverlay.IsOpen && !_selection.DashboardOpen;
+        !AnyPaletteOpen && !AskOverlay.IsOpen && !KeybindingsOverlay.IsOpen && UiActionsEnabled();
+
+    private bool UiActionsEnabled() =>
+        ModalActionGate.UiActionsEnabled(_host?.ZoomActive == true, _selection.DashboardOpen);
 
     // the page assumes a switch from its own Ctrl+Tab; tell it when none began or one ended here
     private void SyncPageSwitcher()
@@ -2415,7 +2422,8 @@ public sealed partial class MainWindow : Window
                 cancellationToken),
             (themeName, cancellationToken) => SavePaletteThemeAsync(themeName, cancellationToken),
             executeInstallerCommandAsync: (installerId, _) => RunInstallerAsync(installerId),
-            executeAppCommandAsync: ExecutePaletteAppCommandAsync);
+            executeAppCommandAsync: ExecutePaletteAppCommandAsync,
+            uiActionsEnabled: UiActionsEnabled());
 
         if (result.RestoreTerminalFocus)
             FocusActiveTerminal();
@@ -3044,10 +3052,33 @@ public sealed partial class MainWindow : Window
     // the session and window names in the title bar text
     private void ApplyInterfaceElements(AppSettings settings)
     {
-        AppTitleBar.IsPaneToggleButtonVisible = !settings.IsInterfaceElementHidden(InterfaceElement.SidebarToggle);
+        _sidebarToggleShown = !settings.IsInterfaceElementHidden(InterfaceElement.SidebarToggle);
+        ApplyModalChrome();
         RefreshTitles(settings);
         RefreshTitleBarActions(settings);
     }
+
+    // upstream zoomTitlebar / dashboardTitlebar and the zoom layer over the sidebar. The title bar row
+    // stays for the caption buttons and dragging; sidebarVisible is left as it is and comes back on exit
+    private void ApplyModalChrome()
+    {
+        var chrome = ModalWindowChrome.Present(_modalChrome, _sidebarToggleShown, _sidebarVisible);
+        AppTitleBar.IsPaneToggleButtonVisible = chrome.PaneToggleVisible;
+        TitleBarActions.Visibility = VisibleIf(chrome.TitleBarActionsVisible);
+        TerminalZoomExitButton.Visibility = VisibleIf(chrome.ZoomExitVisible);
+        DashboardExitButton.Visibility = VisibleIf(chrome.DashboardExitVisible);
+        ShellSplitView.IsPaneOpen = chrome.SidebarPaneOpen;
+    }
+
+    private void OnTerminalZoomExitClick(object sender, RoutedEventArgs e)
+    {
+        if (_host is { } host)
+            ObserveTaskFault(host.ExitTerminalZoomAsync(), "Terminal zoom exit failed");
+        FocusActiveTerminal();
+    }
+
+    // the same close as Esc on the dashboard page
+    private void OnDashboardExitClick(object sender, RoutedEventArgs e) => OnPageDashboardClosed();
 
     private void ApplyTitleBarState(TitleBarState state)
     {
@@ -3120,6 +3151,8 @@ public sealed partial class MainWindow : Window
         QuickTerminalButton.Visibility = VisibleIf(showQuick);
         ShowOpen(QuickTerminalButton, QuickTerminalOpenIndicator, _selection.QuickVisible);
         ToolTipService.SetToolTip(QuickTerminalButton, WindowsShortcutText.Hint("Quick Terminal", _keymap, BuiltinAction.QuickTerminal));
+        ToolTipService.SetToolTip(TerminalZoomExitButton,
+            WindowsShortcutText.Hint("Exit Terminal Zoom", _keymap, BuiltinAction.ToggleTerminalZoom));
     }
 
     // upstream helpHint: re-applied whenever the keymap is armed or reloaded, and once the title bar
@@ -3342,8 +3375,9 @@ public sealed partial class MainWindow : Window
     {
         if (_dashboardTitle)
         {
-            Title = ProductIdentity.WindowTitle("Dashboard");
-            AppTitleBar.Title = "Dashboard";
+            var dashboard = TitleBarText.Dashboard(_customWindowName);
+            Title = ProductIdentity.WindowTitle(dashboard);
+            AppTitleBar.Title = dashboard;
             ApplyToolbarMode(settings);
             return;
         }

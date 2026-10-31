@@ -48,4 +48,13 @@ public sealed class TitleBarTextTests
         Assert.Equal("dev — agterm-win", TitleBarText.OsTitle(null, "dev"));
         Assert.Equal("agterm-win", TitleBarText.OsTitle(null, null));
     }
+
+    // upstream dashboardWindowTitle: "Dashboard", plus "— <window name>" for a custom window name,
+    // not gated by the interface elements
+    [Fact]
+    public void Dashboard_title_adds_only_a_custom_window_name()
+    {
+        Assert.Equal("Dashboard", TitleBarText.Dashboard(null));
+        Assert.Equal("Dashboard — dev", TitleBarText.Dashboard("dev"));
+    }
 }
