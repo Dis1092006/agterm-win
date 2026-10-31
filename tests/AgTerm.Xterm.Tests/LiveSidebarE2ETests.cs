@@ -140,7 +140,21 @@ public sealed class LiveSidebarE2ETests : IDisposable
         var controller = new SidebarController(storeCoordinator, runOnUi: work => work());
         controller.SnapshotChanged += snapshots.Add;
         controller.Start();
-        SidebarSnapshot Latest() => snapshots[^1];
+        // Start's read can be superseded by a concurrent store change, and only the newest
+        // generation is delivered: request a fresh snapshot and wait until it (or a later one) lands
+        SidebarSnapshot Latest()
+        {
+            var requested = controller.RequestSnapshot();
+            var deadline = Environment.TickCount64 + 30000;
+            while (true)
+            {
+                var newest = snapshots.MaxBy(s => s.Generation);
+                if (newest is not null && newest.Generation >= requested) return newest;
+                if (Environment.TickCount64 >= deadline)
+                    Assert.Fail($"no sidebar snapshot of generation {requested} or later was delivered");
+                Thread.Sleep(10);
+            }
+        }
 
         Assert.Contains(Latest().Rows, r => r.Kind == SidebarRowKind.Session &&
                                             r.Id == Guid.Parse(s1) && r.Label == "api");

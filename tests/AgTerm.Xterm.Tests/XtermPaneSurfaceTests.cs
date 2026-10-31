@@ -265,7 +265,11 @@ public class XtermPaneSurfaceTests
         var surface = await OpenAsync();
         WaitForScreen(surface, ">");
         surface.Teardown();
-        await surface.Pane.Exited.WaitAsync(TimeSpan.FromSeconds(30));
+        var exited = await Task.WhenAny(surface.Pane.Exited, Task.Delay(TimeSpan.FromSeconds(30)));
+        Assert.True(exited == surface.Pane.Exited,
+            $"pane did not exit within 30 s of teardown: pty.Exited={surface.Pane.Pty.Exited.Status}, " +
+            $"pty.OutputCompleted={surface.Pane.Pty.OutputCompleted.Status}, pane.Exited={surface.Pane.Exited.Status}");
+        await surface.Pane.Exited;
         Assert.False(surface.Inject("dead\n"));
     }
 

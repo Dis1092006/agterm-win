@@ -231,6 +231,43 @@ public sealed class TerminalOutputPumpTests
     }
 
     [Fact]
+    public async Task Write_racing_Dispose_throws_only_cancellation_or_disposed()
+    {
+        // the ConPTY reader thread writes like this while teardown disposes the pump
+        for (var i = 0; i < 2000; i++)
+        {
+            var pump = MakePump(_ => Task.CompletedTask, flushInterval: TimeSpan.Zero);
+            using var started = new ManualResetEventSlim();
+            Exception? caught = null;
+            var writer = new Thread(() =>
+            {
+                started.Set();
+                caught = WriteUntilThrows(pump);
+            });
+            writer.Start();
+            started.Wait();
+            Thread.SpinWait(i % 200);
+            pump.Dispose();
+            Assert.True(writer.Join(ShortTimeout), $"iteration {i}: writer never stopped");
+            Assert.True(caught is OperationCanceledException or ObjectDisposedException,
+                $"iteration {i}: expected OperationCanceledException or ObjectDisposedException, got {caught}");
+            await pump.DisposeAsync();
+        }
+    }
+
+    private static Exception WriteUntilThrows(TerminalOutputPump pump)
+    {
+        try
+        {
+            while (true) pump.WriteAsync(new byte[] { 1 }).AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    [Fact]
     public async Task CompleteAsync_flushes_pending_bytes_even_when_flush_interval_is_very_long()
     {
         var received = new List<byte[]>();
