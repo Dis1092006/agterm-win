@@ -110,4 +110,104 @@ internal static class ConPtyNative
 
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern bool SetHandleInformation(IntPtr handle, uint mask, uint flags);
+
+    internal const uint CreateSuspended = 0x00000004;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint ResumeThread(IntPtr thread);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern IntPtr CreateJobObjectW(IntPtr jobAttributes, string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool IsProcessInJob(IntPtr process, IntPtr job, out bool result);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern int GetProcessId(IntPtr process);
+
+    internal const int ErrorMoreData = 234;
+
+    internal const int JobObjectBasicProcessIdList = 3;
+    internal const int JobObjectExtendedLimitInformationClass = 9;
+    internal const uint JobObjectLimitBreakawayOk = 0x00000800;
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobObjectExtendedLimitInformation
+    {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize;
+        public UIntPtr MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+        public ulong ReadOperationCount;
+        public ulong WriteOperationCount;
+        public ulong OtherOperationCount;
+        public ulong ReadTransferCount;
+        public ulong WriteTransferCount;
+        public ulong OtherTransferCount;
+        public UIntPtr ProcessMemoryLimit;
+        public UIntPtr JobMemoryLimit;
+        public UIntPtr PeakProcessMemoryUsed;
+        public UIntPtr PeakJobMemoryUsed;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool QueryInformationJobObject(
+        IntPtr job, int infoClass, ref JobObjectExtendedLimitInformation info, int length,
+        out int returnLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool SetInformationJobObject(
+        IntPtr job, int infoClass, ref JobObjectExtendedLimitInformation info, int length);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool QueryInformationJobObject(
+        IntPtr job, int infoClass, IntPtr info, int length, out int returnLength);
+
+    internal const uint ProcessTerminate = 0x0001;
+    internal const uint ProcessQueryLimitedInformation = 0x1000;
+    internal const uint Synchronize = 0x00100000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+
+    [DllImport("kernel32.dll")]
+    internal static extern IntPtr GetCurrentProcess();
+
+    internal const uint DuplicateSameAccess = 0x2;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool DuplicateHandle(
+        IntPtr sourceProcess, IntPtr sourceHandle, IntPtr targetProcess, out IntPtr targetHandle,
+        uint access, bool inheritHandle, uint options);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    internal static extern bool QueryFullProcessImageNameW(
+        IntPtr process, uint flags, char[] name, ref int size);
+
+    /// <summary>ProcessConsoleHostProcess: not documented (phnt). The low two bits are flags:
+    /// 1 = attached to the console of the host pid in the other bits; 2 = created, not started
+    /// yet, with the creator's pid in the other bits.</summary>
+    internal const int ProcessConsoleHostProcess = 49;
+
+    [DllImport("ntdll.dll")]
+    internal static extern int NtQueryInformationProcess(
+        IntPtr process, int infoClass, ref IntPtr info, int length, out int returnLength);
+
+    /// <summary>The raw ProcessConsoleHostProcess value of a process, or null if the query fails.
+    /// </summary>
+    internal static long? QueryConsoleHost(IntPtr process)
+    {
+        var value = IntPtr.Zero;
+        var status = NtQueryInformationProcess(
+            process, ProcessConsoleHostProcess, ref value, IntPtr.Size, out _);
+        return status == 0 ? (long)value : null;
+    }
 }
