@@ -53,6 +53,7 @@ public sealed record ConPtyStartInfo
 public sealed class ConPtySession : IDisposable
 {
     private readonly Lock _writeGate = new();
+    private readonly Lock _processGate = new();
     private readonly TaskCompletionSource<int> _exited =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _outputCompleted =
@@ -61,7 +62,9 @@ public sealed class ConPtySession : IDisposable
     private readonly IntPtr _console;
     private readonly IntPtr _process;
     private int _consoleClosed;
-    private bool _disposed;
+    private int _disposed;
+    private bool _processClosed;
+    private SafeFileHandle? _outputRead;
 
     private ConPtySession(IntPtr console, IntPtr process, FileStream input)
     {
@@ -164,15 +167,17 @@ public sealed class ConPtySession : IDisposable
 
     private void StartReader(SafeFileHandle outputRead, Action<byte[]>? onOutput)
     {
+        _outputRead = outputRead;
+        var output = new FileStream(outputRead, FileAccess.Read);
         var reader = new Thread(() =>
         {
-            using var output = new FileStream(outputRead, FileAccess.Read);
+            using var stream = output;
             var buffer = new byte[4096];
             try
             {
                 while (true)
                 {
-                    var read = output.Read(buffer, 0, buffer.Length);
+                    var read = stream.Read(buffer, 0, buffer.Length);
                     if (read <= 0) break;
                     if (onOutput is null) continue;
                     var chunk = new byte[read];
@@ -183,6 +188,10 @@ public sealed class ConPtySession : IDisposable
             catch (IOException)
             {
                 // pipe broken — the pseudoconsole was closed; treated as EOF
+            }
+            catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0)
+            {
+                // Dispose closed the output pipe; treated as EOF
             }
             catch (Exception ex)
             {
@@ -220,7 +229,7 @@ public sealed class ConPtySession : IDisposable
     {
         lock (_writeGate)
         {
-            if (_disposed) return;
+            if (Volatile.Read(ref _disposed) != 0) return;
             try
             {
                 _input.Write(data, 0, data.Length);
@@ -229,6 +238,10 @@ public sealed class ConPtySession : IDisposable
             catch (IOException)
             {
                 // child gone mid-write — the exit watcher reports it
+            }
+            catch (ObjectDisposedException) when (Volatile.Read(ref _disposed) != 0)
+            {
+                // Dispose closed the input while this write waited on a full pipe
             }
         }
     }
@@ -246,21 +259,40 @@ public sealed class ConPtySession : IDisposable
             ConPtyNative.ClosePseudoConsole(_console);
     }
 
-    /// <summary>Kills the child (if still alive), closes the pseudoconsole and the input pipe.</summary>
+    /// <summary>Kills the child if it is still alive and returns at once. The pipes and the
+    /// pseudoconsole stay open until Dispose, so the reader still drains what conhost flushes.
+    /// </summary>
+    public void Kill()
+    {
+        lock (_processGate)
+        {
+            if (_processClosed || _exited.Task.IsCompleted) return;
+            ConPtyNative.TerminateProcess(_process, 1);
+        }
+    }
+
+    /// <summary>Kills the child (if still alive), closes the output pipe, the pseudoconsole and the
+    /// input pipe. Output not read yet is dropped.</summary>
     public void Dispose()
     {
-        lock (_writeGate)
-        {
-            if (_disposed) return;
-            _disposed = true;
-        }
+        // not under _writeGate: a write can hold it for as long as conhost does not read input,
+        // which is as long as nobody drains its output
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         if (!_exited.Task.IsCompleted)
             ConPtyNative.TerminateProcess(_process, 1);
         // the exit watcher observes the kill, closes the console, and completes Exited;
         // closing here too covers the already-exited path (both are once-guarded)
         ConPtyNative.WaitForSingleObject(_process, 5000);
+        // conhost flushes its output before it exits, and it reads no input while a flush waits on
+        // a full pipe; closing our end fails that flush, so conhost exits and a stuck Write and a
+        // ClosePseudoConsole that waits for conhost both return
+        _outputRead?.Dispose();
         CloseConsoleOnce();
         _input.Dispose();
-        ConPtyNative.CloseHandle(_process);
+        lock (_processGate)
+        {
+            _processClosed = true;
+            ConPtyNative.CloseHandle(_process);
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using AgTerm.App;
 using AgTerm.ControlServer;
@@ -256,6 +257,7 @@ public sealed class LivePhase5E2ETests
         var restartFirstStatusSounds = new ConcurrentQueue<string>();
         var restartSecondStatusSounds = new ConcurrentQueue<string>();
         var restartRealizedSurfaces = new List<XtermPaneSurface>();
+        ExceptionDispatchInfo? bodyFailure = null;
 
         try
         {
@@ -1682,53 +1684,70 @@ public sealed class LivePhase5E2ETests
             Assert.Empty(restartFirstStatusSounds);
             Assert.Empty(restartSecondStatusSounds);
         }
+        catch (Exception ex)
+        {
+            // the cleanup below asserts too; its failure must not hide the one that ended the body
+            bodyFailure = ExceptionDispatchInfo.Capture(ex);
+        }
         finally
         {
-            restartSecondPresentation?.Dispose();
-            restartFirstPresentation?.Dispose();
-            secondPresentation?.Dispose();
-            firstPresentation?.Dispose();
-            restartApplication?.Dispose();
-            foreach (var surface in restartRealizedSurfaces)
-                await WaitForPaneExitSettlementAsync(surface);
-            if (restartSecondPage is not null)
+            try
             {
-                await AssertPanesRemovedAsync(restartSecondPage, restartRealizedSurfaces
-                    .Where(surface => ReferenceEquals(surface.Pane.Page, restartSecondPage.Page)));
-                await DisposePageAsync(restartSecondPage);
+                restartSecondPresentation?.Dispose();
+                restartFirstPresentation?.Dispose();
+                secondPresentation?.Dispose();
+                firstPresentation?.Dispose();
+                restartApplication?.Dispose();
+                foreach (var surface in restartRealizedSurfaces)
+                    await WaitForPaneExitSettlementAsync(surface);
+                if (restartSecondPage is not null)
+                {
+                    await AssertPanesRemovedAsync(restartSecondPage, restartRealizedSurfaces
+                        .Where(surface => ReferenceEquals(surface.Pane.Page, restartSecondPage.Page)));
+                    await DisposePageAsync(restartSecondPage);
+                }
+                if (restartFirstPage is not null)
+                {
+                    await AssertPanesRemovedAsync(restartFirstPage, restartRealizedSurfaces
+                        .Where(surface => ReferenceEquals(surface.Pane.Page, restartFirstPage.Page)));
+                    await DisposePageAsync(restartFirstPage);
+                }
+                secondAttachment?.Dispose();
+                firstAttachment?.Dispose();
+                application?.Dispose();
+                foreach (var surface in realizedSurfaces)
+                    await WaitForPaneExitSettlementAsync(surface);
+                if (quickPage is not null)
+                {
+                    await AssertPanesRemovedAsync(quickPage, realizedSurfaces.Where(surface =>
+                        ReferenceEquals(surface.Pane.Page, quickPage.Page)));
+                    await DisposePageAsync(quickPage);
+                }
+                if (secondPage is not null)
+                {
+                    await AssertPanesRemovedAsync(secondPage, realizedSurfaces
+                        .Where(surface => ReferenceEquals(surface.Pane.Page, secondPage.Page)));
+                    await DisposePageAsync(secondPage);
+                }
+                if (firstPage is not null)
+                {
+                    await AssertPanesRemovedAsync(firstPage, realizedSurfaces
+                        .Where(surface => ReferenceEquals(surface.Pane.Page, firstPage.Page)));
+                    await DisposePageAsync(firstPage);
+                }
+                if (Directory.Exists(stateDir))
+                    Directory.Delete(stateDir, recursive: true);
             }
-            if (restartFirstPage is not null)
+            catch (Exception cleanupFailure) when (bodyFailure is not null)
             {
-                await AssertPanesRemovedAsync(restartFirstPage, restartRealizedSurfaces
-                    .Where(surface => ReferenceEquals(surface.Pane.Page, restartFirstPage.Page)));
-                await DisposePageAsync(restartFirstPage);
+                throw new AggregateException(
+                    "the test body failed, then its cleanup failed too",
+                    bodyFailure.SourceException,
+                    cleanupFailure);
             }
-            secondAttachment?.Dispose();
-            firstAttachment?.Dispose();
-            application?.Dispose();
-            foreach (var surface in realizedSurfaces)
-                await WaitForPaneExitSettlementAsync(surface);
-            if (quickPage is not null)
-            {
-                await AssertPanesRemovedAsync(quickPage, realizedSurfaces.Where(surface =>
-                    ReferenceEquals(surface.Pane.Page, quickPage.Page)));
-                await DisposePageAsync(quickPage);
-            }
-            if (secondPage is not null)
-            {
-                await AssertPanesRemovedAsync(secondPage, realizedSurfaces
-                    .Where(surface => ReferenceEquals(surface.Pane.Page, secondPage.Page)));
-                await DisposePageAsync(secondPage);
-            }
-            if (firstPage is not null)
-            {
-                await AssertPanesRemovedAsync(firstPage, realizedSurfaces
-                    .Where(surface => ReferenceEquals(surface.Pane.Page, firstPage.Page)));
-                await DisposePageAsync(firstPage);
-            }
-            if (Directory.Exists(stateDir))
-                Directory.Delete(stateDir, recursive: true);
         }
+
+        bodyFailure?.Throw();
 
         Assert.False(Directory.Exists(stateDir));
     }
@@ -2232,7 +2251,10 @@ public sealed class LivePhase5E2ETests
         {
             Assert.True(
                 surface.Pane.Exited.IsCompleted,
-                $"pane {surface.PaneToken} exit did not settle after teardown");
+                $"pane {surface.PaneToken} exit did not settle after teardown: " +
+                $"pty.Exited={surface.Pane.Pty.Exited.Status}, " +
+                $"pty.OutputCompleted={surface.Pane.Pty.OutputCompleted.Status}; " +
+                ThreadPoolSnapshot.Describe());
         }
     }
 

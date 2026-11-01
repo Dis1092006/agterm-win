@@ -150,7 +150,7 @@ public sealed class LiveScratchE2ETests : IDisposable
             Thread.Sleep(100);
         }
 
-        Assert.Fail("scratch stayed active after its shell exited");
+        Assert.Fail($"scratch stayed active after its shell exited; {ThreadPoolSnapshot.Describe()}");
     }
 
     // Q2.1: session.scratch on must flip ScratchActive synchronously with the control response,

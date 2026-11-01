@@ -255,6 +255,136 @@ public class ConPtySessionTests : IDisposable
     }
 
     [Fact]
+    public async Task Kill_ends_a_live_shell_and_the_session_still_drains_and_disposes()
+    {
+        var pty = Start(Cmd);
+        WaitForOutput(">");
+        pty.Kill();
+        Assert.Equal(1, await pty.Exited.WaitAsync(ChildBudget));
+        await pty.OutputCompleted.WaitAsync(ChildBudget);
+        pty.Kill();
+        pty.Dispose();
+        pty.Kill();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Dispose_ends_a_grandchild_attached_to_the_console(bool killFirst)
+    {
+        // the grandchild keeps the cwd open while it lives: a cwd that can be deleted means it is gone
+        var dir = Directory.CreateTempSubdirectory("agterm grandchild ");
+        try
+        {
+            var command = "echo grandchild-started& ping -n 31 127.0.0.1 > nul";
+            var pty = StartWith(new ConPtyStartInfo
+            {
+                Argv = WindowsCommandLine.CmdShellArgv(Cmd, command),
+                CommandLine = WindowsCommandLine.ForCmdShell(Cmd, command),
+                Cwd = dir.FullName,
+            });
+            WaitForOutput("grandchild-started");
+            Thread.Sleep(500);
+
+            if (killFirst)
+            {
+                pty.Kill();
+                await pty.Exited.WaitAsync(ChildBudget);
+            }
+            pty.Dispose();
+
+            await pty.Exited.WaitAsync(TimeSpan.FromSeconds(15));
+            var drained = await Task.WhenAny(pty.OutputCompleted, Task.Delay(TimeSpan.FromSeconds(15)));
+            Assert.True(drained == pty.OutputCompleted, "the output reader did not reach EOF after Dispose");
+            var deadline = Environment.TickCount64 + 15000;
+            while (true)
+            {
+                try
+                {
+                    dir.Delete(recursive: true);
+                    break;
+                }
+                catch (IOException) when (Environment.TickCount64 < deadline)
+                {
+                    Thread.Sleep(100);
+                }
+            }
+        }
+        finally
+        {
+            try { dir.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task Dispose_kills_the_child_and_releases_a_write_stuck_behind_undrained_output()
+    {
+        // The reader hands output to a consumer that stops taking it (the UI thread is busy). The
+        // output pipe fills, conhost stops reading input, and the next write blocks. Dispose on
+        // another thread must still kill the child, and the stuck write must return.
+        var readerBlocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var readerGate = new ManualResetEventSlim();
+        var info = new ConPtyStartInfo
+        {
+            Argv = new[] { Cmd, "/c", "for /l %i in (0,0,1) do @echo flood-flood-flood-flood-flood-flood-flood-flood-flood-flood" },
+            Cols = 120,
+            Rows = 30,
+            OnOutput = _ =>
+            {
+                readerBlocked.TrySetResult();
+                readerGate.Wait();
+            },
+        };
+        var pty = ConPtySession.Start(info);
+        Thread? writer = null;
+        var stopWriting = 0;
+        long writeStartedAt = 0;
+        try
+        {
+            await readerBlocked.Task.WaitAsync(ChildBudget);
+
+            var chunk = Enumerable.Repeat((byte)'a', 4096).ToArray();
+            writer = new Thread(() =>
+            {
+                while (Volatile.Read(ref stopWriting) == 0)
+                {
+                    Volatile.Write(ref writeStartedAt, Environment.TickCount64);
+                    pty.Write(chunk);
+                    Volatile.Write(ref writeStartedAt, 0);
+                }
+            })
+            { IsBackground = true, Name = "stuck-writer" };
+            writer.Start();
+
+            var deadline = Environment.TickCount64 + (long)ChildBudget.TotalMilliseconds;
+            while (true)
+            {
+                var startedAt = Volatile.Read(ref writeStartedAt);
+                if (startedAt != 0 && Environment.TickCount64 - startedAt > 1000) break;
+                Assert.True(Environment.TickCount64 < deadline, "no write got stuck behind the undrained output");
+                Thread.Sleep(50);
+            }
+
+            Volatile.Write(ref stopWriting, 1);
+            var disposer = new Thread(pty.Dispose) { IsBackground = true, Name = "disposer" };
+            disposer.Start();
+
+            var exited = await Task.WhenAny(pty.Exited, Task.Delay(TimeSpan.FromSeconds(15)));
+            Assert.True(exited == pty.Exited,
+                $"child still alive 15 s after Dispose; disposer alive={disposer.IsAlive}, writer alive={writer.IsAlive}");
+            Assert.True(writer.Join(TimeSpan.FromSeconds(15)), "the stuck write did not return after Dispose");
+            Assert.True(disposer.Join(TimeSpan.FromSeconds(15)), "Dispose did not return");
+        }
+        finally
+        {
+            Volatile.Write(ref stopWriting, 1);
+            readerGate.Set();
+            pty.Dispose();
+            writer?.Join(TimeSpan.FromSeconds(15));
+        }
+    }
+
+    [Fact]
     public async Task OutputCompleted_completes_only_after_last_OnOutput_callback_returns()
     {
         var callbackStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
