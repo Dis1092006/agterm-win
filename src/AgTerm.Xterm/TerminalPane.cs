@@ -254,6 +254,10 @@ public sealed class TerminalPane : IDisposable
         Pty.Dispose();
     }
 
+    /// <summary>Kills the child without waiting for it. Terminate still runs later to close the
+    /// pseudoconsole and the pipes.</summary>
+    internal void Kill() => Pty.Kill();
+
     private async Task<int> AwaitExitAndFlushAsync()
     {
         var exitCode = await Pty.Exited.ConfigureAwait(false);

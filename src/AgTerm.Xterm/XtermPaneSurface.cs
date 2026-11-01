@@ -245,6 +245,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IFontSizeReportingSurfa
     {
         _shutdownStarted.TrySetResult();
         StopOutput();
+        // the rest of the shutdown runs on the thread pool; a busy pool must not keep the child alive
+        Pane.Kill();
         ObserveFault(EnsureShutdownCoreTask());
     }
 

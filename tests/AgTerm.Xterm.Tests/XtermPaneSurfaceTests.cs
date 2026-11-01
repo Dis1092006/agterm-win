@@ -292,9 +292,50 @@ public class XtermPaneSurfaceTests
         var exited = await Task.WhenAny(surface.Pane.Exited, Task.Delay(TimeSpan.FromSeconds(30)));
         Assert.True(exited == surface.Pane.Exited,
             $"pane did not exit within 30 s of teardown: pty.Exited={surface.Pane.Pty.Exited.Status}, " +
-            $"pty.OutputCompleted={surface.Pane.Pty.OutputCompleted.Status}, pane.Exited={surface.Pane.Exited.Status}");
+            $"pty.OutputCompleted={surface.Pane.Pty.OutputCompleted.Status}, pane.Exited={surface.Pane.Exited.Status}; " +
+            ThreadPoolSnapshot.Describe());
         await surface.Pane.Exited;
         Assert.False(surface.Inject("dead\n"));
+    }
+
+    [Fact]
+    public async Task Teardown_kills_the_child_while_the_thread_pool_is_saturated()
+    {
+        var surface = await OpenAsync();
+        WaitForScreen(surface, ">");
+
+        // Every pool thread blocks, with more work queued behind it: nothing that Teardown queues
+        // to the pool runs until the release.
+        using var release = new ManualResetEventSlim();
+        ThreadPool.GetMinThreads(out var minWorkers, out _);
+        var blockers = Math.Max(ThreadPool.ThreadCount, minWorkers) + 64;
+        using var finished = new CountdownEvent(blockers);
+        for (var i = 0; i < blockers; i++)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(_ =>
+            {
+                release.Wait();
+                finished.Signal();
+            }, null);
+        }
+        bool killed;
+        try
+        {
+            surface.Teardown();
+            var deadline = Environment.TickCount64 + 3000;
+            while (!surface.Pane.Pty.Exited.IsCompleted && Environment.TickCount64 < deadline)
+                Thread.Sleep(20);
+            killed = surface.Pane.Pty.Exited.IsCompleted;
+        }
+        finally
+        {
+            release.Set();
+            // the events are disposed on return; every blocker has to be done with them first
+            Assert.True(finished.Wait(TimeSpan.FromSeconds(60)), "the pool blockers did not drain");
+        }
+
+        Assert.True(killed, "Teardown left the child alive while the thread pool was busy");
+        await surface.Pane.Exited.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     // O3.5 — OpenAsync must respect a pre-canceled token and throw OperationCanceledException
