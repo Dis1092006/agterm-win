@@ -115,7 +115,8 @@ to restore the exact size), `hud` (the open HUD message panel, see `session hud`
 `ask` (`{id, pane}` of a pending terminal-style question on this session, see `ask`; omitted when none;
 a gui-style question is reported by the top-level `askPending` instead), `scratch` (scratch shown),
 `flagged` (in the
-flagged working-set), `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
+flagged working-set), `context` (what the session is about, set with `session context`; omitted when unset),
+`status` (the agent-status — `active`|`completed`|`blocked` — omitted when
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
 as `status`, so it is never reported without a `status`), `statusBlink` (`true` when the status glyph is
@@ -139,9 +140,12 @@ the read side of `font --pane`; each omitted when that pane isn't realized. `fon
 default/left target (the main pane, or the promoted split survivor once the primary exits — the same pane
 `font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes are
 live-only (a promoted survivor saves the changes it gets after the promotion) — read them back here rather
-than from the snapshot), and `surfaces` (array
+than from the snapshot), `splitCwd` (the split pane's working directory, reported while the session has a
+split — shown or hidden — and omitted without one), and `surfaces` (array
 of `{id, kind, active, visible}` where `kind` is `left`|`right`|`scratch`|`overlay`; `paneID` is added with the
-surface's stable token, omitted when it has none, and always absent on the overlay).
+surface's stable token, omitted when it has none, and always absent on the overlay), and `realized` (always
+present: `true` when the session's main pane has a live, rendering surface, `false` for a session that is
+restored but not yet started or whose output is stopped — read it before sending input to a restored session).
 The surface `id` is the address for `surface zoom`; hidden-but-alive split/scratch surfaces are included
 so a script can zoom them without changing split/scratch visibility first. Caveat: `active`/`visible`
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
@@ -417,6 +421,17 @@ All thirteen are read-only projections of GUI state.
   `active`) and are idempotent; `clear` ignores the target and unflags every session in the window.
   Pair with `sidebar mode flagged` to see just the flagged sessions as a flat `session : workspace`
   list. Unknown mode errors. The tree's `flagged` flag tracks membership.
+- `session context [TEXT] [--clear] [--target] [--window W]` — set or clear what a session is about, shown in
+  the title bar. Wire: `session.context` with `args.mode` `set` (plus `args.text`) or `clear`. The text says
+  what the session is FOR — a PR, an issue, a task. It persists across a relaunch and stays until `--clear`;
+  nothing expires it. The text is trimmed; at most 256 UTF-8 bytes; no control characters or line breaks.
+  Exactly one of TEXT or `--clear` (client error `provide exactly one of a TEXT or --clear`). Errors:
+  `context must not be empty (use --clear to remove it)`, `context must be at most 256 UTF-8 bytes`,
+  `context must not contain control characters or line breaks`, `session.context set requires text`,
+  `session.context clear takes no text`, `invalid context mode: <mode> (set|clear)`. Answers `{"id":...}`.
+  A normal title bar shows it on its second line in place of the working directory; a compact one appends it
+  after the session name as `name · context`. The `sessionContext` interface element hides it. A duplicated
+  session does not inherit it. The tree's `context` field is the read side.
 - `session seen [--target] [--window W]` — clear the session's unseen-notification badge without changing
   the selection, focus, or agent status. Wire: `session.seen`. It is the focus-free counterpart to
   `notify`: `notify` raises the red badge, and the other way to clear it is visiting the

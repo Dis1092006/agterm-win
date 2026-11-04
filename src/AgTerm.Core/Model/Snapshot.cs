@@ -175,6 +175,12 @@ public sealed record SessionSnapshot
     [JsonConverter(typeof(LossyBoolConverter))]
     public bool? Flagged { get; init; }
 
+    /// <summary>What the session is FOR (session.context). LOSSY decode: a value that fails the
+    /// context rules reads as null instead of failing the session; a padded one is trimmed.</summary>
+    [JsonPropertyName("context")]
+    [JsonConverter(typeof(LossyContextConverter))]
+    public string? Context { get; init; }
+
     /// <summary>The main pane's foreground argv at the last clean quit (restore-running-command).</summary>
     [JsonPropertyName("foregroundCommand")]
     [JsonConverter(typeof(LossyStringArrayConverter))]
@@ -343,6 +349,24 @@ public sealed class LossyStringConverter : JsonConverter<string?>
     {
         var element = LossyJson.Element(ref reader);
         return element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+    }
+
+    public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)
+    {
+        if (value is null) writer.WriteNullValue();
+        else writer.WriteStringValue(value);
+    }
+}
+
+/// <summary>Decodes a session context LOSSILY and checks its CONTENT: a wrong JSON type or a value
+/// that fails Session.ValidateContext reads as null; a valid one is returned trimmed.</summary>
+public sealed class LossyContextConverter : JsonConverter<string?>
+{
+    public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var element = LossyJson.Element(ref reader);
+        if (element.ValueKind != JsonValueKind.String) return null;
+        return Session.ValidateContext(element.GetString()!).Value;
     }
 
     public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options)

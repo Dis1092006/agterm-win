@@ -42,6 +42,9 @@ public sealed record TitleBarState(
 {
     public string SubtitleDetail { get; init; } = string.Empty;
 
+    /// <summary>The active session's context, shown in the title bar (null when unset).</summary>
+    public string? Context { get; init; }
+
     public IReadOnlyDictionary<Guid, AgentIndicator> SessionIndicators { get; init; } =
         FrozenDictionary<Guid, AgentIndicator>.Empty;
 
@@ -63,6 +66,7 @@ public sealed record TitleBarState(
             SwitcherOf(store))
         {
             SubtitleDetail = active?.SubtitleDetail ?? string.Empty,
+            Context = active?.Context,
             SessionIndicators = store.Workspaces.SelectMany(w => w.Sessions)
                 .ToFrozenDictionary(s => s.Id, s => s.AgentIndicator),
         };

@@ -509,7 +509,8 @@ public sealed class HeadlessControlActions : IControlActions
                 dashboardFontSize: () => Dashboard.IsOpen ? Dashboard.AppliedFontSize : null,
                 dashboardFontMode: () => Dashboard.IsOpen ? FontModeWire(Dashboard.FontMode) : null,
                 pickPending: () => Pick.PendingId,
-                askPending: () => Pick.PendingAsk?.Id);
+                askPending: () => Pick.PendingAsk?.Id,
+                realized: session => session.Surface is IHeadlessSurface { IsRealized: true });
             return new ControlResponse { Ok = true, Result = new ControlResult { Tree = tree } };
         });
     }
@@ -950,6 +951,15 @@ public sealed class HeadlessControlActions : IControlActions
                 default: return Err($"invalid flag mode: {effectiveMode}");
             }
             store.SetFlag(want, id); // no-op + no save when unchanged (idempotent)
+            return OkId(id);
+        });
+    }
+
+    public ControlResponse SetSessionContext(string? target, string? window, string? context)
+    {
+        return ResolveSession(target, window, (store, id) =>
+        {
+            store.SetContext(context, id); // no-op + no save when unchanged (idempotent)
             return OkId(id);
         });
     }

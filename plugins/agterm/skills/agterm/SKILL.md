@@ -15,7 +15,7 @@ description: >
 when_to_use: >
   Trigger on: agterm, agterm-win, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.scratch, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
-  session.flag, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
+  session.flag, session.context, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
   window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, select theme, edit keymap,
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
@@ -138,7 +138,7 @@ shell, toggled like the split), and an ephemeral **overlay** (runs one program o
 The app also has one **quick terminal**, a detached floating panel with its own shell and renderer, outside every window's tree. A human summon hides on focus loss; `quick show` pins it until hidden. Its shell survives hides and ordinary-window closes.
 
 Inspect the live tree any time with `agtermctl tree --json` (workspaces → sessions, each with
-`id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `scratch`, `status`, `background`, `surfaces`). `title` is the raw OSC
+`id`, `name`, `cwd`, `title`, `active`, `split`, `overlay`, `scratch`, `context`, `status`, `background`, `surfaces`, `realized`). `title` is the raw OSC
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` (`left`, `right`, `scratch`, or `overlay`), including
@@ -314,6 +314,7 @@ omitted when expanded).
   a fraction. Prints the applied (clamped) fraction.
 - `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` and `--sound beep` are aliases for the same Windows system alert; use a Windows WAV filename stem such as `"Windows Notify Calendar"` or a user WAV name for a distinct sound. Unknown names return `unknown sound: <name> (use 'default', 'beep', or one of: <Windows list>)` without changing the status. Names are case-insensitive; empty means no explicit sound. Settings lists available sounds with Preview. Put user WAV files in `<state directory>\sounds` (normally `~\.agterm-win\sounds`); user files override same-name Windows files. `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so the status is cleared when that pane goes away, read back as the tree `statusPane` field (a keystroke does not clear a status, and attention navigation only steps the selection, it does not reveal the pane); `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
 - `flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
+- `context [TEXT] [--clear]` — set or clear what the session is about (a PR, an issue, a task), shown in the title bar. Trimmed, at most 256 UTF-8 bytes, no control characters or line breaks; it persists until `--clear`. Read back as the tree `context` field.
 - `seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
   selection or focus (the focus-free counterpart to `notify`, which raises the badge). Idempotent — a
   no-op when already zero. Read the current count from the tree node's `unseen` field. Use it so an

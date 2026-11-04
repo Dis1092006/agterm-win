@@ -47,6 +47,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record WorkspaceFilter(string? Window, ControlToggleMode Mode) : Call;
         public sealed record WorkspaceExpansion(string? Target, string? Window, bool Expanded) : Call;
         public sealed record SessionFlag(string? Target, string? Window, string? Mode) : Call;
+        public sealed record SessionContext(string? Target, string? Window, string? Context) : Call;
         public sealed record MarkSessionSeen(string? Target, string? Window) : Call;
         public sealed record SessionStatus(string? Target, string? Window, ControlSessionStatusUpdate Update) : Call;
         public sealed record SessionRestore(string? Target, string? Window, ControlSessionRestoreUpdate Update) : Call;
@@ -335,6 +336,12 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse SetSessionFlag(string? target, string? window, string? mode)
     {
         Calls.Add(new Call.SessionFlag(target, window, mode));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetSessionContext(string? target, string? window, string? context)
+    {
+        Calls.Add(new Call.SessionContext(target, window, context));
         return new ControlResponse { Ok = true };
     }
 

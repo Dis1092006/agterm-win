@@ -11,6 +11,7 @@ public enum InterfaceElement
     SidebarToggle,
     SessionName,
     WindowName,
+    SessionContext,
     RecentSessions,
     Scratch,
     Split,

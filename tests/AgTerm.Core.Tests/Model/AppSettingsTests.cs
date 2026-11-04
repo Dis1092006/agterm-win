@@ -265,7 +265,7 @@ public class AppSettingsTests : IDisposable
     public void Interface_elements_carry_upstreams_raw_values_in_order()
     {
         Assert.Equal(
-            ["sidebarToggle", "sessionName", "windowName", "recentSessions", "scratch", "split",
+            ["sidebarToggle", "sessionName", "windowName", "sessionContext", "recentSessions", "scratch", "split",
              "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession"],
             Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
     }

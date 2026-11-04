@@ -51,8 +51,22 @@ public sealed class TitleBarStateTests
     {
         var settings = new AppSettings { ToolbarMode = mode };
         Assert.Equal(height, TitleBarText.ToolbarHeight(settings));
-        Assert.Equal(subtitle, TitleBarText.Subtitle(@"C:\main", settings));
-        Assert.Equal("", TitleBarText.Subtitle(null, settings));
+        Assert.Equal(subtitle, TitleBarText.Subtitle(@"C:\main", null, settings));
+        Assert.Equal("", TitleBarText.Subtitle(null, null, settings));
+    }
+
+    [Fact]
+    public void Context_follows_the_active_session()
+    {
+        var first = Add(@"C:\first");
+        first.Context = "PR #517";
+        Assert.Equal("PR #517", TitleBarState.Project(_store).Context);
+
+        Add(@"C:\second");
+        Assert.Null(TitleBarState.Project(_store).Context);
+
+        first.Context = null;
+        Assert.Null(TitleBarState.Project(TestStores.Scratch()).Context);
     }
 
     private sealed class SubtitleSurface : ITerminalSurface

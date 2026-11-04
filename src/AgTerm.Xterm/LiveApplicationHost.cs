@@ -1605,6 +1605,7 @@ public sealed class LiveApplicationHost : IDisposable
         or Command.SessionReveal
         or Command.SessionMove
         or Command.SessionFlag
+        or Command.SessionContext
         or Command.SessionSeen
         or Command.SessionStatus
         or Command.SessionRestore

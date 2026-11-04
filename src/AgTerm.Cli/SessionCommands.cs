@@ -61,6 +61,7 @@ internal static class SessionCommands
         session.Subcommands.Add(BuildStatus(bindings));
         session.Subcommands.Add(BuildRestore(bindings));
         session.Subcommands.Add(BuildFlag(bindings));
+        session.Subcommands.Add(BuildContext(bindings));
         session.Subcommands.Add(BuildSeen(bindings));
         session.Subcommands.Add(BuildSearch(bindings));
         session.Subcommands.Add(BuildBackground(bindings));
@@ -1153,6 +1154,64 @@ internal static class SessionCommands
         bindings.Register(cmd, result => new FlagCommand
         {
             Mode = result.GetValue(mode) ?? "toggle",
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    /// <summary>What a session is about, shown in the title bar. Nested under `session`; exactly one of
+    /// TEXT or --clear.</summary>
+    internal sealed class ContextCommand : IRequestCommand
+    {
+        public string? Text { get; init; }
+        public bool Clear { get; init; }
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        // the text goes to the wire as typed: the dispatcher trims and validates it, so the rules live
+        // in one place and a client-side trim cannot hide an edge control character.
+        public void Validate()
+        {
+            if ((Text is not null) == Clear)
+                throw new CliValidationException("provide exactly one of a TEXT or --clear");
+        }
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.SessionContext,
+            Target = Target.Target,
+            Args = Client.WithWindow(new ControlArgs { Mode = Clear ? "clear" : "set", Text = Text }),
+        };
+    }
+
+    private static System.CommandLine.Command BuildContext(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("context",
+            "Set or clear what a session is about, shown in the title bar.\n\n"
+            + "The text says what the session is FOR - a PR, an issue, a task. It persists across a "
+            + "relaunch and stays until --clear; nothing expires it.");
+        var text = new Argument<string?>("text")
+        {
+            Description = "The context text (omit with --clear). Trimmed; max 256 UTF-8 bytes; no control "
+                + "characters or line breaks.",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var clear = new Option<bool>("--clear")
+        {
+            Description = "Remove the context.",
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(text);
+        cmd.Options.Add(clear);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new ContextCommand
+        {
+            Text = result.GetValue(text),
+            Clear = result.GetValue(clear),
             Target = target.Read(result),
             Client = options.Read(result),
         });

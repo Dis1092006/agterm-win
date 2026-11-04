@@ -308,4 +308,91 @@ public class SessionTests
         s.InitialSplitCwd = null;
         Assert.Equal("/repo/primary", s.CwdFor(CommandContext.Pane.Right));
     }
+
+    // -- context (upstream SessionTests, session.context) ------------------
+
+    [Fact]
+    public void ContextStartsUnset() => Assert.Null(NewSession().Context);
+
+    [Theory]
+    [InlineData("PR #517", "PR #517")]
+    [InlineData("  PR #517  ", "PR #517")]
+    [InlineData(" a ", "a")]
+    public void ContextTrimsOuterSpaces(string input, string expected)
+    {
+        var result = Session.ValidateContext(input);
+        Assert.True(result.IsValid);
+        Assert.Equal(expected, result.Value);
+    }
+
+    [Theory]
+    [InlineData("PR #517\n")]
+    [InlineData("\nPR #517")]
+    [InlineData("PR #517\t")]
+    [InlineData("\tPR #517")]
+    [InlineData("PR #517\r")]
+    [InlineData("PR #517\u2028")]
+    public void ContextRejectsEdgeControlCharactersRatherThanTrimmingThem(string input) =>
+        Assert.False(Session.ValidateContext(input).IsValid);
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("\t")]
+    [InlineData("\n")]
+    [InlineData("   \n\t  ")]
+    public void ContextRejectsBlank(string input) => Assert.False(Session.ValidateContext(input).IsValid);
+
+    [Fact]
+    public void ContextRejectionMessagesAreTheUpstreamStrings()
+    {
+        Assert.Equal("context must not be empty (use --clear to remove it)", Session.ValidateContext("").Error);
+        Assert.Equal("context must be at most 256 UTF-8 bytes",
+            Session.ValidateContext(new string('a', 257)).Error);
+        Assert.Equal("context must not contain control characters or line breaks",
+            Session.ValidateContext("PR\n517").Error);
+    }
+
+    [Fact]
+    public void ContextAcceptsExactlyTheByteLimit()
+    {
+        var value = new string('a', Session.ContextByteLimit);
+        Assert.Equal(value, Session.ValidateContext(value).Value);
+        Assert.False(Session.ValidateContext(value + "a").IsValid);
+    }
+
+    [Fact]
+    public void ContextLimitCountsBytesNotCharacters()
+    {
+        Assert.False(Session.ValidateContext(new string('é', 129)).IsValid);
+        var atLimit = new string('é', 128);
+        Assert.Equal(atLimit, Session.ValidateContext(atLimit).Value);
+    }
+
+    [Theory]
+    [InlineData("PR\u2028517")]
+    [InlineData("PR\u2029517")]
+    [InlineData("PR\n517")]
+    [InlineData("PR\r517")]
+    [InlineData("PR\u0000517")]
+    [InlineData("PR\u0007517")]
+    [InlineData("PR\t517")]
+    [InlineData("PR\u0085517")]
+    public void ContextRejectsInnerControlCharactersAndLineSeparators(string input) =>
+        Assert.False(Session.ValidateContext(input).IsValid);
+
+    [Fact]
+    public void ContextKeepsEmojiAndZeroWidthJoiners()
+    {
+        const string value = "ship it 👩‍💻";
+        Assert.Equal(value, Session.ValidateContext(value).Value);
+    }
+
+    [Fact]
+    public void ContextIsPartOfTheSnapshot()
+    {
+        var s = NewSession();
+        s.Context = "PR #517";
+        Assert.Equal("PR #517", s.ToSnapshot().Context);
+    }
 }

@@ -27,8 +27,8 @@ public sealed class InterfaceElementsSourceTests
         var window = Source("MainWindow.xaml.cs");
 
         var refresh = MethodBody(window, "private void RefreshTitles(AppSettings settings)");
-        Assert.Contains("AppTitleBar.Title = TitleBarText.Visible(_sessionTitle ?? ProductIdentity.Name, _customWindowName, settings);",
-            refresh, StringComparison.Ordinal);
+        Assert.Contains("TitleBarText.Visible(", refresh, StringComparison.Ordinal);
+        Assert.Contains("_customWindowName, _titleBarState.Context, settings);", refresh, StringComparison.Ordinal);
         Assert.Contains("Title = TitleBarText.OsTitle(_sessionTitle, _customWindowName);", refresh, StringComparison.Ordinal);
         Assert.Contains("RefreshTitles(settings);",
             MethodBody(window, "private void ApplyInterfaceElements(AppSettings settings)"), StringComparison.Ordinal);

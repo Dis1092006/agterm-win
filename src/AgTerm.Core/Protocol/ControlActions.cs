@@ -41,6 +41,9 @@ public interface IControlActions
     /// against the icon catalog.</summary>
     ControlResponse SetWorkspaceIcon(string? target, string? window, string? iconName);
     ControlResponse SetSessionFlag(string? target, string? window, string? mode);
+
+    /// <summary>Sets (trimmed, validated text) or clears (null) what a session is about.</summary>
+    ControlResponse SetSessionContext(string? target, string? window, string? context);
     ControlResponse MarkSessionSeen(string? target, string? window);
     ControlResponse SetSessionStatus(string? target, string? window, ControlSessionStatusUpdate update);
 

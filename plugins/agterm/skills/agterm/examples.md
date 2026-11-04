@@ -317,6 +317,17 @@ agtermctl sidebar mode tree                               # back to the full tre
 agtermctl session flag clear                              # unflag everything in the window
 ```
 
+## Say what a session is for
+
+Set a short context so the title bar shows what the session is about. It persists across a relaunch until you clear it.
+
+```bash
+agtermctl session context "PR #517: reap ordering"        # this session
+agtermctl session context "issue 12" --target a1b2         # another session
+agtermctl session context --clear                          # remove it
+agtermctl tree --json | jq '.result.tree.workspaces[].sessions[] | {name, context}'
+```
+
 ## Acknowledge a driven session's notifications without stealing focus
 
 An orchestrator relaying a session's output elsewhere (Telegram, another agent) fires `notify` to signal

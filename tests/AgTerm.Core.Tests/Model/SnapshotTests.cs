@@ -20,7 +20,7 @@ public class SnapshotTests
     private static SessionSnapshot FullSessionSnapshot() => new()
     {
         Id = SessionId, CustomName = "api", Cwd = "/home/u/proj", IsSplit = true, FontSize = 14.0,
-        SplitCwd = "/home/u/other", SplitRatio = 0.4, Flagged = true,
+        SplitCwd = "/home/u/other", SplitRatio = 0.4, Flagged = true, Context = "PR #517",
         ForegroundCommand = new[] { "ssh", "host" }, SplitForegroundCommand = new[] { "top" },
         InitialCommand = "ssh host", CommandWait = true,
         BackgroundWatermark = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "wip" },
@@ -31,8 +31,73 @@ public class SnapshotTests
     public void SessionSnapshotFieldNamesMatchParitySurfaceInOrder()
     {
         using var doc = JsonDocument.Parse(ControlJson.Serialize(FullSessionSnapshot()));
-        Assert.Equal(SurfaceFieldNames("sessionSnapshot"),
+        // the pin plus what adopted.json takes, in upstream order (context: 73b63b71)
+        var wanted = SurfaceFieldNames("sessionSnapshot").Concat(ParitySurface.Adopted("sessionSnapshot"))
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(ParitySurface.UpstreamPersistence("sessionSnapshot").Where(wanted.Contains).ToList(),
             doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
+    }
+
+    [Fact]
+    public void ContextIsOmittedWhenUnsetAndRoundTripsWhenSet()
+    {
+        var bare = ControlJson.Serialize(new SessionSnapshot { Id = SessionId, Cwd = "/h" });
+        Assert.DoesNotContain("context", bare);
+
+        var json = "{\"id\":\"" + SessionId.ToString().ToUpperInvariant() + "\",\"cwd\":\"/h\",\"context\":\"PR #517: reap ordering\"}";
+        var session = ControlJson.Deserialize<SessionSnapshot>(json)!;
+        Assert.Equal("PR #517: reap ordering", session.Context);
+        Assert.Equal(json, ControlJson.Serialize(session));
+    }
+
+    [Fact]
+    public void SnapshotWithoutContextDecodesNull()
+    {
+        var json = "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\"}";
+        Assert.Null(ControlJson.Deserialize<SessionSnapshot>(json)!.Context);
+    }
+
+    // stored is the JSON-ESCAPED body: an unescaped control byte is invalid JSON, so embedding one
+    // would test the parser instead of the context rule (upstream handEditedInvalidContextDrops...)
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("PR\\n517")]
+    [InlineData("PR\\u2028517")]
+    [InlineData("PR\\t517")]
+    [InlineData("PR517\\n")]
+    public void HandEditedInvalidContextDropsWithoutFailingTheDecode(string stored)
+    {
+        var json = "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\",\"context\":\"" + stored + "\",\"customName\":\"keep\"}";
+        var session = ControlJson.Deserialize<SessionSnapshot>(json)!;
+        Assert.Null(session.Context);
+        Assert.Equal("keep", session.CustomName);
+    }
+
+    [Fact]
+    public void HandEditedOversizedContextDropsWithoutFailingTheDecode()
+    {
+        var json = "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\",\"context\":\"" + new string('a', Session.ContextByteLimit + 1) +
+                   "\",\"customName\":\"keep\"}";
+        var session = ControlJson.Deserialize<SessionSnapshot>(json)!;
+        Assert.Null(session.Context);
+        Assert.Equal("keep", session.CustomName);
+    }
+
+    [Theory]
+    [InlineData(42)]
+    [InlineData(true)]
+    public void ContextOfAWrongJsonTypeDecodesNull(object value)
+    {
+        var json = "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\",\"context\":" + value.ToString()!.ToLowerInvariant() + "}";
+        Assert.Null(ControlJson.Deserialize<SessionSnapshot>(json)!.Context);
+    }
+
+    [Fact]
+    public void HandEditedContextIsTrimmedOnDecode()
+    {
+        var json = "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\",\"context\":\"  PR #517  \"}";
+        Assert.Equal("PR #517", ControlJson.Deserialize<SessionSnapshot>(json)!.Context);
     }
 
     [Fact]

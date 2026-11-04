@@ -19,11 +19,11 @@ public class TreeNodeTests
 
     private static ControlSessionNode FullSessionNode() => new()
     {
-        Id = "id", Name = "n", Cwd = "/w", Title = "t", Active = true, Split = true,
+        Id = "id", Name = "n", Cwd = "/w", SplitCwd = "/s", Title = "t", Active = true, Split = true,
         SplitRatio = 0.4, SplitFocused = true, Overlay = true, OverlaySizePercent = 60,
         Hud = new ControlHudNode { Message = "m", Spinner = "bar", Position = "center", HideAfter = 0 },
         Ask = new ControlSessionAsk { Id = "A", Pane = "left" },
-        Scratch = true, Flagged = true, CommandWait = true,
+        Scratch = true, Flagged = true, Context = "PR #517", CommandWait = true,
         Foreground = new[] { "ssh", "host" }, SplitForeground = new[] { "top" },
         RestoreCommand = "make", SplitRestoreCommand = "",
         Status = "blocked", StatusPane = "left", StatusBlink = true,
@@ -31,6 +31,7 @@ public class TreeNodeTests
         Background = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "wip" },
         Unseen = 2, FontSize = 13, SplitFontSize = 14, ScratchFontSize = 15,
         Surfaces = new[] { new ControlSurfaceNode { Id = "surface:x:left", Kind = "left", Active = true, Visible = true } },
+        Realized = true,
     };
 
     [Fact]
