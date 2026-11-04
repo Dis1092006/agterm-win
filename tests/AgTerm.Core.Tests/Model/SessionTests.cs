@@ -270,6 +270,21 @@ public class SessionTests
     }
 
     [Fact]
+    public void ToSnapshotCapturesTheSplitCommandTwin()
+    {
+        var s = NewSession("/init");
+        Assert.Null(s.ToSnapshot().SplitInitialCommand);
+        Assert.Null(s.ToSnapshot().SplitCommandWait);
+
+        s.SplitInitialCommand = "make watch";
+        s.SplitCommandWait = true;
+        var snap = s.ToSnapshot();
+
+        Assert.Equal("make watch", snap.SplitInitialCommand);
+        Assert.True(snap.SplitCommandWait);
+    }
+
+    [Fact]
     public void WorkspaceToSnapshotWritesCollapsedOnlyWhenCollapsed()
     {
         var workspace = new Workspace(Guid.NewGuid(), "work");

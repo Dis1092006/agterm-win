@@ -51,6 +51,7 @@ internal static class SessionCommands
         session.Subcommands.Add(BuildMove(bindings));
         session.Subcommands.Add(BuildType(bindings));
         session.Subcommands.Add(BuildSplit(bindings));
+        session.Subcommands.Add(BuildSwap(bindings));
         session.Subcommands.Add(BuildScratch(bindings));
         session.Subcommands.Add(BuildFocus(bindings));
         session.Subcommands.Add(BuildResize(bindings));
@@ -576,7 +577,9 @@ internal static class SessionCommands
 
     private static System.CommandLine.Command BuildSplit(CommandBindings bindings)
     {
-        var cmd = new System.CommandLine.Command("split", "Show or hide a session split (on|off|toggle).");
+        var cmd = new System.CommandLine.Command("split", "Show or hide a session split (on|off|toggle), or close it.");
+        cmd.Subcommands.Add(BuildSplitVisibility(bindings));
+        cmd.Subcommands.Add(BuildSplitClose(bindings));
         var mode = new Argument<string>("mode")
         {
             Description = "Mode: on (show), off (hide), or toggle (default). Hidden panes stay alive.",
@@ -591,6 +594,87 @@ internal static class SessionCommands
         bindings.Register(cmd, result => new Split
         {
             Mode = result.GetValue(mode) ?? "toggle",
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    private static System.CommandLine.Command BuildSplitVisibility(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("visibility", "Show or hide a session split (on|off|toggle). The default for `session split`.");
+        var mode = new Argument<string>("mode")
+        {
+            Description = "Mode: on (show), off (hide), or toggle (default). Hidden panes stay alive.",
+            Arity = ArgumentArity.ZeroOrOne,
+            DefaultValueFactory = _ => "toggle",
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(mode);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Split
+        {
+            Mode = result.GetValue(mode) ?? "toggle",
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    internal sealed class SplitClose : IRequestCommand
+    {
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.SessionSplitClose,
+            Target = Target.Target,
+            Args = Client.WithWindow(null),
+        };
+    }
+
+    private static System.CommandLine.Command BuildSplitClose(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("close", "Close the session's split pane (destroys it). Does nothing when there is none.");
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new SplitClose
+        {
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    internal sealed class Swap : IRequestCommand
+    {
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.SessionSwap,
+            Target = Target.Target,
+            Args = Client.WithWindow(null),
+        };
+    }
+
+    private static System.CommandLine.Command BuildSwap(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("swap", "Exchange a split session's two panes, including their live roles and state.");
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Swap
+        {
             Target = target.Read(result),
             Client = options.Read(result),
         });

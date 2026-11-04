@@ -300,6 +300,7 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly bool _closeGraceUndoEnabled;
     private double _dashboardBaseFontSize;
     private readonly Action<string>? _paneFocusRequested;
+    private readonly Action<Guid>? _sessionPanesSwapped;
     private readonly Action<HeadlessSearchUpdate>? _searchUpdated;
     private readonly Action? _quickChanged;
     private readonly Action<bool>? _zoomActiveChanged;
@@ -320,6 +321,7 @@ public sealed class HeadlessControlActions : IControlActions
                                   double dashboardBaseFontSize = 13,
                                   string? homeDirectory = null,
                                   Action<string>? paneFocusRequested = null,
+                                  Action<Guid>? sessionPanesSwapped = null,
                                   Action<HeadlessSearchUpdate>? searchUpdated = null,
                                   Action? quickChanged = null,
                                   Action<bool>? zoomActiveChanged = null,
@@ -354,6 +356,7 @@ public sealed class HeadlessControlActions : IControlActions
         _dashboardBaseFontSize = dashboardBaseFontSize;
         _homeDirectory = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _paneFocusRequested = paneFocusRequested;
+        _sessionPanesSwapped = sessionPanesSwapped;
         _searchUpdated = searchUpdated;
         _quickChanged = quickChanged;
         _zoomActiveChanged = zoomActiveChanged;
@@ -1060,6 +1063,53 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
+    public ControlResponse CloseSessionSplit(string? target, string? window)
+    {
+        return ResolveSession(target, window, (store, id) =>
+        {
+            if (store.SessionWithId(id) is not { } session)
+                return Err($"no such session: {target ?? "active"}");
+            if (!session.HasSplit)
+                return OkId(id);
+            store.CloseSplit(id);
+            if (!string.IsNullOrEmpty(session.Surface?.PaneToken))
+                _paneFocusRequested?.Invoke(session.Surface.PaneToken);
+            return OkId(id);
+        });
+    }
+
+    public Task<ControlResponse> SwapSessionPanes(string? target, string? window)
+    {
+        return Task.FromResult(ResolveSession(target, window, (store, id) =>
+        {
+            if (store.SessionWithId(id) is not { } session)
+                return Err($"no such session: {target ?? "active"}");
+            // a pane still being realized cannot take part; the live host retries this answer outside
+            // its gate (upstream polls 12 x 30 ms), so a split created a moment ago still swaps
+            if (session.HasSplit && (IsPending(session.Surface) || IsPending(session.SplitSurface)))
+                return Err("session not realized");
+            if (store.SwapPanes(id) is { } refusal)
+            {
+                return Err(refusal switch
+                {
+                    SwapRefusal.NoSession => "session closed during swap",
+                    SwapRefusal.NoSplit => "session has no split pane",
+                    SwapRefusal.SlotNotRealized => "session not realized",
+                    _ => "session panes do not support swapping",
+                });
+            }
+            // a zoomed pane can have changed role under the zoom; drop the zoom if its target is gone
+            ReconcileSurfaceZoom();
+            _sessionPanesSwapped?.Invoke(id);
+            var focused = session.SplitFocused ? session.SplitSurface : session.Surface;
+            if (!string.IsNullOrEmpty(focused?.PaneToken))
+                _paneFocusRequested?.Invoke(focused.PaneToken);
+            return OkId(id);
+        }));
+
+        static bool IsPending(ITerminalSurface? surface) => surface is IHeadlessSurface { IsRealized: false };
+    }
+
     public ControlResponse ScratchSession(string? target, string? window, string? mode, string? command)
     {
         return ResolveSession(target, window, (store, id) =>
@@ -1166,6 +1216,79 @@ public sealed class HeadlessControlActions : IControlActions
             return Err($"surface not available: {surfaceId.RawValue}");
         ApplyZoom(mode, zoomTarget);
         return new ControlResponse { Ok = true, Result = new ControlResult { Id = surfaceId.RawValue } };
+    }
+
+    public ControlResponse ReadSurfaceCursor(string? target, string? window, string? paneId)
+    {
+        var rawTarget = Trimmed(target) ?? "active";
+        if (paneId is { Length: > 0 })
+        {
+            if (rawTarget == "quick" || TerminalSurfaceId.FromRawValue(rawTarget) is not null)
+                return Err("surface.cursor: --pane-id takes a session target");
+            return ResolveSession(rawTarget, window, (store, id) =>
+            {
+                if (store.SessionWithId(id) is not { } session)
+                    return Err($"no such session: {rawTarget}");
+                var kind = session.PaneRole(paneId) switch
+                {
+                    StatusPane.Left => TerminalZoomSurface.Primary,
+                    StatusPane.Right => TerminalZoomSurface.Split,
+                    StatusPane.Scratch => TerminalZoomSurface.Scratch,
+                    _ => (TerminalZoomSurface?)null,
+                };
+                if (kind is not { } surface)
+                    return Err($"unknown pane id: {paneId}");
+                return CursorResponse(new TerminalZoomTarget.Session(id, surface));
+            });
+        }
+        if (rawTarget == "quick")
+            return Quick.Visible ? CursorResponse(new TerminalZoomTarget.Quick())
+                : Err("surface not available: quick");
+        if (rawTarget == "active")
+        {
+            if (ResolveWindowGate(window) is { } gate) return gate;
+            var resolved = Zoom.Target ?? TerminalZoomController.ResolveTarget(_store, Quick.Visible);
+            return resolved is { } active ? CursorResponse(active) : Err("no active surface");
+        }
+        if (TerminalSurfaceId.FromRawValue(rawTarget) is not { } surfaceId)
+            return Err($"invalid surface: {rawTarget}");
+        if (ResolveWindowGate(window) is { } error) return error;
+        if (_store.SessionWithId(surfaceId.SessionId) is null)
+            return Err($"no such surface: {surfaceId.RawValue}");
+        return CursorResponse(new TerminalZoomTarget.Session(surfaceId.SessionId, surfaceId.Surface));
+    }
+
+    private ControlResponse CursorResponse(TerminalZoomTarget target)
+    {
+        var controlId = target.ControlId;
+        IHeadlessSurface? surface;
+        if (target is TerminalZoomTarget.Quick)
+            surface = Quick.Surface;
+        else if (target is TerminalZoomTarget.Session s
+                 && TerminalZoomController.IsTargetValid(target, _store, Quick.Visible)
+                 && _store.SessionWithId(s.SessionId) is { } session)
+        {
+            surface = s.Surface switch
+            {
+                TerminalZoomSurface.Primary => session.Surface,
+                TerminalZoomSurface.Split => session.SplitSurface,
+                TerminalZoomSurface.Scratch => session.ScratchSurface,
+                _ => session.OverlaySurface,
+            } as IHeadlessSurface;
+        }
+        else
+            return Err($"surface not available: {controlId}");
+        if (surface is null)
+            return Err($"surface not available: {controlId}");
+        if (!surface.IsRealized)
+            return Err("surface not realized");
+        if (surface.CursorColumn is not { } column)
+            return Err("failed to read cursor position");
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult { Id = controlId, Cursor = new ControlCursor { Column = column } },
+        };
     }
 
     private ControlResponse SetActiveSurfaceZoom(string? window, ControlToggleMode mode)

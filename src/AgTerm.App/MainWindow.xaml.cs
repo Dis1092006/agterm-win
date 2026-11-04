@@ -2475,6 +2475,27 @@ public sealed partial class MainWindow : Window
             case PaletteAppCommand.CollapseWorkspaces:
                 await host.StoreCoordinator.MutateAsync(store => store.CollapseOtherWorkspaces(), cancellationToken);
                 break;
+            case PaletteAppCommand.CloseSplit:
+                // upstream closeSplit carries toggleSplit's cover rungs: behind a full overlay this
+                // does nothing, behind the scratch it dismisses the scratch first, so the teardown of a
+                // live shell is a second press with the panes in view
+                var closeNow = false;
+                await host.StoreCoordinator.MutateAsync(store =>
+                {
+                    if (store.ActiveSession is not { HasSplit: true } session || session.FullOverlayActive)
+                        return;
+                    if (session.ScratchActive)
+                        store.ToggleScratch(session.Id);
+                    else
+                        closeNow = true;
+                }, cancellationToken);
+                if (closeNow)
+                    host.Host.Actions.CloseSessionSplit("active", null);
+                break;
+            case PaletteAppCommand.SwapPanes:
+                ReportPaletteReload("Panes could not be swapped",
+                    await host.Host.Actions.SwapSessionPanes("active", null));
+                break;
         }
     }
 

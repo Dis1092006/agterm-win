@@ -98,7 +98,10 @@ cursor, transport, or server error and does not retry forever while the app is a
 `agtermctl tree [--json] [--window W]` — the workspace/session tree. Wire: `tree`. Each session node:
 `id`, `name`, `cwd`, `title` (the raw OSC terminal title — e.g. a remote host over SSH — omitted
 when none reported; distinct from `name`, the derived sidebar label), `active` (selected),
-`split` (split shown), `splitRatio` (the left-pane fraction 0.05–0.95 of a session that HAS a split —
+`split` (split shown), `hasSplit` (whether a second pane exists at all, shown or hidden; omitted when there
+is none — read THIS to decide whether a session has a split, because a hidden split reports `split: false`
+while its pane stays alive, and it is present exactly when `splitRatio`/`splitFocused` can be),
+`splitRatio` (the left-pane fraction 0.05–0.95 of a session that HAS a split —
 shown or hidden; omitted when there's no split or the ratio was never explicitly set (divider at the
 default 0.5) — the read side
 of `session resize`, record it to restore the exact divider position),
@@ -351,8 +354,21 @@ All thirteen are read-only projections of GUI state.
   (or `ok` on close / an empty bar).
 - `session split [on|off|toggle] [--target] [--window W]` — side-by-side second shell. Wire:
   `session.split`. `off` HIDES it
-  but keeps the shell alive (mirrors Alt+D); the pane's surface is torn down only when its shell exits.
-  Unknown mode errors.
+  but keeps the shell alive (mirrors Alt+D); the pane's surface is torn down only when its shell exits
+  or `session split close` runs. Unknown mode errors.
+- `session split close [--target] [--window W]` — tear the split pane down: the surface dies, whatever it
+  runs dies with it, and `hasSplit`/`splitRatio`/`splitFocused` drop out of `tree`. Wire:
+  `session.split.close`. Reaches a HIDDEN pane too, which `session type --pane right $'exit\n'` cannot
+  do once the pane is past a prompt (nested shell, ssh, an agent). Answers `{"id":...}` and succeeds on a
+  session with no split.
+- `session swap [--target] [--window W]` — exchange both terminals' positions and primary/split roles
+  without restarting either process. Wire: `session.swap`. Focus follows its terminal; the split ratio
+  stays fixed. Works when the split is shown or hidden. Errors `session has no split pane` when there is
+  no split and `session not realized` when a pane has no surface yet (a pane created a moment ago is
+  waited for up to about 0.4 s). The new primary supplies `tree`'s `cwd`/`title`/`restoreCommand`/
+  `commandWait`; the other side supplies `splitCwd`/`splitRestoreCommand`/`splitCommandWait`.
+  `AGTERM_PANE` is the shell's spawn role and is stale after a swap; use `AGTERM_PANE_ID`. Answers
+  `{"id":...}`.
 - `session scratch [on|off|toggle] [--command CMD] [--target] [--window W]` — a third, full-coverage
   shell that renders like a full overlay but behaves like the split. Wire: `session.scratch`. `off` hides
   it keep-alive; typing
@@ -700,6 +716,19 @@ sidebar state, or split/scratch visibility. While zoomed, the hidden deck keeps 
 zoom layer. With a pick pending in the window, turning a zoom on answers `pick pending`; with a window
 question (`ask --style gui`) pending it answers `ask pending`. Use `surface zoom` when the user/agent
 needs a pane fullscreen inside agterm-win; use `window zoom` only to maximize the whole window on screen.
+
+`agtermctl surface cursor [--target SURFACE_ID|active|quick] [--pane-id TOKEN] [--window W]` — the surface's
+zero-based cursor column, counted from the left edge of the grid. Wire: `surface.cursor`. Plain output is
+the bare number, so `col=$(agtermctl surface cursor)` works; under `--json` it is `.result.cursor.column`.
+The target vocabulary and its refusals are `surface zoom`'s, so an explicit `SURFACE_ID` reads a hidden pane
+or a background session as readily as the visible one. It is a pure read: it neither selects nor realizes the
+target, and it reports no field in `tree`, so poll it when you need it. With `--pane-id` the target is a
+SESSION (`active` or a session id) and the token picks the pane; a surface id or `quick` beside it errors
+`surface.cursor: --pane-id takes a session target`, and an unknown token errors `unknown pane id: <token>`.
+An unrealized surface errors `surface not realized`; an unreadable one `failed to read cursor position`.
+There is no row. Treat the column as a one-way signal about the line: past the prompt it proves the line is
+NOT empty, at the prompt it proves nothing, because the caret may have been moved back over text that is
+still there. Never read "column equals the prompt" as "the composer is empty".
 
 ## dashboard
 

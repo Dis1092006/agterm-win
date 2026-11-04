@@ -200,6 +200,14 @@ public sealed record SessionSnapshot
     [JsonConverter(typeof(LossyBoolConverter))]
     public bool? CommandWait { get; init; }
 
+    /// <summary>The split pane's creation command, the split analogue of initialCommand.</summary>
+    [JsonPropertyName("splitInitialCommand")]
+    [JsonConverter(typeof(LossyStringConverter))]
+    public string? SplitInitialCommand { get; init; }
+
+    [JsonPropertyName("splitCommandWait")]
+    [JsonConverter(typeof(LossyBoolConverter))]
+    public bool? SplitCommandWait { get; init; }
     /// <summary>
     /// The session's background watermark, or null for none. LOSSY decode: a present-but-invalid
     /// spec (an unknown kind/fit/position after a downgrade, or a hand-edit typo) drops to null

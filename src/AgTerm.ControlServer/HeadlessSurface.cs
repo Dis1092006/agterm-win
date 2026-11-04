@@ -47,6 +47,10 @@ public interface IHeadlessSurface : ITerminalSurface
     /// <summary>The pane's own live font size in points (upstream currentFontSize), or null when the
     /// surface does not know it. The tree reports it as fontSize / splitFontSize / scratchFontSize.</summary>
     double? FontSize => null;
+
+    /// <summary>The cursor's zero-based column in the pane's grid (upstream surface.cursor), or null
+    /// when the pane cannot read it.</summary>
+    int? CursorColumn => null;
 }
 
 /// <summary>
@@ -66,7 +70,7 @@ public interface IFontSizeReportingSurface
 /// the quick-terminal slot are populated externally). Settable screen text / selection model what a
 /// real terminal would show; injected text and binding actions are recorded for assertions.
 /// </summary>
-public sealed class FakeSurface : IHeadlessSurface, IFontSizeReportingSurface
+public sealed class FakeSurface : IHeadlessSurface, IFontSizeReportingSurface, IPaneRoleMutableSurface
 {
     /// <summary>The stable spawn token (the shell's baked AGTERM_PANE_ID) used by the --pane-id
     /// resolution in session.status / session.restore. Null = a shell that exports none.</summary>
@@ -103,6 +107,9 @@ public sealed class FakeSurface : IHeadlessSurface, IFontSizeReportingSurface
 
     /// <summary>The pane's own font size the tree reports; null = unknown.</summary>
     public double? FontSize { get; set; }
+
+    /// <summary>The cursor column surface.cursor reports; null = the pane cannot read it.</summary>
+    public int? CursorColumn { get; set; }
 
     /// <summary>The size reset_font_size returns to.</summary>
     public double BaseFontSize { get; set; } = 13;
@@ -171,4 +178,9 @@ public sealed class FakeSurface : IHeadlessSurface, IFontSizeReportingSurface
     public void Teardown() => TeardownCount += 1;
 
     public void PromoteToPrimaryPane() => PromoteToPrimaryCount += 1;
+
+    /// <summary>Every role a swap gave this surface, in order.</summary>
+    public List<SwappablePaneRole> Roles { get; } = new();
+
+    public void SetPaneRole(SwappablePaneRole role) => Roles.Add(role);
 }

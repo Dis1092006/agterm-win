@@ -70,6 +70,11 @@ public sealed record HeadlessHostOptions
     /// return without blocking; null keeps the headless focus adaptation unchanged.</summary>
     public Action<string>? PaneFocusRequested { get; init; }
 
+    /// <summary>Live-only callback after session.swap exchanged a session's panes, so the host can drop
+    /// the notifications it already delivered for them. Invoked under the host gate and must return
+    /// without blocking.</summary>
+    public Action<Guid>? SessionPanesSwapped { get; init; }
+
     /// <summary>Live-only immutable search update callback. Invoked under the host gate and must
     /// return without blocking; a live host registers the renderer operation in its dispatch scope.</summary>
     public Action<HeadlessSearchUpdate>? SearchUpdated { get; init; }
@@ -156,6 +161,7 @@ public sealed class HeadlessHost : IDisposable
             dashboardBaseFontSize: options.DashboardBaseFontSize,
             homeDirectory: options.HomeDirectory,
             paneFocusRequested: options.PaneFocusRequested,
+            sessionPanesSwapped: options.SessionPanesSwapped,
             searchUpdated: options.SearchUpdated,
             quickChanged: options.QuickChanged,
             zoomActiveChanged: options.ZoomActiveChanged,

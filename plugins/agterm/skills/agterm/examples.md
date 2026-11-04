@@ -86,6 +86,8 @@ agtermctl session type "git status" --target "$sid"
 agtermctl session type $'\n' --target "$sid"     # send Return (or include it in the text)
 agtermctl session split on --target "$sid"                    # open a split first
 agtermctl session type $'ls\n' --target "$sid" --pane right   # then type into the split pane
+agtermctl session swap --target "$sid"                        # the two terminals trade places
+agtermctl session split close --target "$sid"                 # tear the split down (shell included)
 ```
 
 Typing goes to the session's main (left) pane by default; `--pane right` targets the split pane and

@@ -23,6 +23,7 @@ public class SnapshotTests
         SplitCwd = "/home/u/other", SplitRatio = 0.4, Flagged = true, Context = "PR #517",
         ForegroundCommand = new[] { "ssh", "host" }, SplitForegroundCommand = new[] { "top" },
         InitialCommand = "ssh host", CommandWait = true,
+        SplitInitialCommand = "top", SplitCommandWait = true,
         BackgroundWatermark = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "wip" },
         RestoreCommand = "make watch", SplitRestoreCommand = "",
     };

@@ -91,6 +91,13 @@ public sealed class XtermTerminal
         return DecodeString(result) ?? "";
     }
 
+    /// <summary>The cursor's zero-based column (xterm buffer.active.cursorX); null for an unknown pane.</summary>
+    public async Task<int?> ReadCursorColumnAsync()
+    {
+        var result = await _page.ExecuteScriptAsync($"agterm.cursorColumn({_pane})").ConfigureAwait(false);
+        return result == "null" ? null : JsonSerializer.Deserialize<int>(result);
+    }
+
     public async Task<string> GetSelectionAsync() =>
         DecodeString(await _page.ExecuteScriptAsync($"agterm.selection({_pane})").ConfigureAwait(false)) ?? "";
 

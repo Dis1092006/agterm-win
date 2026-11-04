@@ -16,6 +16,8 @@ public enum PaletteAppCommand
     AddWorkspaceToFocus,
     ExpandWorkspaces,
     CollapseWorkspaces,
+    CloseSplit,
+    SwapPanes,
 }
 
 public static class PaletteAppCommands
@@ -30,6 +32,8 @@ public static class PaletteAppCommands
         PaletteAppCommand.AddWorkspaceToFocus,
         PaletteAppCommand.ExpandWorkspaces,
         PaletteAppCommand.CollapseWorkspaces,
+        PaletteAppCommand.CloseSplit,
+        PaletteAppCommand.SwapPanes,
     ];
 
     public static string Id(PaletteAppCommand command) => command switch
@@ -42,6 +46,8 @@ public static class PaletteAppCommands
         PaletteAppCommand.AddWorkspaceToFocus => "app:add-workspace-to-focus",
         PaletteAppCommand.ExpandWorkspaces => "app:expand-workspaces",
         PaletteAppCommand.CollapseWorkspaces => "app:collapse-workspaces",
+        PaletteAppCommand.CloseSplit => "app:close-split",
+        PaletteAppCommand.SwapPanes => "app:swap-panes",
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, null),
     };
 
@@ -55,6 +61,8 @@ public static class PaletteAppCommands
         PaletteAppCommand.AddWorkspaceToFocus => "Add Workspace to Focus",
         PaletteAppCommand.ExpandWorkspaces => "Expand Workspaces",
         PaletteAppCommand.CollapseWorkspaces => "Collapse Workspaces",
+        PaletteAppCommand.CloseSplit => "Close Split",
+        PaletteAppCommand.SwapPanes => "Swap Panes",
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, null),
     };
 
@@ -68,6 +76,10 @@ public static class PaletteAppCommands
             store.CurrentWorkspaceId is not null && !store.IsCurrentWorkspaceFocusMember,
         PaletteAppCommand.ExpandWorkspaces or PaletteAppCommand.CollapseWorkspaces =>
             store.SidebarMode == SidebarMode.Tree,
+        // gated on hasSplit, so the hidden split a toggle leaves behind is reachable
+        PaletteAppCommand.CloseSplit => store.ActiveSession?.HasSplit == true,
+        // upstream gates it on hasSplit and only a picker cover (the port has none)
+        PaletteAppCommand.SwapPanes => store.ActiveSession?.HasSplit == true,
         _ => true,
     };
 

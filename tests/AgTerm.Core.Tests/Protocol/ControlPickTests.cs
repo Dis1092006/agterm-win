@@ -89,6 +89,7 @@ public class ControlPickTests
             },
             Pick = ControlPickResult.Pending(),
             Ask = ControlAskResult.Pending(),
+            Cursor = new ControlCursor { Column = 0 },
             App = new ControlAppIdentity { Version = "1.0", Commit = "abc" },
             Installed = new ControlAppIdentity { Version = "1.0" },
             Icons = new[] { "a" },

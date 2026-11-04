@@ -219,6 +219,56 @@ public sealed class WindowPaletteProjectionTests
     }
 
     [Fact]
+    public void Commands_offer_close_split_only_for_a_session_with_a_split_even_when_hidden()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var session = store.AddSession(workspace.Id, @"C:\work")!;
+        store.SelectSession(session.Id);
+
+        static bool Offered(AppStore store) => WindowPaletteProjection.Create(
+                WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items
+            .Any(item => item.Id == "app:close-split" && item.Title == "Close Split");
+
+        Assert.False(Offered(store));
+
+        store.ToggleSplit(session.Id);
+        Assert.True(Offered(store));
+
+        // a hidden split still exists and is what this row reaches
+        store.ToggleSplit(session.Id);
+        Assert.False(session.IsSplit);
+        Assert.True(Offered(store));
+
+        store.CloseSplit(session.Id);
+        Assert.False(Offered(store));
+    }
+
+    [Fact]
+    public void Commands_offer_swap_panes_only_for_a_session_with_a_split_even_when_hidden()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var session = store.AddSession(workspace.Id, @"C:\work")!;
+        store.SelectSession(session.Id);
+
+        static bool Offered(AppStore store) => WindowPaletteProjection.Create(
+                WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items
+            .Any(item => item.Id == "app:swap-panes" && item.Title == "Swap Panes");
+
+        Assert.False(Offered(store));
+
+        store.ToggleSplit(session.Id);
+        Assert.True(Offered(store));
+
+        store.ToggleSplit(session.Id);
+        Assert.True(Offered(store));
+
+        store.CloseSplit(session.Id);
+        Assert.False(Offered(store));
+    }
+
+    [Fact]
     public void App_rows_are_neither_builtin_actions_nor_installer_items()
     {
         var rows = new (string Id, PaletteAppCommand Command)[]
@@ -231,6 +281,8 @@ public sealed class WindowPaletteProjectionTests
             ("app:add-workspace-to-focus", PaletteAppCommand.AddWorkspaceToFocus),
             ("app:expand-workspaces", PaletteAppCommand.ExpandWorkspaces),
             ("app:collapse-workspaces", PaletteAppCommand.CollapseWorkspaces),
+            ("app:close-split", PaletteAppCommand.CloseSplit),
+            ("app:swap-panes", PaletteAppCommand.SwapPanes),
         };
         Assert.Equal(rows.Select(row => row.Command), PaletteAppCommands.All);
         foreach (var (id, command) in rows)

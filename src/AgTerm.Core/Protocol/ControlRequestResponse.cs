@@ -110,6 +110,10 @@ public sealed record ControlResult
     [JsonPropertyName("ask")]
     public ControlAskResult? Ask { get; init; }
 
+    /// <summary>The addressed surface's cursor position for surface.cursor.</summary>
+    [JsonPropertyName("cursor")]
+    public ControlCursor? Cursor { get; init; }
+
     /// <summary>The running app's identity for version.</summary>
     [JsonPropertyName("app")]
     public ControlAppIdentity? App { get; init; }
@@ -123,6 +127,14 @@ public sealed record ControlResult
     /// (parity/windows-only.json); declared last so the upstream fields keep upstream order.</summary>
     [JsonPropertyName("icons")]
     public string[]? Icons { get; init; }
+}
+
+/// <summary>surface.cursor's payload, nested so a row could join it additively. Column is zero-based,
+/// counted from the left edge of the grid.</summary>
+public sealed record ControlCursor
+{
+    [JsonPropertyName("column")]
+    public required int Column { get; init; }
 }
 
 /// <summary>An app build identity: a version and an optional commit.</summary>

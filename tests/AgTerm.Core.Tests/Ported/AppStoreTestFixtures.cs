@@ -30,10 +30,11 @@ internal static class AppStoreFixtures
         Path.Combine(Path.GetTempPath(), "agterm-tests-" + Guid.NewGuid().ToString("D"));
 }
 
-internal sealed class SpySurface : ITerminalSurface, ICompletedExitCodeSurface
+internal sealed class SpySurface : ITerminalSurface, ICompletedExitCodeSurface, IPaneRoleMutableSurface
 {
     public int TeardownCount;
     public int PromotedCount;
+    public List<SwappablePaneRole> Roles { get; } = [];
 
     public int? CompletedExitCode { get; set; }
 
@@ -47,4 +48,6 @@ internal sealed class SpySurface : ITerminalSurface, ICompletedExitCodeSurface
     public void Teardown() => TeardownCount++;
 
     public void PromoteToPrimaryPane() => PromotedCount++;
+
+    public void SetPaneRole(SwappablePaneRole role) => Roles.Add(role);
 }

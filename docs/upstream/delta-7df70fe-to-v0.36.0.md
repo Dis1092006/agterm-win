@@ -87,12 +87,12 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 ## 5. Splits and pane addressing
 
 - Horizontal split: `axis` on `session.split`, `top` and `bottom` as aliases, `splitAxis` in `tree` and in the snapshot. A new action `toggle_horizontal_split` on Cmd+Shift+D. **Dashboard moved from Cmd+Shift+D to Cmd+Shift+G**: this changes the default chord of an action that is already implemented #427. Port: not done. `dashboard` keeps its pin chord.
-- `session.split.close`: close the whole split pane #421. `hasSplit` in `tree` tells a hidden split from a missing one. Port: not done.
-- `session.swap`: swap the terminals of the two panes; the axis and the ratio stay #513. Port: not done.
-- `--pane-id` (the stable `$AGTERM_PANE_ID`) on `session type`, `session text`, `surface cursor`; `surfaces[].paneID` in `tree`; `result.pane` #698. Token `AGT_PANE_ID` #603. Port: `session type`, `session text`, `tree` `paneID`, `result.pane` and `AGT_PANE_ID` done; `surface cursor` is a separate command, not done (upstream `eab672be`, `cf31c5d4`).
+- `session.split.close`: close the whole split pane #421. `hasSplit` in `tree` tells a hidden split from a missing one. Port: done (`79852e71`, `a5856949`).
+- `session.swap`: swap the terminals of the two panes; the axis and the ratio stay #513. Port: done (`db62080d`).
+- `--pane-id` (the stable `$AGTERM_PANE_ID`) on `session type`, `session text`, `surface cursor`; `surfaces[].paneID` in `tree`; `result.pane` #698. Token `AGT_PANE_ID` #603. Port: done (`eab672be`, `cf31c5d4`, and `surface cursor` with `2279c722`).
 - An overlay on one pane: `--pane left|right` on `session overlay open|close|result`, `paneOverlays` in `tree` #343. Port: not done.
 - A background per pane: `session background ... --pane`, `paneBackgrounds` in `tree` and in the snapshot #647. Port: not done.
-- `session.paste --pane` #529. `surface.cursor` #451. `session.overlay.copy`, `session.overlay.text` #437. Port: not done.
+- `session.paste --pane` #529. `surface.cursor` #451 (port: `surface.cursor` done, `2279c722`). `session.overlay.copy`, `session.overlay.text` #437. Port: not done for the rest of this line.
 - Dashboard takes `id:left` and `id:right` #334. Port: not done. `dashboard` takes session ids only.
 - A double click on the divider sets the split to 50/50 #357. Port: not done.
 

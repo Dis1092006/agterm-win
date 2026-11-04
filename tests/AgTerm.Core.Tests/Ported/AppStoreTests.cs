@@ -1875,7 +1875,7 @@ public class AppStoreTests
                 {
                     Id = Upper(b.Id), Name = "remote:~/b", Cwd = "/live/b", SplitCwd = "/live/b",
                     Title = "remote:~/b", Active = true, Split = true, Realized = false,
-                    SplitFocused = false,
+                    SplitFocused = false, HasSplit = true,
                     Overlay = true, Scratch = true, Flagged = true,
                     Status = "blocked", StatusPane = "right",
                     Background = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "PROD" },

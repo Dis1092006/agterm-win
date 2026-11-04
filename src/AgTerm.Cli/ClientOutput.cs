@@ -74,6 +74,11 @@ internal static class ClientOutput
             // keymap.reload reports its parse-diagnostic count; 0 reads as a clean reload.
             return count == 0 ? "ok" : $"{count} diagnostic(s)";
         }
+        if (response.Result?.Cursor is { } cursor)
+        {
+            // the bare column, scriptable as a command substitution; a second field belongs under --json.
+            return cursor.Column.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         if (response.Result?.Ratio is { } ratio)
         {
             // session.resize echoes the applied (clamped) left-pane fraction, scriptable as a bare number.
@@ -182,7 +187,8 @@ internal static class ClientOutput
             foreach (var session in workspace.Sessions)
             {
                 var smark = session.Active ? "*" : " ";
-                var tags = (session.Split ? " (split)" : "") + (session.Overlay ? " (overlay)" : "")
+                var tags = (session.Split ? " (split)" : session.HasSplit == true ? " (split hidden)" : "")
+                    + (session.Overlay ? " (overlay)" : "")
                     + (session.Scratch ? " (scratch)" : "");
                 var titleSuffix = session.Title is { } title ? $"  title: {title}" : "";
                 lines.Add($"  {smark} {session.Name}{tags}  [{session.Id}]  {session.Cwd}{titleSuffix}");
