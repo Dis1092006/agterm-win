@@ -43,6 +43,10 @@ public sealed record ConPtyStartInfo
     /// ConPTY then sends a cursor-position request (ESC[6n) and waits for the terminal's reply on
     /// the input pipe before it renders anything.</summary>
     public bool InheritCursor { get; init; }
+
+    /// <summary>Test seam for the ProcessConsoleHostProcess query used when the pane closes. Null
+    /// result = the query failed. Null = the real query.</summary>
+    internal Func<IntPtr, long?>? ConsoleHostQuery { get; init; }
 }
 
 /// <summary>
@@ -61,16 +65,19 @@ public sealed class ConPtySession : IDisposable
     private readonly FileStream _input;
     private readonly IntPtr _console;
     private readonly IntPtr _process;
+    private readonly PaneDescendants? _descendants;
     private int _consoleClosed;
     private int _disposed;
     private bool _processClosed;
     private SafeFileHandle? _outputRead;
 
-    private ConPtySession(IntPtr console, IntPtr process, FileStream input)
+    private ConPtySession(
+        IntPtr console, IntPtr process, FileStream input, PaneDescendants? descendants)
     {
         _console = console;
         _process = process;
         _input = input;
+        _descendants = descendants;
     }
 
     /// <summary>Task that completes with the child's exit code.</summary>
@@ -78,6 +85,12 @@ public sealed class ConPtySession : IDisposable
 
     /// <summary>Task that completes after output reader reaches EOF and all OnOutput callbacks return.</summary>
     public Task OutputCompleted => _outputCompleted.Task;
+
+    /// <summary>Completes when the sweep of the pane's processes after the close has ended.</summary>
+    internal Task DescendantSweep => _descendants?.Completed ?? Task.CompletedTask;
+
+    /// <summary>The LimitFlags of the pane's job; null without a job.</summary>
+    internal uint? PaneJobLimitFlags => _descendants?.LimitFlags;
 
     public static ConPtySession Start(ConPtyStartInfo info)
     {
@@ -128,12 +141,15 @@ public sealed class ConPtySession : IDisposable
             bool created;
             int createError;
             ConPtyNative.ProcessInformation processInfo;
+            // the child starts suspended so it is in the job before it can start anything
+            var descendants = PaneDescendants.TryCreate(info.ConsoleHostQuery);
+            var flags = ConPtyNative.ExtendedStartupInfoPresent | ConPtyNative.CreateUnicodeEnvironment;
+            if (descendants is not null) flags |= ConPtyNative.CreateSuspended;
             try
             {
                 created = ConPtyNative.CreateProcessW(
                     null, commandLine, IntPtr.Zero, IntPtr.Zero, inheritHandles: false,
-                    ConPtyNative.ExtendedStartupInfoPresent | ConPtyNative.CreateUnicodeEnvironment,
-                    environmentBlock, info.Cwd, ref startup, out processInfo);
+                    flags, environmentBlock, info.Cwd, ref startup, out processInfo);
                 createError = Marshal.GetLastWin32Error();
             }
             finally
@@ -142,15 +158,34 @@ public sealed class ConPtySession : IDisposable
             }
             if (!created)
             {
+                descendants?.Abandon();
                 ConPtyNative.ClosePseudoConsole(console);
                 throw new Win32Exception(createError, $"CreateProcessW failed for: {commandLine}");
+            }
+            if (descendants is not null)
+            {
+                if (!descendants.TryAssign(processInfo.Process))
+                {
+                    descendants.Abandon();
+                    descendants = null;
+                }
+                if (ConPtyNative.ResumeThread(processInfo.Thread) == uint.MaxValue)
+                {
+                    var resumeError = Marshal.GetLastWin32Error();
+                    ConPtyNative.TerminateProcess(processInfo.Process, 1);
+                    ConPtyNative.CloseHandle(processInfo.Thread);
+                    ConPtyNative.CloseHandle(processInfo.Process);
+                    descendants?.Abandon();
+                    ConPtyNative.ClosePseudoConsole(console);
+                    throw new Win32Exception(resumeError, $"ResumeThread failed for: {commandLine}");
+                }
             }
             ConPtyNative.CloseHandle(processInfo.Thread);
 
             // unbuffered: a write that fails once the console is closed must not leave its bytes
             // in a buffer that Dispose would flush into the closed pipe, and Write flushes anyway
             var input = new FileStream(ourInputWrite, FileAccess.Write, bufferSize: 0);
-            var session = new ConPtySession(console, processInfo.Process, input);
+            var session = new ConPtySession(console, processInfo.Process, input, descendants);
             session.StartReader(ourOutputRead, info.OnOutput);
             session.StartExitWatcher();
             return session;
@@ -255,8 +290,17 @@ public sealed class ConPtySession : IDisposable
 
     private void CloseConsoleOnce()
     {
-        if (Interlocked.Exchange(ref _consoleClosed, 1) == 0)
-            ConPtyNative.ClosePseudoConsole(_console);
+        lock (_processGate)
+        {
+            if (Volatile.Read(ref _consoleClosed) != 0) return;
+            Volatile.Write(ref _consoleClosed, 1);
+            // before the close: the sweep needs the child's handle and the list of processes
+            // attached now, which get CTRL_CLOSE from conhost
+            if (_processClosed) _descendants?.Abandon();
+            else _descendants?.BeginClose(_process);
+        }
+        // outside the lock: ClosePseudoConsole can wait for conhost
+        ConPtyNative.ClosePseudoConsole(_console);
     }
 
     /// <summary>Kills the child if it is still alive and returns at once. The pipes and the

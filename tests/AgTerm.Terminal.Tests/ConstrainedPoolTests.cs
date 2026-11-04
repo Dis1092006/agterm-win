@@ -16,6 +16,8 @@ namespace AgTerm.TestInfrastructure
     {
         private static partial Task RunScenarioAsync(string scenario)
         {
+            if (scenario == AgTerm.Terminal.Tests.PaneProcessHelper.Scenario)
+                return AgTerm.Terminal.Tests.PaneProcessHelper.RunAsync();
             if (scenario != "readline-status")
                 throw new ArgumentException($"Unknown isolated test scenario: {scenario}");
             LimitWorkerPool();

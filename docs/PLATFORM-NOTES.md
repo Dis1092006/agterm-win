@@ -610,6 +610,30 @@ Upstream closes a session as soon as its main shell exits, with any exit code. O
 - An exit code says how the shell ended, not who ended it. In `pwsh`, `exit` exits with 0 also after a failed command, so the user's own `exit` closes the pane. In `cmd.exe`, `exit` without a number exits with the last `ERRORLEVEL`, so after a failed command it keeps the pane open. A process stopped from outside gets the code its stopper chooses; `taskkill /F` gives 1.
 - A held pane is saved and restored like any other: after a relaunch it starts a new shell, and with `restoreScrollback` its saved output ends with the banner line.
 
+## Closing a pane ends the processes that use its console
+
+In upstream the pane's process tree ends through ghostty `4dcb09a`. The shell starts in a new session with the pane as its controlling terminal (`pty.zig:229-264`). When a pane, an overlay or a session closes, `killCommand` sends SIGHUP to the shell's process group every 10 ms until the shell is reaped (`Exec.zig:1139-1190`). A program can catch SIGHUP. A program started with `nohup`, `disown`, `setsid` or `open` keeps running. After the pin upstream added two more cases: `ProcessSweep.swift:19-28` sends SIGHUP to the foreground job that a killed shell leaves, and `OverlayRunJob.swift:81-94` ends a canceled remote overlay job with SIGTERM, then SIGKILL after 3 s. The Windows branch of ghostty only terminates the direct child (`Exec.zig:1143`).
+
+Windows has no process group bound to a terminal. Before this change the port terminated the pane's direct child and closed the pseudoconsole, and conhost sent `CTRL_CLOSE` to the processes attached to it. A process that the shell was starting at that moment had not attached yet. It waited for a console that was gone, kept conhost alive and ran on. An overlay `cmd /c "echo x && ping -n 31 ..."` closed under load left such a `ping` for more than 20 minutes.
+
+What the port does now (`ConPtySession`, `PaneDescendants`):
+
+- The pane's direct child starts suspended, goes into a job object of its own, and then resumes. The job is used only to list the pane's descendants. It has no `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, and the port never calls `TerminateJobObject`. It has `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, so a program that starts a child with `CREATE_BREAKAWAY_FROM_JOB` takes that child out of the job.
+- When the pane closes, the port reads the console of each job member with `NtQueryInformationProcess` class 49 (`ProcessConsoleHostProcess`). The class is not documented.
+- A process attached to the pane's conhost at close is left to conhost, as before: it gets `CTRL_CLOSE` and can run its handler. This is the closest match to the catchable SIGHUP of upstream.
+- A console program that is not connected to any console yet is terminated when its creator has exited and was the shell, a process attached to the pane's console, or a process the port terminated. This is the stuck `ping` above.
+- A process that attaches to the pane's conhost after the close started is terminated. It missed `CTRL_CLOSE` and would keep conhost alive.
+- Everything else keeps running: `start` of a program in a new window, `start notepad` and other GUI programs, `DETACHED_PROCESS`, `CREATE_NEW_CONSOLE`, a process that called `FreeConsole`, a process that left the job. These are the Windows analogues of `nohup`, `setsid` and `open`.
+- The check runs on a background thread until conhost has exited and every terminated process has ended, at most 30 s. `Kill` and `Dispose` do not wait for it.
+- If the job cannot be created or the child cannot be assigned, the pane runs without the job. If class 49 fails or returns a value the port does not expect, the port does not terminate that process. In both cases the pane closes as it did before this change, and no exception leaves `Kill` or `Dispose`.
+
+Limits:
+
+- While a child starts, class 49 reports its creator and a pending flag for every kind of child. So a `DETACHED_PROCESS` or `CREATE_NEW_CONSOLE` console program is also terminated if its creator was terminated with the pane before the child finished starting. Once started, it is kept.
+- A process that attaches between the port's snapshot and the conhost broadcast gets `CTRL_CLOSE` and is then terminated.
+- When agterm itself runs inside a job that does not allow breakaway (some launchers and IDE hosts do this), a pane program that asks for breakaway now succeeds: its child leaves the pane's job and stays in the outer job. Before this change `CreateProcess` failed with `ERROR_ACCESS_DENIED`. Outside such a job nothing changes.
+- Windows Terminal closes the pseudoconsole and relies on `CTRL_CLOSE` only. It had a job object for its panes and removed it (microsoft/terminal#2198), because the job also ended programs the user meant to keep. The port's job ends nothing by itself.
+
 ## Session font size
 
 As upstream at `7df70fe`, the main pane saves its font size in `session.fontSize`, and the pane opens at that size after a relaunch. A font chord and `agtermctl font inc|dec|reset` save it. Split, scratch, overlay and quick panes do not save their size. A split pane promoted to the main pane saves its size from then on (`agtermApp.swift:253`, `:270-275`). A font chord acts on the pane that received the key, as upstream's `focusedSurface()` (`AppActions.swift:931-934`): the page sends that pane's id with the chord. A chord pressed outside the terminal acts on the selected session's active pane. Two differences come from ghostty `4dcb09a`, the revision upstream builds against:
