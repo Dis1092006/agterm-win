@@ -39,8 +39,10 @@ public sealed record SidebarSnapshot
     public SidebarMode Mode { get; init; }
     public double SidebarWidth { get; init; }
     public Guid? CurrentWorkspaceId { get; init; }
+    /// <summary>The marked workspace when the filter is on and it is the only one marked.</summary>
     public Guid? FocusedWorkspaceId { get; init; }
-    public string? FocusedWorkspaceName { get; init; }
+    public IReadOnlySet<Guid> FocusMemberIds { get; init; } = new HashSet<Guid>();
+    public bool FocusEnabled { get; init; }
     public int FlaggedCount { get; init; }
     public PendingCloseSummary? PendingClose { get; init; }
 
@@ -324,10 +326,14 @@ public sealed class SidebarController : IDisposable
 
     public void NewWorkspace(string name) => Mutate(store => store.AddWorkspace(name));
 
-    public void FocusWorkspaceToggle(Guid workspaceId) => Mutate(store =>
-        store.SetFocusedWorkspace(store.FocusedWorkspaceId == workspaceId ? null : workspaceId));
+    public void FocusWorkspaceToggle(Guid workspaceId) => Mutate(store => store.ToggleFocusedWorkspace(workspaceId));
 
-    public void ClearFocus() => Mutate(store => store.SetFocusedWorkspace(null));
+    public void ToggleFocusMembership(Guid workspaceId) => Mutate(store =>
+        store.SetFocusMembership(workspaceId, !store.FocusedWorkspaceIds.Contains(workspaceId)));
+
+    public void ToggleWorkspaceFilter() => Mutate(store => store.SetFocusEnabled(!store.FocusEnabled));
+
+    public void ClearFocus() => Mutate(store => store.ClearFocus());
 
     public void SetSidebarMode(SidebarMode mode) => Mutate(store => store.SetSidebarMode(mode));
 
@@ -363,14 +369,21 @@ public sealed class SidebarController : IDisposable
         });
     }
 
-    /// <summary>Apply a workspace drag-drop (raw pre-removal index in, post-removal move out).</summary>
-    public void DropWorkspace(Guid workspaceId, int rawIndex)
+    /// <summary>Apply a workspace drag-drop. slot counts the rendered workspace rows above the drop
+    /// point; under the focus filter that is a count over the visible subset, which
+    /// SidebarDrop.WorkspaceInsertIndex maps back onto the full array.</summary>
+    public void DropWorkspace(Guid workspaceId, int slot)
     {
         Mutate(store =>
         {
             var current = store.Workspaces.FindIndex(w => w.Id == workspaceId);
             if (current < 0) return;
-            if (SidebarDrop.ResolveWorkspace(current, store.Workspaces.Count, rawIndex) is not { } move)
+            var visible = store.VisibleWorkspaces;
+            var visibleIndices = new List<int>(visible.Count);
+            foreach (var workspace in visible)
+                visibleIndices.Add(store.Workspaces.FindIndex(w => w.Id == workspace.Id));
+            var insertIndex = SidebarDrop.WorkspaceInsertIndex(visibleIndices, slot);
+            if (SidebarDrop.ResolveWorkspace(current, store.Workspaces.Count, insertIndex) is not { } move)
                 return;
             store.MoveWorkspace(workspaceId, move.Destination);
         });
@@ -414,7 +427,15 @@ public sealed class SidebarController : IDisposable
     public void FocusActiveWorkspaceToggle() => Mutate(store =>
     {
         if (store.CurrentWorkspaceId is { } workspace)
-            store.SetFocusedWorkspace(store.FocusedWorkspaceId == workspace ? null : workspace);
+            store.ToggleFocusedWorkspace(workspace);
+    });
+
+    /// <summary>Marks the current workspace without turning the filter on (the palette's Add Workspace
+    /// to Focus).</summary>
+    public void AddActiveWorkspaceToFocus() => Mutate(store =>
+    {
+        if (store.CurrentWorkspaceId is { } workspace)
+            store.SetFocusMembership(workspace, true);
     });
 
     public void UndoClose() => Mutate(store => store.UndoPendingClose());
@@ -540,10 +561,9 @@ public sealed class SidebarController : IDisposable
             Mode = store.SidebarMode,
             SidebarWidth = store.SidebarWidth,
             CurrentWorkspaceId = store.CurrentWorkspaceId,
-            FocusedWorkspaceId = store.FocusedWorkspaceId,
-            FocusedWorkspaceName = store.FocusedWorkspaceId is { } focused
-                ? store.Workspaces.FirstOrDefault(w => w.Id == focused)?.Name
-                : null,
+            FocusedWorkspaceId = store.SoleFocusedWorkspaceId,
+            FocusMemberIds = new HashSet<Guid>(store.FocusedWorkspaceIds),
+            FocusEnabled = store.FocusEnabled,
             FlaggedCount = store.FlaggedSessions.Count,
             PendingClose = store.PendingCloseSummary,
             TitleBar = TitleBarState.Project(store),

@@ -64,7 +64,7 @@ public static class SidebarProjection
             rows.Add(new SidebarRow(SidebarRowKind.Workspace, workspace.Id, workspace.Name)
             {
                 Collapsed = !workspace.IsExpanded,
-                Focused = store.FocusedWorkspaceId == workspace.Id,
+                Focused = store.FocusedWorkspaceIds.Contains(workspace.Id),
                 Unseen = workspace.UnseenCount,
                 WorkspaceId = workspace.Id,
                 ThemeName = workspace.ThemeName,

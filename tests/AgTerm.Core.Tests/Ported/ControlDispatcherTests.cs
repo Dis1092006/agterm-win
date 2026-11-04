@@ -705,7 +705,7 @@ public class ControlDispatcherTests
     }
 
     [Fact]
-    public async Task WorkspaceFocusRoutesModeForHostSideValidation()
+    public async Task WorkspaceFocusRoutesTheParsedMode()
     {
         var actions = new MockControlActions();
         var dispatcher = new ControlDispatcher(actions);
@@ -719,8 +719,81 @@ public class ControlDispatcherTests
         ExpectResponse(Ok(), focused);
         Assert.Equal(new MockControlActions.Call[]
         {
-            new MockControlActions.Call.WorkspaceFocus("workspace", "win", "on"),
+            new MockControlActions.Call.WorkspaceFocus("workspace", "win", ControlWorkspaceFocusMode.On),
         }, actions.Calls);
+    }
+
+    [Theory]
+    [InlineData("add", ControlWorkspaceFocusMode.Add)]
+    [InlineData("off", ControlWorkspaceFocusMode.Off)]
+    [InlineData("toggle", ControlWorkspaceFocusMode.Toggle)]
+    [InlineData(null, ControlWorkspaceFocusMode.Toggle)]
+    public async Task WorkspaceFocusParsesEveryModeAndDefaultsToToggle(string? raw, ControlWorkspaceFocusMode expected)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WorkspaceFocus, Target = "workspace", Args = new ControlArgs { Mode = raw },
+        });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.WorkspaceFocus("workspace", null, expected),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task WorkspaceFocusRejectsAnUnknownModeBeforeTheHostRuns()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WorkspaceFocus, Target = "workspace", Args = new ControlArgs { Mode = "bogus" },
+        });
+
+        ExpectResponse(Err("invalid focus mode: bogus (on|off|toggle|add)"), response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Theory]
+    [InlineData("on", ControlToggleMode.On)]
+    [InlineData("off", ControlToggleMode.Off)]
+    [InlineData("toggle", ControlToggleMode.Toggle)]
+    [InlineData(null, ControlToggleMode.Toggle)]
+    public async Task WorkspaceFilterRoutesTheParsedModeWithoutATarget(string? raw, ControlToggleMode expected)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WorkspaceFilter, Args = new ControlArgs { Mode = raw, Window = "win" },
+        });
+
+        ExpectResponse(Ok(), response);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.WorkspaceFilter("win", expected),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task WorkspaceFilterRejectsAnUnknownModeBeforeTheHostRuns()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WorkspaceFilter, Args = new ControlArgs { Mode = "bogus" },
+        });
+
+        ExpectResponse(Err("invalid workspace filter mode: bogus"), response);
+        Assert.Empty(actions.Calls);
     }
 
     [Fact]

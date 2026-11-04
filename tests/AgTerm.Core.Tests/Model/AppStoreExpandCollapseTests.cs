@@ -43,8 +43,8 @@ public class AppStoreExpandCollapseTests
     public void CollapseOtherWorkspacesWithoutASelectionKeepsTheLastWorkspace()
     {
         var store = AppStoreFixtures.MakeStore();
-        var a = store.AddWorkspace("a", clearFocus: false);
-        var b = store.AddWorkspace("b", clearFocus: false);
+        var a = store.AddWorkspace("a", revealNewWorkspace: false);
+        var b = store.AddWorkspace("b", revealNewWorkspace: false);
 
         store.CollapseOtherWorkspaces();
 

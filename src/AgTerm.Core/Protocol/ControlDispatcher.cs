@@ -39,7 +39,7 @@ public sealed class ControlDispatcher
                 or Command.SessionBackground or Command.SessionText:
                 return await DispatchSessionSurfaceCommand(request);
             case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
-                or Command.WorkspaceDelete or Command.WorkspaceMove or Command.WorkspaceFocus
+                or Command.WorkspaceDelete or Command.WorkspaceMove or Command.WorkspaceFocus or Command.WorkspaceFilter
                 or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme or Command.WorkspaceIcon
                 or Command.WorkspaceGo:
                 return DispatchWorkspaceCommand(request);
@@ -611,7 +611,22 @@ public sealed class ControlDispatcher
                 return _actions.MoveWorkspace(request.Target, request.Args?.Window, direction.Value);
             }
             case Command.WorkspaceFocus:
-                return _actions.FocusWorkspace(request.Target, request.Args?.Window, request.Args?.Mode);
+            {
+                // parsed and rejected BEFORE the host runs, so an unknown mode can never half-apply; the
+                // accepted list is derived from the mode table, so it cannot go stale when a mode is added
+                var raw = request.Args?.Mode ?? "toggle";
+                if (ControlWorkspaceFocusModes.Parse(raw) is not { } mode)
+                    return Err($"invalid focus mode: {raw} ({ControlWorkspaceFocusModes.ValidNamesList})");
+                return _actions.FocusWorkspace(request.Target, request.Args?.Window, mode);
+            }
+            case Command.WorkspaceFilter:
+            {
+                // window-scoped: no workspace target, only the flag; the same on/off/toggle vocabulary as
+                // sidebar, defaulting to toggle
+                if (ControlToggleModes.Parse(request.Args?.Mode) is not { } mode)
+                    return Err($"invalid workspace filter mode: {request.Args?.Mode ?? "toggle"}");
+                return _actions.SetWorkspaceFilter(request.Args?.Window, mode);
+            }
             case Command.WorkspaceCollapse:
                 return _actions.SetWorkspaceExpansion(request.Target, request.Args?.Window, expanded: false);
             case Command.WorkspaceExpand:

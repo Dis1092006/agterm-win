@@ -49,6 +49,10 @@ public sealed partial class AppStore
                 Workspaces.Add(workspace);
                 foreach (var session in workspace.Sessions) EmitSessionCreated(session, workspace.Id);
                 if (workspace.Sessions.Count == 0) ScheduleTreeChanged();
+                // re-mark BEFORE the reselect, so a restored member is inside the set when the disable runs;
+                // the workspace is already in the tree, so the unguarded insert cannot leave a phantom member.
+                // Entries that predate the field carry null and restore unmarked.
+                if (recent.FocusMember == true) MarkFocusMember(workspace.Id);
                 var target = (recent.SelectedSessionId is { } selected
                         && workspace.Sessions.Any(s => s.Id == selected) ? selected : (Guid?)null)
                     ?? workspace.Sessions.FirstOrDefault()?.Id;
@@ -98,6 +102,7 @@ public sealed partial class AppStore
                 .ToList();
             Workspaces[index].Sessions.AddRange(missing);
             foreach (var session in missing) EmitSessionCreated(session, Workspaces[index].Id);
+            if (recent.FocusMember == true) MarkFocusMember(Workspaces[index].Id); // before the reselect, as above
             var target = (recent.SelectedSessionId is { } selected
                     && Workspaces[index].Sessions.Any(s => s.Id == selected) ? selected : (Guid?)null)
                 ?? Workspaces[index].Sessions.FirstOrDefault()?.Id;
@@ -183,7 +188,7 @@ public sealed partial class AppStore
         return itemId;
     }
 
-    internal Guid? RecordRecentClosedWorkspace(Workspace workspace, Guid? selectedSessionId, Guid? id = null)
+    internal Guid? RecordRecentClosedWorkspace(Workspace workspace, Guid? selectedSessionId, bool focusMember, Guid? id = null)
     {
         if (RecentClosedStore is not { } store) return null;
         var itemId = id ?? Guid.NewGuid();
@@ -198,6 +203,7 @@ public sealed partial class AppStore
             {
                 Snapshot = WorkspaceSnapshot(workspace),
                 SelectedSessionId = selectedSessionId,
+                FocusMember = focusMember,
             },
         });
         RecentClosedDidChange?.Invoke();

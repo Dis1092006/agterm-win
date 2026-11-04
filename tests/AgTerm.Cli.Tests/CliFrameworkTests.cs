@@ -81,7 +81,7 @@ public class CliFrameworkTests
     {
         var error = Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(
             new[] { "workspace", "focus", "sideways" }));
-        Assert.Equal("mode must be on, off, or toggle", Agtermctl.Message(error));
+        Assert.Equal("mode must be one of: on, off, toggle, add", Agtermctl.Message(error));
     }
 
     [Fact]

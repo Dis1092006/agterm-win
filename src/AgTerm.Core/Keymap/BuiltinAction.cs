@@ -3,7 +3,7 @@ namespace AgTerm.Core.Keymap;
 /// <summary>
 /// A rebindable built-in action. Each member has a canonical kitty-style raw name (the token the
 /// user writes after map in keymap.conf) and a default chord — the shortcut shipped out of the box.
-/// Parity pin: agterm 7df70fe, 41 actions.
+/// Parity pin: agterm 7df70fe, 41 actions; toggle_workspace_filter is adopted from upstream 6722755a.
 /// </summary>
 public enum BuiltinAction
 {
@@ -14,7 +14,7 @@ public enum BuiltinAction
     IncreaseFontSize, DecreaseFontSize, ResetFontSize,
     ToggleSplit, ToggleScratch, ToggleTerminalZoom, ToggleSearch,
     ToggleSidebar, SelectTheme, ToggleFullscreen,
-    ToggleFlaggedView, ToggleFlag, FocusWorkspace,
+    ToggleFlaggedView, ToggleFlag, FocusWorkspace, ToggleWorkspaceFilter,
     FocusLeftPane, FocusRightPane,
     PreviousSession, NextSession,
     PreviousAttentionSession, NextAttentionSession,
@@ -55,6 +55,7 @@ public static class BuiltinActions
         (BuiltinAction.ToggleFlaggedView, "toggle_flagged_view"),
         (BuiltinAction.ToggleFlag, "toggle_flag"),
         (BuiltinAction.FocusWorkspace, "focus_workspace"),
+        (BuiltinAction.ToggleWorkspaceFilter, "toggle_workspace_filter"),
         (BuiltinAction.FocusLeftPane, "focus_left_pane"),
         (BuiltinAction.FocusRightPane, "focus_right_pane"),
         (BuiltinAction.PreviousSession, "previous_session"),

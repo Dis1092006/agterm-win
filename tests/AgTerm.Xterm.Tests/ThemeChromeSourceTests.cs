@@ -198,7 +198,7 @@ public sealed class ThemeChromeSourceTests
         Assert.Contains("_rowIconFill.Color = ToColor(palette.Foreground with { A = 0x60 });",
             MethodBody(view, "public void ApplyChrome(ChromePalette palette)"), StringComparison.Ordinal);
         Assert.Contains("DefaultIconFill = _rowIconFill", view, StringComparison.Ordinal);
-        Assert.Contains("DefaultIconFill", Between(Source("SidebarRowViewModel.cs"), "public Brush IconFill =>", ";"),
+        Assert.Contains("DefaultIconFill", Between(Source("SidebarRowViewModel.cs"), "private Brush MarkFill()", ";"),
             StringComparison.Ordinal);
     }
 

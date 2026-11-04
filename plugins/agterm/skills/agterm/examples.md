@@ -330,16 +330,21 @@ agtermctl tree --json | jq '.result.tree.workspaces[].sessions[] | {id, unseen}'
 agtermctl session seen --target "$SID"                   # clear it, selection/focus unchanged
 ```
 
-## Focus a single workspace
+## Focus a set of workspaces
 
-Collapse the sidebar tree to one workspace's sessions (hiding the others), with the full tree one
-command away. Per-window and persisted; orthogonal to `sidebar mode`. While focused, `session go`
-navigation is scoped to that workspace's sessions; unfocusing restores stepping over all sessions.
+Mark workspaces in the sidebar's focus set, then show only those with the filter; the full tree is one
+command away. Per-window and persisted; orthogonal to `sidebar mode`. While the filter is applied, `session go`
+navigation is scoped to the marked workspaces; lifting it restores stepping over all sessions.
 
 ```bash
 agtermctl workspace focus on --target "$AGTERM_WORKSPACE_ID"  # zoom to this workspace
 agtermctl workspace focus toggle --target a1b2                # flip focus on another workspace
 agtermctl workspace focus off                                 # restore the full tree
+
+agtermctl workspace focus add --target a1b2                   # mark a1b2 without hiding anything
+agtermctl workspace focus add --target c3d4                   # mark a second one
+agtermctl workspace filter on                                 # show only the two marked workspaces
+agtermctl workspace filter off                                # show everything again; the set is kept
 ```
 
 Every mode acts on `--target`, which defaults to `active` — the CURRENT workspace: one that holds the target because you created it in the foreground or ran `workspace select` on it while it was empty, else the selected session's, else the last. That is not whatever the previous line addressed, so always name the workspace you mean. Focusing another workspace hides a target-holding one and hands targeting back, so `active` here and `active` a line later can differ.

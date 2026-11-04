@@ -233,11 +233,11 @@ public class AppStoreOrganizationTests
     {
         var store = AppStoreFixtures.MakeStore();
         var work = store.AddWorkspace("work");
-        Assert.Null(store.FocusedWorkspaceId);
+        Assert.Null(store.SoleFocusedWorkspaceId);
         store.SetFocusedWorkspace(work.Id);
-        Assert.Equal(work.Id, store.FocusedWorkspaceId);
-        store.SetFocusedWorkspace(null);
-        Assert.Null(store.FocusedWorkspaceId);
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId);
+        store.ClearFocus();
+        Assert.Null(store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -246,20 +246,20 @@ public class AppStoreOrganizationTests
         var store = AppStoreFixtures.MakeStore();
         var ws1 = store.AddWorkspace("one");
         store.SetFocusedWorkspace(ws1.Id);
-        Assert.Equal(ws1.Id, store.FocusedWorkspaceId);
+        Assert.Equal(ws1.Id, store.SoleFocusedWorkspaceId);
         // a normal create clears focus so the new workspace is revealed (addWorkspace auto-reveal contract).
         store.AddWorkspace("two");
-        Assert.Null(store.FocusedWorkspaceId);
-        // re-focus, then a background create (clearFocus: false, backing session.new --no-select
+        Assert.Null(store.SoleFocusedWorkspaceId);
+        // re-focus, then a background create (revealNewWorkspace: false, backing session.new --no-select
         // --create-workspace) leaves the focus filter untouched.
         store.SetFocusedWorkspace(ws1.Id);
-        var created = store.EnsureWorkspace("bg", clearFocus: false);
+        var created = store.EnsureWorkspace("bg", revealNewWorkspace: false);
         Assert.NotNull(created);
-        Assert.Equal(ws1.Id, store.FocusedWorkspaceId);
+        Assert.Equal(ws1.Id, store.SoleFocusedWorkspaceId);
         // reusing an existing workspace never touches focus regardless of clearFocus.
-        var reused = store.EnsureWorkspace("bg", clearFocus: true);
+        var reused = store.EnsureWorkspace("bg", revealNewWorkspace: true);
         Assert.Equal(created?.Id, reused?.Id);
-        Assert.Equal(ws1.Id, store.FocusedWorkspaceId);
+        Assert.Equal(ws1.Id, store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -270,7 +270,7 @@ public class AppStoreOrganizationTests
         var doomed = store.AddWorkspace("doomed");
         store.SetFocusedWorkspace(doomed.Id);
         store.RemoveWorkspace(doomed.Id);
-        Assert.Null(store.FocusedWorkspaceId);
+        Assert.Null(store.SoleFocusedWorkspaceId);
         _ = work;
     }
 
@@ -282,7 +282,7 @@ public class AppStoreOrganizationTests
         var doomed = store.AddWorkspace("doomed");
         store.SetFocusedWorkspace(work.Id);
         store.RemoveWorkspace(doomed.Id);
-        Assert.Equal(work.Id, store.FocusedWorkspaceId);
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -389,12 +389,13 @@ public class AppStoreOrganizationTests
     }
 
     [Fact]
-    public void VisibleWorkspacesFallsBackToAllForStaleFocusID()
+    public void VisibleWorkspacesFallsBackToAllForAStaleFocusSet()
     {
         var store = AppStoreFixtures.MakeStore();
         var work = store.AddWorkspace("work");
         var personal = store.AddWorkspace("personal");
-        store.FocusedWorkspaceId = Guid.NewGuid(); // stale id, no matching workspace
+        store.FocusedWorkspaceIds = new HashSet<Guid> { Guid.NewGuid() }; // stale id, no matching workspace
+        store.FocusEnabled = true;
         Assert.Equal(new[] { work.Id, personal.Id }, store.VisibleWorkspaces.Select(w => w.Id));
     }
 
@@ -408,7 +409,7 @@ public class AppStoreOrganizationTests
         var outside = store.AddSession(personal.Id, "/b")!;
         store.SetFocusedWorkspace(work.Id);
         store.SelectSession(outside.Id);
-        Assert.Null(store.FocusedWorkspaceId); // auto-unfocus reveals the off-focus target
+        Assert.Null(store.SoleFocusedWorkspaceId); // auto-unfocus reveals the off-focus target
     }
 
     [Fact]
@@ -420,7 +421,7 @@ public class AppStoreOrganizationTests
         var inside = store.AddSession(work.Id, "/b")!;
         store.SetFocusedWorkspace(work.Id);
         store.SelectSession(inside.Id);
-        Assert.Equal(work.Id, store.FocusedWorkspaceId);
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId);
         _ = a;
     }
 
@@ -431,7 +432,7 @@ public class AppStoreOrganizationTests
         var work = store.AddWorkspace("work");
         var a = store.AddSession(work.Id, "/a")!;
         store.SelectSession(a.Id);
-        Assert.Null(store.FocusedWorkspaceId);
+        Assert.Null(store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -447,11 +448,11 @@ public class AppStoreOrganizationTests
         store.CloseSession(only.Id); // reselects the personal session — outside the now-empty focused work
         Assert.NotNull(store.ActiveSession);
         Assert.Equal(personal.Id, store.WorkspaceForSession(store.SelectedSessionId!.Value)?.Id);
-        Assert.Null(store.FocusedWorkspaceId); // auto-unfocus reveals the new active session
+        Assert.Null(store.SoleFocusedWorkspaceId); // auto-unfocus reveals the new active session
     }
 
     [Fact]
-    public void RemoveWorkspaceReselectingNonFocusedClearsFocus()
+    public void RemoveWorkspaceReselectsInsideTheFocusedSet()
     {
         var store = AppStoreFixtures.MakeStore();
         var a = store.AddWorkspace("a");
@@ -462,9 +463,9 @@ public class AppStoreOrganizationTests
         var activeInC = store.AddSession(c.Id, "/c")!;
         store.SelectSession(activeInC.Id);
         store.SetFocusedWorkspace(a.Id);
-        store.RemoveWorkspace(c.Id); // reselects into b (the fallback slot), outside the focused a
-        Assert.Equal(b.Id, store.WorkspaceForSession(store.SelectedSessionId!.Value)?.Id);
-        Assert.Null(store.FocusedWorkspaceId); // auto-unfocus reveals the reselected session
+        store.RemoveWorkspace(c.Id); // the removal pick stays inside the visible set
+        Assert.Equal(a.Id, store.WorkspaceForSession(store.SelectedSessionId!.Value)?.Id);
+        Assert.Equal(a.Id, store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -477,7 +478,7 @@ public class AppStoreOrganizationTests
         store.SetFocusedWorkspace(work.Id);
         var created = store.AddSession(other.Id, "/o")!; // a control add into another workspace
         Assert.Equal(created.Id, store.SelectedSessionId);
-        Assert.Null(store.FocusedWorkspaceId); // auto-unfocus reveals the just-created off-focus session
+        Assert.Null(store.SoleFocusedWorkspaceId); // auto-unfocus reveals the just-created off-focus session
     }
 
     [Fact]
@@ -489,7 +490,7 @@ public class AppStoreOrganizationTests
         store.SetFocusedWorkspace(work.Id);
         var created = store.AddSession(work.Id, "/b")!; // the GUI new-session path lands here
         Assert.Equal(created.Id, store.SelectedSessionId);
-        Assert.Equal(work.Id, store.FocusedWorkspaceId);
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -501,7 +502,7 @@ public class AppStoreOrganizationTests
         store.SelectSession(a.Id);
         store.SetFocusedWorkspace(work.Id);
         store.SelectSession(null); // deselect reveals nothing, so focus is retained
-        Assert.Equal(work.Id, store.FocusedWorkspaceId);
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -515,7 +516,7 @@ public class AppStoreOrganizationTests
         store.SetFocusedWorkspace(work.Id);
         store.MoveSession(a.Id, other.Id); // the active session leaves the focused workspace
         Assert.Equal(a.Id, store.SelectedSessionId);
-        Assert.Null(store.FocusedWorkspaceId); // auto-unfocus reveals the moved active session
+        Assert.Null(store.SoleFocusedWorkspaceId); // auto-unfocus reveals the moved active session
     }
 
     [Fact]
@@ -530,7 +531,7 @@ public class AppStoreOrganizationTests
         store.SetFocusedWorkspace(work.Id);
         store.MoveSession(b.Id, other.Id); // a non-active session leaves; focus must stand
         Assert.Equal(a.Id, store.SelectedSessionId);
-        Assert.Equal(work.Id, store.FocusedWorkspaceId);
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId);
     }
 
     [Fact]
@@ -541,7 +542,7 @@ public class AppStoreOrganizationTests
         store.AddSession(work.Id, "/a");
         store.SetFocusedWorkspace(work.Id);
         var fresh = store.AddWorkspace("fresh"); // a new (empty) workspace must become visible
-        Assert.Null(store.FocusedWorkspaceId);
+        Assert.Null(store.SoleFocusedWorkspaceId);
         Assert.Equal(new[] { work.Id, fresh.Id }, store.VisibleWorkspaces.Select(w => w.Id));
     }
 
@@ -579,7 +580,7 @@ public class AppStoreOrganizationTests
         Assert.False(File.Exists(file)); // no write happened
         Assert.True(a.Flagged);
         Assert.Equal(SidebarMode.Flagged, store.SidebarMode);
-        Assert.Equal(ws.Id, store.FocusedWorkspaceId); // state stable across the no-op setters
+        Assert.Equal(ws.Id, store.SoleFocusedWorkspaceId); // state stable across the no-op setters
     }
 
     [Fact]

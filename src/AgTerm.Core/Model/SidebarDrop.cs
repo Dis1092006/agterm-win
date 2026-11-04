@@ -18,13 +18,14 @@ public static class SidebarDrop
     public const int MaximumDirectoryImportCount = 20;
 
     /// <summary>Resolves the workspace for an Explorer directory drop. Folder import is a tree-only
-    /// affordance; empty-space drops prefer the focused workspace so adding a session cannot
-    /// silently leave focus mode.</summary>
+    /// affordance. A drop on a row lands in that row's workspace. An empty-space drop takes
+    /// fallbackWorkspaceId when the caller can name an unambiguous one (the sole marked workspace
+    /// while the focus filter applies), else the current workspace.</summary>
     public static Guid? ResolveDirectoryWorkspace(SidebarMode sidebarMode, Guid? rowWorkspaceId,
-                                                  Guid? focusedWorkspaceId, Guid? currentWorkspaceId)
+                                                  Guid? fallbackWorkspaceId, Guid? currentWorkspaceId)
     {
         if (sidebarMode != SidebarMode.Tree) return null;
-        return rowWorkspaceId ?? focusedWorkspaceId ?? currentWorkspaceId;
+        return rowWorkspaceId ?? fallbackWorkspaceId ?? currentWorkspaceId;
     }
 
     /// <summary>The destination of a dragged session (Destination is the POST-removal index
@@ -123,6 +124,21 @@ public static class SidebarDrop
     /// AppStore.MoveWorkspace expects), or null for a no-op. Same downward childIndex - 1
     /// adjustment as sessions.</summary>
     public readonly record struct WorkspaceResolution(int DropChildIndex, int Destination);
+
+    /// <summary>Maps a drop slot read off the RENDERED workspace rows onto the full workspace array's
+    /// index space, which ResolveWorkspace and AppStore.MoveWorkspace work in. visibleIndices holds the
+    /// full-array indices of the rendered workspace rows, in order; under the focus filter they can be
+    /// non-contiguous. slot counts the rendered rows whose midpoint sits above the cursor. A drop lands
+    /// next to the visible row it was aimed at, never across the hidden workspaces between rows: above
+    /// the first rendered row it takes that row's own index, otherwise the index just after the last
+    /// rendered row above the cursor. With every workspace rendered it returns slot unchanged. Returns
+    /// 0 when nothing is rendered.</summary>
+    public static int WorkspaceInsertIndex(IReadOnlyList<int> visibleIndices, int slot)
+    {
+        if (visibleIndices.Count == 0) return 0;
+        if (slot <= 0) return visibleIndices[0];
+        return visibleIndices[Math.Min(slot, visibleIndices.Count) - 1] + 1;
+    }
 
     /// <summary>Resolves a top-level workspace reorder (validity — a between-rows root drop — is
     /// the caller's to enforce). count is the pre-removal workspace count.</summary>

@@ -266,7 +266,7 @@ public class AppSettingsTests : IDisposable
     {
         Assert.Equal(
             ["sidebarToggle", "sessionName", "windowName", "recentSessions", "scratch", "split",
-             "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "workspaceAddSession"],
+             "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession"],
             Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
     }
 
@@ -275,6 +275,15 @@ public class AppSettingsTests : IDisposable
     {
         Assert.All(Enum.GetValues<InterfaceElement>(),
             e => Assert.False(new AppSettings().IsInterfaceElementHidden(e)));
+    }
+
+    [Fact]
+    public void The_focus_filter_toggle_is_hidden_independently_of_the_flagged_view_toggle()
+    {
+        var settings = new AppSettings { HiddenInterfaceElements = ["focusFilter"] };
+
+        Assert.True(settings.IsInterfaceElementHidden(InterfaceElement.FocusFilter));
+        Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.FlaggedView));
     }
 
     [Fact]

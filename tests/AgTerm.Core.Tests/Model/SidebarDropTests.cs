@@ -23,7 +23,7 @@ public class SidebarDropTests
         Assert.Equal(WsB, SidebarDrop.ResolveDirectoryWorkspace(SidebarMode.Tree, WsB, WsA, WsA));
 
     [Fact]
-    public void Empty_directory_drop_prefers_focused_workspace() =>
+    public void Empty_directory_drop_prefers_the_fallback_workspace() =>
         Assert.Equal(WsB, SidebarDrop.ResolveDirectoryWorkspace(SidebarMode.Tree, null, WsB, WsA));
 
     [Fact]
@@ -221,4 +221,34 @@ public class SidebarDropTests
     [Fact]
     public void Workspace_move_no_op_append_already_last() =>
         Assert.Null(SidebarDrop.ResolveWorkspace(sourceIndex: 2, count: 3, childIndex: OnItem));
+
+    // MARK: - Workspace slot under the focus filter
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Insert_index_is_the_slot_when_every_workspace_is_rendered(int slot) =>
+        Assert.Equal(slot, SidebarDrop.WorkspaceInsertIndex([0, 1, 2], slot));
+
+    [Fact]
+    public void Insert_index_above_the_first_rendered_row_lands_just_before_it() =>
+        Assert.Equal(1, SidebarDrop.WorkspaceInsertIndex([1, 3], 0));
+
+    [Fact]
+    public void Insert_index_between_rendered_rows_lands_just_after_the_row_above_the_cursor() =>
+        Assert.Equal(2, SidebarDrop.WorkspaceInsertIndex([1, 3], 1));
+
+    [Fact]
+    public void Insert_index_below_the_last_rendered_row_lands_just_after_it() =>
+        Assert.Equal(4, SidebarDrop.WorkspaceInsertIndex([1, 3], 2));
+
+    [Fact]
+    public void Insert_index_clamps_a_slot_past_the_rendered_rows() =>
+        Assert.Equal(4, SidebarDrop.WorkspaceInsertIndex([1, 3], 9));
+
+    [Fact]
+    public void Insert_index_with_nothing_rendered_is_zero() =>
+        Assert.Equal(0, SidebarDrop.WorkspaceInsertIndex([], 2));
 }

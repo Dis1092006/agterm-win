@@ -28,7 +28,7 @@ internal sealed record PendingSessionsClose(
     IReadOnlyList<PendingSessionClose> Sessions, Guid? SelectedSessionId);
 
 internal sealed record PendingWorkspaceClose(
-    Workspace Workspace, int WorkspaceIndex, Guid? SelectedSessionId);
+    Workspace Workspace, int WorkspaceIndex, Guid? SelectedSessionId, bool FocusMember = false);
 
 public sealed partial class AppStore
 {
@@ -63,7 +63,7 @@ public sealed partial class AppStore
         {
             SelectedSessionId = CloseReselectionTarget(location);
             ReplaceSidebarSelection(SelectedSessionId);
-            AutoUnfocusIfOutsideFocus(SelectedSessionId);
+            DisableFocusIfSelectionOutsideSet(SelectedSessionId);
             RecordRecency();
         }
         else
@@ -142,7 +142,7 @@ public sealed partial class AppStore
                 SelectedSessionId = Workspaces.FirstOrDefault(w => w.Sessions.Count > 0)?.Sessions[0].Id;
             }
             ReplaceSidebarSelection(SelectedSessionId);
-            AutoUnfocusIfOutsideFocus(SelectedSessionId);
+            DisableFocusIfSelectionOutsideSet(SelectedSessionId);
             RecordRecency();
         }
         else
@@ -177,21 +177,23 @@ public sealed partial class AppStore
         ForgetFreshWorkspace(workspaceId);
         foreach (var session in visibleWorkspace.Sessions) EmitSessionClosed(session, visibleWorkspace.Id);
         if (visibleWorkspace.Sessions.Count == 0) ScheduleTreeChanged();
-        var workspace = FoldingPendingCloses(visibleWorkspace);
+        var (workspace, supersededFocusMember) = FoldingPendingCloses(visibleWorkspace);
         foreach (var session in workspace.Sessions)
         {
             session.ClearPendingRestoreOverrides(); // same undo hazard
         }
         var removingActive = SelectedSessionId is { } active && workspace.Sessions.Any(s => s.Id == active);
         var restoringSelection = removingActive ? SelectedSessionId : null;
-        if (FocusedWorkspaceId == workspaceId) FocusedWorkspaceId = null;
+        // a superseded record's membership is already gone from the live set (its own close dropped it, and
+        // the session undo that rebuilt this workspace as a shell does not re-mark), so its flag is the only
+        // surviving copy and must win here
+        var focusMember = FocusedWorkspaceIds.Contains(workspaceId) || supersededFocusMember;
+        DropFocusMember(workspaceId);
         if (removingActive)
         {
-            var fallbackIndex = Math.Min(index, Workspaces.Count - 1);
-            SelectedSessionId = Workspaces[fallbackIndex].Sessions.FirstOrDefault()?.Id
-                ?? Workspaces.FirstOrDefault(w => w.Sessions.Count > 0)?.Sessions[0].Id;
+            SelectedSessionId = WorkspaceRemovalTarget(index);
             ReplaceSidebarSelection(SelectedSessionId);
-            AutoUnfocusIfOutsideFocus(SelectedSessionId);
+            DisableFocusIfSelectionOutsideSet(SelectedSessionId);
             RecordRecency();
         }
         else
@@ -201,9 +203,9 @@ public sealed partial class AppStore
 
         var closeId = Guid.NewGuid();
         PendingCloseRecords[closeId] = new PendingCloseRecord.Workspace(
-            new PendingWorkspaceClose(workspace, index, restoringSelection));
+            new PendingWorkspaceClose(workspace, index, restoringSelection, focusMember));
         PendingCloseOrder.Add(closeId);
-        RecordRecentClosedWorkspace(workspace, restoringSelection, closeId);
+        RecordRecentClosedWorkspace(workspace, restoringSelection, focusMember, closeId);
         ShowPendingCloseSummary(closeId);
         SchedulePendingCloseFinalization(closeId, grace);
         CancelPendingSave();
@@ -356,10 +358,13 @@ public sealed partial class AppStore
     /// dropping the superseded record. Undoing a session close rebuilds a missing workspace as a
     /// shell, so closing that shell while the earlier record still waits out its grace would leave
     /// two pending records sharing a workspace id. The copy closed now is the newer state, so its
-    /// name, expansion and session order lead; the superseded record's sessions follow.</summary>
-    private Workspace FoldingPendingCloses(Workspace workspace)
+    /// name, expansion and session order lead; the superseded record's sessions follow. Focus
+    /// membership is reported back ORed across every absorbed record, because the rebuilt shell
+    /// carries none; the caller ORs it into its own capture.</summary>
+    private (Workspace Workspace, bool FocusMember) FoldingPendingCloses(Workspace workspace)
     {
         var folded = workspace;
+        var focusMember = false;
         foreach (var closeId in PendingCloseOrder.ToArray())
         {
             if (!PendingCloseRecords.TryGetValue(closeId, out var record)
@@ -369,9 +374,10 @@ public sealed partial class AppStore
             if (PendingCloseTasks.Remove(closeId, out var task)) task.Cancel();
             var present = folded.Sessions.Select(s => s.Id).ToHashSet();
             folded.Sessions.AddRange(pending.Close.Workspace.Sessions.Where(s => !present.Contains(s.Id)));
+            focusMember |= pending.Close.FocusMember;
         }
         PendingCloseOrder.RemoveAll(id => !PendingCloseRecords.ContainsKey(id));
-        return folded;
+        return (folded, focusMember);
     }
 
     /// <summary>Session ids a pending close still holds. They are absent from the tree, but their
@@ -485,6 +491,10 @@ public sealed partial class AppStore
             foreach (var session in close.Workspace.Sessions) EmitSessionCreated(session, close.Workspace.Id);
             if (close.Workspace.Sessions.Count == 0) ScheduleTreeChanged();
         }
+        // re-mark BEFORE the reselect, so a restored member is inside the set when the disable runs, and
+        // ahead of the early return: an EMPTY workspace returns there, and skipping the re-mark would
+        // leave its row filtered out, making the undo look like a no-op
+        if (close.FocusMember) MarkFocusMember(close.Workspace.Id);
         var target = close.SelectedSessionId ?? close.Workspace.Sessions.FirstOrDefault()?.Id;
         if (target is not { } resolved) return;
         SelectSession(resolved);

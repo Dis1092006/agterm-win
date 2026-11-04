@@ -20,7 +20,7 @@ public sealed class WindowPaletteProjectionTests
         store.SetAgentIndicator(
             new AgentIndicator(AgentStatus.Blocked, Color: "#123456", Shape: StatusShape.Diamond),
             visible.Id);
-        store.FocusedWorkspaceId = visibleWorkspace.Id;
+        store.SetFocusedWorkspace(visibleWorkspace.Id);
 
         var snapshot = WindowPaletteProjection.Create(
             WindowPaletteMode.Sessions,
@@ -50,7 +50,7 @@ public sealed class WindowPaletteProjectionTests
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Completed), completed.Id);
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Active), active.Id);
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked), blocked.Id);
-        store.FocusedWorkspaceId = firstWorkspace.Id;
+        store.SetFocusedWorkspace(firstWorkspace.Id);
 
         var snapshot = WindowPaletteProjection.Create(
             WindowPaletteMode.Attention,
@@ -136,7 +136,7 @@ public sealed class WindowPaletteProjectionTests
         Assert.Equal(["app:clear-flagged"], AppRowIds(store));
 
         session.Flagged = false;
-        store.FocusedWorkspaceId = workspace.Id;
+        store.SetFocusedWorkspace(workspace.Id);
         Assert.Equal(["app:clear-focus"], AppRowIds(store));
 
         session.Flagged = true;
@@ -147,6 +147,59 @@ public sealed class WindowPaletteProjectionTests
             snapshot.Items
                 .Where(item => item.Id.StartsWith("app:clear-", StringComparison.Ordinal))
                 .Select(item => (item.Id, item.Title)));
+    }
+
+    [Fact]
+    public void Commands_offer_add_workspace_to_focus_until_the_current_workspace_is_marked()
+    {
+        var store = TestStores.Scratch();
+        store.AddWorkspace("Work");
+
+        static bool Offered(AppStore store) => WindowPaletteProjection.Create(
+                WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items
+            .Any(item => item.Id == "app:add-workspace-to-focus" && item.Title == "Add Workspace to Focus");
+
+        Assert.True(Offered(store));
+
+        store.SetFocusMembership(store.CurrentWorkspaceId!.Value, true);
+        Assert.False(Offered(store));
+
+        // marking is offered in either sidebar mode
+        store.SetFocusMembership(store.CurrentWorkspaceId!.Value, false);
+        store.SidebarMode = SidebarMode.Flagged;
+        Assert.True(Offered(store));
+    }
+
+    [Fact]
+    public void Commands_offer_toggle_workspace_filter_only_with_a_marked_workspace()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var states = StateProvider(enabled: [BuiltinAction.ToggleWorkspaceFilter]);
+
+        bool Offered() => WindowPaletteProjection.Create(WindowPaletteMode.Commands, store, Keymap.Empty, states)
+            .Items.Any(item => item.Id == "toggle_workspace_filter" && item.Title == "Toggle Workspace Filter");
+
+        Assert.False(Offered());
+
+        store.SetFocusMembership(workspace.Id, true);
+        Assert.True(Offered());
+
+        // marked but the filter off still offers it: it is how the filter is switched on
+        Assert.False(store.FocusEnabled);
+    }
+
+    [Fact]
+    public void Commands_offer_clear_focus_for_a_marked_set_even_with_the_filter_off()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        store.SetFocusMembership(workspace.Id, true);
+
+        var ids = WindowPaletteProjection.Create(
+            WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items.Select(item => item.Id);
+
+        Assert.Contains("app:clear-focus", ids);
     }
 
     [Fact]
@@ -175,6 +228,7 @@ public sealed class WindowPaletteProjectionTests
             ("app:reload-config", PaletteAppCommand.ReloadConfig),
             ("app:clear-flagged", PaletteAppCommand.ClearFlagged),
             ("app:clear-focus", PaletteAppCommand.ClearFocus),
+            ("app:add-workspace-to-focus", PaletteAppCommand.AddWorkspaceToFocus),
             ("app:expand-workspaces", PaletteAppCommand.ExpandWorkspaces),
             ("app:collapse-workspaces", PaletteAppCommand.CollapseWorkspaces),
         };
@@ -201,7 +255,7 @@ public sealed class WindowPaletteProjectionTests
         }
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand(BuiltinAction.ToggleSplit.WireName()));
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand("app:something-else"));
-        Assert.Equal(41, BuiltinActions.All.Count);
+        Assert.Equal(42, BuiltinActions.All.Count);
     }
 
     [Fact]
@@ -828,13 +882,13 @@ public sealed class WindowPaletteActionsTests
         var secondWorkspace = store.AddWorkspace("Second");
         var first = store.AddSession(firstWorkspace.Id, @"C:\first")!;
         var second = store.AddSession(secondWorkspace.Id, @"C:\second", select: false)!;
-        store.FocusedWorkspaceId = firstWorkspace.Id;
+        store.SetFocusedWorkspace(firstWorkspace.Id);
 
         var selected = WindowPaletteActions.SelectSession(store, second.Id);
 
         Assert.True(selected);
         Assert.Equal(second.Id, store.SelectedSessionId);
-        Assert.Null(store.FocusedWorkspaceId);
+        Assert.Null(store.SoleFocusedWorkspaceId);
     }
 
     [Fact]

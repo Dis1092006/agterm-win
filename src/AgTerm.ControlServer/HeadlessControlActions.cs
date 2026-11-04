@@ -563,7 +563,7 @@ public sealed class HeadlessControlActions : IControlActions
                 // a --no-select create must not clear the workspace-focus filter (addWorkspace's
                 // auto-reveal), matching the upstream background-create behavior.
                 var workspace = options.CreateWorkspace == true
-                    ? store.EnsureWorkspace(name, clearFocus: !options.NoSelect)
+                    ? store.EnsureWorkspace(name, revealNewWorkspace: !options.NoSelect)
                     : store.WorkspaceNamed(name);
                 if (workspace is null)
                     return Err($"no workspace named \"{name}\" (pass --create-workspace to add it)");
@@ -766,21 +766,21 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
-    public ControlResponse FocusWorkspace(string? target, string? window, string? mode)
+    public ControlResponse FocusWorkspace(string? target, string? window, ControlWorkspaceFocusMode mode)
     {
-        var effectiveMode = mode ?? "toggle";
         return ResolveWorkspace(target, window, (store, id) =>
         {
-            Guid? want;
-            switch (effectiveMode)
-            {
-                case "on": want = id; break;
-                case "off": want = store.FocusedWorkspaceId == id ? null : store.FocusedWorkspaceId; break;
-                case "toggle": want = store.FocusedWorkspaceId == id ? null : id; break;
-                default: return Err($"invalid focus mode: {effectiveMode}");
-            }
-            store.SetFocusedWorkspace(want); // no-op + no save when unchanged (idempotent)
+            store.ApplyFocusMode(mode, id); // no-op + no save when unchanged (idempotent)
             return OkId(id);
+        });
+    }
+
+    public ControlResponse SetWorkspaceFilter(string? window, ControlToggleMode mode)
+    {
+        return ResolvePlacementStore(window, store =>
+        {
+            store.ApplyWorkspaceFilter(mode);
+            return Ok();
         });
     }
 

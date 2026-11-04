@@ -192,6 +192,7 @@
                             <Path Data="M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z"
                                   local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
                                   StrokeThickness="1"
+                                  Fill="{x:Bind GridIconFill, Mode=OneWay}"
                                   Width="16" Height="15"
                                   Margin="0,0,6,0"
                                   VerticalAlignment="Center"
@@ -333,7 +334,7 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <!-- upstream bottomBar: the add controls on the left; the focus pill and the flagged-view
+        <!-- upstream bottomBar: the add controls on the left; the workspace filter and the flagged-view
              toggle on the right. No line above it, as upstream -->
         <Grid x:Name="SidebarFooter" Grid.Row="1" Padding="6,4,6,4">
             <Grid.ColumnDefinitions>
@@ -372,24 +373,20 @@
                 </Button>
             </StackPanel>
             <StackPanel x:Name="SidebarFooterTrailing" Grid.Column="1" Orientation="Horizontal" Spacing="2">
-                <Button x:Name="FocusPill"
-                        Style="{StaticResource SidebarFooterButtonStyle}"
-                        Visibility="Collapsed"
-                        AutomationProperties.Name="Clear workspace focus"
-                        ToolTipService.ToolTip="Clear focus"
-                        Click="OnFocusPillClick">
-                    <Border Background="{StaticResource SidebarPillBrush}" CornerRadius="9" Padding="7,2,7,2">
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBlock x:Name="FocusPillText"
-                                       FontSize="12"
-                                       MaxWidth="120"
-                                       TextTrimming="CharacterEllipsis"
-                                       VerticalAlignment="Center" />
-                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                      Glyph="&#xE711;" FontSize="9" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Border>
-                </Button>
+                <!-- upstream square.grid.2x2 / .fill: applies or suspends the marked-workspace filter
+                     without losing the set; a ToggleButton so UI Automation reports the state -->
+                <ToggleButton x:Name="FocusFilterToggle"
+                              Style="{StaticResource SidebarFooterToggleStyle}"
+                              Click="OnFocusFilterClick"
+                              AutomationProperties.Name="Toggle Workspace Filter"
+                              AutomationProperties.AutomationId="focus-filter-toggle"
+                              ToolTipService.ToolTip="Show only focused workspaces">
+                    <Path x:Name="FocusFilterGlyph"
+                          Data="M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z"
+                          Stroke="{StaticResource SidebarForegroundBrush}"
+                          StrokeThickness="1"
+                          Width="16" Height="15" />
+                </ToggleButton>
                 <!-- upstream flag / flag.fill; a ToggleButton so UI Automation reports the view -->
                 <ToggleButton x:Name="FlaggedToggle"
                               Style="{StaticResource SidebarFooterToggleStyle}"

@@ -89,7 +89,7 @@ public class AppStoreCloseReselectionTests
 
         store.CloseSession(closing.Id);
         Assert.Equal(inWork.Id, store.SelectedSessionId); // stays put, though `elsewhere` is more recent
-        Assert.Null(store.FocusedWorkspaceId); // the close must not introduce a focus filter
+        Assert.Null(store.SoleFocusedWorkspaceId); // the close must not introduce a focus filter
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class AppStoreCloseReselectionTests
 
         store.CloseSession(closing.Id);
         Assert.Equal(first.Id, store.SelectedSessionId); // the MRU survivor, not the positional neighbor `/b`
-        Assert.Equal(work.Id, store.FocusedWorkspaceId); // the filter survives the close
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId); // the filter survives the close
     }
 
     [Fact]
@@ -156,33 +156,84 @@ public class AppStoreCloseReselectionTests
         store.CloseSession(onlyInWork.Id);
         Assert.Empty(store.Workspaces[1].Sessions);
         Assert.Equal(cameFrom.Id, store.SelectedSessionId); // not `/first`, the positional first-workspace jump
-        Assert.Null(store.FocusedWorkspaceId); // the emptied focus is dropped to reveal the pick
+        Assert.Null(store.SoleFocusedWorkspaceId); // the emptied focus is dropped to reveal the pick
     }
 
     [Fact]
-    public void CloseActiveSessionWhileAnotherWorkspaceIsFocusedStaysInTheClosingWorkspace()
+    public void CloseUnderAFocusFilterStaysInsideTheMarkedSet()
     {
-        // `SetFocusedWorkspace` never moves the selection, so focus can sit on a workspace the ACTIVE session
-        // doesn't belong to. Scoping the MRU by focus would yank the close into the focused workspace; the
-        // pick must stay next to the session that closed, exactly as the positional neighbor used to.
         var store = AppStoreFixtures.MakeStore();
         var work = store.AddWorkspace(name: "work");
         var personal = store.AddWorkspace(name: "personal");
-        var cameFrom = store.AddSession(work.Id, "/a");
-        Assert.NotNull(cameFrom);
-        Assert.NotNull(store.AddSession(work.Id, "/b"));
-        var closing = store.AddSession(work.Id, "/c");
-        Assert.NotNull(closing);
-        var elsewhere = store.AddSession(personal.Id, "/x");
-        Assert.NotNull(elsewhere);
-        store.SelectSession(elsewhere!.Id); // seeds `personal` into the recency stack
-        store.SelectSession(cameFrom!.Id);
-        store.SelectSession(closing!.Id);
-        store.SetFocusedWorkspace(personal.Id); // focus elsewhere, active session still in `work`
+        var survivor = store.AddSession(work.Id, "/a")!;
+        var closing = store.AddSession(work.Id, "/c")!;
+        var elsewhere = store.AddSession(personal.Id, "/x")!;
+        store.SelectSession(survivor.Id);
+        store.SelectSession(elsewhere.Id);
+        store.SelectSession(closing.Id);
+        store.SetFocusedWorkspace(work.Id);
+        Assert.Equal(closing.Id, store.SelectedSessionId);
 
         store.CloseSession(closing.Id);
-        Assert.Equal(cameFrom.Id, store.SelectedSessionId); // not `elsewhere`, in the focused workspace
-        Assert.Null(store.FocusedWorkspaceId); // the pick is outside the focus, so the filter drops
+        Assert.Equal(survivor.Id, store.SelectedSessionId);
+        Assert.Equal(new[] { work.Id }, store.FocusedWorkspaceIds);
+        Assert.True(store.FocusEnabled);
+    }
+
+    [Fact]
+    public void CloseInAMarkedWorkspaceCrossesToTheOtherMemberNotAnUnmarkedSurvivor()
+    {
+        // `unmarked` is more recent than `otherMember`: an unscoped MRU would take it.
+        var store = AppStoreFixtures.MakeStore();
+        var first = store.AddWorkspace(name: "first");
+        var second = store.AddWorkspace(name: "second");
+        var outside = store.AddWorkspace(name: "outside");
+        var closing = store.AddSession(first.Id, "/only")!;
+        var otherMember = store.AddSession(second.Id, "/member", select: false)!;
+        var unmarked = store.AddSession(outside.Id, "/stray", select: false)!;
+        store.SelectSession(otherMember.Id);
+        store.SelectSession(unmarked.Id);
+        store.SelectSession(closing.Id);
+        store.SetFocusMembership(first.Id, true);
+        store.SetFocusMembership(second.Id, true);
+        store.SetFocusEnabled(true);
+
+        store.CloseSession(closing.Id);
+        Assert.Empty(store.Workspaces.First(w => w.Id == first.Id).Sessions);
+        Assert.Equal(otherMember.Id, store.SelectedSessionId);
+        Assert.True(store.FocusedWorkspaceIds.SetEquals(new[] { first.Id, second.Id }));
+        Assert.True(store.FocusEnabled);
+    }
+
+    [Fact]
+    public void CloseUnderAFocusFilterWithNoRecencyKeepsThePositionalPickInsideTheSet()
+    {
+        // the unmarked workspace sits between the emptied one and the other marked one, so the picks differ.
+        var store = AppStoreFixtures.MakeStore();
+        Guid wsClosing = Guid.NewGuid(), wsUnmarked = Guid.NewGuid(), wsOtherMember = Guid.NewGuid();
+        Guid closing = Guid.NewGuid(), outside = Guid.NewGuid(), inSet = Guid.NewGuid();
+        WorkspaceSnapshot Ws(Guid id, string name, Guid session, string cwd) => new()
+        {
+            Id = id, Name = name, Sessions = new[] { new SessionSnapshot { Id = session, Cwd = cwd } },
+        };
+        store.Restore(new Snapshot
+        {
+            SelectedSessionId = closing,
+            Workspaces = new[]
+            {
+                Ws(wsClosing, "closing", closing, "/closing"),
+                Ws(wsUnmarked, "unmarked", outside, "/outside"),
+                Ws(wsOtherMember, "member", inSet, "/inset"),
+            },
+            FocusedWorkspaceIds = new[] { wsClosing, wsOtherMember },
+            FocusEnabled = true,
+        });
+        Assert.Equal(new[] { closing }, store.SessionRecency.Items);
+
+        store.CloseSession(closing);
+        Assert.Equal(inSet, store.SelectedSessionId);
+        Assert.True(store.FocusedWorkspaceIds.SetEquals(new[] { wsClosing, wsOtherMember }));
+        Assert.True(store.FocusEnabled);
     }
 
     [Fact]

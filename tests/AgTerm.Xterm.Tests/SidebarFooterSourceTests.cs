@@ -3,7 +3,7 @@ using System.Xml.Linq;
 namespace AgTerm.Xterm.Tests;
 
 // upstream WindowContentView.bottomBar (7df70fe, WindowContentView.swift:741-830): new workspace and
-// the New Session menu on the left, a spacer, then the focus pill and the flagged-view toggle, all
+// the New Session menu on the left, a spacer, then the workspace filter toggle and the flagged-view toggle, all
 // borderless in the chrome foreground, no line above. Clear Flagged is a command-palette row, as
 // upstream, not a footer button. SidebarView is a WinUI type the test project does not compile, so it
 // is pinned in source.
@@ -20,7 +20,7 @@ public sealed class SidebarFooterSourceTests
 
         Assert.Equal(2, groups.Count);
         Assert.Equal(["NewWorkspaceButton", "NewSessionButton"], Names(groups[0]));
-        Assert.Equal(["FocusPill", "FlaggedToggle"], Names(groups[1]));
+        Assert.Equal(["FocusFilterToggle", "FlaggedToggle"], Names(groups[1]));
         Assert.Equal("2", (string?)groups[0].Attribute("Spacing"));
         Assert.Equal("2", (string?)groups[1].Attribute("Spacing"));
         Assert.Equal("1", (string?)groups[1].Attribute("Grid.Column"));
@@ -48,9 +48,10 @@ public sealed class SidebarFooterSourceTests
         Assert.Equal("0", Setter(style, "Padding"));
         Assert.Equal("{StaticResource SidebarForegroundBrush}", Setter(style, "Foreground"));
 
-        foreach (var name in new[] { "NewWorkspaceButton", "NewSessionButton", "FocusPill" })
+        foreach (var name in new[] { "NewWorkspaceButton", "NewSessionButton" })
             Assert.Equal("{StaticResource SidebarFooterButtonStyle}", (string?)Named(name).Attribute("Style"));
-        Assert.Equal("{StaticResource SidebarFooterToggleStyle}", (string?)Named("FlaggedToggle").Attribute("Style"));
+        foreach (var name in new[] { "FocusFilterToggle", "FlaggedToggle" })
+            Assert.Equal("{StaticResource SidebarFooterToggleStyle}", (string?)Named(name).Attribute("Style"));
         var toggle = Style("SidebarFooterToggleStyle");
         Assert.Equal("Transparent", Setter(toggle, "Background"));
         Assert.Equal("0", Setter(toggle, "BorderThickness"));
@@ -126,21 +127,24 @@ public sealed class SidebarFooterSourceTests
     }
 
     [Fact]
-    public void Focus_pill_is_a_caption_sized_capsule_with_the_name_and_an_x()
+    public void Workspace_filter_toggle_is_an_outline_grid_that_fills_while_the_filter_applies()
     {
-        var pill = Named("FocusPill");
-        var capsule = pill.Element(Xaml + "Border");
+        var toggle = Named("FocusFilterToggle");
+        var glyph = toggle.Descendants(Xaml + "Path").Single();
 
-        Assert.NotNull(capsule);
-        Assert.Equal("{StaticResource SidebarPillBrush}", (string?)capsule!.Attribute("Background"));
-        Assert.Equal("9", (string?)capsule.Attribute("CornerRadius"));
-        Assert.Equal("7,2,7,2", (string?)capsule.Attribute("Padding"));
-        var text = capsule.Descendants(Xaml + "TextBlock").Single();
-        Assert.Equal("FocusPillText", (string?)text.Attribute(X + "Name"));
-        // the WinUI Caption type ramp size
-        Assert.Equal("12", (string?)text.Attribute("FontSize"));
-        Assert.Single(capsule.Descendants(Xaml + "FontIcon"));
-        Assert.Equal("Clear workspace focus", (string?)pill.Attribute("AutomationProperties.Name"));
+        Assert.Equal("FocusFilterGlyph", (string?)glyph.Attribute(X + "Name"));
+        Assert.Equal("M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z",
+            (string?)glyph.Attribute("Data"));
+        Assert.Equal("{StaticResource SidebarForegroundBrush}", (string?)glyph.Attribute("Stroke"));
+        Assert.Equal("Toggle Workspace Filter", (string?)toggle.Attribute("AutomationProperties.Name"));
+        Assert.Equal("focus-filter-toggle", (string?)toggle.Attribute("AutomationProperties.AutomationId"));
+
+        var apply = MethodBody(Source("SidebarView.xaml.cs"), "public void Apply(SidebarSnapshot snapshot)");
+        Assert.Contains("FocusFilterToggle.IsChecked = snapshot.FocusEnabled;", apply, StringComparison.Ordinal);
+        Assert.Contains("FocusFilterGlyph.Fill = snapshot.FocusEnabled ? FocusFilterGlyph.Stroke : null;", apply, StringComparison.Ordinal);
+        // nothing marked means nothing to filter to
+        Assert.Contains("FocusFilterToggle.IsEnabled = snapshot.FocusMemberIds.Count > 0;", apply, StringComparison.Ordinal);
+        Assert.Contains("FocusFilterToggle.Opacity = FocusFilterToggle.IsEnabled ? 1 : 0.35;", apply, StringComparison.Ordinal);
     }
 
     private static XElement Footer() =>

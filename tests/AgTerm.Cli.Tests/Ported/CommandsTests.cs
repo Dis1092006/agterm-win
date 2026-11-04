@@ -147,6 +147,48 @@ public class CommandsTests
     }
 
     [Fact]
+    public void WorkspaceFocusAddMarksWithoutApplyingTheFilter()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.WorkspaceFocus, Target = "9f3c",
+                Args = new ControlArgs { Mode = "add" },
+            },
+            Request("workspace", "focus", "add", "--target", "9f3c"));
+    }
+
+    [Fact]
+    public void WorkspaceFilterDefaultsToggleAndCarriesNoTarget()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WorkspaceFilter, Args = new ControlArgs { Mode = "toggle" } },
+            Request("workspace", "filter"));
+    }
+
+    [Theory]
+    [InlineData("on")]
+    [InlineData("off")]
+    public void WorkspaceFilterWithModeAndWindow(string mode)
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.WorkspaceFilter,
+                Args = new ControlArgs { Mode = mode, Window = "win" },
+            },
+            Request("workspace", "filter", mode, "--window", "win"));
+    }
+
+    [Fact]
+    public void WorkspaceFilterRejectsBadModeAndATarget()
+    {
+        var error = Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "workspace", "filter", "sideways" }));
+        Assert.Equal("mode must be on, off, or toggle", Agtermctl.Message(error));
+        Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "workspace", "filter", "--target", "9f3c" }));
+    }
+
+    [Fact]
     public void WorkspaceCollapseDefaultsActive()
     {
         CanonicalJson.AssertEqual(

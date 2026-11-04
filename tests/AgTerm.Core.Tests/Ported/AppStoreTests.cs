@@ -1931,7 +1931,7 @@ public class AppStoreTests
         Assert.True(nodes.First(n => n.Id == Upper(ws2.Id)).Focused);
         Assert.Equal(1, nodes.Count(n => n.Focused == true));
         // clearing focus: no node reports focused again.
-        store.SetFocusedWorkspace(null);
+        store.ClearFocus();
         Assert.All(store.ControlTree().Workspaces, w => Assert.Null(w.Focused));
     }
 
@@ -2364,7 +2364,7 @@ public class AppStoreTests
         store.SetFocusedWorkspace(ws2.Id);
 
         Assert.Equal(new[] { b.Id }, store.SidebarSelectionIds);
-        store.SetFocusedWorkspace(null);
+        store.ClearFocus();
         Assert.True(store.SidebarSelectionIds.SequenceEqual(new[] { b.Id }),
             "rows hidden by the focus filter must not re-enter the selection when unfocused");
     }

@@ -43,11 +43,17 @@ public class SnapshotTests
             Version = Snapshot.CurrentVersion, SelectedSessionId = SessionId,
             Workspaces = Array.Empty<WorkspaceSnapshot>(), SidebarWidth = 240.0,
             SidebarVisible = true, SidebarMode = SidebarMode.Tree,
-            FocusedWorkspaceId = WorkspaceId, SessionRecency = new[] { SessionId },
+            FocusedWorkspaceIds = new[] { WorkspaceId }, FocusEnabled = true, SessionRecency = new[] { SessionId },
         };
         using var doc = JsonDocument.Parse(ControlJson.Serialize(snapshot));
-        Assert.Equal(SurfaceFieldNames("snapshot"),
-            doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
+        // the pin's single focusedWorkspaceID became a set plus a filter flag (upstream 6722755a).
+        var expected = SurfaceFieldNames("snapshot")
+            .SelectMany(name => name == "focusedWorkspaceID"
+                ? new[] { "focusedWorkspaceIDs", "focusEnabled" }
+                : new[] { name })
+            .ToList();
+        Assert.Equal(expected, doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
+        Assert.Equal(ParitySurface.UpstreamPersistence("snapshot"), expected);
     }
 
     [Fact]
@@ -115,7 +121,7 @@ public class SnapshotTests
                 },
             },
             SidebarWidth = 240.0, SidebarVisible = false, SidebarMode = SidebarMode.Flagged,
-            FocusedWorkspaceId = WorkspaceId, SessionRecency = new[] { SessionId },
+            FocusedWorkspaceIds = new[] { WorkspaceId }, FocusEnabled = true, SessionRecency = new[] { SessionId },
         };
         var json = ControlJson.Serialize(snapshot);
         Assert.Equal(json, ControlJson.Serialize(ControlJson.Deserialize<Snapshot>(json)));
@@ -189,12 +195,130 @@ public class SnapshotTests
         Assert.Equal(1, snapshot.Version); // the rest of the snapshot survives
     }
 
-    [Fact]
-    public void UnknownSidebarModeFailsStrictly()
+    private static string SnapshotWith(string field) => "{\"version\":1,\"workspaces\":[]," + field + "}";
+
+    [Theory]
+    [InlineData("\"sidebarMode\":\"grid\"")] // unknown raw value from a newer build
+    [InlineData("\"sidebarMode\":5")]
+    public void UnknownSidebarModeDecodesLossyToNull(string field)
     {
-        // Unlike the lossy fields, sidebarMode keeps Swift's strict decodeIfPresent behavior.
+        Assert.Null(ControlJson.Deserialize<Snapshot>(SnapshotWith(field))!.SidebarMode);
+    }
+
+    [Theory]
+    [InlineData("\"selectedSessionID\":\"nope\"")]
+    [InlineData("\"selectedSessionID\":7")]
+    public void BadSelectedSessionIdDecodesLossyToNull(string field)
+    {
+        Assert.Null(ControlJson.Deserialize<Snapshot>(SnapshotWith(field))!.SelectedSessionId);
+    }
+
+    [Theory]
+    [InlineData("\"sidebarWidth\":\"wide\"")]
+    [InlineData("\"sidebarVisible\":\"yes\"")]
+    [InlineData("\"focusEnabled\":\"yes\"")]
+    public void BadTopLevelScalarsDecodeLossyAndKeepTheTree(string field)
+    {
+        var snapshot = ControlJson.Deserialize<Snapshot>(SnapshotWith(field))!;
+        Assert.Null(snapshot.SidebarWidth);
+        Assert.Null(snapshot.SidebarVisible);
+        Assert.Null(snapshot.FocusEnabled);
+        Assert.Equal(1, snapshot.Version);
+    }
+
+    [Fact]
+    public void FocusSetAndFlagRoundTripInTheirOwnKeys()
+    {
+        var json = SnapshotWith("\"focusedWorkspaceIDs\":[\"" + WorkspaceId.ToString().ToUpperInvariant() + "\"],\"focusEnabled\":true");
+        var snapshot = ControlJson.Deserialize<Snapshot>(json)!;
+
+        Assert.Equal(new[] { WorkspaceId }, snapshot.FocusedWorkspaceIds);
+        Assert.True(snapshot.FocusEnabled);
+        Assert.Equal(json, ControlJson.Serialize(snapshot));
+    }
+
+    [Fact]
+    public void LegacyFocusedWorkspaceIdMigratesToAnEnabledOneMemberSet()
+    {
+        var snapshot = ControlJson.Deserialize<Snapshot>(
+            SnapshotWith("\"focusedWorkspaceID\":\"" + WorkspaceId.ToString().ToUpperInvariant() + "\""))!;
+
+        Assert.Equal(new[] { WorkspaceId }, snapshot.FocusedWorkspaceIds);
+        Assert.True(snapshot.FocusEnabled);
+        // the legacy key is never written back
+        var written = ControlJson.Serialize(snapshot);
+        Assert.DoesNotContain("\"focusedWorkspaceID\"", written);
+        Assert.Contains("\"focusedWorkspaceIDs\"", written);
+    }
+
+    [Fact]
+    public void LegacyFocusIsIgnoredWhenTheSetKeyIsPresent()
+    {
+        var other = Guid.Parse("AAAA1111-0000-0000-0000-000000000002");
+        var snapshot = ControlJson.Deserialize<Snapshot>(SnapshotWith(
+            "\"focusedWorkspaceID\":\"" + WorkspaceId + "\",\"focusedWorkspaceIDs\":[\"" + other + "\"],\"focusEnabled\":false"))!;
+
+        Assert.Equal(new[] { other }, snapshot.FocusedWorkspaceIds);
+        Assert.False(snapshot.FocusEnabled);
+    }
+
+    [Fact]
+    public void LegacyFocusDoesNotOverrideAnExplicitFalseWhenTheSetIsMalformed()
+    {
+        // a malformed set is present-but-unusable, not absent: the migration must not fire over an explicit false.
+        var snapshot = ControlJson.Deserialize<Snapshot>(SnapshotWith(
+            "\"focusedWorkspaceID\":\"" + WorkspaceId + "\",\"focusedWorkspaceIDs\":[\"not-a-uuid\"],\"focusEnabled\":false"))!;
+
+        Assert.Empty(snapshot.FocusedWorkspaceIds ?? []);
+        Assert.False(snapshot.FocusEnabled);
+    }
+
+    [Theory]
+    [InlineData("[\"not-a-uuid\"]")]
+    [InlineData("\"wrong type\"")]
+    [InlineData("[42]")]
+    public void BadFocusSetDecodesLossyAndKeepsTheTree(string idsJson)
+    {
+        var snapshot = ControlJson.Deserialize<Snapshot>(SnapshotWith("\"focusedWorkspaceIDs\":" + idsJson))!;
+
+        Assert.Empty(snapshot.FocusedWorkspaceIds ?? []);
+        Assert.Equal(1, snapshot.Version);
+    }
+
+    [Fact]
+    public void BadWorkspaceAndSessionOptionalsDecodeLossyAndKeepTheTree()
+    {
+        var json = "{\"version\":1,\"workspaces\":[{\"id\":\"" + WorkspaceId + "\",\"name\":\"w\",\"collapsed\":\"yes\"," +
+                   "\"sessions\":[{\"id\":\"" + SessionId + "\",\"cwd\":\"/h\",\"fontSize\":\"big\",\"isSplit\":3," +
+                   "\"customName\":9,\"splitRatio\":\"half\",\"flagged\":\"x\",\"foregroundCommand\":\"ls\"," +
+                   "\"splitForegroundCommand\":[1],\"initialCommand\":5,\"commandWait\":\"w\",\"restoreCommand\":1," +
+                   "\"splitRestoreCommand\":[],\"splitCwd\":2}]}]}";
+        var snapshot = ControlJson.Deserialize<Snapshot>(json)!;
+
+        var workspace = snapshot.Workspaces[0];
+        Assert.Null(workspace.Collapsed);
+        var session = workspace.Sessions[0];
+        Assert.Equal("/h", session.Cwd);
+        Assert.Null(session.FontSize);
+        Assert.Null(session.IsSplit);
+        Assert.Null(session.CustomName);
+        Assert.Null(session.SplitRatio);
+        Assert.Null(session.Flagged);
+        Assert.Null(session.ForegroundCommand);
+        Assert.Null(session.SplitForegroundCommand);
+        Assert.Null(session.InitialCommand);
+        Assert.Null(session.CommandWait);
+        Assert.Null(session.RestoreCommand);
+        Assert.Null(session.SplitRestoreCommand);
+        Assert.Null(session.SplitCwd);
+    }
+
+    [Fact]
+    public void IdentityStaysStrict()
+    {
         Assert.Throws<JsonException>(() => ControlJson.Deserialize<Snapshot>(
-            "{\"version\":1,\"workspaces\":[],\"sidebarMode\":\"grid\"}"));
+            "{\"version\":1,\"workspaces\":[{\"id\":\"" + WorkspaceId + "\",\"name\":\"w\"," +
+            "\"sessions\":[{\"id\":\"" + SessionId + "\",\"cwd\":5}]}]}"));
     }
 
     [Fact]

@@ -71,6 +71,14 @@ public sealed record RecentClosedWorkspace
     [JsonPropertyName("selectedSessionID")]
     [JsonConverter(typeof(UppercaseGuidConverter))]
     public Guid? SelectedSessionId { get; init; }
+
+    /// <summary>Whether the workspace was a member of the sidebar focus set when it closed, so Reopen
+    /// can mark it again instead of appending it invisibly behind a still-applied filter. Membership
+    /// only: the filter flag is current window state, not a property of the closed workspace. Optional
+    /// because this persists in recent-closed.json: absent reads as not a member, the behavior of
+    /// every entry written before the field existed.</summary>
+    [JsonPropertyName("focusMember")]
+    public bool? FocusMember { get; init; }
 }
 
 public sealed record RecentClosedState

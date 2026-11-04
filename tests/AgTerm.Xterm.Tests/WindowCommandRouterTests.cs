@@ -43,6 +43,7 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleFlaggedView,
         BuiltinAction.ToggleFlag,
         BuiltinAction.FocusWorkspace,
+        BuiltinAction.ToggleWorkspaceFilter,
         BuiltinAction.PreviousSession,
         BuiltinAction.NextSession,
         BuiltinAction.PreviousAttentionSession,
@@ -54,19 +55,19 @@ public class WindowCommandRouterTests
     [Fact]
     public void ActionImplementations_covers_all_builtin_actions_with_correct_implemented_state()
     {
-        // --- all 41 distinct enum members ---
+        // --- all 42 distinct enum members ---
         var all = BuiltinActions.All;
-        Assert.Equal(41, all.Count);
-        Assert.Equal(41, all.Distinct().Count());
+        Assert.Equal(42, all.Count);
+        Assert.Equal(42, all.Distinct().Count());
 
-        // --- test data covers exactly those 41 members ---
+        // --- test data covers exactly those 42 members ---
         var expected = ImplementedActions.ToHashSet();
-        Assert.Equal(41, expected.Count);
+        Assert.Equal(42, expected.Count);
         Assert.Equal(expected, all.ToHashSet());
 
-        // --- ActionImplementations has exactly the 41 keys, each once ---
+        // --- ActionImplementations has exactly the 42 keys, each once ---
         var map = WindowCommandRouter.ActionImplementations;
-        Assert.Equal(41, map.Count);
+        Assert.Equal(42, map.Count);
         Assert.Equal(expected, map.Keys.ToHashSet());
 
         // --- each expected Implemented value matches ---

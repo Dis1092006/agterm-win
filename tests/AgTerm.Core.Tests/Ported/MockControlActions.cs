@@ -43,7 +43,8 @@ public sealed class MockControlActions : IControlActions
             public override int GetHashCode() => HashCode.Combine(Targets.Count, Window, Move);
         }
         public sealed record WorkspaceMove(string? Target, string? Window, ReorderDirection Direction) : Call;
-        public sealed record WorkspaceFocus(string? Target, string? Window, string? Mode) : Call;
+        public sealed record WorkspaceFocus(string? Target, string? Window, ControlWorkspaceFocusMode Mode) : Call;
+        public sealed record WorkspaceFilter(string? Window, ControlToggleMode Mode) : Call;
         public sealed record WorkspaceExpansion(string? Target, string? Window, bool Expanded) : Call;
         public sealed record SessionFlag(string? Target, string? Window, string? Mode) : Call;
         public sealed record MarkSessionSeen(string? Target, string? Window) : Call;
@@ -117,6 +118,17 @@ public sealed class MockControlActions : IControlActions
     }
 
     public List<Call> Calls { get; } = new();
+
+    /// <summary>The store the workspace.filter / workspace.focus arms drive when set (null = record-only,
+    /// the default for every other dispatcher test). It lets a test run the real command path (the
+    /// dispatcher's parse plus the host-free ApplyWorkspaceFilter/ApplyFocusMode the app-side arms call)
+    /// against a live AppStore. The double supplies only the id-spelling half of target resolution, so a
+    /// test driving this store must address workspaces by full id and stay single-window.</summary>
+    public AppStore? FocusStore { get; set; }
+
+    /// <summary>Targets that reached a FocusStore-backed arm but could not be resolved, so a "the store
+    /// did not change" assertion cannot pass vacuously on a typo'd or sugar-spelled target.</summary>
+    public List<string> UnresolvedFocusTargets { get; } = new();
 
     public ControlResponse NextTreeResponse = new() { Ok = false, Error = "tree not stubbed" };
     public ControlResponse NextEventsReadResponse = new() { Ok = false, Error = "events.read not stubbed" };
@@ -296,9 +308,21 @@ public sealed class MockControlActions : IControlActions
         return new ControlResponse { Ok = true };
     }
 
-    public ControlResponse FocusWorkspace(string? target, string? window, string? mode)
+    public ControlResponse FocusWorkspace(string? target, string? window, ControlWorkspaceFocusMode mode)
     {
         Calls.Add(new Call.WorkspaceFocus(target, window, mode));
+        if (FocusStore is { } store)
+        {
+            if (Guid.TryParse(target, out var id)) store.ApplyFocusMode(mode, id);
+            else UnresolvedFocusTargets.Add(target ?? "active");
+        }
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetWorkspaceFilter(string? window, ControlToggleMode mode)
+    {
+        Calls.Add(new Call.WorkspaceFilter(window, mode));
+        FocusStore?.ApplyWorkspaceFilter(mode);
         return new ControlResponse { Ok = true };
     }
 

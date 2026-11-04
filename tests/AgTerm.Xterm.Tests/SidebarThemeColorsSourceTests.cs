@@ -119,7 +119,7 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.DoesNotContain("ColorsOf(", view, StringComparison.Ordinal);
         Assert.DoesNotContain("_colors", model, StringComparison.Ordinal);
         Assert.Contains("private bool IsColoredSelection => _look.Row is not null && IsListSelected;", model, StringComparison.Ordinal);
-        Assert.Contains("_look.Row is { } colors", Between(model, "public Brush IconFill", ";"), StringComparison.Ordinal);
+        Assert.Contains("_look.Row is { } colors", Between(model, "private Brush MarkFill()", ";"), StringComparison.Ordinal);
         var update = MethodBody(model, "public void Update(");
         foreach (var name in new[] { "LabelWeight", "RowFrame", "LabelForeground", "LabelBlockBackground", "LabelBlockPadding" })
             Assert.Contains($"nameof({name})", update, StringComparison.Ordinal);

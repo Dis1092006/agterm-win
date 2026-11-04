@@ -20,6 +20,7 @@ public enum InterfaceElement
     NewWorkspace,
     NewSession,
     FlaggedView,
+    FocusFilter,
     WorkspaceAddSession,
 }
 

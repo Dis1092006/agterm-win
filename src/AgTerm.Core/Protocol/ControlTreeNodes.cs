@@ -199,6 +199,11 @@ public sealed record ControlTree
     [JsonPropertyName("sidebarMode")]
     public string? SidebarMode { get; init; }
 
+    /// <summary>Whether the sidebar focus filter is applied (live). Reported even when false; the
+    /// marked set itself is each workspace node's focused flag. Read side of workspace.filter.</summary>
+    [JsonPropertyName("workspaceFilter")]
+    public bool? WorkspaceFilter { get; init; }
+
     /// <summary>Whether the projected window's quick terminal is visible (live).</summary>
     [JsonPropertyName("quickVisible")]
     public bool? QuickVisible { get; init; }

@@ -49,10 +49,14 @@ public sealed partial class AppStore
     /// of the flagged working-set. Persisted.</summary>
     public SidebarMode SidebarMode { get; set; } = SidebarMode.Tree;
 
-    /// <summary>The workspace the sidebar tree is focused (zoomed) on, or null for the full tree.
-    /// Persisted. Auto-cleared when the focused workspace is removed or when a session outside it
-    /// becomes selected.</summary>
-    public Guid? FocusedWorkspaceId { get; set; }
+    /// <summary>The workspaces marked in the sidebar focus set. Persisted. A member leaves when its
+    /// workspace is removed. The set is kept when the filter is switched off.</summary>
+    public HashSet<Guid> FocusedWorkspaceIds { get; set; } = new();
+
+    /// <summary>Whether the focus filter applies to the marked set, so the tree shows only those
+    /// workspaces. Persisted. Never true with an empty set (the mutators clamp it). Switched off, with
+    /// the set kept, when a session outside the set becomes selected.</summary>
+    public bool FocusEnabled { get; set; }
 
     /// <summary>This window's sidebar width in points. Persisted; clamped on restore.</summary>
     public double SidebarWidth { get; set; } = SidebarWidthDefault;
@@ -332,7 +336,7 @@ public sealed partial class AppStore
                 Id = workspace.Id.ToString("D").ToUpperInvariant(),
                 Name = workspace.Name,
                 Active = workspace.Id == activeWorkspaceId,
-                Focused = workspace.Id == FocusedWorkspaceId ? true : null,
+                Focused = FocusedWorkspaceIds.Contains(workspace.Id) ? true : null,
                 Collapsed = workspace.IsExpanded ? null : true,
                 Sessions = sessions,
                 Theme = workspace.ThemeName,
@@ -346,6 +350,7 @@ public sealed partial class AppStore
             AutoFollowMs = AutoFollowMs,
             SidebarVisible = SidebarVisible,
             SidebarMode = SidebarMode == SidebarMode.Flagged ? "flagged" : "tree",
+            WorkspaceFilter = FocusEnabled,
             QuickVisible = quickVisible?.Invoke(),
             ZoomedSurface = zoomedSurface?.Invoke(),
             DashboardMembers = dashboardMembers?.Invoke(),
@@ -385,17 +390,17 @@ public sealed partial class AppStore
         _ => throw new ArgumentOutOfRangeException(nameof(shape)),
     };
 
-    /// <summary>Creates a workspace and appends it. When clearFocus (the default) it clears any
-    /// active focus so the new (empty) workspace is immediately visible. Pass collapsed: true to
-    /// create it already collapsed in the sidebar (backs workspace.new --collapsed). The new
-    /// workspace becomes the current one until the selection moves when holdsTarget is true; null
-    /// follows clearFocus.</summary>
-    public Workspace AddWorkspace(string name, bool collapsed = false, bool clearFocus = true, bool? holdsTarget = null)
+    /// <summary>Creates a workspace and appends it. When revealNewWorkspace (the default) and the
+    /// focus filter is on, the new (empty) workspace joins the marked set so it is immediately
+    /// visible. Pass collapsed: true to create it already collapsed in the sidebar (backs
+    /// workspace.new --collapsed). The new workspace becomes the current one until the selection
+    /// moves when holdsTarget is true; null follows revealNewWorkspace.</summary>
+    public Workspace AddWorkspace(string name, bool collapsed = false, bool revealNewWorkspace = true, bool? holdsTarget = null)
     {
         var workspace = new Workspace(TerminalText.Sanitized(name), isExpanded: !collapsed);
         Workspaces.Add(workspace);
-        if (clearFocus) FocusedWorkspaceId = null;
-        if (holdsTarget ?? clearFocus) _freshWorkspaceId = workspace.Id;
+        if (revealNewWorkspace) RevealNewFocusMember(workspace.Id);
+        if (holdsTarget ?? revealNewWorkspace) _freshWorkspaceId = workspace.Id;
         ScheduleTreeChanged();
         Save();
         return workspace;
@@ -403,8 +408,8 @@ public sealed partial class AppStore
 
     /// <summary>Backs workspace.select. A workspace with sessions selects its first one and takes
     /// the target back from a fresh workspace (the first session may already be the selection, which
-    /// alone would not move it). An empty workspace has nothing to select: the focus filter is
-    /// cleared if it hides it, and it becomes the target.</summary>
+    /// alone would not move it). An empty workspace has nothing to select: it joins the marked set
+    /// while the focus filter is on, so it is not hidden, and it becomes the target.</summary>
     public bool SelectWorkspace(Guid workspaceId)
     {
         if (Workspaces.FirstOrDefault(w => w.Id == workspaceId) is not { } workspace) return false;
@@ -414,14 +419,16 @@ public sealed partial class AppStore
             _freshWorkspaceId = null;
             return true;
         }
-        if (FocusedWorkspaceId is { } focused && focused != workspaceId)
-            SetFocusedWorkspace(null);
+        var marked = new HashSet<Guid>(FocusedWorkspaceIds);
+        RevealNewFocusMember(workspaceId);
         _freshWorkspaceId = workspaceId;
+        if (!FocusedWorkspaceIds.SetEquals(marked)) Save();
         return true;
     }
 
-    /// <summary>Whether a workspace step has somewhere to go: false in flagged mode (no workspace rows),
-    /// with no visible workspace, or when the current one is the only visible one.</summary>
+    /// <summary>Whether a workspace step has somewhere to go: false in flagged mode, whatever its
+    /// layout, and with no visible workspace. A lone visible workspace is a dead end only while it is
+    /// already current: when the current one is filtered out, entering the sole survivor is the point.</summary>
     public bool CanStepWorkspaces
     {
         get
@@ -429,8 +436,8 @@ public sealed partial class AppStore
             if (SidebarMode != SidebarMode.Tree) return false;
             var visible = VisibleWorkspaces;
             if (visible.Count == 0) return false;
-            var current = CurrentWorkspaceId;
-            return !(visible.Count == 1 && visible.Any(w => w.Id == current));
+            if (CurrentWorkspaceId is not { } current || !visible.Any(w => w.Id == current)) return true;
+            return visible.Count > 1;
         }
     }
 
@@ -462,13 +469,13 @@ public sealed partial class AppStore
         return Workspaces.FirstOrDefault(w => w.Name == needle);
     }
 
-    /// <summary>The workspace named name, created if none exists (idempotent); clearFocus (default
-    /// true) is forwarded to AddWorkspace on the create path. Null only when blank. Backs
+    /// <summary>The workspace named name, created if none exists (idempotent); revealNewWorkspace
+    /// (default true) is forwarded to AddWorkspace on the create path. Null only when blank. Backs
     /// --workspace-name --create-workspace.</summary>
-    public Workspace? EnsureWorkspace(string name, bool clearFocus = true)
+    public Workspace? EnsureWorkspace(string name, bool revealNewWorkspace = true)
     {
         if (Session.TrimmedOrNull(TerminalText.Sanitized(name)) is not { } needle) return null;
-        return WorkspaceNamed(needle) ?? AddWorkspace(needle, clearFocus: clearFocus, holdsTarget: clearFocus);
+        return WorkspaceNamed(needle) ?? AddWorkspace(needle, revealNewWorkspace: revealNewWorkspace, holdsTarget: revealNewWorkspace);
     }
 
     /// <summary>Creates a session in the given workspace and, when select is true (the default),
@@ -502,7 +509,7 @@ public sealed partial class AppStore
         if (select)
         {
             SelectedSessionId = session.Id;
-            AutoUnfocusIfOutsideFocus(session.Id); // a control-driven add into another workspace must reveal it
+            DisableFocusIfSelectionOutsideSet(session.Id); // a control-driven add into another workspace must reveal it
             RecordRecency();
             RealizeIfShown(session);
             SelectionChanged?.Invoke();
@@ -537,7 +544,7 @@ public sealed partial class AppStore
         {
             ReplaceSidebarSelection(sessionId);
         }
-        AutoUnfocusIfOutsideFocus(sessionId);
+        DisableFocusIfSelectionOutsideSet(sessionId);
         if (sessionId is { } visited) ClearUnseen(visited);
         ClearAutoResetIndicator(sessionId); // visit: you've seen it
         ClearAutoResetIndicator(previous);  // leave: a one-time status must not linger on the row you left
@@ -547,15 +554,6 @@ public sealed partial class AppStore
         NotifySidebar(); // the debounced save must not delay the row-highlight refresh
     }
 
-    /// <summary>Clears focus when the newly selected session lives outside the focused workspace, so
-    /// an explicit cross-set select reveals its target — the active session is then always inside
-    /// the visible set. No-op when unfocused, when nothing is selected, or when the selection is
-    /// inside the focused workspace.</summary>
-    internal void AutoUnfocusIfOutsideFocus(Guid? sessionId)
-    {
-        if (FocusedWorkspaceId is not { } focused || sessionId is not { } id) return;
-        if (WorkspaceForSession(id)?.Id != focused) FocusedWorkspaceId = null;
-    }
 
     /// <summary>Reset a session's agent indicator to idle when it is marked autoReset (the one-time
     /// completed flash). No-op for null / an unknown id / a non-autoReset indicator.</summary>
@@ -610,7 +608,7 @@ public sealed partial class AppStore
         {
             SelectedSessionId = CloseReselectionTarget(location);
             ReplaceSidebarSelection(SelectedSessionId);
-            AutoUnfocusIfOutsideFocus(SelectedSessionId); // the reselected session may live outside the focused workspace
+            DisableFocusIfSelectionOutsideSet(SelectedSessionId); // the reselected session may live outside the marked set
             RecordRecency();
         }
         else
@@ -641,7 +639,9 @@ public sealed partial class AppStore
         }
         var removingActive = SelectedSessionId is { } active
             && workspace.Sessions.Any(s => s.Id == active);
-        RecordRecentClosedWorkspace(workspace, removingActive ? SelectedSessionId : null);
+        // the membership is recorded BEFORE DropFocusMember prunes it, so Reopen Recent can re-mark it
+        RecordRecentClosedWorkspace(workspace, removingActive ? SelectedSessionId : null,
+            focusMember: FocusedWorkspaceIds.Contains(workspaceId));
         foreach (var session in workspace.Sessions) EmitSessionClosed(session, workspace.Id);
         if (workspace.Sessions.Count == 0) ScheduleTreeChanged();
         foreach (var session in workspace.Sessions)
@@ -654,16 +654,14 @@ public sealed partial class AppStore
             ScrollbackStorage.Remove(session.Id, _stateDirectory);
             SessionRecency.Remove(session.Id);
         }
-        if (FocusedWorkspaceId == workspaceId) FocusedWorkspaceId = null; // the focused root is gone
+        DropFocusMember(workspaceId); // a marked root is gone; the filter goes with the last member
         Workspaces.RemoveAt(index);
         ForgetFreshWorkspace(workspaceId);
         if (removingActive)
         {
-            var fallbackIndex = Math.Min(index, Workspaces.Count - 1);
-            SelectedSessionId = Workspaces[fallbackIndex].Sessions.FirstOrDefault()?.Id
-                ?? Workspaces.FirstOrDefault(w => w.Sessions.Count > 0)?.Sessions[0].Id;
+            SelectedSessionId = WorkspaceRemovalTarget(index);
             ReplaceSidebarSelection(SelectedSessionId);
-            AutoUnfocusIfOutsideFocus(SelectedSessionId); // the reselected session may live outside the focused workspace
+            DisableFocusIfSelectionOutsideSet(SelectedSessionId); // the reselected session may live outside the marked set
             RecordRecency();
         }
         else
@@ -678,7 +676,7 @@ public sealed partial class AppStore
     /// Session instance so its attached surface and live shell survive. index is the destination
     /// position in the target's session list AFTER the move's removal (clamped to bounds); null
     /// appends. SelectedSessionId is unaffected. No-ops if the session or target workspace is
-    /// unknown. Moving the ACTIVE session out of the focused workspace auto-unfocuses.
+    /// unknown. Moving the ACTIVE session out of the marked set switches the focus filter off.
     /// </summary>
     public void MoveSession(Guid sessionId, Guid toWorkspace, int? at = null)
     {
@@ -692,7 +690,7 @@ public sealed partial class AppStore
         var targetSessions = Workspaces[targetIndex].Sessions;
         var destination = Math.Max(0, Math.Min(at ?? targetSessions.Count, targetSessions.Count));
         targetSessions.Insert(destination, session);
-        if (sessionId == SelectedSessionId) AutoUnfocusIfOutsideFocus(sessionId);
+        if (sessionId == SelectedSessionId) DisableFocusIfSelectionOutsideSet(sessionId);
         PruneSidebarSelection();
         if (TreeOrderChanged(before)) ScheduleTreeChanged();
         Save();
@@ -734,7 +732,7 @@ public sealed partial class AppStore
         var destination = Math.Max(0, Math.Min(at ?? targetSessions.Count, targetSessions.Count));
         targetSessions.InsertRange(destination, moving);
         if (SelectedSessionId is { } selected && movingIds.Contains(selected))
-            AutoUnfocusIfOutsideFocus(selected);
+            DisableFocusIfSelectionOutsideSet(selected);
         PruneSidebarSelection();
         if (TreeOrderChanged(before)) ScheduleTreeChanged();
         Save();
@@ -930,16 +928,6 @@ public sealed partial class AppStore
         Save();
     }
 
-    /// <summary>Sets (or clears) the focused workspace and persists it. Clean no-op (no write) when
-    /// unchanged. Passing null unfocuses.</summary>
-    public void SetFocusedWorkspace(Guid? id)
-    {
-        if (FocusedWorkspaceId == id) return;
-        FocusedWorkspaceId = id;
-        if (id is { } shown && _freshWorkspaceId is { } fresh && fresh != shown) _freshWorkspaceId = null;
-        PruneSidebarSelection();
-        Save();
-    }
 
     /// <summary>Sets one workspace's expand/collapse state and persists it. Clean no-op (no write)
     /// for an unknown id or when unchanged.</summary>
@@ -987,15 +975,6 @@ public sealed partial class AppStore
         SetWorkspacesExpanded(keep);
     }
 
-    /// <summary>The focused workspace, resolved from FocusedWorkspaceId — null when unfocused OR
-    /// when the id is stale (its workspace no longer exists).</summary>
-    public Workspace? FocusedWorkspace =>
-        FocusedWorkspaceId is { } id ? Workspaces.FirstOrDefault(w => w.Id == id) : null;
-
-    /// <summary>The workspaces the sidebar tree should render: just the focused workspace when
-    /// FocusedWorkspaceId is set AND that workspace still exists, else all workspaces.</summary>
-    public List<Workspace> VisibleWorkspaces =>
-        FocusedWorkspace is { } focused ? new List<Workspace> { focused } : Workspaces;
 
     /// <summary>Sets (or clears) a session's flag — the durable flagged working-set membership.
     /// Persists the change. Clean no-op (no write) for an unknown id or when the flag is already in
@@ -1076,8 +1055,8 @@ public sealed partial class AppStore
         Workspaces.SelectMany(w => w.Sessions).Where(s => s.Flagged).ToList();
 
     /// <summary>The session set navigation operates over — the VISIBLE/FILTERED set, not the whole
-    /// tree: the flagged sessions in flagged sidebar mode, the focused workspace's sessions when a
-    /// workspace is focused, else all sessions.</summary>
+    /// tree: the flagged sessions in flagged sidebar mode, the marked workspaces' sessions while the
+    /// focus filter is on, else all sessions.</summary>
     public List<Session> NavigableSessions =>
         SidebarMode == SidebarMode.Flagged
             ? FlaggedSessions
@@ -1107,7 +1086,10 @@ public sealed partial class AppStore
             SidebarWidth = SidebarWidth,
             SidebarVisible = SidebarVisible,
             SidebarMode = SidebarMode,
-            FocusedWorkspaceId = FocusedWorkspaceId,
+            FocusedWorkspaceIds = FocusedWorkspaceIds.Count == 0
+                ? null
+                : Workspaces.Where(w => FocusedWorkspaceIds.Contains(w.Id)).Select(w => w.Id).ToArray(),
+            FocusEnabled = FocusEnabled ? true : null,
             SessionRecency = SessionRecency.Items.ToArray(),
         };
     }
@@ -1155,9 +1137,7 @@ public sealed partial class AppStore
             Math.Max(SidebarWidthMin, snapshot.SidebarWidth ?? SidebarWidthDefault));
         SidebarVisible = snapshot.SidebarVisible ?? true;
         SidebarMode = snapshot.SidebarMode ?? SidebarMode.Tree;
-        // a stale focus id (its workspace not in the restored tree) is harmless — VisibleWorkspaces
-        // falls back to the full tree — so restore it verbatim; null stays unfocused.
-        FocusedWorkspaceId = snapshot.FocusedWorkspaceId;
+        RestoreFocus(snapshot);
         if (snapshot.SelectedSessionId is { } id && SessionWithId(id) is null)
         {
             SelectedSessionId = null;
@@ -1173,6 +1153,8 @@ public sealed partial class AppStore
         SessionRecency = new RecencyStack<Guid>(
             items: (snapshot.SessionRecency ?? Array.Empty<Guid>()).Where(restoredIds.Contains));
         RecordRecency();
+        // LAST, after the recency stack is re-seeded: the pick is most-recent-first, so earlier it finds an empty stack.
+        ReselectIfSelectionHidden();
     }
 
     /// <summary>Persists the current state eagerly. Called after every structural mutation and on

@@ -147,14 +147,13 @@ so a script can zoom them without changing split/scratch visibility first. Cavea
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
 FLOATING overlay even though it is visually on screen; address by `id`/`kind`, and read the zoom state
 from the top-level `zoomedSurface`. Workspace nodes carry
-`id`, `name`, `active`, `sessions`, `focused` (whether the sidebar
-tree is collapsed to this workspace — the read side of `workspace focus`, distinct from `active` the
-SELECTED workspace; omitted unless this is the focused one, and absent entirely when nothing is focused),
+`id`, `name`, `active`, `sessions`, `focused` (whether this workspace is in the sidebar's marked focus set — the read side of `workspace focus`, distinct from `active` the
+SELECTED workspace; omitted unless marked, so it is absent entirely when the set is empty; the set can hold several workspaces),
 and `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the read side of
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
 when expanded, so an all-expanded tree carries no `collapsed` keys).
 
-The tree object itself carries twelve top-level read-only fields: `idleMs` (milliseconds since the last
+The tree object itself carries thirteen top-level read-only fields: `workspaceFilter` (whether the sidebar focus filter is applied over the marked set — the read side of `workspace filter`; always reported, `false` when off), `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
 timeout in milliseconds, omitted when Auto-follow is disabled), `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
@@ -174,9 +173,9 @@ the mode is `untouched`), and `dashboardFontMode` (`auto` for `--auto-size`, `fi
 `untouched`), plus `pickPending` (the id of the window's pending `pick`, omitted when none) and
 `askPending` (the id of the window's pending gui-style `ask`, omitted when none). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible` is on
-both; `sidebarMode`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
+both; `workspaceFilter`, `sidebarMode`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
 (a GUI/keyboard change would leave a cached copy stale).
-All twelve are read-only projections of GUI state.
+All thirteen are read-only projections of GUI state.
 
 ## workspace
 
@@ -198,14 +197,10 @@ All twelve are read-only projections of GUI state.
   or invalid `--to` errors. Note: `--target active` resolves to the current workspace — a
   foreground-created workspace that still holds the target, else the selected session's, else
   the last one; address a specific workspace by id to step the same one.
-- `workspace focus [on|off|toggle] [--target] [--window W]` — collapse the sidebar tree to a single
-  workspace's subtree (hiding the others), or restore the full tree; returns the workspace id. Wire:
-  `workspace.focus`. `on`
-  focuses the target, `off` unfocuses it only when it is the currently focused one, `toggle` (default)
-  flips. Per-window and persisted; orthogonal to `sidebar mode` (the flagged flat list ignores focus).
-  While a workspace is focused, `session go` navigation is scoped to that workspace's sessions (and to
-  the flagged set in flagged mode); an explicit `session select` of a session outside the focused
-  workspace still auto-unfocuses to reveal it. An unknown mode errors.
+- `workspace focus [on|off|toggle|add] [--target] [--window W]` — mark ONE workspace in the sidebar's focus set, which the sidebar can show alone (the filter); returns the workspace id. Wire:
+  `workspace.focus`. `on` marks the target alone and applies the filter. `off` unmarks it (the filter switches off when the set empties). `toggle` (default) replaces the set with the target and applies the filter, or clears when the target is the only marked one and the filter is applied. `add` marks the target alongside the others and leaves the filter flag alone, so a set is built one workspace at a time with the whole tree on screen. Per-window and persisted; orthogonal to `sidebar mode` (the flagged flat list ignores the filter).
+  While the filter is applied, `session go` and `workspace go` are scoped to the marked workspaces (and to the flagged set in flagged mode), a new workspace joins the set, and closing the current session reselects inside the visible set. An explicit `session select` or `workspace select` outside the set turns the filter off and keeps the set. An unknown mode errors.
+- `workspace filter [on|off|toggle] [--window W]` — apply or lift the filter over the marked set, keeping the set; answers `{"ok":true}`. Wire: `workspace.filter`. It acts on the whole window, so it takes no `--target`. Read the state back from the tree's top-level `workspaceFilter`; the marked set is each workspace node's `focused` flag. `on` with an empty set shows the full tree.
 - `workspace collapse [--target] [--window W]` — collapse ONE workspace's subtree in the sidebar tree
   (hide its sessions); returns the workspace id. Wire: `workspace.collapse`. The per-workspace
   counterpart of `sidebar collapse`
