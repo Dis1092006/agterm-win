@@ -672,6 +672,7 @@ The pin stays `7df70fe`. The entries below name upstream behavior adopted beyond
 - Palettes accept blank ids, whitespace-only labels and an empty placeholder, because pick sends them.
 - While a HUD holds a session's overlay slot, `session.overlay.open` replaces it with the program, `session.overlay.close` closes it and answers ok, `session.overlay.resize --size-percent N` sets its width and keeps that width through re-measures until the next open or update, `session.overlay.resize --full` answers `a hud is always floating: pass --size-percent, not --full`, and `session.overlay.result` answers `no overlay result: the slot holds a hud` (upstream `d0bec154`, `3ac149e6`). Beside a HUD, `tree` reads `overlay: false` and lists no overlay surface.
 - A second `command` line whose name is already taken is skipped with `command '<name>' is already defined; command skipped`, so a name addresses at most one command (upstream `68e17937`). The first definition stays, with its shortcut. `keymap run NAME` relies on it.
+- `session.text --pane-id` with an unknown token and no `--pane` answers `unknown pane id: <token>`; before, the port read the on-screen pane and answered ok (upstream `eab672be`, the same rule as `session.type` and `session.restore`). See "Upstream features adopted beyond the pin".
 - `session.selectall` also puts the selected text in the selection buffer, and in `copyOnSelect: "clipboard"` mode on the Windows clipboard too (upstream `bca6ad8b`; Ghostty's `select_all` copies the selection, `Surface.zig:5494` at Ghostty `683d8db`). The reply does not change. See "Selection buffer and middle-click paste" above.
 
 ## Upstream features adopted beyond the pin
@@ -738,6 +739,13 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - `window.go` in the headless host always answers `no other open window to navigate to`, since it has one window and no frame to raise.
   - `sidebar.width` echoes the stored (clamped) width. The CLI prints it as Swift does for a `Double`, so a whole number keeps `.0`.
   - Not taken from v0.40.0: `tree.app` and the built-in actions that came with these commands, such as `previous_window`.
+- `--pane-id` on `session type` and `session text`, `surfaces[].paneID` in `tree`, `result.pane` on those two commands, and the `AGT_PANE_ID` keymap token (upstream `eab672be`, `cf31c5d4`). The names are in the pin or already in `parity/adopted.json`, so this adds no entry there.
+  - The rule is the one `session restore` has: a live token wins over `--pane`, an empty token counts as absent, an unknown token with `--pane` falls back to it, and an unknown token alone answers `unknown pane id: <token>`. An invalid `--pane` is refused as `invalid pane: X` before the token is looked at. `session status` keeps its own fallback.
+  - `result.pane` is `left`, `right` or `scratch` on every success. `session text` names the surface it read, so a read of the on-screen pane under the scratch says `scratch`.
+  - `surfaces[].paneID` is the token of the surface in that slot, and is left out when it has none. The overlay never has one.
+  - `AGT_PANE_ID` is the token of the surface in the slot `AGT_PANE` names, and is empty when that slot has no surface. It is not session-scoped, so a launcher without a session may use it.
+  - Upstream waits for a surface to realize before it types or reads. The port realizes surfaces when it creates them, so there is no wait to make token-aware.
+  - `surface.cursor --pane-id` came in the same upstream commit. It is not ported here; the port has no `surface cursor`.
 
 ## Windows-only extensions
 

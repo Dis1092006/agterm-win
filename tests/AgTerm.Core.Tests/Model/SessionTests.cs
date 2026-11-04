@@ -157,6 +157,49 @@ public class SessionTests
         Assert.Null(s.PaneRole("unknown"));
     }
 
+    // -- paneAddress ---------------------------------------------------------
+
+    public static TheoryData<string?, StatusPane?, PaneAddress> PaneAddressCases => new()
+    {
+        { "split-tok", StatusPane.Left, new PaneAddress.Resolved(StatusPane.Right) },
+        { "split-tok", null, new PaneAddress.Resolved(StatusPane.Right) },
+        { "gone", StatusPane.Scratch, new PaneAddress.Resolved(StatusPane.Scratch) },
+        { "gone", null, new PaneAddress.UnknownToken("gone") },
+        { "", StatusPane.Right, new PaneAddress.Resolved(StatusPane.Right) },
+        { "", null, new PaneAddress.Resolved(null) },
+        { null, StatusPane.Left, new PaneAddress.Resolved(StatusPane.Left) },
+        { null, null, new PaneAddress.Resolved(null) },
+    };
+
+    [Theory]
+    [MemberData(nameof(PaneAddressCases))]
+    public void ResolvePaneAddressPrefersALiveTokenAndRefusesAnUnknownOneGivenAlone(
+        string? token, StatusPane? pane, PaneAddress expected)
+    {
+        var s = NewSession();
+        s.Surface = new FakeSurface { PaneToken = "main-tok" };
+        s.SplitSurface = new FakeSurface { PaneToken = "split-tok" };
+
+        Assert.Equal(expected, s.ResolvePaneAddress(token, pane));
+    }
+
+    [Fact]
+    public void PaneTokenForPaneReadsTheSlotAndEmptiesWithIt()
+    {
+        var s = NewSession();
+        Assert.Equal("", s.PaneToken(StatusPane.Left));
+
+        s.Surface = new FakeSurface { PaneToken = "main-tok" };
+        s.SplitSurface = new FakeSurface { PaneToken = "split-tok" };
+        s.ScratchSurface = new FakeSurface { PaneToken = null };
+
+        Assert.Equal("main-tok", s.PaneToken(StatusPane.Left));
+        Assert.Equal("split-tok", s.PaneToken(StatusPane.Right));
+        Assert.Equal("", s.PaneToken(StatusPane.Scratch));
+        s.SplitSurface = null;
+        Assert.Equal("", s.PaneToken(StatusPane.Right));
+    }
+
     // -- pending restore overrides ------------------------------------------
 
     [Fact]

@@ -20,6 +20,10 @@ public sealed record ControlSurfaceNode
 
     [JsonPropertyName("visible")]
     public bool Visible { get; init; }
+
+    /// <summary>The token <c>--pane-id</c> resolves; omitted for a slot whose surface carries none.</summary>
+    [JsonPropertyName("paneID")]
+    public string? PaneId { get; init; }
 }
 
 /// <summary>A session as projected into the tree response. Field order mirrors the Swift struct.</summary>

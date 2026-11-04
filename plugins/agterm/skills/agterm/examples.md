@@ -91,6 +91,9 @@ agtermctl session type $'ls\n' --target "$sid" --pane right   # then type into t
 Typing goes to the session's main (left) pane by default; `--pane right` targets the split pane and
 errors with `session has no split pane` when there is none. In a custom keymap command, the `{AGT_PANE}`
 token expands to the pane the shortcut fired from, so `session type --pane {AGT_PANE}` types back into it.
+`{AGT_PANE_ID}` is that pane's stable token, so `session type --pane-id {AGT_PANE_ID}` keeps hitting the same
+shell even after a promote or re-split. A live `--pane-id` overrides `--pane`; an unknown one without
+`--pane` errors with `unknown pane id: <token>`. On success `result.pane` says which pane got the text.
 
 Run a command AS the session's process (closes when it exits, no echoed command line):
 
@@ -409,6 +412,7 @@ agtermctl session text                         # the visible screen of the focus
 agtermctl session text --lines 50              # the last 50 lines of the buffer
 agtermctl session text --pane right            # the split pane (errors if there is no split)
 agtermctl session text --pane scratch --all    # the scratch terminal's full buffer, even while it's hidden
+agtermctl session text --pane-id "$AGTERM_PANE_ID"   # the pane of the shell that runs this command, by its stable token
 # extract every URL from the full scrollback:
 agtermctl session text --all --json | jq -r '.result.text' | grep -oE 'https?://[^ ]+'
 ```

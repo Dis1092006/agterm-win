@@ -248,6 +248,7 @@ public sealed class CustomCommandInvocationTests
         Assert.Equal(@"C:\work tree", invocation.WorkingDirectory);
         Assert.Equal("right selection", invocation.Environment["AGT_SELECTION"]);
         Assert.Equal("right", invocation.Environment["AGT_PANE"]);
+        Assert.Equal("right-pane", invocation.Environment["AGT_PANE_ID"]);
         Assert.Equal("agterm-pipe", invocation.Environment["AGT_SOCKET"]);
         Assert.Equal(session.Id.ToString("D").ToUpperInvariant(), invocation.Environment["AGT_SESSION_ID"]);
     }
@@ -371,6 +372,7 @@ public sealed class CustomCommandInvocationTests
             store, keymap, new(command.Id, CustomCommandSource.Palette, SessionId: other.Id), window)!;
 
         Assert.Equal("right", invocation.Environment["AGT_PANE"]);
+        Assert.Equal("right-pane", invocation.Environment["AGT_PANE_ID"]);
         Assert.Equal(@"D:\logs", invocation.WorkingDirectory);
     }
 
@@ -410,6 +412,20 @@ public sealed class CustomCommandInvocationTests
         var invocation = CustomCommandInvocationResolver.Resolve(
             store, keymap, new(command.Id, CustomCommandSource.Palette, SessionId: session.Id), window)!;
         Assert.Equal("left", invocation.Environment["AGT_PANE"]);
+        Assert.Equal("right-pane", invocation.Environment["AGT_PANE_ID"]);
+    }
+
+    [Fact]
+    public void A_pane_without_a_token_gives_an_empty_AGT_PANE_ID()
+    {
+        var store = TestStores.Scratch();
+        var session = store.AddSession(store.AddWorkspace("Workspace").Id, @"C:\left")!;
+        var (command, keymap, window) = SessionRunSetup();
+
+        var invocation = CustomCommandInvocationResolver.Resolve(
+            store, keymap, new(command.Id, CustomCommandSource.Palette, SessionId: session.Id), window)!;
+
+        Assert.Equal("", invocation.Environment["AGT_PANE_ID"]);
     }
 
     [Fact]

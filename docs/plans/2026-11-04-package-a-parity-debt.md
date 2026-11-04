@@ -52,6 +52,32 @@ Upstream reference (`git -C <agterm-clone> show v0.40.0:<path>`): `ControlDispat
 - `version` works while no window is open, and `installed` follows the file on disk, not the running assembly.
 - A width set over the pipe survives a relaunch (it is in `Snapshot.sidebarWidth` already).
 
-## A2 to A6
+## A2: --pane-id on session type and session text
 
-Detailed tasks are written when the PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. Known dependencies: A2 needs the pane id model that `session overlay --pane` and `AGTERM_PANE_ID` already use in the port (read it before planning); A5 needs a loader that turns an unknown optional value into absent without dropping the snapshot (#363); A4 `session.swap` must keep pane ids in place, as the port's pane ids are stable identities.
+Upstream reference: `eab672be` (#698) — `Session.swift` (`paneAddress`), `ControlServer+SurfaceIO.swift` (`readSessionText`), `ControlServer+SessionActions.swift` (`typeSession`, `setSessionRestore`), `ControlProjection.swift` (`ControlSurfaceNode.paneID`), `ControlDispatcher.swift`; `cf31c5d4` — `CommandContext` (`AGT_PANE_ID`).
+
+### Global Constraints
+
+- `session.type` and `session.text` take `paneID` (already in the pin as an arg). `session.type` is new here; `session.text` reads it too.
+- One rule for `session.text`, `session.type` and `session.restore`: a live token wins over `pane`; an empty token counts as absent; an unknown token with no `pane` beside it fails with `unknown pane id: <token>`; an unknown token with `pane` falls back to `pane`. `session.status` keeps its own fallback. Core primitive: `Session.PaneAddress(token, pane)` returning `Pane(StatusPane?)` or `UnknownToken(string)`.
+- `result.pane` (`left|right|scratch`) on every successful `session.text` (the surface actually read: scratch, split or main by identity) and `session.type` (the resolved pane, `left` when none).
+- `tree` `surfaces[].paneID` is the `PaneToken` of the surface in that slot, omitted when absent or empty. The overlay slot never has one. It follows the slot, so it moves with a split promotion.
+- `AGT_PANE_ID` keymap token, right after `AGT_PANE`: the token of the surface in the slot `AGT_PANE` names; empty for an empty slot or a session-free context. It is not session-scoped: it stays allowed in a sessionless launcher.
+- Behavior change to record in PLATFORM-NOTES ("Upstream behavior adopted beyond the pin"): `session text --pane-id <unknown>` with no `--pane` used to read the on-screen pane and answer ok; it now errors.
+- Not in A2: `surface.cursor --pane-id` (A4). The port realizes surfaces synchronously inside the store, so there is no wait loop to make token-aware; record that in PLATFORM-NOTES.
+- `parity/adopted.json`: `result.pane` already adopted (`1b765e69`); no new command, arg or result name. The surface node and the token list have no parity section, so the tests below pin them.
+- TDD, each test seen failing first. Warnings are errors. Test projects run one at a time; Xterm with `--blame-hang-timeout 4m`.
+
+### Tasks
+
+- [x] **Task 1: core.** `Session.PaneAddress` and `Session.PaneToken(StatusPane)` (empty for an empty slot) in `Session.cs`. Tests in `SessionTests.cs`: the eight upstream cases (live token, token with other pane, gone token with pane, gone token alone, empty with pane, empty alone, null with pane, null alone).
+- [x] **Task 2: tree.** `ControlSurfaceNode.PaneId` (`paneID`, omitted when null) and `AppStore.ControlTree` filling it per slot. Tests: JSON encodes and omits; tree reports each slot's token and follows a swap/promotion.
+- [x] **Task 3: protocol.** `PaneId` on `ControlSessionTypeOptions` and `ControlSessionTextOptions` (trailing, default null); the dispatcher forwards `args.paneID`. Tests in `ControlDispatcherTests.cs`.
+- [x] **Task 4: headless host.** `TypeSession` and `ReadSessionText` resolve through `PaneAddress`, answer `unknown pane id: X` and `result.pane`; `SetSessionRestore` moves onto `PaneAddress` with its behavior unchanged. Tests in `tests/AgTerm.ControlServer.Tests` over the pipe; the live host shares these implementations, so a live test only checks one real round trip.
+- [x] **Task 5: keymap token.** `CommandContext.PaneId` and the `AGT_PANE_ID` row; `CustomCommandExecution` fills it from the focused slot's surface. Tests: `CommandContextTests` (eleven keys, expand, sessionless launcher allowed), `LiveCustomCommandTests`.
+- [x] **Task 6: CLI.** `--pane-id` on `session type` and `session text` with the upstream help text. Tests next to the existing CLI tests.
+- [x] **Task 7: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.26 in the three files, `<Version>` 0.1.75, PLATFORM-NOTES, `Port:` lines in the first catalog (§5 and §12, lines 92 and 167). `docs/agterm-windows-spec.md` stays at the pin, so its token list is not changed. Run `AgTerm.Core.Tests`, `AgTerm.Cli.Tests`, then the rest one project at a time.
+
+## A5, A3, A4, A6
+
+Detailed tasks are written when each PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. Known dependencies: A5 needs a loader that turns an unknown optional value into absent without dropping the snapshot (#363); A4 `session.swap` must keep pane ids in place, as the port's pane ids are stable identities.

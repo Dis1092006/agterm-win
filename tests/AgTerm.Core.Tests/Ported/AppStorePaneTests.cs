@@ -811,6 +811,30 @@ public class AppStorePaneTests
     }
 
     [Fact]
+    public void ControlTreeReportsEachSurfacesPaneIdAndFollowsAPromotion()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var ws = store.AddWorkspace("work");
+        var session = store.AddSession(ws.Id, "/a")!;
+        session.Surface = new SpySurface("one");
+        session.SplitSurface = new SpySurface("two");
+        session.ScratchSurface = new SpySurface();
+        session.IsSplit = true;
+        session.HasSplit = true;
+        session.ScratchActive = true;
+
+        Dictionary<string, string?> PaneIds() =>
+            store.ControlTree().Workspaces[0].Sessions[0].Surfaces!.ToDictionary(s => s.Kind, s => s.PaneId);
+
+        Assert.Equal(new Dictionary<string, string?> { ["left"] = "one", ["right"] = "two", ["scratch"] = null }, PaneIds());
+
+        session.ScratchActive = false;
+        store.ClosePrimaryPane(session.Id);
+
+        Assert.Equal(new Dictionary<string, string?> { ["left"] = "two", ["scratch"] = null }, PaneIds());
+    }
+
+    [Fact]
     public void ControlTreeFontSizeReadsPromotedSurvivorViaAddressableSurface()
     {
         // regression: after the primary pane exits, the fontSize read-back must resolve through

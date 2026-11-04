@@ -480,6 +480,7 @@ internal static class SessionCommands
         public bool Stdin { get; init; }
         public bool Select { get; init; }
         public string? Pane { get; init; }
+        public string? PaneId { get; init; }
         public required TargetOptions Target { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
@@ -506,7 +507,7 @@ internal static class SessionCommands
             {
                 Cmd = WireCommand.SessionType,
                 Target = Target.Target,
-                Args = Client.WithWindow(new ControlArgs { Text = payload, Select = Select, Pane = Pane }),
+                Args = Client.WithWindow(new ControlArgs { Text = payload, Select = Select, Pane = Pane, PaneId = PaneId }),
             };
         }
     }
@@ -531,12 +532,17 @@ internal static class SessionCommands
         {
             Description = "Which pane to type into: left (main), right (split), or scratch (the session's scratch terminal, even when hidden). Defaults to the left pane.",
         };
+        var paneId = new Option<string?>("--pane-id")
+        {
+            Description = "Stable pane token ($AGTERM_PANE_ID); overrides --pane, and unknown without --pane is an error.",
+        };
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(text);
         cmd.Options.Add(stdin);
         cmd.Options.Add(select);
         cmd.Options.Add(pane);
+        cmd.Options.Add(paneId);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new TypeText
@@ -545,6 +551,7 @@ internal static class SessionCommands
             Stdin = result.GetValue(stdin),
             Select = result.GetValue(select),
             Pane = result.GetValue(pane),
+            PaneId = result.GetValue(paneId),
             Target = target.Read(result),
             Client = options.Read(result),
         });
@@ -838,6 +845,7 @@ internal static class SessionCommands
         public bool All { get; init; }
         public int? Lines { get; init; }
         public string? Pane { get; init; }
+        public string? PaneId { get; init; }
         public required TargetOptions Target { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
@@ -855,7 +863,7 @@ internal static class SessionCommands
         {
             Cmd = WireCommand.SessionText,
             Target = Target.Target,
-            Args = Client.WithWindow(new ControlArgs { Pane = Pane, All = All ? true : null, Lines = Lines }),
+            Args = Client.WithWindow(new ControlArgs { Pane = Pane, PaneId = PaneId, All = All ? true : null, Lines = Lines }),
         };
     }
 
@@ -875,11 +883,16 @@ internal static class SessionCommands
         {
             Description = "Which pane to read: left (main), right (split), or scratch (the session's scratch terminal, even when hidden). Defaults to the on-screen pane.",
         };
+        var paneId = new Option<string?>("--pane-id")
+        {
+            Description = "Stable pane token ($AGTERM_PANE_ID); overrides --pane when it resolves, and an unknown token without --pane is an error.",
+        };
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Options.Add(all);
         cmd.Options.Add(lines);
         cmd.Options.Add(pane);
+        cmd.Options.Add(paneId);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Text
@@ -887,6 +900,7 @@ internal static class SessionCommands
             All = result.GetValue(all),
             Lines = result.GetValue(lines),
             Pane = result.GetValue(pane),
+            PaneId = result.GetValue(paneId),
             Target = target.Read(result),
             Client = options.Read(result),
         });

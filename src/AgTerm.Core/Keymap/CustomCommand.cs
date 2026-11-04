@@ -62,6 +62,10 @@ public sealed record CommandContext
     /// promoted split survivor.</summary>
     public Pane FocusedPane { get; init; } = Pane.Left;
 
+    /// <summary>The stable token of the surface in the slot AGT_PANE names; empty for an empty slot
+    /// or a session-free context.</summary>
+    public string PaneId { get; init; } = "";
+
     public string Selection { get; init; } = "";
     public string Socket { get; init; } = "";
 
@@ -84,6 +88,7 @@ public sealed record CommandContext
         ("AGT_WINDOW_ID", WindowId),
         ("AGT_WINDOW_NAME", WindowName),
         ("AGT_PANE", PaneWire(FocusedPane)),
+        ("AGT_PANE_ID", PaneId),
         ("AGT_SELECTION", Selection),
         ("AGT_SOCKET", Socket),
     };
@@ -95,7 +100,7 @@ public sealed record CommandContext
     /// <summary>
     /// The token base names whose value comes from an active session/workspace/selection. In a
     /// session-free context each expands EMPTY, which is dangerous — an empty {AGT_SESSION_PWD}
-    /// turns "rm -rf …/*" into a root glob. AGT_SOCKET/AGT_WINDOW/AGT_PANE are excluded: they
+    /// turns "rm -rf …/*" into a root glob. AGT_SOCKET/AGT_WINDOW/AGT_PANE/AGT_PANE_ID are excluded: they
     /// resolve with no session.
     /// </summary>
     public static readonly IReadOnlyList<string> SessionScopedTokenBases =

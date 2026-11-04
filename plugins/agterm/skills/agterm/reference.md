@@ -140,7 +140,8 @@ default/left target (the main pane, or the promoted split survivor once the prim
 `font --pane left` writes); only the main pane's size survives a relaunch, so the split/scratch sizes are
 live-only (a promoted survivor saves the changes it gets after the promotion) — read them back here rather
 than from the snapshot), and `surfaces` (array
-of `{id, kind, active, visible}` where `kind` is `left`|`right`|`scratch`|`overlay`).
+of `{id, kind, active, visible}` where `kind` is `left`|`right`|`scratch`|`overlay`; `paneID` is added with the
+surface's stable token, omitted when it has none, and always absent on the overlay).
 The surface `id` is the address for `surface zoom`; hidden-but-alive split/scratch surfaces are included
 so a script can zoom them without changing split/scratch visibility first. Caveat: `active`/`visible`
 derive from the session's own flags, not from zoom — and `visible` reads false for a pane behind a
@@ -301,15 +302,17 @@ All twelve are read-only projections of GUI state.
   move as one ordered block after all sources are removed. Repeated `--target` is rejected with
   `--to up|down|top|bottom` because relative reorder is per-session. Batch moves return `result.affected`,
   counting only sessions whose position/workspace changed.
-- `session type <text> [--stdin] [--select] [--pane left|right|scratch] [--target] [--window W]` — inject text
+- `session type <text> [--stdin] [--select] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` — inject text
   as real keystrokes (printable runs plus Return for each newline; no bracketed-paste markers). Wire:
-  `session.type`.
+  `session.type`. On success `result.pane` names the pane it typed into (`left|right|scratch`).
   `--stdin` reads the text from stdin instead of the argument. `--select` selects (and realizes) a
   never-shown session before injecting. Any realized session is normally typable without `--select`.
   `--pane left` types into the main pane (the default when omitted), `--pane right` into the split pane
   (errors with `session has no split pane` when the session has no split), `--pane scratch` into the
   session's scratch terminal even while it is hidden (`session has no scratch terminal` when none opened);
-  like `session text`, no `other` value. `--select` realizes the MAIN pane only — a split pane must
+  like `session text`, no `other` value. `--pane-id` is the pane's stable token (`$AGTERM_PANE_ID`): a
+  live token overrides `--pane`, an empty one counts as absent, and an unknown one without `--pane`
+  fails with `unknown pane id: <token>` (with `--pane` it falls back to that pane). `--select` realizes the MAIN pane only — a split pane must
   already exist.
 - `session copy [--target] [--window W]` — returns `result.text` with the session's current selection.
   Wire: `session.copy`.
@@ -321,8 +324,11 @@ All twelve are read-only projections of GUI state.
 - `session select-all [--target] [--window W]` — select the session's entire terminal buffer (main pane).
   Wire: `session.selectall`. Read the resulting selection
   back with `session copy`. A never-shown session → `session not realized`.
-- `session text [--all] [--lines N] [--pane left|right|scratch] [--target] [--window W]` — returns `result.text`
-  with the session's terminal buffer as PLAIN TEXT (no ANSI/color). Wire: `session.text`. By default it
+- `session text [--all] [--lines N] [--pane left|right|scratch] [--pane-id TOKEN] [--target] [--window W]` — returns `result.text`
+  with the session's terminal buffer as PLAIN TEXT (no ANSI/color). Wire: `session.text`. `result.pane`
+  names the pane that was read (`left|right|scratch`). `--pane-id` (the shell's `$AGTERM_PANE_ID`) follows
+  the same rule as for `session type`: a live token overrides `--pane`, and an unknown token without
+  `--pane` fails with `unknown pane id: <token>` instead of reading the on-screen pane. By default it
   reads the VISIBLE
   SCREEN of the on-screen pane. `--all` reads the whole buffer including scrollback; `--lines N` reads the
   full buffer and keeps only the last N CONTENT lines (trailing blank rows trimmed; `--all` and `--lines`
@@ -1115,6 +1121,10 @@ environment form for any of them:
 - `{AGT_PANE}` / `$env:AGT_PANE` — the pane the command fired from: `left` (main), `right` (split), or
   `scratch` (the session's scratch terminal). Feed it back as `session type --pane $env:AGT_PANE` to type
   into the very pane the shortcut was pressed in.
+- `{AGT_PANE_ID}` / `$env:AGT_PANE_ID` — the stable token of the surface in the pane `AGT_PANE` names
+  (empty when that pane has no surface). Feed it back as `session type --pane-id $env:AGT_PANE_ID` or
+  `session text --pane-id $env:AGT_PANE_ID`; the token keeps pointing at the same shell after a promote
+  or re-split. Unlike the session tokens it is allowed in a sessionless launcher.
 - Plus `AGT_SESSION_ID`, `AGT_WORKSPACE_ID`, `AGT_WORKSPACE_NAME`, `AGT_WINDOW_ID`, `AGT_WINDOW_NAME`
   and `AGT_SOCKET`, as tokens and environment variables.
 

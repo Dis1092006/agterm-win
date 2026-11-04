@@ -42,6 +42,14 @@ public static class StatusPanes
         "scratch" => StatusPane.Scratch,
         _ => null,
     };
+
+    public static string Wire(StatusPane pane) => pane switch
+    {
+        StatusPane.Left => "left",
+        StatusPane.Right => "right",
+        StatusPane.Scratch => "scratch",
+        _ => throw new ArgumentOutOfRangeException(nameof(pane)),
+    };
 }
 
 public static class AgentStatusExtensions

@@ -100,6 +100,12 @@ public static class CustomCommandInvocationResolver
                 WindowId = Upper(window.WindowId),
                 WindowName = window.WindowName,
                 FocusedPane = pane,
+                PaneId = session.PaneToken(pane switch
+                {
+                    CommandContext.Pane.Right => StatusPane.Right,
+                    CommandContext.Pane.Scratch => StatusPane.Scratch,
+                    _ => StatusPane.Left,
+                }),
                 Selection = request.Selection,
                 Socket = window.PipeName,
             },
