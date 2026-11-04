@@ -71,7 +71,7 @@ This project is written with AI tools too. The expectations below apply to every
 
 **What I cannot accept**
 
-- Unreviewed AI output left for the maintainer to clean up.
+- Unreviewed AI output left for me to clean up.
 - Code with no tests, or with a failing build or test run.
 - Changes that ignore project conventions after someone pointed at them.
 - PRs that do not respond to review feedback.
