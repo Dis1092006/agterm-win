@@ -106,6 +106,7 @@ public static class Agtermctl
                      AskCommands.Build(bindings),
                      SidebarCommands.Build(bindings),
                      NotifyCommand.Build(bindings),
+                     VersionCommand.Build(bindings),
                      FontCommands.Build(bindings),
                      KeymapCommands.Build(bindings),
                      ConfigCommands.Build(bindings),

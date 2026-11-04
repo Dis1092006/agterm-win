@@ -20,6 +20,10 @@ public sealed record LiveApplicationHostOptions
 
     public ILiveWindowController? WindowController { get; init; }
 
+    /// <summary>The executable whose identity version reports as installed; null means the running
+    /// process's own executable.</summary>
+    public string? InstalledExecutablePath { get; init; }
+
     internal TimeProvider TreeEventTimeProvider { get; init; } = TimeProvider.System;
 }
 
@@ -45,6 +49,7 @@ public sealed class LiveApplicationHost : IDisposable
     private readonly SoundCatalog _soundCatalog;
     private readonly string _homeDirectory;
     private readonly ILiveWindowController? _windowController;
+    private readonly string? _installedExecutablePath;
     private readonly RecentClosedStore _recentClosedStore;
     private readonly SemaphoreSlim _recentClosedGate = new(1, 1);
     private readonly Dictionary<Guid, LiveWindowHost> _openWindows = new();
@@ -70,6 +75,7 @@ public sealed class LiveApplicationHost : IDisposable
         _homeDirectory = options.HomeDirectory
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _windowController = options.WindowController;
+        _installedExecutablePath = options.InstalledExecutablePath ?? Environment.ProcessPath;
         _recentClosedStore = new RecentClosedStore(_stateDirectory);
         Ring = new ControlEventRing();
 
@@ -672,6 +678,8 @@ public sealed class LiveApplicationHost : IDisposable
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Cmd == Command.Version)
+            return AppVersion();
         if (request.Cmd is Command.Quick or Command.QuickType or Command.QuickText
             || request.Cmd == Command.SurfaceZoom && request.Target?.Trim() == "quick")
         {
@@ -703,6 +711,8 @@ public sealed class LiveApplicationHost : IDisposable
             return await NewWindowAsync(request.Args?.Name, cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowSelect && _windowController is not null)
             return await SelectWindowAsync(request.Target, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowGo && _windowController is not null)
+            return await GoWindowAsync(request.Args?.To, cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowClose && _windowController is not null)
             return await CloseWindowCommandAsync(request.Target, cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowRename && _windowController is not null)
@@ -1049,6 +1059,35 @@ public sealed class LiveApplicationHost : IDisposable
         }
         // The OS may refuse to activate a window for a background caller, and then no Activated event
         // arrives. The control reply promises the window is frontmost, so take it here.
+        await ReportActivatedAsync(windowId).ConfigureAwait(false);
+        return OkWindowId(windowId);
+    }
+
+    private ControlResponse AppVersion() => new()
+    {
+        Ok = true,
+        Result = AppIdentity.Result(
+            AppIdentity.Running(typeof(LiveApplicationHost).Assembly),
+            AppIdentity.Installed(_installedExecutablePath)),
+    };
+
+    private async Task<ControlResponse> GoWindowAsync(string? to, CancellationToken cancellationToken)
+    {
+        if (WorkspaceNavigations.FromWire(to) is not { } direction)
+            return new ControlResponse { Ok = false, Error = "window.go requires --to next|prev" };
+
+        Guid windowId;
+        lock (_gate)
+        {
+            var open = _windows.Where(entry => entry.IsOpen).Select(entry => entry.Id).ToList();
+            var current = ActiveWindowIdLocked() is { } active ? open.IndexOf(active) : -1;
+            if (open.Count < 2 || current < 0)
+                return new ControlResponse { Ok = false, Error = "no other open window to navigate to" };
+            var step = direction == WorkspaceNavigation.Next ? 1 : -1;
+            windowId = open[(current + step + open.Count) % open.Count];
+        }
+
+        await _windowController!.ActivateWindowAsync(windowId, cancellationToken).ConfigureAwait(false);
         await ReportActivatedAsync(windowId).ConfigureAwait(false);
         return OkWindowId(windowId);
     }
@@ -1550,7 +1589,8 @@ public sealed class LiveApplicationHost : IDisposable
         or Command.WindowResize
         or Command.WindowMove
         or Command.WindowZoom
-        or Command.WindowFullscreen;
+        or Command.WindowFullscreen
+        or Command.WindowGo;
 
     private static bool UsesSingleSessionTarget(Command command) => command is
         Command.SessionDuplicate

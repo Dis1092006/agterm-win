@@ -18,6 +18,7 @@ internal static class WorkspaceCommands
         workspace.Subcommands.Add(BuildRename(bindings));
         workspace.Subcommands.Add(BuildDelete(bindings));
         workspace.Subcommands.Add(BuildSelect(bindings));
+        workspace.Subcommands.Add(BuildGo(bindings));
         workspace.Subcommands.Add(BuildMove(bindings));
         workspace.Subcommands.Add(BuildFocus(bindings));
         workspace.Subcommands.Add(BuildCollapse(bindings));
@@ -64,6 +65,31 @@ internal static class WorkspaceCommands
             Collapsed = result.GetValue(collapsed),
             Client = options.Read(result),
         });
+        return cmd;
+    }
+
+    internal sealed class Go : IRequestCommand
+    {
+        public required string To { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.WorkspaceGo,
+            Args = Client.WithWindow(new ControlArgs { To = To }),
+        };
+    }
+
+    // Relative to the current workspace, so it takes no --target (the shape `session go` has).
+    private static System.CommandLine.Command BuildGo(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("go", "Navigate workspaces: next|prev.");
+        var to = new Option<string>("--to") { Description = "Direction: next or prev.", Required = true };
+        var options = new ClientOptions.Binder();
+        cmd.Options.Add(to);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Go { To = result.GetValue(to)!, Client = options.Read(result) });
         return cmd;
     }
 

@@ -351,6 +351,7 @@ which stays expanded and scrolled into view) to cut clutter. Defaults to the fro
 agtermctl sidebar expand                                 # expand every workspace (frontmost window)
 agtermctl sidebar collapse                               # collapse all but the current workspace
 agtermctl sidebar collapse --window "$AGTERM_WINDOW_ID"  # collapse a specific window's sidebar
+agtermctl sidebar width 300                              # set the sidebar width; prints the stored width, 300.0
 ```
 
 ## Build a collapsed workspace and fill it quietly
@@ -779,6 +780,9 @@ file is read once per command; nothing watches it, so push each change with an `
 ```bash
 agtermctl session go --to next            # step selection to the next session
 agtermctl session go --to next-attention  # jump to the next blocked/completed session
+agtermctl workspace go --to next          # step to the next workspace, wrapping
+agtermctl window go --to prev             # raise the previous open window, wrapping
+agtermctl version                         # which agterm-win answers on the pipe
 w=$(agtermctl window new "scratch" --json | jq -r '.result.id')
 agtermctl window resize "$w" --width 1200 --height 800
 agtermctl window move "$w" --x 100 --y 100 --display 0

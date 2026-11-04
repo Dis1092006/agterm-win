@@ -79,12 +79,30 @@ internal static class ClientOutput
             // session.resize echoes the applied (clamped) left-pane fraction, scriptable as a bare number.
             return ratio.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
         }
+        if (response.Result?.SidebarWidth is { } sidebarWidth)
+        {
+            // sidebar.width echoes the stored (clamped) points with the double's own digits, so a caller
+            // comparing its request against the echo reads a difference as a clamp. An integral width keeps
+            // the ".0" upstream prints.
+            var digits = sidebarWidth.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+            return digits.Contains('.') || digits.Contains('E') ? digits : digits + ".0";
+        }
+        if (response.Result?.App is { } app)
+        {
+            var line = FormatIdentity(app);
+            return response.Result.Installed is { } installed && installed != app
+                ? line + "\ninstalled: " + FormatIdentity(installed)
+                : line;
+        }
         if (echoId && response.Result?.Id is { } id)
         {
             return id;
         }
         return "ok";
     }
+
+    private static string FormatIdentity(ControlAppIdentity identity) =>
+        string.IsNullOrEmpty(identity.Commit) ? identity.Version : $"{identity.Version} ({identity.Commit})";
 
     /// <summary>Render the keymap.list payload: the file path, one row per action with its chord
     /// (`*` marks one the keymap file moved), then the custom commands and the diagnostics, each block

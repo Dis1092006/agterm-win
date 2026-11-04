@@ -61,6 +61,10 @@ public sealed class CliEnvironment
 
     public TextReader In { get; init; } = Console.In;
 
+    /// <summary>The running agtermctl executable, printed beside `version` as a diagnostic for a stale
+    /// client earlier on PATH; null when unknown.</summary>
+    public Func<string?> ClientPath { get; init; } = () => Environment.ProcessPath;
+
     /// <summary>Sends one request over one connection — the transport seam. The default connects a
     /// real ControlPipeClient; tests substitute a canned responder.</summary>
     public Func<string, ControlRequest, ControlResponse> Send { get; init; } =
@@ -82,24 +86,52 @@ internal static class CliOptions
         option.CustomParser = result =>
         {
             var token = result.Tokens[^1].Value;
-            if (double.TryParse(token, System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out var value))
+            if (TryParseLenientDouble(token, out var value))
             {
                 return value;
-            }
-            if (token.Equals("inf", StringComparison.OrdinalIgnoreCase)
-                || token.Equals("+inf", StringComparison.OrdinalIgnoreCase))
-            {
-                return double.PositiveInfinity;
-            }
-            if (token.Equals("-inf", StringComparison.OrdinalIgnoreCase))
-            {
-                return double.NegativeInfinity;
             }
             result.AddError($"Cannot parse argument '{token}' for option '{name}' as expected type Double.");
             return null;
         };
         return option;
+    }
+
+    /// <summary>The positional counterpart of LenientDouble.</summary>
+    public static Argument<double> LenientDoubleArgument(string name, string description)
+    {
+        var argument = new Argument<double>(name) { Description = description };
+        argument.CustomParser = result =>
+        {
+            var token = result.Tokens[^1].Value;
+            if (TryParseLenientDouble(token, out var value))
+            {
+                return value;
+            }
+            result.AddError($"Cannot parse argument '{token}' for argument '{name}' as expected type Double.");
+            return 0;
+        };
+        return argument;
+    }
+
+    private static bool TryParseLenientDouble(string token, out double value)
+    {
+        if (double.TryParse(token, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+        if (token.Equals("inf", StringComparison.OrdinalIgnoreCase)
+            || token.Equals("+inf", StringComparison.OrdinalIgnoreCase))
+        {
+            value = double.PositiveInfinity;
+            return true;
+        }
+        if (token.Equals("-inf", StringComparison.OrdinalIgnoreCase))
+        {
+            value = double.NegativeInfinity;
+            return true;
+        }
+        return false;
     }
 }
 

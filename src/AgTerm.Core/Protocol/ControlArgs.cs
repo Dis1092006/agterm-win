@@ -262,6 +262,10 @@ public sealed record ControlArgs
     [JsonPropertyName("height")]
     public int? Height { get; init; }
 
+    /// <summary>Sidebar width in points for sidebar.width; the host clamps it to 160...560.</summary>
+    [JsonPropertyName("sidebarWidth")]
+    public double? SidebarWidth { get; init; }
+
     /// <summary>New window top-left x for window.move, relative to the target display's top-left.</summary>
     [JsonPropertyName("x")]
     public int? X { get; init; }

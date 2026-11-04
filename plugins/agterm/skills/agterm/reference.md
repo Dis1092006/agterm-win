@@ -191,6 +191,7 @@ All twelve are read-only projections of GUI state.
 - `workspace delete [--target] [--window W]` — keep-at-least-one; deleting the last workspace errors.
   Wire: `workspace.delete`.
 - `workspace select [--target] [--window W]`. Wire: `workspace.select`.
+- `workspace go --to next|prev [--window W]` — step the CURRENT workspace one place through the visible workspaces, wrapping, and select its first session; answers `{"id":...}` with the workspace now current. Relative to the current one, so it takes no `--target` (the shape `session go` has; `workspace move` is the verb that reorders). While a workspace is focused it has nowhere to step. Errors: `workspace.go requires --to next|prev` for a missing or unknown direction; `no other workspace to navigate to` in flagged mode, with no workspace rows, or when the current one is the only visible one. Wire: `workspace.go`.
 - `workspace move --to up|down|top|bottom [--target] [--window W]` — reorder among siblings. Wire:
   `workspace.move`. Missing
   or invalid `--to` errors. Note: `--target active` resolves to the current workspace — a
@@ -639,6 +640,7 @@ All twelve are read-only projections of GUI state.
   `geometry`/`fullscreen`/`zoomed` fields come only from open windows, so a hand-drag or a GUI toggle is
   reflected without needing another command. Unlike `tree`, `window.list` does NOT carry `idleMs`.
 - `window select <id>` — raise it if open, else open it. Wire: `window.select`. Windows may refuse to bring the window to the foreground for a background caller; then the taskbar button flashes, and the window still counts as frontmost for routing. Activation clears the unseen count of the session whose main or split pane has accepted focus, including a zoomed pane or highlighted dashboard cell. That session need not be selected. Other sessions keep their counts. The command waits for this policy before replying.
+- `window go --to next|prev` — raise the next or previous OPEN window in library order, wrapping, starting from the active one; answers `{"id":...}` with the window now active. A closed entry is never a step candidate: `window select` is the verb that opens one. Relative to the active window, so it takes no id. Errors: `window.go requires --to next|prev` for a missing or unknown direction; `no other open window to navigate to` with fewer than two open windows (always, in the headless host). Raising the window follows the same activation policy as `window select`. Wire: `window.go`.
 - `window close <id>` — close the on-screen window (the record is kept; reopen with select). Wire:
   `window.close`. Closing the last open window exits agterm-win after it answers; the record is kept as
   closed and the next launch reopens it.
@@ -881,6 +883,26 @@ resolution as `--target active`), which stays expanded and is scrolled into view
 `sidebar.collapse`. Same `--window`
 selector and defaults as `expand`. Idempotent; a graceful no-op in `flagged` mode; a named-but-closed
 window errors.
+
+`agtermctl sidebar width <points> [--window W]` — set a window's sidebar width, the divider a drag would
+move. Wire: `sidebar.width`. The width is clamped to the drag range (160 to 560 points) and persisted for
+that window. The reply carries the STORED width, `{"sidebarWidth":271.3}`, and the human output prints it
+as a bare number with the double's own digits (`300.0`, `271.34`): a value outside the range comes back
+clamped, so compare the echo to your request NUMERICALLY to detect a clamp. Same `--window` selector and
+defaults as `expand`. A missing or non-finite width errors `sidebar.width requires a width in points`; a
+named-but-closed window errors. `tree` does not carry the width.
+
+## version
+
+`agtermctl version` — which agterm-win answers on the pipe. Wire: `version`. App-global: it takes no
+target and no `--window`, and it answers with no window open. The result is `app` (`{"version":"0.1.74",
+"commit":"1a2b3c4"}`; `commit` is the short source revision and is omitted when the build has none) and,
+only when the executable on disk differs from the running one, `installed` in the same shape. The disk
+identity is read on every call, so an app updated in place under a running session shows up as the
+difference. The headless host has no installed executable, so it never reports `installed`. Human output
+is `VERSION` or `VERSION (COMMIT)`, an `installed: ...` line only when it differs, and a `client: PATH`
+line with the agtermctl executable that ran, as a diagnostic for a stale agtermctl earlier on PATH.
+`--json` prints the raw response and omits the `client:` line.
 
 ## notify
 
