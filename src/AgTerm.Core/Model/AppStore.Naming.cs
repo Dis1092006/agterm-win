@@ -15,6 +15,18 @@ public sealed partial class AppStore
         Save();
     }
 
+    /// <summary>Sets or clears (null) what a session is about. Returns whether anything changed; an
+    /// unknown session or an unchanged value is a no-op with no save and no event. The caller has
+    /// already validated the text (Session.ValidateContext).</summary>
+    public bool SetContext(string? context, Guid sessionId)
+    {
+        if (SessionWithId(sessionId) is not { } session || session.Context == context) return false;
+        session.Context = context;
+        ScheduleTreeChanged();
+        Save();
+        return true;
+    }
+
     /// <summary>Renames a workspace. Blank and same-value names are structural no-ops.</summary>
     public void RenameWorkspace(Guid workspaceId, string to)
     {

@@ -264,7 +264,8 @@ public sealed partial class AppStore
                                    Func<double?>? dashboardFontSize = null,
                                    Func<string?>? dashboardFontMode = null,
                                    Func<string?>? pickPending = null,
-                                   Func<string?>? askPending = null)
+                                   Func<string?>? askPending = null,
+                                   Func<Session, bool>? realized = null)
     {
         var activeId = SelectedSessionId;
         var activeWorkspaceId = activeId is { } id ? WorkspaceForSession(id)?.Id : null;
@@ -293,6 +294,7 @@ public sealed partial class AppStore
                     Id = session.Id.ToString("D").ToUpperInvariant(),
                     Name = session.DisplayName,
                     Cwd = session.EffectiveCwd,
+                    SplitCwd = session.HasSplit ? session.CwdFor(AgTerm.Core.Keymap.CommandContext.Pane.Right) : null,
                     Title = session.OscTitle,
                     Active = session.Id == activeId,
                     Split = session.IsSplit,
@@ -310,6 +312,7 @@ public sealed partial class AppStore
                         : null,
                     Scratch = session.ScratchActive,
                     Flagged = session.Flagged,
+                    Context = session.Context,
                     CommandWait = session.InitialCommand is not null && session.CommandWait ? true : null,
                     Foreground = foreground?.Invoke(session),
                     SplitForeground = splitForeground?.Invoke(session),
@@ -329,6 +332,7 @@ public sealed partial class AppStore
                     SplitFontSize = splitFontSize?.Invoke(session),
                     ScratchFontSize = scratchFontSize?.Invoke(session),
                     Surfaces = surfaces,
+                    Realized = realized?.Invoke(session) ?? false,
                 };
             }).ToArray();
             return new ControlWorkspaceNode
@@ -1272,6 +1276,7 @@ public sealed partial class AppStore
             InitialSplitCwd = snapshot.SplitCwd,
             SplitRatio = snapshot.SplitRatio is { } ratio ? ClampSplitRatio(ratio) : null,
             Flagged = snapshot.Flagged ?? false,
+            Context = snapshot.Context,
             InitialCommand = snapshot.InitialCommand,
             CommandWait = snapshot.CommandWait ?? false,
             WasRestored = true,

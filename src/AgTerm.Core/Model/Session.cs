@@ -132,6 +132,10 @@ public sealed class Session
     /// <summary>The split pane's persisted restore-command override.</summary>
     public string? SplitRestoreCommand { get; set; }
 
+    /// <summary>What the session is FOR (a PR, an issue, a task), set by session.context and shown in
+    /// the title bar. Persisted; stays until cleared. Never copied by a duplicate.</summary>
+    public string? Context { get; set; }
+
     /// <summary>The main pane's TRANSIENT override payload for THIS launch, copied from the persisted
     /// RestoreCommand by an app-bootstrap restore and consumed by TakePendingRestoreOverride. Never
     /// persisted — a command written over the socket during this run can never execute during this run.</summary>
@@ -471,6 +475,7 @@ public sealed class Session
         SplitCwd = SplitCwd ?? InitialSplitCwd,
         SplitRatio = SplitRatio,
         Flagged = Flagged,
+        Context = Context,
         ForegroundCommand = ForegroundCommand,
         SplitForegroundCommand = SplitForegroundCommand,
         InitialCommand = InitialCommand,
@@ -479,6 +484,31 @@ public sealed class Session
         RestoreCommand = RestoreCommand,
         SplitRestoreCommand = SplitRestoreCommand,
     };
+
+    /// <summary>The longest context the control API stores, in UTF-8 bytes.</summary>
+    public const int ContextByteLimit = 256;
+
+    /// <summary>The outcome of <see cref="ValidateContext"/>: the trimmed value, or the wire error.</summary>
+    public readonly record struct ContextValidation(string? Value, string? Error)
+    {
+        public bool IsValid => Error is null;
+    }
+
+    /// <summary>Trims a context and checks it against the rules the control API and the snapshot decode
+    /// share. The control-character scan runs on the RAW text, so a trailing newline is rejected, not
+    /// repaired. Messages are the upstream wire strings.</summary>
+    public static ContextValidation ValidateContext(string raw)
+    {
+        var trimmed = raw.Trim();
+        if (trimmed.Length == 0)
+            return new(null, "context must not be empty (use --clear to remove it)");
+        if (System.Text.Encoding.UTF8.GetByteCount(trimmed) > ContextByteLimit)
+            return new(null, $"context must be at most {ContextByteLimit} UTF-8 bytes");
+        foreach (var c in raw)
+            if (char.IsControl(c) || c is '\u2028' or '\u2029')
+                return new(null, "context must not contain control characters or line breaks");
+        return new(trimmed, null);
+    }
 
     /// <summary>The string trimmed of whitespace, or null if the result is empty — the single
     /// normalizer for the rename/DisplayName "blank after trim" rule.</summary>

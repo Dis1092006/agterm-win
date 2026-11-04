@@ -3390,7 +3390,8 @@ public sealed partial class MainWindow : Window
             return;
         }
         Title = TitleBarText.OsTitle(_sessionTitle, _customWindowName);
-        AppTitleBar.Title = TitleBarText.Visible(_sessionTitle ?? ProductIdentity.Name, _customWindowName, settings);
+        AppTitleBar.Title = TitleBarText.Visible(
+            _sessionTitle ?? ProductIdentity.Name, _customWindowName, _titleBarState.Context, settings);
         ApplyToolbarMode(settings);
     }
 
@@ -3406,7 +3407,8 @@ public sealed partial class MainWindow : Window
             layoutRoot.Height = height;
         ToolbarTitle.Text = AppTitleBar.Title;
         ToolbarSubtitle.Text = TitleBarText.Subtitle(
-            _dashboardTitle ? null : _titleBarState.SubtitleDetail, settings);
+            _dashboardTitle ? null : _titleBarState.SubtitleDetail,
+            _dashboardTitle ? null : _titleBarState.Context, settings);
         ToolbarSubtitle.Visibility = string.IsNullOrEmpty(ToolbarSubtitle.Text) ? Visibility.Collapsed : Visibility.Visible;
         ToolbarLabels.Visibility = normal ? Visibility.Visible : Visibility.Collapsed;
         if (normal)

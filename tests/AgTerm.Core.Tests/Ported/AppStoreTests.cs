@@ -1856,7 +1856,7 @@ public class AppStoreTests
                 new ControlSessionNode
                 {
                     Id = Upper(a!.Id), Name = "alpha", Cwd = "/repo/a",
-                    Active = false, Split = false,
+                    Active = false, Split = false, Realized = false,
                     Surfaces = new[]
                     {
                         new ControlSurfaceNode
@@ -1873,8 +1873,8 @@ public class AppStoreTests
             {
                 new ControlSessionNode
                 {
-                    Id = Upper(b.Id), Name = "remote:~/b", Cwd = "/live/b",
-                    Title = "remote:~/b", Active = true, Split = true,
+                    Id = Upper(b.Id), Name = "remote:~/b", Cwd = "/live/b", SplitCwd = "/live/b",
+                    Title = "remote:~/b", Active = true, Split = true, Realized = false,
                     SplitFocused = false,
                     Overlay = true, Scratch = true, Flagged = true,
                     Status = "blocked", StatusPane = "right",

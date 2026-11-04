@@ -39,6 +39,11 @@ public sealed record ControlSessionNode
     [JsonPropertyName("cwd")]
     public required string Cwd { get; init; }
 
+    /// <summary>The split (right) pane's working directory, reported for a session that HAS a split
+    /// even while it is hidden; null without one. Falls back to the restore seed, then to cwd.</summary>
+    [JsonPropertyName("splitCwd")]
+    public string? SplitCwd { get; init; }
+
     /// <summary>The raw terminal title from the latest OSC 0/1/2; null when none was reported.</summary>
     [JsonPropertyName("title")]
     public string? Title { get; init; }
@@ -79,6 +84,10 @@ public sealed record ControlSessionNode
 
     [JsonPropertyName("flagged")]
     public bool Flagged { get; init; }
+
+    /// <summary>What the session is FOR (session.context); null when unset.</summary>
+    [JsonPropertyName("context")]
+    public string? Context { get; init; }
 
     /// <summary>Whether a --command session holds its surface after the command exits.</summary>
     [JsonPropertyName("commandWait")]
@@ -140,6 +149,11 @@ public sealed record ControlSessionNode
     /// <summary>Addressable terminal surfaces owned by this session (hidden-but-alive included).</summary>
     [JsonPropertyName("surfaces")]
     public ControlSurfaceNode[]? Surfaces { get; init; }
+
+    /// <summary>Whether the main pane's terminal surface exists (a lazily created pane reads false until
+    /// first shown). Always reported.</summary>
+    [JsonPropertyName("realized")]
+    public bool? Realized { get; init; }
 }
 
 /// <summary>A workspace and its sessions as projected into the tree response.</summary>

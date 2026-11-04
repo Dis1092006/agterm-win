@@ -756,6 +756,13 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The workspace row menu has Focus / Unfocus (the sole member) and Add to Focus / Remove from Focus. The palette has Toggle Workspace Filter, Clear Focus and Add Workspace to Focus; the last one is hidden while there is no current workspace, which upstream does not do. `toggle_workspace_filter` has no default chord. The app has no View menu.
   - Dropping a workspace while the filter applies lands it next to the row it was aimed at, not across the hidden workspaces (`SidebarDrop.WorkspaceInsertIndex`).
   - Not ported from the same upstream commits: the flagged-view half of `146747da`, and the `sidebarWidth` and `sidebarFlaggedLayout` tree fields.
+- `session.context`, and the tree fields `context`, `realized` and `splitCwd` (upstream `73b63b71`, `8e67daa4`, `16af9dc3`). The names are in `parity/adopted.json`; the snapshot field `context` is in its `sessionSnapshot` section.
+  - `session.context` takes `args.mode` `set` with `args.text`, or `clear`. The dispatcher trims the text and refuses an empty one, one over 256 UTF-8 bytes, and one with a control character, U+2028 or U+2029. The control scan runs on the raw text, so a trailing newline is refused and not repaired. The client sends the text as typed.
+  - The context is saved in `workspaces.json` as `context`. A snapshot with an invalid value loads it as absent without failing the session; a padded value loads trimmed. `session.duplicate` does not copy it.
+  - The title bar shows it on line two of a normal bar in place of the working directory, and after the identity as ` · context` on a compact bar. The new interface element `sessionContext` (after `windowName`) hides it and nothing else. The OS window title and the dashboard title never carry it.
+  - `tree` `realized` is always written. It is `true` when the session's main pane has a surface that is rendering, and `false` for a pane that is still pending or whose output is stopped. A Core-only store with no surfaces reports `false`.
+  - `tree` `splitCwd` is the split pane's directory, written while the session has a split, shown or hidden, and left out without one. It falls back from the split's own directory to its initial one, then to the main pane's.
+  - Not ported: `splitCommandWait` (the port has no `session split --command`), the remote `effectiveContext` (no remote attachment), the workspace-name and remote-host title elements, and the sidebar info line (upstream #864).
 
 ## Windows-only extensions
 

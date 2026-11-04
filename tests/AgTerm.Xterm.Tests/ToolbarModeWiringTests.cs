@@ -16,6 +16,7 @@ public sealed class ToolbarModeWiringTests
         Assert.Contains("TitleBarText.ToolbarHeight(settings)", window);
         Assert.Contains("TitleBarText.Subtitle(", window);
         Assert.Contains("_titleBarState.SubtitleDetail", window);
+        Assert.Contains("_titleBarState.Context", window);
         Assert.Contains("ToolbarLabels.Visibility = normal ? Visibility.Visible : Visibility.Collapsed;", window);
         Assert.DoesNotContain("SetBorderAndTitleBar(", window);
     }

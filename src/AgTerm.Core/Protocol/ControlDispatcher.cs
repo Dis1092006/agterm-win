@@ -29,7 +29,8 @@ public sealed class ControlDispatcher
             case Command.SessionNew or Command.SessionDuplicate or Command.SessionSelect
                 or Command.SessionGo or Command.SessionClose or Command.SessionRename
                 or Command.SessionReveal or Command.SessionMove or Command.SessionFlag
-                or Command.SessionSeen or Command.SessionStatus or Command.SessionRestore:
+                or Command.SessionSeen or Command.SessionStatus or Command.SessionRestore
+                or Command.SessionContext:
                 return DispatchSessionCommand(request);
             case Command.SessionSplit or Command.SessionScratch or Command.SessionFocus
                 or Command.SessionResize or Command.SurfaceZoom or Command.SessionType
@@ -430,6 +431,8 @@ public sealed class ControlDispatcher
                 return DispatchSessionMoveCommand(request);
             case Command.SessionFlag:
                 return _actions.SetSessionFlag(request.Target, request.Args?.Window, request.Args?.Mode);
+            case Command.SessionContext:
+                return DispatchSessionContext(request);
             case Command.SessionSeen:
                 return _actions.MarkSessionSeen(request.Target, request.Args?.Window);
             case Command.SessionStatus:
@@ -551,6 +554,31 @@ public sealed class ControlDispatcher
             return rejection;
         var update = new ControlSessionRestoreUpdate(pin, Pane: pane, PaneId: args?.PaneId);
         return _actions.SetSessionRestore(request.Target, args?.Window, update);
+    }
+
+    /// <summary>session.context: mode set|clear. Set trims and validates the text here, so a rejected
+    /// request never reaches the host; clear takes no text and reaches the host as null.</summary>
+    private ControlResponse DispatchSessionContext(ControlRequest request)
+    {
+        var args = request.Args;
+        switch (args?.Mode ?? "")
+        {
+            case "set":
+            {
+                if (args?.Text is not { } text)
+                    return Err("session.context set requires text");
+                var checkedText = Session.ValidateContext(text);
+                if (checkedText.Error is { } error)
+                    return Err(error);
+                return _actions.SetSessionContext(request.Target, args.Window, checkedText.Value);
+            }
+            case "clear":
+                if (args?.Text is not null)
+                    return Err("session.context clear takes no text");
+                return _actions.SetSessionContext(request.Target, args?.Window, null);
+            default:
+                return Err($"invalid context mode: {args?.Mode ?? ""} (set|clear)");
+        }
     }
 
     /// <summary>

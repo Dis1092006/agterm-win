@@ -103,6 +103,30 @@ Scope grew beyond the snapshot migration by decision of the owner: A5 is the who
 - [x] **Task 6: sidebar UI.** Marked rows, the row menu entry, the bottom-bar filter toggle in place of the focus pill, `SidebarController`.
 - [x] **Task 7: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.27 in the three files, `<Version>` 0.1.76, `parity/adopted.json`, PLATFORM-NOTES, `Port:` lines in the first catalog (§6 and §11), wire-command count 81 in `SkillTextTests`.
 
-## A3, A4, A6
+## A3: session context and tree fields
+
+Upstream reference: `73b63b71` (`session.context`, v0.26), `8e67daa4` (`realized`, #417), `16af9dc3` (tree `splitCwd`, #566). Files at v0.36.0: `SessionContext.swift`, `TitlebarComposition.swift`, `ControlDispatcher.swift`, `ControlProjection.swift`, `Snapshot.swift`, `agtermctlKit/SessionMetadataCommands.swift`. Their tests are the spec: `SessionTests`, `SnapshotRoundTripTests`, `AppStoreTreeProjectionTests`, `AppStoreEventTests`, `ControlDispatcherSessionMetadataTests`, `ControlProtocolTests`, `ControlSplitCwdTests`, `TitlebarCompositionTests`, `CommandsTests`.
+
+### Global Constraints
+
+- `Session.Context` (string, null when unset). `Session.ValidateContext(raw)` trims, then checks in this order: empty, more than 256 UTF-8 bytes, a control character (Cc), U+2028 or U+2029 anywhere in the RAW input. A trailing newline is rejected, not repaired. Messages: `context must not be empty (use --clear to remove it)`, `context must be at most 256 UTF-8 bytes`, `context must not contain control characters or line breaks`.
+- `AppStore.SetContext(context, sessionId)` returns whether it changed. An unknown id or an unchanged value is a no-op: no save, no tree-changed event. A rejected call never reaches the store, so the old value stays.
+- Snapshot: `SessionSnapshot.Context`, omitted when null. A stored value is run through `ValidateContext` on read: invalid reads as absent without failing the session, a valid one is trimmed. `session.duplicate` does not copy it.
+- Wire: `session.context`, args `mode` (`set|clear`, required) and `text`. Errors: `session.context set requires text`, `session.context clear takes no text`, `invalid context mode: <mode> (set|clear)` (the mode is empty when absent). The dispatcher trims and validates before the host call; the host gets the trimmed text or null.
+- Tree: session node `context` (omitted when null), `realized` (the MAIN pane's surface exists; always reported), `splitCwd` (`Session.CwdFor(Right)` when `HasSplit`, even for a hidden split; omitted without a split).
+- Title bar: `InterfaceElement.SessionContext` after `WindowName` (raw value `sessionContext`), hides the line without clearing it and gates only itself. Normal mode: line two is `context ?? detail`. Compact mode: the context follows the identity after ` · `. The OS window title never carries it.
+- Not in A3: remote presentation and mirrored context (#634), `effectiveContext`, `splitCommandWait` (the port has no split `--command`), the workspace-name and remote-host title elements, the sidebar info line (#864).
+- TDD, each test seen failing first. Warnings are errors. Test projects run one at a time; Xterm with `--blame-hang-timeout 4m`.
+
+### Tasks
+
+- [x] **Task 1: core model.** `Session.Context`, `ValidateContext`, `AppStore.SetContext` (event and save only on change), snapshot round trip with the lossy read, `session.duplicate` leaves it unset. Tests in `SessionTests.cs`, `SnapshotTests.cs`, `AppStoreTests` and the event tests.
+- [x] **Task 2: tree.** `ControlSessionNode.Context`, `Realized`, `SplitCwd`; `AppStore.ControlTree` fills `context` and `splitCwd`, and takes a `realized` callback from the host. Tests: JSON encodes and omits; `splitCwd` for each fallback, shown and hidden; none without a split.
+- [x] **Task 3: protocol and hosts.** `Command.SessionContext`, `IControlActions.SetSessionContext`, the dispatcher with the verbatim errors, `HeadlessControlActions` (the live host shares it), the tree `realized` callback. Tests: dispatcher, mock actions, wire over the pipe.
+- [x] **Task 4: CLI.** `session context [TEXT] [--clear]`. Tests next to the existing CLI tests.
+- [x] **Task 5: title bar.** `InterfaceElement.SessionContext`, `TitleBarState.Context`, `TitleBarText` normal and compact composition, the App wiring. Tests: `AppSettingsTests` order list, `TitleBarTextTests`, `TitleBarStateTests`.
+- [x] **Task 6: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.28 in the three files, `<Version>` 0.1.77, `parity/adopted.json`, PLATFORM-NOTES, `Port:` lines in the first catalog (lines 145, 146, 157), wire-command count 82 in `SkillTextTests`.
+
+## A4, A6
 
 Detailed tasks are written when each PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. A4 `session.swap` must keep pane ids in place, as the port's pane ids are stable identities.
