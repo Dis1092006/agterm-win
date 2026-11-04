@@ -8,12 +8,15 @@ namespace AgTerm.Core.Keymap;
 public sealed class Keymap
 {
     public Keymap(IReadOnlyDictionary<BuiltinAction, Chord> builtinOverrides, IReadOnlyList<CustomCommand> commands,
-                  Chord? globalHotkey = null)
+                  Chord? globalHotkey = null, IReadOnlySet<BuiltinAction>? unboundDefaults = null)
     {
         BuiltinOverrides = builtinOverrides;
         Commands = commands;
         GlobalHotkey = globalHotkey;
+        UnboundDefaults = unboundDefaults ?? EmptyUnbound;
     }
+
+    private static readonly IReadOnlySet<BuiltinAction> EmptyUnbound = new HashSet<BuiltinAction>();
 
     public IReadOnlyDictionary<BuiltinAction, Chord> BuiltinOverrides { get; }
 
@@ -21,16 +24,21 @@ public sealed class Keymap
 
     public Chord? GlobalHotkey { get; }
 
+    /// <summary>Actions that ship keyless in this keymap because an existing binding already holds
+    /// their default chord (see <see cref="KeymapParser"/>). An override still binds them.</summary>
+    public IReadOnlySet<BuiltinAction> UnboundDefaults { get; }
+
     public static Keymap Empty { get; } =
         new(new Dictionary<BuiltinAction, Chord>(), Array.Empty<CustomCommand>());
 
     /// <summary>The active chord for a built-in action: the user override when one is present, else
-    /// the Windows default, else the action's shipped default (null only for the keyless actions).
+    /// the Windows default, else the action's shipped default (null only for the keyless actions and
+    /// the ones whose default the keymap vacated).
     /// See <see cref="WindowsDefaultChords"/> for why this platform has defaults of its own.</summary>
     public Chord? EquivalentFor(BuiltinAction action) =>
         BuiltinOverrides.TryGetValue(action, out var chord)
             ? chord
-            : WindowsDefaultChords.ShippedFor(action);
+            : UnboundDefaults.Contains(action) ? null : WindowsDefaultChords.ShippedFor(action);
 
     /// <summary>The action's current shortcut as a menu glyph string, or null when the action has no
     /// shortcut at all.</summary>

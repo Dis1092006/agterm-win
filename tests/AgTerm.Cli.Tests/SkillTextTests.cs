@@ -467,7 +467,8 @@ public class SkillTextTests
     private static string Sample(string option) => option switch
     {
         "--split-ratio" or "--opacity" => "0.5",
-        "--grow-left" or "--grow-right" => "0.05",
+        "--grow-left" or "--grow-right" or "--grow-primary" or "--grow-split" or "--grow-top" or "--grow-bottom" => "0.05",
+        "--axis" => "horizontal",
         "--color" or "--background-color" or "--text-color" => "#336699",
         "--pane" => "left",
         _ => "10",

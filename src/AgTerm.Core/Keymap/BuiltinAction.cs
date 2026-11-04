@@ -3,7 +3,8 @@ namespace AgTerm.Core.Keymap;
 /// <summary>
 /// A rebindable built-in action. Each member has a canonical kitty-style raw name (the token the
 /// user writes after map in keymap.conf) and a default chord — the shortcut shipped out of the box.
-/// Parity pin: agterm 7df70fe, 41 actions; toggle_workspace_filter is adopted from upstream 6722755a.
+/// Parity pin: agterm 7df70fe, 41 actions; toggle_workspace_filter is adopted from upstream 6722755a,
+/// toggle_horizontal_split from eb29d556, which also moved dashboard from cmd+shift+d to cmd+shift+g.
 /// </summary>
 public enum BuiltinAction
 {
@@ -12,7 +13,7 @@ public enum BuiltinAction
     NewSession, OpenDirectory, RenameSession, DuplicateSession,
     CloseSession, ReopenRecent, UndoClose, ClearStatus,
     IncreaseFontSize, DecreaseFontSize, ResetFontSize,
-    ToggleSplit, ToggleScratch, ToggleTerminalZoom, ToggleSearch,
+    ToggleSplit, ToggleHorizontalSplit, ToggleScratch, ToggleTerminalZoom, ToggleSearch,
     ToggleSidebar, SelectTheme, ToggleFullscreen,
     ToggleFlaggedView, ToggleFlag, FocusWorkspace, ToggleWorkspaceFilter,
     FocusLeftPane, FocusRightPane,
@@ -46,6 +47,7 @@ public static class BuiltinActions
         (BuiltinAction.DecreaseFontSize, "decrease_font_size"),
         (BuiltinAction.ResetFontSize, "reset_font_size"),
         (BuiltinAction.ToggleSplit, "toggle_split"),
+        (BuiltinAction.ToggleHorizontalSplit, "toggle_horizontal_split"),
         (BuiltinAction.ToggleScratch, "toggle_scratch"),
         (BuiltinAction.ToggleTerminalZoom, "toggle_terminal_zoom"),
         (BuiltinAction.ToggleSearch, "toggle_search"),
@@ -99,6 +101,7 @@ public static class BuiltinActions
         BuiltinAction.DecreaseFontSize => new Chord(Modifiers.Command, "-"),
         BuiltinAction.ResetFontSize => new Chord(Modifiers.Command, "0"),
         BuiltinAction.ToggleSplit => new Chord(Modifiers.Command, "d"),
+        BuiltinAction.ToggleHorizontalSplit => new Chord(Modifiers.Command | Modifiers.Shift, "d"),
         BuiltinAction.ToggleScratch => new Chord(Modifiers.Command, "j"),
         BuiltinAction.ToggleTerminalZoom => new Chord(Modifiers.Command | Modifiers.Shift, "return"),
         BuiltinAction.ToggleSearch => new Chord(Modifiers.Command, "f"),
@@ -110,7 +113,7 @@ public static class BuiltinActions
         BuiltinAction.CommandPalette => new Chord(Modifiers.Control | Modifiers.Shift, "p"),
         BuiltinAction.CustomCommandPalette => new Chord(Modifiers.Control | Modifiers.Shift, "o"),
         BuiltinAction.ShowAttention => new Chord(Modifiers.Control | Modifiers.Shift, "i"),
-        BuiltinAction.Dashboard => new Chord(Modifiers.Command | Modifiers.Shift, "d"),
+        BuiltinAction.Dashboard => new Chord(Modifiers.Command | Modifiers.Shift, "g"),
         BuiltinAction.FocusLeftPane => new Chord(Modifiers.Command | Modifiers.Option, "left"),
         BuiltinAction.FocusRightPane => new Chord(Modifiers.Command | Modifiers.Option, "right"),
         BuiltinAction.PreviousSession => new Chord(Modifiers.Command | Modifiers.Option, "up"),

@@ -133,7 +133,8 @@ public abstract record TerminalLayout(long Generation)
             double ratio,
             string focusedPaneId,
             string? title = null,
-            string? workspaceName = null)
+            string? workspaceName = null,
+            Core.Model.SplitAxis axis = Core.Model.SplitAxis.LeftRight)
             : base(generation)
         {
             if (string.IsNullOrWhiteSpace(leftPaneId))
@@ -158,7 +159,11 @@ public abstract record TerminalLayout(long Generation)
             FocusedPaneId = focusedPaneId;
             Title = title;
             WorkspaceName = workspaceName;
+            Axis = axis;
         }
+
+        /// <summary>The primary pane is left (LeftRight) or top (TopBottom); the ids keep their left/right names.</summary>
+        public Core.Model.SplitAxis Axis { get; }
 
         public string LeftPaneId { get; }
 

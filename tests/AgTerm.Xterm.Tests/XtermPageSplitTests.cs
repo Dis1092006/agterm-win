@@ -28,6 +28,37 @@ public sealed class XtermPageSplitTests
         Assert.DoesNotContain("workspaceName", script);
     }
 
+    [Fact]
+    public async Task Horizontal_split_layout_adds_the_axis_and_a_vertical_one_omits_it()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+
+        await page.ApplyLayoutAsync(
+            new TerminalLayout.Split(6, "top-pane", "bottom-pane", 0.4, "top-pane", axis: SplitAxis.TopBottom));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyLayout"));
+        Assert.Contains(
+            """{"type":"split","generation":6,"leftPaneId":"top-pane","rightPaneId":"bottom-pane","ratio":0.4,"focusedPaneId":"top-pane","axis":"horizontal"}""",
+            script);
+        Assert.Equal(SplitAxis.LeftRight, new TerminalLayout.Split(1, "l", "r", 0.5, "l").Axis);
+    }
+
+    [Fact]
+    public async Task Layered_base_split_carries_the_axis()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+        var split = new TerminalLayout.Split(1, "top", "bottom", 0.5, "top", axis: SplitAxis.TopBottom);
+
+        await page.ApplyLayoutAsync(new TerminalLayout.Layered(7, split, new TerminalLayer("overlay")));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyLayout"));
+        Assert.Contains(
+            """{"type":"split","leftPaneId":"top","rightPaneId":"bottom","ratio":0.5,"focusedPaneId":"top","axis":"horizontal"}""",
+            script);
+    }
+
     [Theory]
     [InlineData(-1, AppStore.SplitRatioMin)]
     [InlineData(0.75, 0.75)]
@@ -411,6 +442,84 @@ public sealed class XtermPageSplitLiveTests
         Assert.Equal("drag-left", result.Left);
         Assert.Equal("drag-right", result.Right);
         Assert.InRange(result.Ratio, 0.68, 0.72);
+    }
+
+    [Fact]
+    public async Task Horizontal_split_stacks_the_panes_and_reports_the_ratio_from_vertical_drag()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("top-pane"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("bottom-pane"));
+        Assert.True(await ApplyAsync(page,
+            new TerminalLayout.Split(1, "top-pane", "bottom-pane", 0.5, "top-pane", axis: SplitAxis.TopBottom)));
+        var resized = new List<(string Left, string Right, double Ratio)>();
+        page.SplitResized += (left, right, ratio) => resized.Add((left, right, ratio));
+
+        var state = await ExecuteAsync(view,
+            """
+            (function() {
+              const divider = document.querySelector('.split-divider');
+              const panes = document.getElementById('panes');
+              return JSON.stringify({
+                rows: panes.style.gridTemplateRows,
+                dividerRow: divider.style.gridRow,
+                dividerColumn: divider.style.gridColumn,
+                orientation: divider.getAttribute('aria-orientation'),
+                cursor: getComputedStyle(divider).cursor,
+                dividerWide: divider.getBoundingClientRect().width > divider.getBoundingClientRect().height
+              });
+            })()
+            """);
+        var json = JsonDocument.Parse(JsonSerializer.Deserialize<string>(state)!).RootElement;
+        Assert.Contains("fr 4px", json.GetProperty("rows").GetString());
+        Assert.Equal("2", json.GetProperty("dividerRow").GetString());
+        Assert.Equal("1", json.GetProperty("dividerColumn").GetString());
+        Assert.Equal("horizontal", json.GetProperty("orientation").GetString());
+        Assert.Equal("row-resize", json.GetProperty("cursor").GetString());
+        Assert.True(json.GetProperty("dividerWide").GetBoolean());
+
+        await ExecuteAsync(view,
+            """
+            (function() {
+              const divider = document.querySelector('.split-divider');
+              const bounds = document.getElementById('panes').getBoundingClientRect();
+              const start = divider.getBoundingClientRect();
+              divider.dispatchEvent(new PointerEvent('pointerdown', {
+                bubbles: true, pointerId: 9, clientY: start.top + start.height / 2, buttons: 1
+              }));
+              window.dispatchEvent(new PointerEvent('pointerup', {
+                bubbles: true, pointerId: 9, clientX: bounds.left + 1, clientY: bounds.top + bounds.height * 0.7
+              }));
+              return true;
+            })()
+            """);
+
+        await WaitUntilAsync(() => resized.Count == 1, TimeSpan.FromSeconds(10));
+        var result = Assert.Single(resized);
+        Assert.Equal("top-pane", result.Left);
+        Assert.Equal("bottom-pane", result.Right);
+        Assert.InRange(result.Ratio, 0.68, 0.72);
+    }
+
+    [Fact]
+    public async Task Double_click_on_the_divider_resets_the_split_to_half()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("dbl-left"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("dbl-right"));
+        Assert.True(await ApplyAsync(page,
+            new TerminalLayout.Split(1, "dbl-left", "dbl-right", 0.7, "dbl-left")));
+        var resized = new List<(string Left, string Right, double Ratio)>();
+        page.SplitResized += (left, right, ratio) => resized.Add((left, right, ratio));
+
+        await ExecuteAsync(view,
+            "document.querySelector('.split-divider').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))");
+
+        await WaitUntilAsync(() => resized.Count == 1, TimeSpan.FromSeconds(10));
+        var result = Assert.Single(resized);
+        Assert.Equal("dbl-left", result.Left);
+        Assert.Equal("dbl-right", result.Right);
+        Assert.Equal(0.5, result.Ratio, 3);
     }
 
     [Fact]

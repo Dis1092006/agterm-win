@@ -37,8 +37,8 @@ public static class TerminalZoomSurfaces
     /// <summary>The control-name parse, accepting both the side names and the role aliases.</summary>
     public static TerminalZoomSurface? FromControlName(string controlName) => controlName switch
     {
-        "left" or "primary" => TerminalZoomSurface.Primary,
-        "right" or "split" => TerminalZoomSurface.Split,
+        "left" or "top" or "primary" => TerminalZoomSurface.Primary,
+        "right" or "bottom" or "split" => TerminalZoomSurface.Split,
         "scratch" => TerminalZoomSurface.Scratch,
         "overlay" => TerminalZoomSurface.Overlay,
         _ => null,

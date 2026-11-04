@@ -57,6 +57,11 @@ public sealed record ControlArgs
     [JsonPropertyName("mode")]
     public string? Mode { get; init; }
 
+    /// <summary>The split's divider direction for session.split: vertical (left/right panes) or
+    /// horizontal (top/bottom panes). Absent keeps the session's current axis.</summary>
+    [JsonPropertyName("axis")]
+    public string? Axis { get; init; }
+
     /// <summary>The image file path for session.background mode image (PNG or JPEG).</summary>
     [JsonPropertyName("path")]
     public string? Path { get; init; }

@@ -92,8 +92,8 @@ public static class ControlPaneFocusModes
 {
     public static ControlPaneFocusMode? Parse(string? pane) => (pane ?? "other") switch
     {
-        "left" or "primary" => ControlPaneFocusMode.Primary,
-        "right" or "split" => ControlPaneFocusMode.Split,
+        "left" or "top" or "primary" => ControlPaneFocusMode.Primary,
+        "right" or "bottom" or "split" => ControlPaneFocusMode.Split,
         "other" or "toggle" => ControlPaneFocusMode.Toggle,
         _ => null,
     };

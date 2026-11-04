@@ -27,8 +27,9 @@ public sealed class ShortcutHintsSourceTests
     {
         var refresh = MethodBody(Source("MainWindow.xaml.cs"), "private void RefreshTitleBarActions(AppSettings settings)");
 
-        foreach (var action in new[] { "ShowAttention", "ToggleScratch", "ToggleSplit", "Dashboard", "QuickTerminal" })
+        foreach (var action in new[] { "ShowAttention", "ToggleScratch", "Dashboard", "QuickTerminal" })
             Assert.Contains($"_keymap, BuiltinAction.{action})", refresh, StringComparison.Ordinal);
+        Assert.Contains("_keymap, SplitToggleAction(state))", refresh, StringComparison.Ordinal);
     }
 
     [Fact]

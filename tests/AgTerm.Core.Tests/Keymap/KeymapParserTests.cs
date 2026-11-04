@@ -134,9 +134,9 @@ public class KeymapParserTests
     [InlineData("map cmd+shift+d toggle_split\nmap cmd+d new_session\n")]
     public void SwapSucceedsInEitherOrderBecauseResolutionIsFinalState(string text)
     {
-        // cmd+d is toggle_split's default and cmd+shift+d is dashboard's… no: cmd+shift+d IS
-        // dashboard's default, so move dashboard too to keep the final state conflict-free.
-        var (keymap, diagnostics) = Parse("map cmd+shift+g dashboard\n" + text);
+        // cmd+d is toggle_split's default and cmd+shift+d is toggle_horizontal_split's, so move
+        // that one too to keep the final state conflict-free.
+        var (keymap, diagnostics) = Parse("map cmd+shift+e toggle_horizontal_split\n" + text);
         Assert.Empty(diagnostics);
         Assert.Equal(new Chord(Modifiers.Command, "d"), keymap.BuiltinOverrides[BuiltinAction.NewSession]);
         Assert.Equal(new Chord(Modifiers.Command | Modifiers.Shift, "d"),

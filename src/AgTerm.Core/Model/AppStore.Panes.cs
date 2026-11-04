@@ -85,10 +85,30 @@ public sealed partial class AppStore
     /// <summary>Toggles the one-level split for a session. The second pane's surface is created
     /// lazily by the host on first show and kept alive when hidden, so this only flips the flag.
     /// The flag is persisted, so the split is restored on relaunch.</summary>
-    public void ToggleSplit(Guid sessionId)
+    public void ToggleSplit(Guid sessionId, SplitAxis? axis = null)
     {
         if (SessionWithId(sessionId) is not { } session) return;
-        session.IsSplit = !session.IsSplit;
+        // asking for an axis the visible split does not have transposes it; asking for the axis it
+        // already has hides it; a hidden split is shown on the requested axis. No axis keeps the
+        // stored one.
+        var show = axis is { } requested
+            ? !session.IsSplit || session.SplitAxis != requested
+            : !session.IsSplit;
+        ApplySplitVisibility(session, show, show ? axis : null);
+    }
+
+    /// <summary>Shows or hides the split idempotently. The axis only applies when showing; hiding
+    /// never changes it, and showing without one keeps the stored axis.</summary>
+    public void SetSplitVisibility(Guid sessionId, bool shown, SplitAxis? axis = null)
+    {
+        if (SessionWithId(sessionId) is not { } session) return;
+        ApplySplitVisibility(session, shown, shown ? axis : null);
+    }
+
+    private void ApplySplitVisibility(Session session, bool show, SplitAxis? axis)
+    {
+        if (axis is { } chosen) session.SplitAxis = chosen;
+        session.IsSplit = show;
         // opening a NEW split marks the session as having one and moves focus to the new (right)
         // pane; RE-showing a hidden split preserves whichever pane was focused before it was hidden.
         // hiding (toggling off) leaves HasSplit and SplitFocused set so the split indicators persist
@@ -138,6 +158,7 @@ public sealed partial class AppStore
         session.ForgetSplitPaneIdentity();
         session.IsSplit = false;
         session.HasSplit = false;
+        session.SplitAxis = SplitAxis.LeftRight;
         session.SplitFocused = false;
         session.SplitSurface?.Teardown();
         session.SplitSurface = null;
@@ -188,6 +209,7 @@ public sealed partial class AppStore
         session.PromoteSplitPaneIdentity();
         session.IsSplit = false;
         session.HasSplit = false;
+        session.SplitAxis = SplitAxis.LeftRight;
         session.SplitFocused = false;
         session.SplitRatio = null; // promoted to a single pane; a later split should open even, not stale
         // the command pane is gone. The survivor's own command (null for a plain split shell) becomes

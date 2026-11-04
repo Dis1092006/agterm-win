@@ -157,7 +157,8 @@ public sealed class TitleBarActionsSourceTests
 
         Assert.Contains("ExecuteTitleBarAction(BuiltinAction.ShowAttention)", window, StringComparison.Ordinal);
         Assert.Contains("ExecuteTitleBarAction(BuiltinAction.ToggleScratch)", window, StringComparison.Ordinal);
-        Assert.Contains("ExecuteTitleBarAction(BuiltinAction.ToggleSplit)", window, StringComparison.Ordinal);
+        Assert.Contains("ExecuteTitleBarAction(SplitToggleAction(_titleBarState))", window, StringComparison.Ordinal);
+        Assert.Contains("BuiltinAction.ToggleHorizontalSplit : BuiltinAction.ToggleSplit", window, StringComparison.Ordinal);
         Assert.Contains("ExecuteTitleBarAction(BuiltinAction.Dashboard)", window, StringComparison.Ordinal);
         Assert.Contains("ExecuteTitleBarAction(BuiltinAction.QuickTerminal)", window, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteActions.SelectSession(store, sessionId)",

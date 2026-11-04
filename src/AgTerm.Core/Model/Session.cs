@@ -97,6 +97,10 @@ public sealed class Session
     /// to IsSplit which is only "currently shown". Cleared only when the split is closed.</summary>
     public bool HasSplit { get; set; }
 
+    /// <summary>The split's physical arrangement. A fresh or legacy session is left/right; changing
+    /// it while both panes exist transposes the layout without replacing either surface.</summary>
+    public SplitAxis SplitAxis { get; set; } = SplitAxis.LeftRight;
+
     /// <summary>While split, whether the split (second) pane holds focus. Meaningless when not split.</summary>
     public bool SplitFocused { get; set; }
 
@@ -496,6 +500,7 @@ public sealed class Session
         CustomName = CustomName,
         Cwd = CurrentCwd ?? InitialCwd,
         IsSplit = IsSplit,
+        SplitAxis = IsSplit ? SplitAxis : null,
         FontSize = FontSize,
         SplitCwd = SplitCwd ?? InitialSplitCwd,
         SplitRatio = SplitRatio,

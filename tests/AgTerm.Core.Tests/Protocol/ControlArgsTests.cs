@@ -10,7 +10,7 @@ public class ControlArgsTests
     {
         Name = "s", Cwd = "s", Targets = new[] { "a", "b" }, Workspace = "s", WorkspaceName = "s",
         CreateWorkspace = true, Collapsed = true, NoSelect = true, Text = "s", Select = true,
-        Mode = "s", Path = "s", Color = "s", TextColor = "s", Shape = "s", Opacity = 0.5, Fit = "s", Position = "s",
+        Mode = "s", Axis = "s", Path = "s", Color = "s", TextColor = "s", Shape = "s", Opacity = 0.5, Fit = "s", Position = "s",
         Repeats = true, Pane = "s", PaneId = "s", Ratio = 0.5, RatioDelta = 0.5, All = true,
         Lines = 3, To = "s", After = "s", Before = "s", Run = "s", Kinds = new[] { "a" }, Limit = 3,
         Title = "s", Body = "s", Command = "s", Wait = true, SizePercent = 3, Full = true,

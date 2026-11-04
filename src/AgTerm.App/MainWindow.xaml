@@ -211,7 +211,14 @@
                                 <Path x:Name="SplitRightFill" Style="{StaticResource TitleBarGlyphStyle}"
                                       Fill="{StaticResource ChromeForegroundBrush}"
                                       Data="M8,2.5 H15.5 V12.5 H8 Z" />
-                                <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5" />
+                                <Path x:Name="SplitTopFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                      Fill="{StaticResource ChromeForegroundBrush}"
+                                      Data="M0.5,2.5 H15.5 V7.5 H0.5 Z" />
+                                <Path x:Name="SplitBottomFill" Style="{StaticResource TitleBarGlyphStyle}"
+                                      Fill="{StaticResource ChromeForegroundBrush}"
+                                      Data="M0.5,7.5 H15.5 V12.5 H0.5 Z" />
+                                <Path x:Name="SplitOutlineVertical" Style="{StaticResource TitleBarGlyphStyle}" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5" />
+                                <Path x:Name="SplitOutlineHorizontal" Style="{StaticResource TitleBarGlyphStyle}" Visibility="Collapsed" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M0.5,7.5 H15.5" />
                             </Grid>
                         </Button>
                         <Rectangle x:Name="DividerAfterB" Style="{StaticResource TitleBarDividerStyle}" />

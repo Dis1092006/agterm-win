@@ -89,7 +89,7 @@ public sealed class ModalActionGateTests
         Assert.Contains(new PhysicalChord(true, false, true, "return"), chords);
         Assert.Contains(new PhysicalChord(false, true, false, "return"), chords);
         Assert.Contains(new PhysicalChord(false, true, false, "-"), chords);
-        Assert.Contains(new PhysicalChord(true, false, true, "d"), chords);
+        Assert.Contains(new PhysicalChord(true, false, true, "g"), chords);
         Assert.Contains(new PhysicalChord(true, false, false, ","), chords);
         Assert.Contains(new PhysicalChord(false, true, false, ","), chords);
         Assert.Contains(new PhysicalChord(false, true, false, "0"), chords);

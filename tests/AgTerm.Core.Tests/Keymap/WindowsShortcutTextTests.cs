@@ -25,7 +25,8 @@ public class WindowsShortcutTextTests
     [Fact]
     public void An_action_shows_the_chord_that_runs_it()
     {
-        Assert.Equal("Ctrl+Shift+D", WindowsShortcutText.For(AgTerm.Core.Keymap.Keymap.Empty, BuiltinAction.Dashboard));
+        Assert.Equal("Ctrl+Shift+G", WindowsShortcutText.For(AgTerm.Core.Keymap.Keymap.Empty, BuiltinAction.Dashboard));
+        Assert.Equal("Ctrl+Shift+D", WindowsShortcutText.For(AgTerm.Core.Keymap.Keymap.Empty, BuiltinAction.ToggleHorizontalSplit));
         Assert.Equal("Alt+D", WindowsShortcutText.For(AgTerm.Core.Keymap.Keymap.Empty, BuiltinAction.ToggleSplit));
     }
 
@@ -50,7 +51,7 @@ public class WindowsShortcutTextTests
     [Fact]
     public void Hint_appends_the_chord_like_upstreams_help_hint()
     {
-        Assert.Equal("Dashboard (Ctrl+Shift+D)", WindowsShortcutText.Hint("Dashboard", AgTerm.Core.Keymap.Keymap.Empty, BuiltinAction.Dashboard));
+        Assert.Equal("Dashboard (Ctrl+Shift+G)", WindowsShortcutText.Hint("Dashboard", AgTerm.Core.Keymap.Keymap.Empty, BuiltinAction.Dashboard));
         Assert.Equal("Rename", WindowsShortcutText.Hint("Rename", AgTerm.Core.Keymap.Keymap.Empty, BuiltinAction.RenameWindow));
     }
 }

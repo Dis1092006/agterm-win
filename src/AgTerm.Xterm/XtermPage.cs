@@ -390,6 +390,7 @@ public sealed class XtermPage
                 writer.WriteString("rightPaneId", split.RightPaneId);
                 writer.WriteNumber("ratio", split.Ratio);
                 writer.WriteString("focusedPaneId", split.FocusedPaneId);
+                WriteSplitAxis(writer, split);
                 break;
             case TerminalLayout.Empty empty:
                 writer.WriteString("type", "empty");
@@ -428,12 +429,20 @@ public sealed class XtermPage
                 writer.WriteString("rightPaneId", split.RightPaneId);
                 writer.WriteNumber("ratio", split.Ratio);
                 writer.WriteString("focusedPaneId", split.FocusedPaneId);
+                WriteSplitAxis(writer, split);
                 break;
             default:
                 throw new NotSupportedException($"Unknown layered base layout variant: {baseLayout.GetType().FullName}");
         }
 
         writer.WriteEndObject();
+    }
+
+    // a vertical split is the page default, so the field is only written for a horizontal one
+    private static void WriteSplitAxis(Utf8JsonWriter writer, TerminalLayout.Split split)
+    {
+        if (split.Axis == Core.Model.SplitAxis.TopBottom)
+            writer.WriteString("axis", "horizontal");
     }
 
     private static void WriteLayerObject(Utf8JsonWriter writer, TerminalLayer layer)

@@ -43,6 +43,16 @@ public static class StatusPanes
         _ => null,
     };
 
+    /// <summary>The --pane selector: the wire names plus the axis and role aliases (top, primary and
+    /// bottom, split). Read-back always uses the canonical left/right/scratch.</summary>
+    public static StatusPane? FromControlName(string name) => name switch
+    {
+        "left" or "top" or "primary" => StatusPane.Left,
+        "right" or "bottom" or "split" => StatusPane.Right,
+        "scratch" => StatusPane.Scratch,
+        _ => null,
+    };
+
     public static string Wire(StatusPane pane) => pane switch
     {
         StatusPane.Left => "left",

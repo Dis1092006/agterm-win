@@ -27,6 +27,7 @@ public class WindowCommandRouterTests
         BuiltinAction.ResetFontSize,
         BuiltinAction.ToggleSidebar,
         BuiltinAction.ToggleSplit,
+        BuiltinAction.ToggleHorizontalSplit,
         BuiltinAction.ToggleScratch,
         BuiltinAction.ToggleTerminalZoom,
         BuiltinAction.ToggleSearch,
@@ -55,19 +56,19 @@ public class WindowCommandRouterTests
     [Fact]
     public void ActionImplementations_covers_all_builtin_actions_with_correct_implemented_state()
     {
-        // --- all 42 distinct enum members ---
+        // --- all 43 distinct enum members ---
         var all = BuiltinActions.All;
-        Assert.Equal(42, all.Count);
-        Assert.Equal(42, all.Distinct().Count());
+        Assert.Equal(43, all.Count);
+        Assert.Equal(43, all.Distinct().Count());
 
-        // --- test data covers exactly those 42 members ---
+        // --- test data covers exactly those 43 members ---
         var expected = ImplementedActions.ToHashSet();
-        Assert.Equal(42, expected.Count);
+        Assert.Equal(43, expected.Count);
         Assert.Equal(expected, all.ToHashSet());
 
-        // --- ActionImplementations has exactly the 42 keys, each once ---
+        // --- ActionImplementations has exactly the 43 keys, each once ---
         var map = WindowCommandRouter.ActionImplementations;
-        Assert.Equal(42, map.Count);
+        Assert.Equal(43, map.Count);
         Assert.Equal(expected, map.Keys.ToHashSet());
 
         // --- each expected Implemented value matches ---
@@ -452,7 +453,8 @@ public class WindowCommandRouterTests
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "o"), chords);
         // Ctrl+Shift+I → ctrl+shift+i → ShowAttention (implemented in C2): must be present
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "i"), chords);
-        // Ctrl+Shift+D → cmd+shift+d → Dashboard (implemented in D2): must be present
+        // Ctrl+Shift+G → cmd+shift+g → Dashboard, Ctrl+Shift+D → cmd+shift+d → ToggleHorizontalSplit: both present
+        Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "g"), chords);
         Assert.Contains(new PhysicalChord(Ctrl: true, Alt: false, Shift: true, Key: "d"), chords);
 
         // returned chords are distinct

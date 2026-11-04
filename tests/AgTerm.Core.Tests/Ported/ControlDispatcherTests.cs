@@ -1372,6 +1372,46 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task SessionSplitForwardsAParsedAxis()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionSplit, Target = "s", Args = new ControlArgs { Mode = "on", Axis = "horizontal" },
+        });
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionSplit, Target = "s", Args = new ControlArgs { Mode = "toggle", Axis = "vertical" },
+        });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SessionSplit("s", null, "on", SplitAxis.TopBottom),
+            new MockControlActions.Call.SessionSplit("s", null, "toggle", SplitAxis.LeftRight),
+        }, actions.Calls);
+    }
+
+    [Theory]
+    [InlineData("diagonal")]
+    [InlineData("Horizontal")]
+    [InlineData("")]
+    public async Task SessionSplitRejectsAnUnknownAxisBeforeTheAction(string axis)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionSplit, Target = "s", Args = new ControlArgs { Axis = axis },
+        });
+
+        ExpectResponse(Err($"invalid split axis: {axis} (vertical|horizontal)"), response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
     public async Task SplitScratchFocusAndResizeRouteParsedInputs()
     {
         var actions = new MockControlActions();
@@ -1703,6 +1743,38 @@ public class ControlDispatcherTests
             ExpectResponse(Err("invalid pane: middle"), response);
             Assert.Empty(actions.Calls);
         }
+    }
+
+    [Fact]
+    public async Task PaneAliasesReachTheActionsAsTheCanonicalName()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = "s", Args = new ControlArgs { Text = "x", Pane = "bottom" },
+        });
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionText, Target = "s", Args = new ControlArgs { Pane = "top" },
+        });
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.FontInc, Target = "s", Args = new ControlArgs { Pane = "split" },
+        });
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.FontReset, Target = "s", Args = new ControlArgs { Pane = "primary" },
+        });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SessionType("s", null, new ControlSessionTypeOptions("x", Select: false, Pane: "right")),
+            new MockControlActions.Call.SessionText("s", null, new ControlSessionTextOptions("left", All: false, Lines: null, PaneId: null)),
+            new MockControlActions.Call.Font("s", null, "right", "increase_font_size:1"),
+            new MockControlActions.Call.Font("s", null, "left", "reset_font_size"),
+        }, actions.Calls);
     }
 
     [Fact]

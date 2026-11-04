@@ -53,7 +53,7 @@ public interface IControlActions
     /// split, an unresolvable paneID given without an explicit pane).</summary>
     ControlResponse SetSessionRestore(string? target, string? window, ControlSessionRestoreUpdate update);
 
-    ControlResponse SplitSession(string? target, string? window, string? mode);
+    ControlResponse SplitSession(string? target, string? window, string? mode, SplitAxis? axis = null);
 
     /// <summary>Closes a session's split pane for good (shown or hidden), tearing its terminal down;
     /// a session without a split answers ok. Keyboard focus goes to the main pane.</summary>
