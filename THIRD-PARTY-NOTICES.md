@@ -12,6 +12,7 @@ Used in this repository:
 - Tests ported from agterm, in the `Ported` folders under `tests/`.
 - The agent skill in `plugins/agterm/skills/agterm`, adapted to Windows.
 - The `agterm` terminal theme in `src/AgTerm.Xterm/Themes/agterm`.
+- `CONTRIBUTING.md`, adapted from upstream's contributing guide.
 
 ```
 MIT License

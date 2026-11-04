@@ -2,7 +2,7 @@
 
 An unofficial Windows port of [umputun/agterm](https://github.com/umputun/agterm), a macOS terminal for coding agents. It keeps agterm's `Workspace → Session` model and its control API. `agtermctl`, the `AGTERM_*` environment variables and the `keymap.conf` format are the same as upstream, so a script written for agterm runs here unchanged. The app runs on ConPTY, WinUI 3 and xterm.js in WebView2; the CLI is built on System.CommandLine. The agent skill is this repository's own copy of upstream's skill, adapted to Windows (see [Agent skill](#agent-skill)).
 
-This is not a fork. agterm is a native macOS app in Swift; this repository re-implements its design and its wire contract in .NET. It is not maintained by the agterm author: report Windows bugs and requests in [this repository's issues](https://github.com/Dis1092006/agterm-win/issues), not in umputun/agterm.
+This is not a fork. agterm is a native macOS app in Swift; this repository re-implements its design and its wire contract in .NET. It is not maintained by the agterm author: report Windows bugs and requests in [this repository's issues](https://github.com/Dis1092006/agterm-win/issues), not in umputun/agterm. Read [CONTRIBUTING.md](CONTRIBUTING.md) before you send a pull request.
 
 **Status:** used daily by the author. There are no binary releases yet: build it from source (see [Running](#running)).
 
