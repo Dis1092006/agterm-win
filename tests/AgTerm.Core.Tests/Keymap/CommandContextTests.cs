@@ -14,6 +14,7 @@ public sealed class CommandContextTests
         WindowId = "win-1",
         WindowName = "work",
         FocusedPane = CommandContext.Pane.Right,
+        PaneId = "right-tok",
         Selection = "hello",
         Socket = "agterm-pipe",
     };
@@ -48,15 +49,16 @@ public sealed class CommandContextTests
     }
 
     [Fact]
-    public void Environment_and_TokenNames_have_the_same_exact_ten_keys()
+    public void Environment_and_TokenNames_have_the_same_exact_eleven_keys()
     {
         var context = Sample();
         var environment = context.Environment();
 
-        Assert.Equal(10, environment.Count);
+        Assert.Equal(11, environment.Count);
         Assert.Equal(CommandContext.TokenNames.ToHashSet(), environment.Keys.ToHashSet());
         Assert.Equal(@"C:\work tree", environment["AGT_SESSION_PWD"]);
         Assert.Equal("right", environment["AGT_PANE"]);
+        Assert.Equal("right-tok", environment["AGT_PANE_ID"]);
         Assert.Equal("agterm-pipe", environment["AGT_SOCKET"]);
         Assert.All(environment.Keys, key => Assert.DoesNotContain("{", context.Expand($"{{{key}}}")));
     }
@@ -74,7 +76,7 @@ public sealed class CommandContextTests
     [Theory]
     [InlineData("agtermctl session new")]
     [InlineData("agtermctl --socket {AGT_SOCKET} session new")]
-    [InlineData("echo {AGT_WINDOW_ID} {AGT_WINDOW_NAME} {AGT_PANE}")]
+    [InlineData("echo {AGT_WINDOW_ID} {AGT_WINDOW_NAME} {AGT_PANE} {AGT_PANE_ID}")]
     public void ReferencesSessionScopedContext_allows_sessionless_launchers(string command)
     {
         Assert.False(CommandContext.ReferencesSessionScopedContext(command));
@@ -86,5 +88,15 @@ public sealed class CommandContextTests
         Assert.Equal("left", new CommandContext().Expand("{AGT_PANE}"));
         Assert.Equal("right", new CommandContext { FocusedPane = CommandContext.Pane.Right }.Expand("{AGT_PANE}"));
         Assert.Equal("scratch", new CommandContext { FocusedPane = CommandContext.Pane.Scratch }.Expand("{AGT_PANE}"));
+    }
+
+    [Fact]
+    public void PaneId_expands_after_AGT_PANE_and_is_empty_without_a_token()
+    {
+        Assert.Equal("right-tok", Sample().Expand("{AGT_PANE_ID}"));
+        Assert.Equal("", new CommandContext().Expand("{AGT_PANE_ID}"));
+        Assert.Equal("right right-tok", Sample().Expand("{AGT_PANE} {AGT_PANE_ID}"));
+        var names = CommandContext.TokenNames.ToList();
+        Assert.Equal(names.IndexOf("AGT_PANE") + 1, names.IndexOf("AGT_PANE_ID"));
     }
 }

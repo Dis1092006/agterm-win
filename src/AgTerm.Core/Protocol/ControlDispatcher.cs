@@ -667,7 +667,8 @@ public sealed class ControlDispatcher
                 return await _actions.TypeSession(request.Target, request.Args?.Window,
                     new ControlSessionTypeOptions(text,
                         Select: request.Args?.Select ?? false,
-                        Pane: request.Args?.Pane));
+                        Pane: request.Args?.Pane,
+                        PaneId: request.Args?.PaneId));
             }
             case Command.SessionCopy:
                 return _actions.CopySessionSelection(request.Target, request.Args?.Window);
@@ -901,7 +902,7 @@ public sealed class ControlDispatcher
         if (SurfacePaneRejection(request.Args?.Pane) is { } badPane)
             return badPane;
         return _actions.ReadSessionText(request.Target, request.Args?.Window,
-            new ControlSessionTextOptions(request.Args?.Pane, all, lines));
+            new ControlSessionTextOptions(request.Args?.Pane, all, lines, request.Args?.PaneId));
     }
 
     private async Task<ControlResponse> DispatchWindowCommand(ControlRequest request)

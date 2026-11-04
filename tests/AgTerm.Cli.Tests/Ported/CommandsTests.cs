@@ -871,6 +871,31 @@ public class CommandsTests
     }
 
     [Fact]
+    public void SessionTypeWithPaneId()
+    {
+        var expected = new ControlRequest
+        {
+            Cmd = WireCommand.SessionType, Target = "s1",
+            Args = new ControlArgs { Text = "ls\n", Select = false, Pane = "left", PaneId = "pane-tok" },
+        };
+        CanonicalJson.AssertEqual(expected,
+            Request("session", "type", "ls\n", "--pane", "left", "--pane-id", "pane-tok", "--target", "s1"));
+        Assert.Null(Request("session", "type", "ls\n").Args?.PaneId);
+    }
+
+    [Fact]
+    public void SessionTextWithPaneId()
+    {
+        var expected = new ControlRequest
+        {
+            Cmd = WireCommand.SessionText, Target = "active",
+            Args = new ControlArgs { PaneId = "pane-tok" },
+        };
+        CanonicalJson.AssertEqual(expected, Request("session", "text", "--pane-id", "pane-tok"));
+        Assert.Null(Request("session", "text").Args?.PaneId);
+    }
+
+    [Fact]
     public void SessionTextWithPaneScratch()
     {
         var expected = new ControlRequest

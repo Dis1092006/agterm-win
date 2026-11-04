@@ -279,6 +279,9 @@ public sealed partial class AppStore
                         Kind = surface.WireName(),
                         Active = surface.IsActive(session),
                         Visible = surface.IsVisible(session),
+                        PaneId = surface.PaneRole() is { } role && session.PaneToken(role) is { Length: > 0 } token
+                            ? token
+                            : null,
                     })
                     .ToArray();
                 return new ControlSessionNode

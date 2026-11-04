@@ -25,6 +25,15 @@ public static class TerminalZoomSurfaces
         _ => throw new ArgumentOutOfRangeException(nameof(surface)),
     };
 
+    /// <summary>The pane role whose slot the surface names; null for the overlay, which has no pane id.</summary>
+    public static StatusPane? PaneRole(this TerminalZoomSurface surface) => surface switch
+    {
+        TerminalZoomSurface.Primary => StatusPane.Left,
+        TerminalZoomSurface.Split => StatusPane.Right,
+        TerminalZoomSurface.Scratch => StatusPane.Scratch,
+        _ => null,
+    };
+
     /// <summary>The control-name parse, accepting both the side names and the role aliases.</summary>
     public static TerminalZoomSurface? FromControlName(string controlName) => controlName switch
     {

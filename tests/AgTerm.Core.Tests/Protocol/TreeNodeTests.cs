@@ -41,6 +41,18 @@ public class TreeNodeTests
     }
 
     [Fact]
+    public void SurfaceNodeEncodesItsPaneIdAndOmitsAnAbsentOne()
+    {
+        var withId = new ControlSurfaceNode { Id = "s", Kind = "left", Active = true, Visible = true, PaneId = "tok" };
+        var without = withId with { PaneId = null };
+
+        Assert.Equal("{\"id\":\"s\",\"kind\":\"left\",\"active\":true,\"visible\":true,\"paneID\":\"tok\"}",
+            ControlJson.Serialize(withId));
+        Assert.Equal("{\"id\":\"s\",\"kind\":\"left\",\"active\":true,\"visible\":true}",
+            ControlJson.Serialize(without));
+    }
+
+    [Fact]
     public void SessionNodeRoundTrips()
     {
         var json = ControlJson.Serialize(FullSessionNode());

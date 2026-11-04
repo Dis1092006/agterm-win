@@ -115,7 +115,7 @@ public interface IControlActions
     ControlResponse CloseHud(string? target, string? window);
 }
 
-public sealed record ControlSessionTypeOptions(string Text, bool Select, string? Pane);
+public sealed record ControlSessionTypeOptions(string Text, bool Select, string? Pane, string? PaneId = null);
 
 /// <summary>The pane selectors of ask.open, resolved by the host against the target session:
 /// PaneId is a live pane token that overrides Pane.</summary>
@@ -131,4 +131,4 @@ public sealed record ControlSessionOverlayOpenOptions(
 
 public sealed record ControlSessionBackgroundOptions(BackgroundWatermark? Watermark);
 
-public sealed record ControlSessionTextOptions(string? Pane, bool All, int? Lines);
+public sealed record ControlSessionTextOptions(string? Pane, bool All, int? Lines, string? PaneId = null);

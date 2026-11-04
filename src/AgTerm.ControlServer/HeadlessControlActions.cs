@@ -996,15 +996,15 @@ public sealed class HeadlessControlActions : IControlActions
             // an EMPTY token counts as absent (an older shell exporting no AGTERM_PANE_ID); a
             // non-empty unresolvable token WITHOUT an explicit --pane is an error here (unlike
             // session.status): a bad fallback would overwrite the MAIN pane's persisted command.
-            if (update.PaneId is { Length: > 0 } token)
+            switch (session.ResolvePaneAddress(update.PaneId, update.Pane))
             {
-                if ((session.PaneRole(token) ?? update.Pane) is not { } resolved)
-                    return Err($"unknown pane id: {token}");
-                pane = resolved;
-            }
-            else
-            {
-                pane = update.Pane ?? StatusPane.Left;
+                case PaneAddress.UnknownToken unknown:
+                    return Err($"unknown pane id: {unknown.Token}");
+                case PaneAddress.Resolved resolved:
+                    pane = resolved.Pane ?? StatusPane.Left;
+                    break;
+                default:
+                    return Err("unreachable");
             }
             if (pane == StatusPane.Scratch)
                 return Err("the scratch terminal is never restored");
@@ -1417,13 +1417,48 @@ public sealed class HeadlessControlActions : IControlActions
     public Task<ControlResponse> TypeSession(string? target, string? window, ControlSessionTypeOptions options)
     {
         var response = ResolveSession(target, window, (store, id) =>
-            InjectText(options.Text, id, store, options.Select, options.Pane));
+            InjectText(options.Text, id, store, options.Select, options.Pane, options.PaneId));
         return Task.FromResult(response);
     }
 
-    private ControlResponse InjectText(string text, Guid id, AppStore store, bool select, string? pane)
+    private static ControlResponse OkIdPane(Guid id, string pane) =>
+        new() { Ok = true, Result = new ControlResult { Id = Uuid(id), Pane = pane } };
+
+    /// <summary>The shared --pane-id rule: a live token wins over --pane, an empty token counts as
+    /// absent, an unknown token falls back to an explicit --pane and is an error without one. An
+    /// invalid --pane is refused first, as without a token. Returns the pane wire name to act on
+    /// (null = none given) or the error response.</summary>
+    private static ControlResponse? ResolvePaneSelector(Session? session, string? pane, string? paneId,
+                                                       out string? effective)
+    {
+        effective = pane;
+        if (paneId is not { Length: > 0 } || session is null)
+            return null;
+        StatusPane? explicitPane = null;
+        if (pane is not null)
+        {
+            explicitPane = StatusPanes.FromWire(pane);
+            if (explicitPane is null)
+                return Err($"invalid pane: {pane}");
+        }
+        switch (session.ResolvePaneAddress(paneId, explicitPane))
+        {
+            case PaneAddress.UnknownToken unknown:
+                return Err($"unknown pane id: {unknown.Token}");
+            case PaneAddress.Resolved { Pane: { } resolved }:
+                effective = StatusPanes.Wire(resolved);
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    private ControlResponse InjectText(string text, Guid id, AppStore store, bool select, string? requestedPane,
+                                       string? paneId)
     {
         var session = store.SessionWithId(id);
+        if (ResolvePaneSelector(session, requestedPane, paneId, out var pane) is { } rejected)
+            return rejected;
         switch (pane)
         {
             case null or "left":
@@ -1434,7 +1469,7 @@ public sealed class HeadlessControlActions : IControlActions
                     return Err("session has no split pane");
                 if (split is not IHeadlessSurface surface || !surface.Inject(text))
                     return Err("session not realized");
-                return OkId(id);
+                return OkIdPane(id, "right");
             }
             case "scratch":
             {
@@ -1442,7 +1477,7 @@ public sealed class HeadlessControlActions : IControlActions
                     return Err("session has no scratch terminal");
                 if (scratch is not IHeadlessSurface surface || !surface.Inject(text))
                     return Err("session not realized");
-                return OkId(id);
+                return OkIdPane(id, "scratch");
             }
             default:
                 return Err($"invalid pane: {pane}");
@@ -1450,11 +1485,11 @@ public sealed class HeadlessControlActions : IControlActions
         // main pane: inject if realized; otherwise select when asked and check once more. Upstream polls
         // ~360 ms here; the headless dispatch holds the host gate, so a sleep would see no progress.
         if (session?.Surface is IHeadlessSurface main && main.Inject(text))
-            return OkId(id);
+            return OkIdPane(id, "left");
         if (select)
             store.SelectSession(id);
         if (store.SessionWithId(id)?.Surface is IHeadlessSurface selected && selected.Inject(text))
-            return OkId(id);
+            return OkIdPane(id, "left");
         return Err("session not realized");
     }
 
@@ -1642,8 +1677,10 @@ public sealed class HeadlessControlActions : IControlActions
         {
             if (store.SessionWithId(id) is not { } session)
                 return Err("session not realized");
+            if (ResolvePaneSelector(session, options.Pane, options.PaneId, out var requestedPane) is { } rejected)
+                return rejected;
             ITerminalSurface? chosen;
-            switch (options.Pane)
+            switch (requestedPane)
             {
                 case null:
                     // omitted = the surface ON SCREEN (scratch-aware), same as session.search.
@@ -1664,13 +1701,16 @@ public sealed class HeadlessControlActions : IControlActions
                     chosen = scratch;
                     break;
                 default:
-                    return Err($"invalid pane: {options.Pane}");
+                    return Err($"invalid pane: {requestedPane}");
             }
             if (chosen is not IHeadlessSurface surface)
                 return Err("session not realized");
             if (surface.ReadScreenText(options.All, options.Lines) is not { } text)
                 return Err("failed to read surface buffer");
-            return new ControlResponse { Ok = true, Result = new ControlResult { Text = text } };
+            // named by the identity of the surface actually read, as upstream does
+            var readPane = ReferenceEquals(chosen, session.ScratchSurface) ? "scratch"
+                : ReferenceEquals(chosen, session.SplitSurface) ? "right" : "left";
+            return new ControlResponse { Ok = true, Result = new ControlResult { Text = text, Pane = readPane } };
         });
     }
 

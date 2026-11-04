@@ -399,6 +399,132 @@ public sealed class HeadlessHostTests : IDisposable
         Assert.Equal("file.txt", lastLine.Result?.Text);
     }
 
+    private string NewSplitSession(out FakeSurface left, out FakeSurface right)
+    {
+        var id = NewSession();
+        left = new FakeSurface { PaneToken = "left-tok", ScreenText = "left screen" };
+        right = new FakeSurface { PaneToken = "right-tok", ScreenText = "right screen" };
+        var session = _host.Store.SessionWithId(Guid.Parse(id))!;
+        session.Surface = left;
+        session.SplitSurface = right;
+        session.IsSplit = true;
+        session.HasSplit = true;
+        return id;
+    }
+
+    [Fact]
+    public void SessionTypeFollowsAPaneIdOverThePaneAndNamesThePaneInTheResult()
+    {
+        var id = NewSplitSession(out var left, out var right);
+
+        var response = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = id,
+            Args = new ControlArgs { Text = "x", Pane = "left", PaneId = "right-tok" },
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal("right", response.Result?.Pane);
+        Assert.Equal(id, response.Result?.Id);
+        Assert.Equal(new[] { "x" }, right.Injected);
+        Assert.Empty(left.Injected);
+    }
+
+    [Theory]
+    [InlineData(null, "left")]
+    [InlineData("left", "left")]
+    [InlineData("right", "right")]
+    public void SessionTypeNamesThePaneItTypedInto(string? pane, string expected)
+    {
+        var id = NewSplitSession(out _, out _);
+
+        var response = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = id, Args = new ControlArgs { Text = "x", Pane = pane },
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal(expected, response.Result?.Pane);
+    }
+
+    [Fact]
+    public void SessionTypeRefusesAnUnknownPaneIdAloneButFallsBackToAnExplicitPane()
+    {
+        var id = NewSplitSession(out var left, out var right);
+
+        var refused = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = id, Args = new ControlArgs { Text = "x", PaneId = "gone" },
+        });
+        var fallback = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = id,
+            Args = new ControlArgs { Text = "y", Pane = "right", PaneId = "gone" },
+        });
+        var empty = Send(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = id, Args = new ControlArgs { Text = "z", PaneId = "" },
+        });
+
+        Assert.False(refused.Ok);
+        Assert.Equal("unknown pane id: gone", refused.Error);
+        Assert.Equal("right", fallback.Result?.Pane);
+        Assert.Equal("left", empty.Result?.Pane);
+        Assert.Equal(new[] { "y" }, right.Injected);
+        Assert.Equal(new[] { "z" }, left.Injected);
+    }
+
+    [Fact]
+    public void SessionTextFollowsAPaneIdAndNamesThePaneRead()
+    {
+        var id = NewSplitSession(out _, out _);
+
+        var response = Send(new ControlRequest
+        {
+            Cmd = Command.SessionText, Target = id, Args = new ControlArgs { PaneId = "right-tok" },
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal("right screen", response.Result?.Text);
+        Assert.Equal("right", response.Result?.Pane);
+    }
+
+    [Fact]
+    public void SessionTextRefusesAnUnknownPaneIdAloneInsteadOfReadingTheOnScreenPane()
+    {
+        var id = NewSplitSession(out _, out _);
+
+        var refused = Send(new ControlRequest
+        {
+            Cmd = Command.SessionText, Target = id, Args = new ControlArgs { PaneId = "gone" },
+        });
+        var fallback = Send(new ControlRequest
+        {
+            Cmd = Command.SessionText, Target = id, Args = new ControlArgs { Pane = "right", PaneId = "gone" },
+        });
+
+        Assert.False(refused.Ok);
+        Assert.Equal("unknown pane id: gone", refused.Error);
+        Assert.Equal("right screen", fallback.Result?.Text);
+    }
+
+    [Fact]
+    public void SessionTextWithoutASelectorNamesTheOnScreenPane()
+    {
+        var id = NewSplitSession(out _, out _);
+        var session = _host.Store.SessionWithId(Guid.Parse(id))!;
+        var scratch = new FakeSurface { PaneToken = "scratch-tok", ScreenText = "scratch screen" };
+        session.ScratchSurface = scratch;
+
+        var main = Send(new ControlRequest { Cmd = Command.SessionText, Target = id });
+        session.ScratchActive = true;
+        var covered = Send(new ControlRequest { Cmd = Command.SessionText, Target = id });
+
+        Assert.Equal("left", main.Result?.Pane);
+        Assert.Equal("scratch", covered.Result?.Pane);
+        Assert.Equal("scratch screen", covered.Result?.Text);
+    }
+
     [Fact]
     public void SelectAllThenCopyReadsBackTheFakeScreen()
     {

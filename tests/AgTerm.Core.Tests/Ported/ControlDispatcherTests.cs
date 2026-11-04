@@ -1649,6 +1649,31 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task SessionTypeAndTextForwardThePaneId()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionType, Target = "s",
+            Args = new ControlArgs { Text = "x", Pane = "right", PaneId = "tok" },
+        });
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionText, Target = "s", Args = new ControlArgs { PaneId = "tok" },
+        });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SessionType("s", null,
+                new ControlSessionTypeOptions("x", Select: false, Pane: "right", PaneId: "tok")),
+            new MockControlActions.Call.SessionText("s", null,
+                new ControlSessionTextOptions(null, All: false, Lines: null, PaneId: "tok")),
+        }, actions.Calls);
+    }
+
+    [Fact]
     public async Task SessionCopyRoutesTargetAndWindow()
     {
         var actions = new MockControlActions();

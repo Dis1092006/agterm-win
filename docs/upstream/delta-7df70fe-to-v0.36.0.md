@@ -89,7 +89,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 - Horizontal split: `axis` on `session.split`, `top` and `bottom` as aliases, `splitAxis` in `tree` and in the snapshot. A new action `toggle_horizontal_split` on Cmd+Shift+D. **Dashboard moved from Cmd+Shift+D to Cmd+Shift+G**: this changes the default chord of an action that is already implemented #427. Port: not done. `dashboard` keeps its pin chord.
 - `session.split.close`: close the whole split pane #421. `hasSplit` in `tree` tells a hidden split from a missing one. Port: not done.
 - `session.swap`: swap the terminals of the two panes; the axis and the ratio stay #513. Port: not done.
-- `--pane-id` (the stable `$AGTERM_PANE_ID`) on `session type`, `session text`, `surface cursor`; `surfaces[].paneID` in `tree`; `result.pane` #698. Token `AGT_PANE_ID` #603. Port: not done. The port has `--pane-id` only where the pin has it.
+- `--pane-id` (the stable `$AGTERM_PANE_ID`) on `session type`, `session text`, `surface cursor`; `surfaces[].paneID` in `tree`; `result.pane` #698. Token `AGT_PANE_ID` #603. Port: `session type`, `session text`, `tree` `paneID`, `result.pane` and `AGT_PANE_ID` done; `surface cursor` is a separate command, not done (upstream `eab672be`, `cf31c5d4`).
 - An overlay on one pane: `--pane left|right` on `session overlay open|close|result`, `paneOverlays` in `tree` #343. Port: not done.
 - A background per pane: `session background ... --pane`, `paneBackgrounds` in `tree` and in the snapshot #647. Port: not done.
 - `session.paste --pane` #529. `surface.cursor` #451. `session.overlay.copy`, `session.overlay.text` #437. Port: not done.
@@ -164,7 +164,7 @@ Each adopted change is recorded in PLATFORM-NOTES "Upstream behavior adopted bey
 
 These items change what agterm-win already does at the pin. They do not depend on new features and may be needed in any update.
 
-- `session text --pane-id` with an unknown id answers `unknown pane id: <id>`; before, it read the visible pane and answered ok #698. Port: not done. The port has no `--pane-id` on `session text` (section 5).
+- `session text --pane-id` with an unknown id answers `unknown pane id: <id>`; before, it read the visible pane and answered ok #698. Port: done, see PLATFORM-NOTES "Upstream behavior adopted beyond the pin".
 - `session.paste`, `session.selectall`, `session.copy` without a real surface answer `session not realized` #425. Port: done in `aaeec2d` (upstream `9f145925`).
 - `session type`, `quick type`: a NUL byte is refused `6bc8a0b7` (issue #455); invalid UTF-8 in `--stdin` is refused #521; the final Return goes 10 ms after the text #681. Port: done in `bc1f162`, `8e6be4a` and `99659f2` (upstream `6bc8a0b7`, `7b8f63cf`, `2cd47dca`).
 - `session.overlay.open --size-percent` outside 1..100 is refused #498. Port: done in `e76ffb8` (upstream `94c509bf`).

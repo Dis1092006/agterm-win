@@ -47,7 +47,8 @@ the control channel is available:
   `agtermctl` without `--socket`.
 - `AGTERM_PANE` / `AGTERM_PANE_ID` — the surface's pane role (`left`|`right`|`scratch`) and a stable
   per-surface token; the agent-status hook forwards them as `session status --pane` / `--pane-id`. The
-  token resolves the pane's LIVE slot, so a promoted-then-re-split agent still tags the right pane.
+  token resolves the pane's LIVE slot, so a promoted-then-re-split agent still tags the right pane. The same
+  token works as `session type --pane-id` and `session text --pane-id`.
 
 The app-level quick terminal is not in the tree. Its shell gets only `AGTERM_ENABLED` and `AGTERM_SOCKET`, with no window, session, workspace or pane identifiers. An overlay gets no `AGTERM_PANE`/`AGTERM_PANE_ID`. Custom-command actions from `keymap.conf` run with no `AGTERM_*` variables at all.
 
@@ -141,7 +142,9 @@ Inspect the live tree any time with `agtermctl tree --json` (workspaces → sess
 terminal title (e.g. a remote host over SSH), omitted when none was reported — read it when a
 session's local `cwd` is stale because it's connected to a remote. `surfaces[].id` is the
 control address for `surface zoom` (`left`, `right`, `scratch`, or `overlay`), including
-hidden-but-alive split/scratch surfaces. The tree object also carries five
+hidden-but-alive split/scratch surfaces. `surfaces[].paneID` is the same surface's stable token (the
+shell's `$AGTERM_PANE_ID`), the value `session type`/`session text --pane-id` takes; it is omitted when the
+surface has none. The tree object also carries five
 read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`

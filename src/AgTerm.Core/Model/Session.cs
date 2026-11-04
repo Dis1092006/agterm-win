@@ -380,6 +380,28 @@ public sealed class Session
     }
 
     /// <summary>
+    /// Resolves a command's --pane-id and --pane pair: a live token wins over the role, an empty or
+    /// null token counts as absent, and an unknown token with no role beside it is refused.
+    /// </summary>
+    public PaneAddress ResolvePaneAddress(string? token, StatusPane? pane)
+    {
+        if (string.IsNullOrEmpty(token)) return new PaneAddress.Resolved(pane);
+        return (PaneRole(token) ?? pane) is { } resolved
+            ? new PaneAddress.Resolved(resolved)
+            : new PaneAddress.UnknownToken(token);
+    }
+
+    /// <summary>The stable token of the surface in a pane's slot; empty for an empty slot or a
+    /// surface that carries none.</summary>
+    public string PaneToken(StatusPane pane) => pane switch
+    {
+        StatusPane.Left => Surface?.PaneToken ?? "",
+        StatusPane.Right => SplitSurface?.PaneToken ?? "",
+        StatusPane.Scratch => ScratchSurface?.PaneToken ?? "",
+        _ => "",
+    };
+
+    /// <summary>
     /// Takes the pane's PENDING restore-command override, clearing it so a second surface for the
     /// same pane this launch gets a plain shell. The PERSISTED overrides are neither read nor written
     /// here — they are sticky and must fire again after the next restart. Scratch always returns null.
