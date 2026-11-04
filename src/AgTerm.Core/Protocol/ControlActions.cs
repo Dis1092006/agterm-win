@@ -26,7 +26,11 @@ public interface IControlActions
     ControlResponse MoveSession(string? target, string? window, ControlSessionMove move);
     ControlResponse MoveSessions(IReadOnlyList<string> targets, string? window, ControlSessionMove move);
     ControlResponse MoveWorkspace(string? target, string? window, ReorderDirection direction);
-    ControlResponse FocusWorkspace(string? target, string? window, string? mode);
+    ControlResponse FocusWorkspace(string? target, string? window, ControlWorkspaceFocusMode mode);
+
+    /// <summary>workspace.filter: apply or release the sidebar focus filter over the marked set. No
+    /// target; the answer is always ok.</summary>
+    ControlResponse SetWorkspaceFilter(string? window, ControlToggleMode mode);
     ControlResponse SetWorkspaceExpansion(string? target, string? window, bool expanded);
     /// <summary>Set or clear a workspace's own terminal theme (the Windows-only workspace.theme); a
     /// null name clears it. The host resolves the target like RenameWorkspace and checks the name

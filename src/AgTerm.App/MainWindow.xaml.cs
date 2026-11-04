@@ -1146,6 +1146,7 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.ToggleFlaggedView] = Sync(() => true, sidebar.ToggleFlaggedView),
             [BuiltinAction.ToggleFlag] = Sync(HasSelectedSession, sidebar.ToggleActiveFlag),
             [BuiltinAction.FocusWorkspace] = Sync(HasSelectedSession, sidebar.FocusActiveWorkspaceToggle),
+            [BuiltinAction.ToggleWorkspaceFilter] = Sync(() => true, sidebar.ToggleWorkspaceFilter),
             [BuiltinAction.PreviousSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.Previous)),
             [BuiltinAction.NextSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.Next)),
             [BuiltinAction.PreviousAttentionSession] = Sync(() => true, () => sidebar.Navigate(SessionNavigation.PreviousAttention)),
@@ -2464,6 +2465,9 @@ public sealed partial class MainWindow : Window
                 break;
             case PaletteAppCommand.ClearFocus:
                 _sidebar?.ClearFocus();
+                break;
+            case PaletteAppCommand.AddWorkspaceToFocus:
+                _sidebar?.AddActiveWorkspaceToFocus();
                 break;
             case PaletteAppCommand.ExpandWorkspaces:
                 await host.StoreCoordinator.MutateAsync(store => store.ExpandAllWorkspaces(), cancellationToken);

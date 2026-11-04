@@ -82,7 +82,7 @@ public static class KeybindingsCatalog
     {
         BuiltinAction.NewWindow or BuiltinAction.RenameWindow or BuiltinAction.DeleteWindow => "Windows",
         BuiltinAction.NewWorkspace or BuiltinAction.RenameWorkspace or BuiltinAction.DeleteWorkspace
-            or BuiltinAction.FocusWorkspace => "Workspaces",
+            or BuiltinAction.FocusWorkspace or BuiltinAction.ToggleWorkspaceFilter => "Workspaces",
         BuiltinAction.ToggleSplit or BuiltinAction.ToggleScratch or BuiltinAction.ToggleTerminalZoom
             or BuiltinAction.FocusLeftPane or BuiltinAction.FocusRightPane or BuiltinAction.QuickTerminal => "Panes",
         BuiltinAction.PreviousSession or BuiltinAction.NextSession or BuiltinAction.PreviousAttentionSession
@@ -123,6 +123,7 @@ public static class KeybindingsCatalog
         BuiltinAction.ToggleFlaggedView => "Show Flagged Sessions",
         BuiltinAction.ToggleFlag => "Flag Session",
         BuiltinAction.FocusWorkspace => "Focus Workspace",
+        BuiltinAction.ToggleWorkspaceFilter => "Toggle Workspace Filter",
         BuiltinAction.FocusLeftPane => "Focus Left Pane",
         BuiltinAction.FocusRightPane => "Focus Right Pane",
         BuiltinAction.PreviousSession => "Previous Session",

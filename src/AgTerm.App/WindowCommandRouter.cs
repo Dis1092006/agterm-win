@@ -50,6 +50,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.ToggleFlaggedView] = true,
             [BuiltinAction.ToggleFlag] = true,
             [BuiltinAction.FocusWorkspace] = true,
+            [BuiltinAction.ToggleWorkspaceFilter] = true,
             [BuiltinAction.FocusLeftPane] = true,
             [BuiltinAction.FocusRightPane] = true,
             [BuiltinAction.PreviousSession] = true,

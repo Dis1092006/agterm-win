@@ -120,7 +120,7 @@ public sealed class PickerStatusTests
             var session = store.AddSession(visible.Id, @"C:\visible")!;
             store.SessionRecency.Push(session.Id);
         }
-        store.FocusedWorkspaceId = visible.Id;
+        store.SetFocusedWorkspace(visible.Id);
         var before = TitleBarState.Project(store);
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Completed), hiddenSession.Id);
         var after = TitleBarState.Project(store);

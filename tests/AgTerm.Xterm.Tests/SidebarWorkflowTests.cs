@@ -231,7 +231,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         {
             workspaceId = store.CurrentWorkspaceId!.Value;
             store.CloseSession(store.SelectedSessionId!.Value);
-            if (anotherWorkspaceExists) store.AddWorkspace("survivor", clearFocus: false);
+            if (anotherWorkspaceExists) store.AddWorkspace("survivor", revealNewWorkspace: false);
         });
         var confirmations = 0;
         using var controller = CreateController(_ =>
@@ -257,7 +257,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         {
             workspaceId = store.CurrentWorkspaceId!.Value;
             store.RenameWorkspace(workspaceId, "build");
-            survivorId = store.AddWorkspace("survivor", clearFocus: false).Id;
+            survivorId = store.AddWorkspace("survivor", revealNewWorkspace: false).Id;
         });
         var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -303,7 +303,7 @@ public sealed class SidebarWorkflowTests : IDisposable
             workspaceId = store.CurrentWorkspaceId!.Value;
             originalSessionId = store.SelectedSessionId!.Value;
             store.RenameWorkspace(workspaceId, "build");
-            store.AddWorkspace("survivor", clearFocus: false);
+            store.AddWorkspace("survivor", revealNewWorkspace: false);
         });
         var promptStarted = new TaskCompletionSource<SidebarConfirmationRequest>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -403,7 +403,7 @@ public sealed class SidebarWorkflowTests : IDisposable
             workspaceId = store.CurrentWorkspaceId!.Value;
             store.RenameWorkspace(workspaceId, "build");
             store.AddSession(workspaceId, _stateDir, select: false);
-            store.AddWorkspace("survivor", clearFocus: false);
+            store.AddWorkspace("survivor", revealNewWorkspace: false);
         });
         SidebarConfirmationRequest? prompt = null;
         using var controller = CreateController(request =>
@@ -432,7 +432,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         await _coordinator.MutateAsync(store =>
         {
             workspaceId = store.CurrentWorkspaceId!.Value;
-            store.AddWorkspace("survivor", clearFocus: false);
+            store.AddWorkspace("survivor", revealNewWorkspace: false);
         });
         using var controller = CreateController(_ => Task.FromResult(false));
 
@@ -452,8 +452,8 @@ public sealed class SidebarWorkflowTests : IDisposable
         await _coordinator.MutateAsync(store =>
         {
             workspaceId = store.CurrentWorkspaceId!.Value;
-            firstSurvivorId = store.AddWorkspace("first survivor", clearFocus: false).Id;
-            secondSurvivorId = store.AddWorkspace("second survivor", clearFocus: false).Id;
+            firstSurvivorId = store.AddWorkspace("first survivor", revealNewWorkspace: false).Id;
+            secondSurvivorId = store.AddWorkspace("second survivor", revealNewWorkspace: false).Id;
         });
         var promptStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -484,7 +484,7 @@ public sealed class SidebarWorkflowTests : IDisposable
         await _coordinator.MutateAsync(store =>
         {
             workspaceId = store.CurrentWorkspaceId!.Value;
-            otherWorkspaceId = store.AddWorkspace("temporary", clearFocus: false).Id;
+            otherWorkspaceId = store.AddWorkspace("temporary", revealNewWorkspace: false).Id;
         });
         var promptStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -796,7 +796,7 @@ public sealed class SidebarWorkflowTests : IDisposable
             await _coordinator.MutateAsync(store =>
             {
                 workspaceId = store.CurrentWorkspaceId!.Value;
-                store.AddWorkspace("survivor", clearFocus: false);
+                store.AddWorkspace("survivor", revealNewWorkspace: false);
             });
             var releasePrompt = ConfirmationGate();
             using var controller = CreateController(_ => releasePrompt.Task);

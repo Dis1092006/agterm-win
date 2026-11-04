@@ -49,7 +49,7 @@ public class AppStoreSidebarChangedTests : IDisposable
             "MoveSessions");
         Assert.True(Raised(() => _store.ReorderSession(a.Id, ReorderDirection.Bottom)) > 0,
             "ReorderSession");
-        var second = _store.AddWorkspace("w2", clearFocus: false);
+        var second = _store.AddWorkspace("w2", revealNewWorkspace: false);
         Assert.True(Raised(() => _store.MoveWorkspace(second.Id, 0)) > 0, "MoveWorkspace");
         Assert.True(Raised(() => _store.CloseSession(b.Id)) > 0, "CloseSession");
         Assert.True(Raised(() => _store.RemoveWorkspace(second.Id)) > 0, "RemoveWorkspace");

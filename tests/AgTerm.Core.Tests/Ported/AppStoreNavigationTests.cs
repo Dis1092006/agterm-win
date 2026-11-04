@@ -17,7 +17,7 @@ public sealed class AppStoreNavigationTests
         store.SetFocusedWorkspace(work.Id);
         store.NavigateSession(SessionNavigation.Next); // nav is scoped to the focused workspace (only a); wrap cycles to itself
         Assert.Equal(a.Id, store.SelectedSessionId); // stays on a — the off-focus session is never revealed
-        Assert.Equal(work.Id, store.FocusedWorkspaceId); // nav never crosses the focus boundary, so focus stands
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId); // nav never crosses the focus boundary, so focus stands
     }
 
     /// <summary>Builds a two-workspace tree (work: a, b; personal: c, d) so flattened order is [a, b, c, d].</summary>
@@ -250,9 +250,15 @@ public sealed class AppStoreNavigationTests
         var work = store.WorkspaceForSession(ids[0])!;
         store.SetFocusedWorkspace(work.Id);
         Assert.Equal(new[] { ids[0], ids[1] }, store.NavigableSessions.Select(s => s.Id)); // focused -> only that workspace
-        store.SetFocusedWorkspace(Guid.NewGuid()); // a stale focus id falls back to all
+        // marking an id that names no workspace is refused, so the focus survives intact
+        store.SetFocusedWorkspace(Guid.NewGuid());
+        Assert.Equal(new[] { ids[0], ids[1] }, store.NavigableSessions.Select(s => s.Id));
+        // an all-stale set is only reachable by writing the fields directly; visible workspaces then
+        // fall back to the whole tree, and navigation with it
+        store.FocusedWorkspaceIds = new HashSet<Guid> { Guid.NewGuid() };
+        store.FocusEnabled = true;
         Assert.Equal(ids, store.NavigableSessions.Select(s => s.Id));
-        store.SetFocusedWorkspace(null);
+        store.ClearFocus();
         store.SetFlag(true, ids[1]);
         store.SetFlag(true, ids[2]);
         store.SetSidebarMode(SidebarMode.Flagged);
@@ -274,7 +280,7 @@ public sealed class AppStoreNavigationTests
         Assert.Equal(ids[1], store.SelectedSessionId); // .last is the focused workspace's last, not the tree's
         store.NavigateSession(SessionNavigation.First);
         Assert.Equal(ids[0], store.SelectedSessionId); // .first is the focused workspace's first
-        Assert.Equal(work.Id, store.FocusedWorkspaceId); // never auto-unfocuses — every target was in-set
+        Assert.Equal(work.Id, store.SoleFocusedWorkspaceId); // never auto-unfocuses — every target was in-set
     }
 
     [Fact]
@@ -317,7 +323,7 @@ public sealed class AppStoreNavigationTests
         store.SelectSession(ids[1]); // b, the in-set last of {a,b}
         store.NavigateSession(SessionNavigation.Next);
         Assert.Equal(ids[0], store.SelectedSessionId); // scoped: wraps within {a,b} back to a, never crosses to c
-        store.SetFocusedWorkspace(null); // clearing focus restores the full navigable set
+        store.ClearFocus(); // clearing focus restores the full navigable set
         store.SelectSession(ids[1]); // b again, now in the full set [a,b,c,d]
         store.NavigateSession(SessionNavigation.Next);
         Assert.Equal(ids[2], store.SelectedSessionId); // now crosses into the personal workspace

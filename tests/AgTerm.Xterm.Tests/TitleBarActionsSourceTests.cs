@@ -90,6 +90,7 @@ public sealed class TitleBarActionsSourceTests
         Assert.Contains("_applicationHost.ReloadConfigAsync(", body, StringComparison.Ordinal);
         Assert.Contains("_sidebar?.RequestClearFlags()", body, StringComparison.Ordinal);
         Assert.Contains("_sidebar?.ClearFocus()", body, StringComparison.Ordinal);
+        Assert.Contains("_sidebar?.AddActiveWorkspaceToFocus()", body, StringComparison.Ordinal);
         Assert.Contains("store.ExpandAllWorkspaces()", body, StringComparison.Ordinal);
         Assert.Contains("store.CollapseOtherWorkspaces()", body, StringComparison.Ordinal);
 

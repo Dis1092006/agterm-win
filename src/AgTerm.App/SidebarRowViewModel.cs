@@ -202,10 +202,18 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public Brush DefaultIconFill { get; init; } = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
 
     public Brush IconFill => SidebarSessionIcon.IsFilled(_row.Flagged, _mode)
-        ? _look.Row is { } colors
-            ? BrushFrom(colors.Foreground, alpha: 0x60)
-            : DefaultIconFill
+        ? MarkFill()
         : new SolidColorBrush(Colors.Transparent);
+
+    /// <summary>A workspace in the focus set draws the filled grid (upstream square.grid.2x2.fill),
+    /// keyed on membership alone so the marked set stays legible with the filter off.</summary>
+    public Brush GridIconFill => IsWorkspace && _row.Focused
+        ? MarkFill()
+        : new SolidColorBrush(Colors.Transparent);
+
+    private Brush MarkFill() => _look.Row is { } colors
+        ? BrushFrom(colors.Foreground, alpha: 0x60)
+        : DefaultIconFill;
 
     // agent-status glyph (idle → hidden; shape/color resolved per-call → settings → defaults)
     public Visibility GlyphVisibility =>
@@ -290,7 +298,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
               nameof(WorkspaceGlyph), nameof(WorkspaceGlyphVisibility), nameof(GridIconVisibility),
               nameof(WorkspaceImage), nameof(WorkspaceImageVisibility),
               nameof(FontSize), nameof(RowHeight),
-              nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill),
+              nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill), nameof(GridIconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),
               nameof(GlyphData), nameof(BadgeVisibility), nameof(BadgeText),
               nameof(AutomationName), nameof(ChevronAutomationName),

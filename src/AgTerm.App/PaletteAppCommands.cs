@@ -13,6 +13,7 @@ public enum PaletteAppCommand
     ReloadConfig,
     ClearFlagged,
     ClearFocus,
+    AddWorkspaceToFocus,
     ExpandWorkspaces,
     CollapseWorkspaces,
 }
@@ -26,6 +27,7 @@ public static class PaletteAppCommands
         PaletteAppCommand.ReloadConfig,
         PaletteAppCommand.ClearFlagged,
         PaletteAppCommand.ClearFocus,
+        PaletteAppCommand.AddWorkspaceToFocus,
         PaletteAppCommand.ExpandWorkspaces,
         PaletteAppCommand.CollapseWorkspaces,
     ];
@@ -37,6 +39,7 @@ public static class PaletteAppCommands
         PaletteAppCommand.ReloadConfig => "app:reload-config",
         PaletteAppCommand.ClearFlagged => "app:clear-flagged",
         PaletteAppCommand.ClearFocus => "app:clear-focus",
+        PaletteAppCommand.AddWorkspaceToFocus => "app:add-workspace-to-focus",
         PaletteAppCommand.ExpandWorkspaces => "app:expand-workspaces",
         PaletteAppCommand.CollapseWorkspaces => "app:collapse-workspaces",
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, null),
@@ -49,6 +52,7 @@ public static class PaletteAppCommands
         PaletteAppCommand.ReloadConfig => "Reload Config",
         PaletteAppCommand.ClearFlagged => "Clear Flagged",
         PaletteAppCommand.ClearFocus => "Clear Focus",
+        PaletteAppCommand.AddWorkspaceToFocus => "Add Workspace to Focus",
         PaletteAppCommand.ExpandWorkspaces => "Expand Workspaces",
         PaletteAppCommand.CollapseWorkspaces => "Collapse Workspaces",
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, null),
@@ -57,7 +61,11 @@ public static class PaletteAppCommands
     public static bool IsVisible(PaletteAppCommand command, AppStore store) => command switch
     {
         PaletteAppCommand.ClearFlagged => store.FlaggedSessions.Count > 0,
-        PaletteAppCommand.ClearFocus => store.FocusedWorkspaceId is not null,
+        // the marked set, not the applied filter: it is what Clear Focus empties
+        PaletteAppCommand.ClearFocus => store.FocusedWorkspaceIds.Count > 0,
+        // hidden where it would change nothing; offered in either sidebar mode
+        PaletteAppCommand.AddWorkspaceToFocus =>
+            store.CurrentWorkspaceId is not null && !store.IsCurrentWorkspaceFocusMember,
         PaletteAppCommand.ExpandWorkspaces or PaletteAppCommand.CollapseWorkspaces =>
             store.SidebarMode == SidebarMode.Tree,
         _ => true,

@@ -204,8 +204,46 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         Assert.Contains("invalid focus mode", bad["error"]!.GetValue<string>());
     }
 
+    // workspace.focus add marks a workspace without applying the filter; workspace.filter applies or
+    // lifts it and the tree reports it as workspaceFilter. The marked set survives the filter switching.
+    [Fact]
+    public void WorkspaceFilterAppliesAndLiftsTheMarkedSet()
+    {
+        var tree = SendCommand("""{"cmd":"tree"}""");
+        var firstWsID = tree["result"]!["tree"]!["workspaces"]![0]!["id"]!.GetValue<string>();
+        var secondWsID = SendCommand("""{"cmd":"workspace.new","args":{"name":"second"}}""")["result"]!["id"]!
+            .GetValue<string>();
+        Assert.True(SendCommand($$$"""{"cmd":"session.new","args":{"workspace":"{{{secondWsID}}}"}}""")["ok"]!
+            .GetValue<bool>(), "the second workspace needs a session");
+        Assert.True(SendCommand($$$"""{"cmd":"workspace.select","target":"{{{firstWsID}}}"}""")["ok"]!
+            .GetValue<bool>(), "selecting the first workspace should succeed");
+
+        Assert.False(WorkspaceFilter(), "the filter starts off and the tree still reports it");
+
+        // add marks the workspace; the filter stays off, so both workspaces stay visible.
+        Assert.True(SendCommand($$$"""{"cmd":"workspace.focus","target":"{{{firstWsID}}}","args":{"mode":"add"}}""")["ok"]!
+            .GetValue<bool>(), "workspace.focus add should succeed");
+        Assert.True(WorkspaceFocused(firstWsID), "the added workspace is a member of the set");
+        Assert.False(WorkspaceFocused(secondWsID));
+        Assert.False(WorkspaceFilter(), "add does not apply the filter");
+
+        // filter on applies the marked set; filter off lifts it.
+        Assert.True(SendCommand("""{"cmd":"workspace.filter","args":{"mode":"on"}}""")["ok"]!.GetValue<bool>());
+        Assert.True(WorkspaceFilter(), "workspace.filter on applies the filter");
+        Assert.True(SendCommand("""{"cmd":"workspace.filter","args":{"mode":"off"}}""")["ok"]!.GetValue<bool>());
+        Assert.False(WorkspaceFilter());
+        Assert.True(WorkspaceFocused(firstWsID), "lifting the filter keeps the marked set");
+
+        // no mode toggles.
+        Assert.True(SendCommand("""{"cmd":"workspace.filter"}""")["ok"]!.GetValue<bool>());
+        Assert.True(WorkspaceFilter(), "workspace.filter without a mode toggles");
+
+        var bad = SendCommand("""{"cmd":"workspace.filter","args":{"mode":"bogus"}}""");
+        Assert.False(bad["ok"]!.GetValue<bool>(), $"an invalid filter mode should error: {bad.ToJsonString()}");
+    }
+
     // --no-select --create-workspace preserves the workspace-focus filter. A plain --create-workspace
-    // clears focusedWorkspaceID (addWorkspace's auto-reveal); --no-select threads clearFocus:false so a
+    // clears focusedWorkspaceID (addWorkspace's auto-reveal); --no-select threads revealNewWorkspace:false so a
     // background create leaves the focused workspace (and the current session selection) untouched.
     [Fact]
     public void SessionNewNoSelectCreateWorkspacePreservesFocus()
@@ -740,6 +778,10 @@ public class ControlSidebarStatusTests : ControlApiTestCase
     /// (omitted = not focused) — the port of workspaceFocused(_:timeout:), poll dropped.</summary>
     private bool WorkspaceFocused(string id) =>
         WorkspaceNode(id)["focused"]?.GetValue<bool>() == true;
+
+    /// <summary>The tree's top-level workspaceFilter flag: whether the focus filter applies.</summary>
+    private bool WorkspaceFilter() =>
+        SendCommand("""{"cmd":"tree"}""")["result"]!["tree"]!["workspaceFilter"]!.GetValue<bool>();
 
     /// <summary>The flagged-mode row count: the flat flagged view lists exactly the flagged
     /// sessions, so the upstream session-row count maps to counting flagged == true.</summary>

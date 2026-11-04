@@ -21,6 +21,7 @@ internal static class WorkspaceCommands
         workspace.Subcommands.Add(BuildGo(bindings));
         workspace.Subcommands.Add(BuildMove(bindings));
         workspace.Subcommands.Add(BuildFocus(bindings));
+        workspace.Subcommands.Add(BuildFilter(bindings));
         workspace.Subcommands.Add(BuildCollapse(bindings));
         workspace.Subcommands.Add(BuildExpand(bindings));
         workspace.Subcommands.Add(BuildTheme(bindings));
@@ -230,8 +231,8 @@ internal static class WorkspaceCommands
 
         public void Validate()
         {
-            if (Mode is not ("on" or "off" or "toggle"))
-                throw new CliValidationException("mode must be on, off, or toggle");
+            if (ControlWorkspaceFocusModes.Parse(Mode) is null)
+                throw new CliValidationException($"mode must be one of: {ControlWorkspaceFocusModes.ValidNamesPhrase}");
         }
 
         public ControlRequest MakeRequest() => new()
@@ -245,10 +246,10 @@ internal static class WorkspaceCommands
     private static System.CommandLine.Command BuildFocus(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("focus",
-            "Focus the sidebar on a single workspace (on|off|toggle).");
+            $"Mark a workspace in the sidebar focus set ({ControlWorkspaceFocusModes.ValidNamesList}).");
         var mode = new Argument<string>("mode")
         {
-            Description = "Mode: on (focus), off (unfocus), or toggle (default).",
+            Description = $"Mode: {ControlWorkspaceFocusModes.HelpPhrase}.",
             Arity = ArgumentArity.ZeroOrOne,
             DefaultValueFactory = _ => "toggle",
         };
@@ -261,6 +262,48 @@ internal static class WorkspaceCommands
         {
             Mode = result.GetValue(mode) ?? "toggle",
             Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    /// <summary>`agtermctl workspace filter [on|off|toggle] [--window W]` — turns the sidebar's workspace
+    /// focus filter on or off for a whole window and keeps the marked set. It has no `--target`.</summary>
+    internal sealed class Filter : IRequestCommand
+    {
+        public string Mode { get; init; } = "toggle";
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public void Validate()
+        {
+            if (Mode is not ("on" or "off" or "toggle"))
+                throw new CliValidationException("mode must be on, off, or toggle");
+        }
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.WorkspaceFilter,
+            Args = Client.WithWindow(new ControlArgs { Mode = Mode }),
+        };
+    }
+
+    private static System.CommandLine.Command BuildFilter(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("filter",
+            "Turn the sidebar workspace focus filter on or off (on|off|toggle).");
+        var mode = new Argument<string>("mode")
+        {
+            Description = "Mode: on, off, or toggle (default).",
+            Arity = ArgumentArity.ZeroOrOne,
+            DefaultValueFactory = _ => "toggle",
+        };
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(mode);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Filter
+        {
+            Mode = result.GetValue(mode) ?? "toggle",
             Client = options.Read(result),
         });
         return cmd;

@@ -87,6 +87,7 @@ public sealed partial class SidebarView : UserControl
         NewWorkspaceButton.Visibility = VisibleUnless(settings, InterfaceElement.NewWorkspace);
         NewSessionButton.Visibility = VisibleUnless(settings, InterfaceElement.NewSession);
         FlaggedToggle.Visibility = VisibleUnless(settings, InterfaceElement.FlaggedView);
+        FocusFilterToggle.Visibility = VisibleUnless(settings, InterfaceElement.FocusFilter);
     }
 
     /// <summary>upstream helpHint on the footer buttons: each tooltip names the shortcut that runs it.</summary>
@@ -98,6 +99,14 @@ public sealed partial class SidebarView : UserControl
         ToolTipService.SetToolTip(NewSessionButton,
             WindowsShortcutText.Hint("New Session", keymap, BuiltinAction.NewSession));
         ApplyFlaggedHint();
+        ApplyFocusFilterHint();
+    }
+
+    private void ApplyFocusFilterHint()
+    {
+        var text = _snapshot?.FocusEnabled == true ? "Show all workspaces" : "Show only focused workspaces";
+        ToolTipService.SetToolTip(FocusFilterToggle,
+            WindowsShortcutText.Hint(text, _keymap, BuiltinAction.ToggleWorkspaceFilter));
     }
 
     private void ApplyFlaggedHint()
@@ -141,10 +150,12 @@ public sealed partial class SidebarView : UserControl
         // upstream mutes the disabled toggle by hand: its glyph keeps the chrome foreground
         FlaggedToggle.IsEnabled = flagged || snapshot.FlaggedCount > 0;
         FlaggedToggle.Opacity = FlaggedToggle.IsEnabled ? 1 : 0.35;
-        FocusPill.Visibility = snapshot.FocusedWorkspaceName is null
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        FocusPillText.Text = snapshot.FocusedWorkspaceName ?? "";
+        FocusFilterToggle.IsChecked = snapshot.FocusEnabled;
+        FocusFilterGlyph.Fill = snapshot.FocusEnabled ? FocusFilterGlyph.Stroke : null;
+        // nothing marked means nothing to filter to; the flagged toggle mutes itself the same way
+        FocusFilterToggle.IsEnabled = snapshot.FocusMemberIds.Count > 0;
+        FocusFilterToggle.Opacity = FocusFilterToggle.IsEnabled ? 1 : 0.35;
+        ApplyFocusFilterHint();
     }
 
     private void RefreshRealizedRowAutomationNames()
@@ -635,9 +646,13 @@ public sealed partial class SidebarView : UserControl
         flyout.Items.Add(Item("Icon…", () => WorkspaceIconRequested?.Invoke(row.Id)));
         flyout.Items.Add(Item("New Session", () => _controller?.NewSession(row.Id)));
         flyout.Items.Add(Item("Open Directory…", () => _ = OpenDirectoryIntoAsync(row.Id)));
-        var focused = _snapshot?.FocusedWorkspaceId == row.Id;
-        flyout.Items.Add(Item(focused ? "Unfocus" : "Focus",
+        flyout.Items.Add(new MenuFlyoutSeparator());
+        var sole = _snapshot?.FocusedWorkspaceId == row.Id;
+        flyout.Items.Add(Item(sole ? "Unfocus" : "Focus",
             () => _controller?.FocusWorkspaceToggle(row.Id)));
+        var member = _snapshot?.FocusMemberIds.Contains(row.Id) == true;
+        flyout.Items.Add(Item(member ? "Remove from Focus" : "Add to Focus",
+            () => _controller?.ToggleFocusMembership(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
         var delete = Item("Delete Workspace", () =>
             _controller?.RequestDeleteWorkspace(row.Id, CurrentCloseOptions().GraceUndo));
@@ -674,7 +689,8 @@ public sealed partial class SidebarView : UserControl
     private void OnFlaggedToggleClick(object sender, RoutedEventArgs e) =>
         _controller?.ToggleFlaggedView();
 
-    private void OnFocusPillClick(object sender, RoutedEventArgs e) => _controller?.ClearFocus();
+    private void OnFocusFilterClick(object sender, RoutedEventArgs e) =>
+        _controller?.ToggleWorkspaceFilter();
 
     private void OnNewWorkspaceClick(object sender, RoutedEventArgs e) =>
         _controller?.NewWorkspace();
@@ -766,7 +782,7 @@ public sealed partial class SidebarView : UserControl
         if (_draggedWorkspace is { } workspace)
         {
             // slot from the workspace-row midpoints only (session rows are ignored, upstream-style)
-            var raw = 0;
+            var slot = 0;
             for (var i = 0; i < _items.Count; i++)
             {
                 if (!_items[i].IsWorkspace) continue;
@@ -774,9 +790,9 @@ public sealed partial class SidebarView : UserControl
                 var bounds = container.TransformToVisual(RowsList)
                     .TransformBounds(new Windows.Foundation.Rect(0, 0,
                         container.ActualWidth, container.ActualHeight));
-                if (position.Y > bounds.Top + bounds.Height / 2) raw++;
+                if (position.Y > bounds.Top + bounds.Height / 2) slot++;
             }
-            _controller.DropWorkspace(workspace, raw);
+            _controller.DropWorkspace(workspace, slot);
         }
         else if (_draggedSessions.Count > 0)
         {

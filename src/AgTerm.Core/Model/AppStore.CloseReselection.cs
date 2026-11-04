@@ -6,31 +6,32 @@ public sealed partial class AppStore
 {
     /// <summary>
     /// Picks the next selection after CLOSING the active session at location: the
-    /// most-recently-active surviving session, else the positional ReselectionTarget. The MRU scope
-    /// is deliberately narrowed to the closing session's own workspace; once the close leaves that
-    /// workspace with nothing in scope, the scope widens rather than falling straight to a
-    /// positional jump into the first workspace. The flagged sidebar filter DOES scope the pick
-    /// (and the positional fallback); the FOCUS filter deliberately does NOT — focus is a property
-    /// of the TREE, not of the selection, and every caller runs AutoUnfocusIfOutsideFocus on the
-    /// pick. The scope is built from the TREE, so a session already removed there cannot come back
-    /// even when it survives in SessionRecency (the soft-close paths keep it there for undo).
+    /// most-recently-active surviving session, else a positional walk. The MRU scope narrows to the
+    /// closing session's own workspace intersected with the VISIBLE set (NavigableSessions, so both
+    /// the flagged list and the focus filter apply): an unscoped survivor could pull the user into
+    /// another workspace, and a pick the sidebar is not drawing would strand the selection.
+    /// Exhausting a scope widens through three levels: that workspace's visible sessions, everything
+    /// visible, the whole tree. Only a widened scope with no recency falls to a positional walk, and
+    /// while any narrowing is applied that is the flattened in-scope walk over the widened scope,
+    /// not ReselectionTarget; narrowed keys on the mode, so it stays true after the widening.
+    /// A pick outside the marked set meets each caller's DisableFocusIfSelectionOutsideSet. The scope
+    /// is built from the TREE, so a session already removed there cannot come back even when it
+    /// survives in SessionRecency (the soft-close paths keep it there for undo).
     /// </summary>
     internal Guid? CloseReselectionTarget((int WorkspaceIndex, int SessionIndex) after)
     {
-        var filtered = SidebarMode == SidebarMode.Flagged
-            ? FlaggedSessions.Select(s => s.Id).ToHashSet()
-            : Workspaces.SelectMany(w => w.Sessions).Select(s => s.Id).ToHashSet();
-        var inWorkspace = Workspaces[after.WorkspaceIndex].Sessions.Select(s => s.Id).ToHashSet();
-        var sameWorkspace = new HashSet<Guid>(inWorkspace);
-        sameWorkspace.IntersectWith(filtered);
-        var scope = sameWorkspace.Count == 0 ? filtered : sameWorkspace;
+        var visible = NavigableSessions.Select(s => s.Id).ToHashSet();
+        var everything = Workspaces.SelectMany(w => w.Sessions).Select(s => s.Id).ToHashSet();
+        var sameWorkspace = Workspaces[after.WorkspaceIndex].Sessions.Select(s => s.Id).ToHashSet();
+        sameWorkspace.IntersectWith(visible);
+        // the whole-tree level is what makes widen mean widen: without it an emptied visible scope
+        // falls to a positional jump into the first workspace
+        var scope = sameWorkspace.Count > 0 ? sameWorkspace : visible.Count > 0 ? visible : everything;
         var recent = SessionRecency.Top(1, scope);
         if (recent.Count > 0) return recent[0];
-        // ReselectionTarget walks the tree positionally, so in flagged mode it can land on an
-        // unflagged sibling the sidebar isn't rendering. Keep the fallback inside the filter, but
-        // keep it POSITIONAL: the nearest in-scope neighbor. When the close took the LAST flagged
-        // session anywhere, scope is empty and the positional pick stands.
-        if (SidebarMode == SidebarMode.Flagged && NearestInScopeTarget(after, scope) is { } inScope)
+        // reachable with no recency at all, e.g. the first close after a restore
+        var narrowed = SidebarMode == SidebarMode.Flagged || FocusEnabled;
+        if (narrowed && NearestInScopeTarget(after, scope) is { } inScope)
         {
             return inScope;
         }

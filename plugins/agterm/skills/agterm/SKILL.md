@@ -15,7 +15,7 @@ description: >
 when_to_use: >
   Trigger on: agterm, agterm-win, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.scratch, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
-  session.flag, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, window.new, window.list,
+  session.flag, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
   window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, select theme, edit keymap,
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
@@ -144,8 +144,8 @@ session's local `cwd` is stale because it's connected to a remote. `surfaces[].i
 control address for `surface zoom` (`left`, `right`, `scratch`, or `overlay`), including
 hidden-but-alive split/scratch surfaces. `surfaces[].paneID` is the same surface's stable token (the
 shell's `$AGTERM_PANE_ID`), the value `session type`/`session text --pane-id` takes; it is omitted when the
-surface has none. The tree object also carries five
-read-only top-level fields: `idleMs` (ms since the last user input in the window), `autoFollowMs`
+surface has none. The tree object also carries six
+read-only top-level fields: `workspaceFilter` (whether the sidebar focus filter is applied, reported even when false), `idleMs` (ms since the last user input in the window), `autoFollowMs`
 (the Auto-follow timeout in ms, omitted when Disabled), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
 (`tree` or `flagged` — the read side of `sidebar mode`), and `quickVisible` (the same app-level panel visibility in every window's tree). List windows with
@@ -246,8 +246,8 @@ rebaselined. There is no terminal-output event stream.
 it with `session new --no-select` without it opening) · `rename <name>` · `delete` · `select` ·
 `move --to up|down|top|bottom` ·
 `theme [NAME]` (the workspace's own terminal theme; no name clears it) · `icon [NAME]` (the workspace's own sidebar icon, a Segoe Fluent Icons name or the path of an .ico, .png or .svg file such as a project's favicon; no name clears it; `agtermctl icon list` prints the names) ·
-`focus [on|off|toggle]` (collapse the sidebar tree to a single workspace; read back which workspace is
-focused from the tree workspace node's `focused` flag) ·
+`focus [on|off|toggle|add]` (mark a workspace in the sidebar focus set; `add` marks without applying the filter; read the marked set back from the tree workspace nodes' `focused` flag) ·
+`filter [on|off|toggle] [--window W]` (apply or lift the sidebar filter over the marked set, keeping the set; no `--target`; read back from the tree's top-level `workspaceFilter`) ·
 `collapse [--target W] [--window W]` · `expand [--target W] [--window W]` (collapse/expand ONE workspace
 in the sidebar tree — the per-workspace pair, distinct from the all-workspace `sidebar expand`/`collapse`;
 read the open/closed state back from the tree workspace node's `collapsed` flag, `true` when collapsed and

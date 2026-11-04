@@ -25,7 +25,7 @@ public class SidebarProjectionTests : IDisposable
         var w1 = _store.AddWorkspace("work");
         var a = _store.AddSession(w1.Id, "C:\\proj\\api")!;
         var b = _store.AddSession(w1.Id, "C:\\proj\\web", select: false)!;
-        var w2 = _store.AddWorkspace("personal", clearFocus: false);
+        var w2 = _store.AddWorkspace("personal", revealNewWorkspace: false);
         var c = _store.AddSession(w2.Id, "C:\\home", select: false)!;
         _store.SelectSession(a.Id);
         return (w1, w2, a, b, c);

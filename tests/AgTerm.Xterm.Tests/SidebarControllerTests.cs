@@ -65,6 +65,51 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void Focus_set_gestures_build_a_set_and_switch_the_filter_without_losing_it()
+    {
+        Guid w1 = Latest.Workspaces[0].Id, w2 = default, w3 = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            w3 = store.AddWorkspace("w3", revealNewWorkspace: false).Id;
+        });
+
+        _controller.ToggleFocusMembership(w2);
+        _controller.ToggleFocusMembership(w3);
+        Assert.Equal(new[] { w2, w3 }.Order(), Latest.FocusMemberIds.Order());
+        Assert.False(Latest.FocusEnabled);
+        Assert.Null(Latest.FocusedWorkspaceId);
+        Assert.Equal(3, Latest.Rows.Count(r => r.Kind == SidebarRowKind.Workspace));
+
+        _controller.ToggleWorkspaceFilter();
+        Assert.True(Latest.FocusEnabled);
+        Assert.Equal(new[] { w2, w3 }.Order(),
+            Latest.Rows.Where(r => r.Kind == SidebarRowKind.Workspace).Select(r => r.Id).Order());
+        Assert.DoesNotContain(Latest.Rows, r => r.Id == w1);
+
+        _controller.ToggleWorkspaceFilter();
+        Assert.False(Latest.FocusEnabled);
+        Assert.Equal(new[] { w2, w3 }.Order(), Latest.FocusMemberIds.Order());
+
+        _controller.ToggleFocusMembership(w2);
+        _controller.ToggleFocusMembership(w3);
+        _controller.ToggleWorkspaceFilter();
+        Assert.False(Latest.FocusEnabled);
+        Assert.Empty(Latest.FocusMemberIds);
+    }
+
+    [Fact]
+    public void Add_active_workspace_to_focus_marks_it_without_turning_the_filter_on()
+    {
+        var active = Latest.Workspaces[0].Id;
+
+        _controller.AddActiveWorkspaceToFocus();
+
+        Assert.Equal([active], Latest.FocusMemberIds);
+        Assert.False(Latest.FocusEnabled);
+    }
+
+    [Fact]
     public void Start_broadcasts_the_bootstrap_snapshot()
     {
         Assert.NotEmpty(_snapshots);
@@ -105,7 +150,7 @@ public sealed class SidebarControllerTests : IDisposable
         Guid w2 = default, background = default;
         Mutate(store =>
         {
-            w2 = store.AddWorkspace("w2", clearFocus: false).Id;
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
             background = store.AddSession(w2, _stateDir, select: false)!.Id;
         });
 
@@ -161,7 +206,7 @@ public sealed class SidebarControllerTests : IDisposable
         Assert.DoesNotContain(Latest.Rows, r => r.Id == created || r.Id == duplicated);
 
         Guid w2 = default;
-        Mutate(store => w2 = store.AddWorkspace("w2", clearFocus: false).Id);
+        Mutate(store => w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id);
         _controller.DeleteWorkspace(w2);
         Assert.DoesNotContain(Latest.Workspaces, w => w.Id == w2);
     }
@@ -331,14 +376,35 @@ public sealed class SidebarControllerTests : IDisposable
             Latest.Rows.Where(r => r.Kind == SidebarRowKind.Session).Select(r => r.Id));
 
         Guid w2 = default;
-        Mutate(store => w2 = store.AddWorkspace("w2", clearFocus: false).Id);
+        Mutate(store => w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id);
         var count = _snapshots.Count;
-        _controller.DropWorkspace(w2, rawIndex: 2); // already last → no-op, no reorder broadcastworthy
+        _controller.DropWorkspace(w2, slot: 2); // already last → no-op, no reorder broadcastworthy
         Assert.Equal(new[] { w1, w2 }, Latest.Workspaces.Select(w => w.Id));
         _ = count;
 
-        _controller.DropWorkspace(w2, rawIndex: 0);
+        _controller.DropWorkspace(w2, slot: 0);
         Assert.Equal(new[] { w2, w1 }, Latest.Workspaces.Select(w => w.Id));
+    }
+
+    [Fact]
+    public void Workspace_drop_under_the_filter_lands_next_to_the_row_it_was_aimed_at()
+    {
+        Guid w1 = Latest.Workspaces[0].Id, w2 = default, w3 = default, w4 = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            w3 = store.AddWorkspace("w3", revealNewWorkspace: false).Id;
+            w4 = store.AddWorkspace("w4", revealNewWorkspace: false).Id;
+        });
+        _controller.ToggleFocusMembership(w2);
+        _controller.ToggleFocusMembership(w4);
+        _controller.ToggleWorkspaceFilter();
+        Assert.Equal([w2, w4], Latest.Rows.Where(r => r.Kind == SidebarRowKind.Workspace).Select(r => r.Id));
+
+        // slot 0 is above the first rendered row: w4 lands just before w2, not before the hidden w1
+        _controller.DropWorkspace(w4, slot: 0);
+
+        Assert.Equal([w1, w4, w2, w3], Latest.Workspaces.Select(w => w.Id));
     }
 
     [Fact]

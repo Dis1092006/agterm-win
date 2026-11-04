@@ -39,7 +39,7 @@ public class SkillTextTests
         Assert.Contains("else the last one", addressing);
 
         var examples = ReadSkill("examples.md");
-        var focus = examples[examples.IndexOf("## Focus a single workspace", StringComparison.Ordinal)..];
+        var focus = examples[examples.IndexOf("## Focus a set of workspaces", StringComparison.Ordinal)..];
         focus = focus[..focus.IndexOf("## Build a collapsed workspace", StringComparison.Ordinal)];
         Assert.Contains("`--target`, which defaults to `active`", focus);
         Assert.DoesNotContain("the workspace of the active session", focus);
@@ -143,7 +143,7 @@ public class SkillTextTests
             .Select(c => (string)c!["wire"]!)
             .Where(w => !OutOfParity.Contains(w))
             .ToList();
-        Assert.Equal(80, wire.Count);
+        Assert.Equal(81, wire.Count);
 
         var reference = ReadSkill("reference.md");
         var missing = wire.Where(w => !reference.Contains($"`{w}`", StringComparison.Ordinal)).ToList();

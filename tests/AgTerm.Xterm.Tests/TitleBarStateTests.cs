@@ -114,7 +114,7 @@ public sealed class TitleBarStateTests
         _store.Workspaces.Add(other);
         Add(@"C:\out", other);
         Add(@"C:\active");
-        _store.FocusedWorkspaceId = _workspace.Id;
+        _store.SetFocusedWorkspace(_workspace.Id);
 
         Assert.Equal(new[] { inside.Id }, TitleBarState.Project(_store).RecentSessions.Select(r => r.Id));
     }

@@ -48,7 +48,7 @@ public class AppStoreCurrentWorkspaceTests
     public void BackgroundCreateDoesNotBecomeCurrent()
     {
         var (store, work, _) = StoreWithSelection();
-        store.AddWorkspace("background", clearFocus: false);
+        store.AddWorkspace("background", revealNewWorkspace: false);
         Assert.Equal(work.Id, store.CurrentWorkspaceId);
     }
 
@@ -74,7 +74,7 @@ public class AppStoreCurrentWorkspaceTests
     public void SelectingAnEmptyWorkspaceStillMakesItCurrent()
     {
         var (store, _, session) = StoreWithSelection();
-        var empty = store.AddWorkspace("empty", clearFocus: false);
+        var empty = store.AddWorkspace("empty", revealNewWorkspace: false);
         Assert.True(store.SelectWorkspace(empty.Id));
         Assert.Equal(session.Id, store.SelectedSessionId);
         Assert.Equal(empty.Id, store.CurrentWorkspaceId);
@@ -84,10 +84,10 @@ public class AppStoreCurrentWorkspaceTests
     public void SelectingAnEmptyWorkspaceHiddenByTheFocusFilterRevealsIt()
     {
         var (store, work, _) = StoreWithSelection();
-        var empty = store.AddWorkspace("empty", clearFocus: false);
+        var empty = store.AddWorkspace("empty", revealNewWorkspace: false);
         store.SetFocusedWorkspace(work.Id);
         Assert.True(store.SelectWorkspace(empty.Id));
-        Assert.Null(store.FocusedWorkspaceId);
+        Assert.Null(store.SoleFocusedWorkspaceId);
         Assert.Equal(empty.Id, store.CurrentWorkspaceId);
     }
 
@@ -124,7 +124,7 @@ public class AppStoreCurrentWorkspaceTests
         var (store, work, _) = StoreWithSelection();
         store.AddWorkspace("fresh");
         store.SetFocusedWorkspace(work.Id);
-        store.SetFocusedWorkspace(null);
+        store.ClearFocus();
         Assert.Equal(work.Id, store.CurrentWorkspaceId);
     }
 

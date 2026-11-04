@@ -56,6 +56,35 @@ public static class ControlToggleModes
     };
 }
 
+/// <summary>The four modes workspace.focus accepts; the wire tokens are on, off, toggle and add. Add
+/// leaves the filter flag alone so a set is built member by member with the whole tree on screen: an
+/// add that enabled the filter would hide the rows the next add needs. There is no membership-toggle
+/// mode: the row menu computes its own direction and maps to add or off.</summary>
+public enum ControlWorkspaceFocusMode { On, Off, Toggle, Add }
+
+public static class ControlWorkspaceFocusModes
+{
+    private static readonly (ControlWorkspaceFocusMode Mode, string Token, string Help)[] All =
+    {
+        (ControlWorkspaceFocusMode.On, "on", "on (mark it alone and apply the filter)"),
+        (ControlWorkspaceFocusMode.Off, "off", "off (unmark it; the filter switches off as the set empties)"),
+        (ControlWorkspaceFocusMode.Toggle, "toggle", "toggle (replace-toggle and apply the filter, the default; clears when it is the only marked one AND the filter is applied)"),
+        (ControlWorkspaceFocusMode.Add, "add", "add (mark it alongside the others, leaving the filter flag alone)"),
+    };
+
+    /// <summary>Pipe-joined (on|off|toggle|add) for the dispatcher's rejection message.</summary>
+    public static string ValidNamesList => string.Join("|", All.Select(a => a.Token));
+
+    /// <summary>Comma-joined (on, off, toggle, add) for the agtermctl workspace focus local rejection.</summary>
+    public static string ValidNamesPhrase => string.Join(", ", All.Select(a => a.Token));
+
+    /// <summary>Every mode's one-clause help, comma-joined: the whole --help sentence.</summary>
+    public static string HelpPhrase => string.Join(", ", All.Select(a => a.Help));
+
+    public static ControlWorkspaceFocusMode? Parse(string raw) =>
+        All.Where(a => a.Token == raw).Select(a => (ControlWorkspaceFocusMode?)a.Mode).FirstOrDefault();
+}
+
 /// <summary>Parsed pane selector for session.focus, including the default/toggle aliases.</summary>
 public enum ControlPaneFocusMode { Primary, Split, Toggle }
 

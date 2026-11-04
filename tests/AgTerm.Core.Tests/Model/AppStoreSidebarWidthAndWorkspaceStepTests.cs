@@ -111,7 +111,7 @@ public class AppStoreSidebarWidthAndWorkspaceStepTests
         var store = AppStoreFixtures.MakeStore();
         var a = store.AddWorkspace("a");
         store.AddSession(a.Id, "/a");
-        var empty = store.AddWorkspace("empty", clearFocus: false);
+        var empty = store.AddWorkspace("empty", revealNewWorkspace: false);
         store.SelectSession(a.Sessions[0].Id);
 
         Assert.Equal(empty.Id, store.NavigateWorkspace(WorkspaceNavigation.Next));
@@ -127,7 +127,7 @@ public class AppStoreSidebarWidthAndWorkspaceStepTests
 
         Assert.False(store.CanStepWorkspaces);
         Assert.Null(store.NavigateWorkspace(WorkspaceNavigation.Next));
-        Assert.Equal(b.Id, store.FocusedWorkspaceId);
+        Assert.Equal(b.Id, store.SoleFocusedWorkspaceId);
         Assert.NotEqual(a.Id, store.CurrentWorkspaceId);
     }
 

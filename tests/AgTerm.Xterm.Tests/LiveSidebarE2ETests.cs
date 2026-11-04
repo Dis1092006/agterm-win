@@ -232,7 +232,7 @@ public sealed class LiveSidebarE2ETests : IDisposable
         {
             Assert.Equal(333, store.SidebarWidth);
             Assert.False(store.SidebarVisible);
-            Assert.Equal(Guid.Parse(w2), store.FocusedWorkspaceId);
+            Assert.Equal(Guid.Parse(w2), store.SoleFocusedWorkspaceId);
         });
 
         // the restored deck is eager: the background session still types without a select

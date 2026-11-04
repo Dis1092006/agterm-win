@@ -6,16 +6,26 @@ namespace AgTerm.Core.Tests.Keymap;
 
 public class BuiltinActionTests
 {
+    // the pin's actions plus the ones parity/adopted.json takes from upstream, with upstream's chord
     private static List<(string Wire, string? DefaultChord)> SurfaceActions()
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(Repo.File("parity/surface.json")));
-        return doc.RootElement.GetProperty("keymap").GetProperty("actions")
+        var pin = doc.RootElement.GetProperty("keymap").GetProperty("actions")
             .EnumerateArray()
             .Select(a => (a.GetProperty("wire").GetString()!,
                 a.GetProperty("defaultChord").ValueKind == JsonValueKind.Null
                     ? null
                     : a.GetProperty("defaultChord").GetString()))
             .ToList();
+        var adopted = ParitySurface.Adopted("keymapActions").ToHashSet(StringComparer.Ordinal);
+        return pin.Concat(ParitySurface.UpstreamKeymapActions().Where(a => adopted.Contains(a.Wire))).ToList();
+    }
+
+    [Fact]
+    public void EveryAdoptedActionExistsUpstream()
+    {
+        var upstream = ParitySurface.UpstreamKeymapActions().Select(a => a.Wire).ToHashSet(StringComparer.Ordinal);
+        Assert.All(ParitySurface.Adopted("keymapActions"), wire => Assert.Contains(wire, upstream));
     }
 
     [Fact]
@@ -24,7 +34,7 @@ public class BuiltinActionTests
         var expected = SurfaceActions().Select(a => a.Wire).OrderBy(w => w, StringComparer.Ordinal);
         var actual = BuiltinActions.All.Select(a => a.WireName()).OrderBy(w => w, StringComparer.Ordinal);
         Assert.Equal(expected, actual);
-        Assert.Equal(41, BuiltinActions.All.Count);
+        Assert.Equal(42, BuiltinActions.All.Count);
     }
 
     [Fact]

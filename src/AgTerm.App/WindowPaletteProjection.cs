@@ -174,6 +174,8 @@ public static class WindowPaletteProjection
         Func<BuiltinAction, WindowCommandState> stateProvider) =>
         BuiltinActions.All
             .Where(action => !PaletteLaunchers.Contains(action))
+            // nothing marked means nothing to apply the filter to
+            .Where(action => action != BuiltinAction.ToggleWorkspaceFilter || store.FocusedWorkspaceIds.Count > 0)
             .Where(action => stateProvider(action) is { Implemented: true, CanExecute: true })
             .Select(action => new PaletteItemViewModel(
                 action.WireName(),

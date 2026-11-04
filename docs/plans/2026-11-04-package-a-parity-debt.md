@@ -78,6 +78,31 @@ Upstream reference: `eab672be` (#698) — `Session.swift` (`paneAddress`), `Cont
 - [x] **Task 6: CLI.** `--pane-id` on `session type` and `session text` with the upstream help text. Tests next to the existing CLI tests.
 - [x] **Task 7: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.26 in the three files, `<Version>` 0.1.75, PLATFORM-NOTES, `Port:` lines in the first catalog (§5 and §12, lines 92 and 167). `docs/agterm-windows-spec.md` stays at the pin, so its token list is not changed. Run `AgTerm.Core.Tests`, `AgTerm.Cli.Tests`, then the rest one project at a time.
 
-## A5, A3, A4, A6
+## A5: focus as a set of workspaces
 
-Detailed tasks are written when each PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. Known dependencies: A5 needs a loader that turns an unknown optional value into absent without dropping the snapshot (#363); A4 `session.swap` must keep pane ids in place, as the port's pane ids are stable identities.
+Scope grew beyond the snapshot migration by decision of the owner: A5 is the whole of upstream #297 (`6722755a`), because the migration is only the saved half of that feature. Upstream reference: `6722755a` and its follow-ups `146747da` (the active session stays inside the visible set), `13a8d3d9`, `85acea33`, `d0fd07b7` (lossy snapshot decode, legacy migration). Files at v0.36.0: `AppStore+Focus.swift`, `AppStore+CloseReselection.swift`, `AppStore+PendingClose.swift`, `AppStore+RecentClosed.swift`, `Snapshot.swift`, `ControlModes.swift`, `ControlDispatcher.swift`, `ControlProjection.swift`, `SidebarDrop.swift`, `agtermctlKit/WorkspaceCommands.swift`, `PaletteCatalog.swift`, `BuiltinAction.swift`. Their tests are the spec: `AppStoreFocusTests`, `PersistenceTests`, `ControlDispatcherWorkspaceTests`, `ControlModesTests`, `RecentClosedTests`, `SidebarDropTests`.
+
+### Global Constraints
+
+- The store holds `FocusedWorkspaceIds` (a set) and `FocusEnabled`. `CommitFocus(ids, enabled)` is the single write point: `enabled` with an empty set is clamped to false, an unchanged write is skipped, otherwise it forgets a hidden fresh workspace, prunes the sidebar selection, reselects when the selection is hidden, and saves.
+- `DisableFocusIfSelectionOutsideSet` replaces `AutoUnfocusIfOutsideFocus`. It switches the filter off and keeps the set. It does nothing in flagged mode.
+- `AddWorkspace(clearFocus)` and `EnsureWorkspace(clearFocus)` become `revealNewWorkspace`. A new workspace joins the set only while the filter is on.
+- Snapshot: `focusedWorkspaceIDs` (tree order, omitted when empty) and `focusEnabled` (true or omitted). A file that has the legacy `focusedWorkspaceID` and no `focusedWorkspaceIDs` key reads as a one-member enabled set. The legacy key is never written. A malformed optional at any depth reads as absent and keeps the tree.
+- Wire: `workspace.focus` takes `add`; the invalid-mode error is `invalid focus mode: <raw> (on|off|toggle|add)`. `workspace.filter` is new (window scoped, modes `on|off|toggle`, default `toggle`, error `invalid workspace filter mode: <raw>`). `tree` has top-level `workspaceFilter`; a workspace node's `focused` is membership, whatever the filter says.
+- Close records carry a `focusMember` flag, so undo and Reopen Closed Item put the workspace back into the set. An entry written before the flag has none.
+- Out of scope: palette edit of the set (#803, v0.39.0), flagged-mode reselect on `SetFlag` and `SetSidebarMode` (the other half of `146747da`).
+- TDD, each test seen failing first. Warnings are errors. Test projects run one at a time; Xterm with `--blame-hang-timeout 4m`.
+
+### Tasks
+
+- [x] **Task 1: snapshot.** `FocusedWorkspaceIds` and `FocusEnabled` on `Snapshot`, a lossy decode for every optional (workspace and session too), the legacy migration. Tests in `SnapshotTests.cs` and `PersistenceStoreTests`.
+- [x] **Task 2: core model.** `AppStore.Focus.cs`, the lifecycle hooks (select, add, move, remove, close reselect, restore), tree `Focused` and `WorkspaceFilter`, `focusMember` on pending-close and recent-closed records, `SidebarProjection` and `SidebarDrop`. Port `AppStoreFocusTests`; update the existing tests that read `FocusedWorkspaceId`.
+- [x] **Task 3: protocol and hosts.** `workspace.filter`, the `add` mode, the dispatcher, `HeadlessControlActions`, the live host.
+- [x] **Task 4: CLI.** `workspace focus [on|off|toggle|add]`, `workspace filter [on|off|toggle]`.
+- [x] **Task 5: action and palette.** `toggle_workspace_filter` (no chord), palette "Add Workspace to Focus", "Toggle Workspace Filter", "Clear Focus".
+- [x] **Task 6: sidebar UI.** Marked rows, the row menu entry, the bottom-bar filter toggle in place of the focus pill, `SidebarController`.
+- [x] **Task 7: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.27 in the three files, `<Version>` 0.1.76, `parity/adopted.json`, PLATFORM-NOTES, `Port:` lines in the first catalog (§6 and §11), wire-command count 81 in `SkillTextTests`.
+
+## A3, A4, A6
+
+Detailed tasks are written when each PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. A4 `session.swap` must keep pane ids in place, as the port's pane ids are stable identities.
