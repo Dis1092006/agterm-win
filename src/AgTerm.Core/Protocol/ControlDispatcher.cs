@@ -40,19 +40,21 @@ public sealed class ControlDispatcher
                 return await DispatchSessionSurfaceCommand(request);
             case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
                 or Command.WorkspaceDelete or Command.WorkspaceMove or Command.WorkspaceFocus
-                or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme or Command.WorkspaceIcon:
+                or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme or Command.WorkspaceIcon
+                or Command.WorkspaceGo:
                 return DispatchWorkspaceCommand(request);
             case Command.Quick or Command.FontInc or Command.FontDec or Command.FontReset
                 or Command.KeymapReload or Command.KeymapList or Command.KeymapRun
                 or Command.ConfigReload or Command.Notify
                 or Command.ThemeSet or Command.ThemeList or Command.IconList or Command.Sidebar or Command.SidebarMode
-                or Command.SidebarExpand or Command.SidebarCollapse or Command.RestoreClear:
+                or Command.SidebarExpand or Command.SidebarCollapse or Command.RestoreClear
+                or Command.Version or Command.SidebarWidth:
                 return await DispatchAppCommand(request);
             case Command.QuickType or Command.QuickText:
                 return await DispatchQuickCommand(request);
             case Command.WindowNew or Command.WindowList or Command.WindowSelect or Command.WindowClose
                 or Command.WindowRename or Command.WindowDelete or Command.WindowResize
-                or Command.WindowMove or Command.WindowZoom or Command.WindowFullscreen:
+                or Command.WindowMove or Command.WindowZoom or Command.WindowFullscreen or Command.WindowGo:
                 return await DispatchWindowCommand(request);
             case Command.Dashboard:
                 return DispatchDashboard(request);
@@ -614,6 +616,12 @@ public sealed class ControlDispatcher
                 return _actions.SetWorkspaceExpansion(request.Target, request.Args?.Window, expanded: false);
             case Command.WorkspaceExpand:
                 return _actions.SetWorkspaceExpansion(request.Target, request.Args?.Window, expanded: true);
+            case Command.WorkspaceGo:
+            {
+                if (WorkspaceNavigations.FromWire(request.Args?.To) is not { } direction)
+                    return Err("workspace.go requires --to next|prev");
+                return _actions.GoWorkspace(request.Args?.Window, direction);
+            }
             default:
                 throw new InvalidOperationException($"unexpected workspace command: {request.Cmd}");
         }
@@ -767,6 +775,14 @@ public sealed class ControlDispatcher
                 return _actions.CollapseSidebar(request.Args?.Window);
             case Command.RestoreClear:
                 return _actions.ClearRestoreCommands();
+            case Command.Version:
+                return _actions.AppVersion();
+            case Command.SidebarWidth:
+            {
+                if (request.Args?.SidebarWidth is not { } points || !double.IsFinite(points))
+                    return Err("sidebar.width requires a width in points");
+                return _actions.SetSidebarWidth(points, request.Args?.Window);
+            }
             default:
                 throw new InvalidOperationException($"unexpected app command: {request.Cmd}");
         }
@@ -925,6 +941,12 @@ public sealed class ControlDispatcher
                 return _actions.WindowZoom(request.Target);
             case Command.WindowFullscreen:
                 return _actions.WindowFullscreen(request.Target);
+            case Command.WindowGo:
+            {
+                if (WorkspaceNavigations.FromWire(request.Args?.To) is not { } direction)
+                    return Err("window.go requires --to next|prev");
+                return await _actions.WindowGo(direction);
+            }
             default:
                 throw new InvalidOperationException($"unexpected window command: {request.Cmd}");
         }

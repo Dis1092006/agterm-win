@@ -417,6 +417,40 @@ public sealed partial class AppStore
         return true;
     }
 
+    /// <summary>Whether a workspace step has somewhere to go: false in flagged mode (no workspace rows),
+    /// with no visible workspace, or when the current one is the only visible one.</summary>
+    public bool CanStepWorkspaces
+    {
+        get
+        {
+            if (SidebarMode != SidebarMode.Tree) return false;
+            var visible = VisibleWorkspaces;
+            if (visible.Count == 0) return false;
+            var current = CurrentWorkspaceId;
+            return !(visible.Count == 1 && visible.Any(w => w.Id == current));
+        }
+    }
+
+    /// <summary>Steps the current workspace one place through VisibleWorkspaces, wrapping, via
+    /// SelectWorkspace, so a focus filter confines it. Collapse state is not a term. A current
+    /// workspace outside the visible set lands on the end the step comes from. Returns the workspace
+    /// it landed on, or null when there is nowhere to step. Backs wire workspace.go.</summary>
+    public Guid? NavigateWorkspace(WorkspaceNavigation direction)
+    {
+        if (!CanStepWorkspaces) return null;
+        var ids = VisibleWorkspaces.Select(w => w.Id).ToList();
+        Guid target;
+        var index = CurrentWorkspaceId is { } current ? ids.IndexOf(current) : -1;
+        if (index >= 0)
+        {
+            var step = direction == WorkspaceNavigation.Next ? 1 : -1;
+            target = ids[((index + step) % ids.Count + ids.Count) % ids.Count];
+        }
+        else
+            target = direction == WorkspaceNavigation.Next ? ids[0] : ids[^1];
+        return SelectWorkspace(target) ? target : null;
+    }
+
     /// <summary>The first workspace whose name exactly equals name (case-sensitive, trimmed), or
     /// null when none matches or the name is blank. Backs session.new --workspace-name.</summary>
     public Workspace? WorkspaceNamed(string name)
@@ -872,6 +906,17 @@ public sealed partial class AppStore
 
     /// <summary>Flips this window's sidebar visibility and persists the new state.</summary>
     public void ToggleSidebarVisible() => SetSidebarVisible(!SidebarVisible);
+
+    /// <summary>Sets this window's sidebar width clamped to the drag bounds and persists it; a clean
+    /// no-op (no write) when the clamped width is already current. The divider drag keeps writing the
+    /// property per tick and saves once on release, so it does not come through here.</summary>
+    public void SetSidebarWidth(double width)
+    {
+        var clamped = Math.Clamp(width, SidebarWidthMin, SidebarWidthMax);
+        if (SidebarWidth == clamped) return;
+        SidebarWidth = clamped;
+        Save();
+    }
 
     /// <summary>Sets the sidebar mode and persists it. Clean no-op (no write) when unchanged.</summary>
     public void SetSidebarMode(SidebarMode mode)

@@ -16,6 +16,7 @@ internal static class WindowCommands
         window.Subcommands.Add(BuildNew(bindings));
         window.Subcommands.Add(BuildList(bindings));
         window.Subcommands.Add(BuildSelect(bindings));
+        window.Subcommands.Add(BuildGo(bindings));
         window.Subcommands.Add(BuildClose(bindings));
         window.Subcommands.Add(BuildRename(bindings));
         window.Subcommands.Add(BuildDelete(bindings));
@@ -107,6 +108,31 @@ internal static class WindowCommands
             Id = result.GetValue(id) ?? "active",
             Basic = options.Read(result),
         });
+        return cmd;
+    }
+
+    internal sealed class Go : IRequestCommand
+    {
+        public required string To { get; init; }
+        public required BasicOptions Basic { get; init; }
+        public IConnectionOptions Options => Basic;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.WindowGo,
+            Args = new ControlArgs { To = To },
+        };
+    }
+
+    // Relative to the active window, so it takes no id; a closed entry is never a step candidate.
+    private static System.CommandLine.Command BuildGo(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("go", "Navigate open windows: next|prev.");
+        var to = new Option<string>("--to") { Description = "Direction: next or prev.", Required = true };
+        var options = new BasicOptions.Binder();
+        cmd.Options.Add(to);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Go { To = result.GetValue(to)!, Basic = options.Read(result) });
         return cmd;
     }
 

@@ -75,6 +75,10 @@ public sealed record ControlResult
     [JsonPropertyName("ratio")]
     public double? Ratio { get; init; }
 
+    /// <summary>The stored (clamped) sidebar width in points echoed by sidebar.width.</summary>
+    [JsonPropertyName("sidebarWidth")]
+    public double? SidebarWidth { get; init; }
+
     /// <summary>The resolved pane role (left or right) echoed by ask.open for a pane anchor.</summary>
     [JsonPropertyName("pane")]
     public string? Pane { get; init; }
@@ -106,10 +110,29 @@ public sealed record ControlResult
     [JsonPropertyName("ask")]
     public ControlAskResult? Ask { get; init; }
 
+    /// <summary>The running app's identity for version.</summary>
+    [JsonPropertyName("app")]
+    public ControlAppIdentity? App { get; init; }
+
+    /// <summary>The identity of the app on disk for version; absent when it equals the running one
+    /// or cannot be read.</summary>
+    [JsonPropertyName("installed")]
+    public ControlAppIdentity? Installed { get; init; }
+
     /// <summary>The icon names workspace.icon accepts, for icon.list. Windows-only
     /// (parity/windows-only.json); declared last so the upstream fields keep upstream order.</summary>
     [JsonPropertyName("icons")]
     public string[]? Icons { get; init; }
+}
+
+/// <summary>An app build identity: a version and an optional commit.</summary>
+public sealed record ControlAppIdentity
+{
+    [JsonPropertyName("version")]
+    public required string Version { get; init; }
+
+    [JsonPropertyName("commit")]
+    public string? Commit { get; init; }
 }
 
 /// <summary>

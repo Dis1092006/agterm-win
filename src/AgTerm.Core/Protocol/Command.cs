@@ -88,6 +88,10 @@ public enum Command
     AskOpen,
     AskResult,
     AskCancel,
+    Version,
+    SidebarWidth,
+    WorkspaceGo,
+    WindowGo,
     /// <summary>Windows-only (parity/windows-only.json): sets or clears a workspace's own theme.</summary>
     WorkspaceTheme,
     /// <summary>Windows-only (parity/windows-only.json): sets or clears a workspace's own icon.</summary>
@@ -182,6 +186,10 @@ public static class CommandWire
         (Command.AskOpen, "ask.open"),
         (Command.AskResult, "ask.result"),
         (Command.AskCancel, "ask.cancel"),
+        (Command.Version, "version"),
+        (Command.SidebarWidth, "sidebar.width"),
+        (Command.WorkspaceGo, "workspace.go"),
+        (Command.WindowGo, "window.go"),
         (Command.WorkspaceTheme, "workspace.theme"),
         (Command.WorkspaceIcon, "workspace.icon"),
         (Command.IconList, "icon.list"),

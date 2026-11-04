@@ -661,6 +661,28 @@ internal static class SidebarCommands
         };
     }
 
+    /// <summary>`agtermctl sidebar width &lt;points&gt; [--window W]` — move the divider a drag would move.
+    /// Prints the applied width, so a value outside the bounds reads back clamped. The range check stays
+    /// on the server, against the bounds the drag clamps to.</summary>
+    internal sealed class Width : IRequestCommand
+    {
+        public double Points { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public void Validate()
+        {
+            if (!double.IsFinite(Points))
+                throw new CliValidationException("points must be a number");
+        }
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.SidebarWidth,
+            Args = Client.WithWindow(new ControlArgs { SidebarWidth = Points }),
+        };
+    }
+
     public static System.CommandLine.Command Build(CommandBindings bindings)
     {
         var sidebar = new System.CommandLine.Command("sidebar", "Sidebar visibility and view mode.");
@@ -671,6 +693,7 @@ internal static class SidebarCommands
         sidebar.Subcommands.Add(BuildMode(bindings));
         sidebar.Subcommands.Add(BuildExpand(bindings));
         sidebar.Subcommands.Add(BuildCollapse(bindings));
+        sidebar.Subcommands.Add(BuildWidth(bindings));
         // defaultSubcommand: Visibility — the bare `sidebar [show|hide|toggle]` binds like
         // `sidebar visibility …` (a token matching a subcommand name still routes to that subcommand).
         BindVisibility(bindings, sidebar);
@@ -724,6 +747,22 @@ internal static class SidebarCommands
         return cmd;
     }
 
+    private static System.CommandLine.Command BuildWidth(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("width", "Set the sidebar width in points.");
+        var points = CliOptions.LenientDoubleArgument("points",
+            "Sidebar width in points, clamped to the drag range.");
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(points);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Width
+        {
+            Points = result.GetValue(points),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
     private static System.CommandLine.Command BuildCollapse(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("collapse",
@@ -731,6 +770,39 @@ internal static class SidebarCommands
         var options = new ClientOptions.Binder();
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Collapse { Client = options.Read(result) });
+        return cmd;
+    }
+}
+
+// MARK: - version
+
+/// <summary>`agtermctl version` — which agterm answers on the pipe. The app answers from its own
+/// build, so a stale agtermctl earlier on PATH cannot misreport it; the client path prints beside
+/// it as a diagnostic for that case, and stays out of --json, which is the raw server response.</summary>
+internal static class VersionCommand
+{
+    internal sealed class Version : IRequestCommand
+    {
+        public required BasicOptions Basic { get; init; }
+        public IConnectionOptions Options => Basic;
+
+        public ControlRequest MakeRequest() => new() { Cmd = WireCommand.Version };
+
+        public int Execute(CliEnvironment env)
+        {
+            var exit = this.DefaultRun(env);
+            if (exit == 0 && !Basic.Json && env.ClientPath() is { Length: > 0 } path)
+                env.Out.WriteLine("client: " + path);
+            return exit;
+        }
+    }
+
+    public static System.CommandLine.Command Build(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("version", "Print the version of the app serving the pipe.");
+        var options = new BasicOptions.Binder();
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Version { Basic = options.Read(result) });
         return cmd;
     }
 }

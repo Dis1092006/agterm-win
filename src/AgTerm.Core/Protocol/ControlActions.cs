@@ -67,6 +67,18 @@ public interface IControlActions
     ControlResponse SetSidebarViewMode(ControlSidebarViewMode mode);
     ControlResponse ExpandSidebar(string? window);
     ControlResponse CollapseSidebar(string? window);
+
+    /// <summary>version: the running app's identity and, when different, the one installed on disk.</summary>
+    ControlResponse AppVersion();
+
+    /// <summary>sidebar.width: set the sidebar width in points (clamped); the result echoes the stored width.</summary>
+    ControlResponse SetSidebarWidth(double points, string? window);
+
+    /// <summary>workspace.go: step to the next or previous visible workspace of a window, wrapping.</summary>
+    ControlResponse GoWorkspace(string? window, WorkspaceNavigation direction);
+
+    /// <summary>window.go: raise the next or previous open window in library order, wrapping.</summary>
+    Task<ControlResponse> WindowGo(WorkspaceNavigation direction);
     ControlResponse SetQuickTerminal(string? mode);
     Task<ControlResponse> TypeQuick(string text);
     Task<ControlResponse> ReadQuickText(bool all, int? lines);

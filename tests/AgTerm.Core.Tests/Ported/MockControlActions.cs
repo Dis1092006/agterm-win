@@ -76,6 +76,10 @@ public sealed class MockControlActions : IControlActions
         public sealed record SidebarViewMode(ControlSidebarViewMode Mode) : Call;
         public sealed record Expand(string? Window) : Call;
         public sealed record Collapse(string? Window) : Call;
+        public sealed record AppVersion : Call;
+        public sealed record SidebarWidth(double Points, string? Window) : Call;
+        public sealed record WorkspaceGo(string? Window, WorkspaceNavigation Direction) : Call;
+        public sealed record WindowGo(WorkspaceNavigation Direction) : Call;
         public sealed record Quick(string? Mode) : Call;
         public sealed record QuickType(string Text) : Call;
         public sealed record QuickText(bool All, int? Lines) : Call;
@@ -122,6 +126,10 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextSidebarViewModeResponse = new() { Ok = true };
     public ControlResponse NextExpandResponse = new() { Ok = true };
     public ControlResponse NextCollapseResponse = new() { Ok = true };
+    public ControlResponse NextAppVersionResponse = new() { Ok = true };
+    public ControlResponse NextSidebarWidthResponse = new() { Ok = true };
+    public ControlResponse NextWorkspaceGoResponse = new() { Ok = true };
+    public ControlResponse NextWindowGoResponse = new() { Ok = true };
     public ControlResponse NextFontResponse = new() { Ok = true };
     public ControlResponse NextNotifyResponse = new() { Ok = true };
     public ControlResponse NextKeymapResponse = new() { Ok = true };
@@ -431,6 +439,30 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.Collapse(window));
         return NextCollapseResponse;
+    }
+
+    public ControlResponse AppVersion()
+    {
+        Calls.Add(new Call.AppVersion());
+        return NextAppVersionResponse;
+    }
+
+    public ControlResponse SetSidebarWidth(double points, string? window)
+    {
+        Calls.Add(new Call.SidebarWidth(points, window));
+        return NextSidebarWidthResponse;
+    }
+
+    public ControlResponse GoWorkspace(string? window, WorkspaceNavigation direction)
+    {
+        Calls.Add(new Call.WorkspaceGo(window, direction));
+        return NextWorkspaceGoResponse;
+    }
+
+    public Task<ControlResponse> WindowGo(WorkspaceNavigation direction)
+    {
+        Calls.Add(new Call.WindowGo(direction));
+        return Task.FromResult(NextWindowGoResponse);
     }
 
     public ControlResponse SetQuickTerminal(string? mode)

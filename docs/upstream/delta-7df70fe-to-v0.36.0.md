@@ -98,12 +98,12 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 ## 6. Navigation, windows, sidebar
 
-- `window.go --to next|prev`, actions `previous_window` and `next_window` (no chord) #591. Port: not done.
+- `window.go --to next|prev`, actions `previous_window` and `next_window` (no chord) #591. Port: the command `window.go` is done (`window go`); the actions are not.
 - `window.minimize on|off|toggle`, `window new --minimized`, `minimized` in `window list` #294. `window resize` returns the size it applied #566. Port: not done.
-- `workspace.go --to next|prev`, actions `previous_workspace`, `next_workspace`, `toggle_workspace_collapse` (no chord) #436. Port: not done.
+- `workspace.go --to next|prev`, actions `previous_workspace`, `next_workspace`, `toggle_workspace_collapse` (no chord) #436. Port: the command `workspace.go` is done (`workspace go`); the actions are not.
 - Focus as a set of workspaces: `workspace.filter`, `workspace focus add`, the action `toggle_workspace_filter` #297. Port: not done.
 - Flagged view layout: `sidebar.flagged-layout flat|tree|plain|toggle`, the setting `flaggedViewLayout` #621, #718. Port: not done.
-- `sidebar.width` #512. Port: not done.
+- `sidebar.width` #512. Port: done.
 - The attention list (Ctrl+Shift+I) over all windows #596. Port: not done. The port lists the sessions of the current window.
 - Where a new session goes: at the end or after the current one, the setting `newSessionPlacement` #665. Port: not done.
 - A click on a workspace row expands it: `workspaceRowClickExpands` #342. Port: not done.
@@ -141,7 +141,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 ## 10. Other control API changes
 
-- `version` #476. Port: not done.
+- `version` #476. Port: done (without `tree.app`).
 - `session.context`: a line about the session's purpose in the title and in `tree`; it survives a restart, and `session.duplicate` does not copy it #522. Port: not done.
 - `realized` in `tree` #417, `splitCwd` #566, `splitCommandWait`. Port: not done.
 - `agtermctl --json` prints the server line without re-encoding it #628. Port: not done. `agtermctl` encodes the reply again.

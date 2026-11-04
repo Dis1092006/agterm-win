@@ -2017,6 +2017,36 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
+    /// <summary>version: the running build. Headless has no installed executable to compare with, so
+    /// installed stays absent.</summary>
+    public ControlResponse AppVersion() => new()
+    {
+        Ok = true,
+        Result = AppIdentity.Result(AppIdentity.Running(typeof(HeadlessControlActions).Assembly), installed: null),
+    };
+
+    /// <summary>sidebar.width: store the clamped width and echo what was stored.</summary>
+    public ControlResponse SetSidebarWidth(double points, string? window)
+    {
+        return ResolvePlacementStore(window, store =>
+        {
+            store.SetSidebarWidth(points);
+            return new ControlResponse { Ok = true, Result = new ControlResult { SidebarWidth = store.SidebarWidth } };
+        });
+    }
+
+    /// <summary>workspace.go: step to the next or previous visible workspace, wrapping; the reply carries
+    /// the workspace now current.</summary>
+    public ControlResponse GoWorkspace(string? window, WorkspaceNavigation direction)
+    {
+        return ResolvePlacementStore(window, store =>
+            store.NavigateWorkspace(direction) is { } id ? OkId(id) : Err("no other workspace to navigate to"));
+    }
+
+    /// <summary>window.go: the headless host has one window, so there is never another to reach.</summary>
+    public Task<ControlResponse> WindowGo(WorkspaceNavigation direction) =>
+        Task.FromResult(Err("no other open window to navigate to"));
+
     public ControlResponse SetQuickTerminal(string? mode)
     {
         if (ControlToggleModes.Parse(mode, onToken: "show", offToken: "hide") is not { } parsedMode)

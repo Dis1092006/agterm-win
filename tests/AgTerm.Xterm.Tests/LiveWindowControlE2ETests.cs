@@ -1863,13 +1863,198 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Equal("no open window", new ControlPipeClient(application.PipeName).Send(OpenAskRequest()).Error);
     }
 
-    private LiveApplicationHost CreateApplication(ILiveWindowController? windows = null) =>
+    private static ControlRequest WindowGo(string? to) => new()
+    {
+        Cmd = Command.WindowGo,
+        Args = to is null ? null : new ControlArgs { To = to },
+    };
+
+    [Fact]
+    public void Window_go_steps_through_open_windows_in_library_order_and_wraps()
+    {
+        var ids = Enumerable.Range(0, 4).Select(_ => Guid.NewGuid()).ToArray();
+        foreach (var id in ids) WriteWindowSnapshot(id, "w");
+        WriteIndex(ids[0],
+            new IndexEntry(ids[0], "first", IsOpen: true),
+            new IndexEntry(ids[1], "second", IsOpen: true),
+            new IndexEntry(ids[2], "closed", IsOpen: false),
+            new IndexEntry(ids[3], "fourth", IsOpen: true));
+        var windows = new FakeWindowController();
+        using var application = CreateApplication(windows);
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        foreach (var (to, expected) in new[]
+                 {
+                     ("next", ids[1]), ("next", ids[3]), ("next", ids[0]), ("prev", ids[3]), ("prev", ids[1]),
+                 })
+        {
+            var response = client.Send(WindowGo(to));
+            Assert.True(response.Ok, response.Error);
+            Assert.Equal(expected.ToString("D").ToUpperInvariant(), response.Result?.Id);
+            Assert.Equal(expected, application.ActiveWindowId);
+        }
+        Assert.False(application.Windows.Single(window => window.Id == ids[2]).IsOpen);
+        Assert.Equal(new[] { ids[1], ids[3], ids[0], ids[3], ids[1] }, windows.ActivationRequests);
+    }
+
+    [Fact]
+    public void Window_go_refuses_without_a_second_open_window()
+    {
+        var firstId = Guid.NewGuid();
+        var closedId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(closedId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(closedId, "closed", IsOpen: false));
+        var windows = new FakeWindowController();
+        using var application = CreateApplication(windows);
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var response = client.Send(WindowGo("next"));
+
+        Assert.False(response.Ok);
+        Assert.Equal("no other open window to navigate to", response.Error);
+        Assert.Empty(windows.ActivationRequests);
+        Assert.Empty(windows.Opened);
+        Assert.False(application.Windows.Single(window => window.Id == closedId).IsOpen);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("last")]
+    public void Window_go_refuses_a_missing_or_unknown_direction(string? to)
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+
+        var response = new ControlPipeClient(application.PipeName).Send(WindowGo(to));
+
+        Assert.Equal("window.go requires --to next|prev", response.Error);
+        Assert.Equal(firstId, application.ActiveWindowId);
+    }
+
+    [Fact]
+    public async Task Version_answers_without_an_open_window()
+    {
+        var onlyId = Guid.NewGuid();
+        WriteWindowSnapshot(onlyId, "alpha");
+        WriteIndex(onlyId, new IndexEntry(onlyId, "only", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        await application.CloseWindowAsync(onlyId);
+
+        var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest { Cmd = Command.Version });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.False(string.IsNullOrWhiteSpace(response.Result!.App!.Version));
+    }
+
+    [Fact]
+    public void Version_omits_installed_when_the_executable_on_disk_is_the_running_build()
+    {
+        using var application = CreateApplication(installedPath: typeof(LiveApplicationHost).Assembly.Location);
+        application.Start();
+
+        var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest { Cmd = Command.Version });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Null(response.Result!.Installed);
+    }
+
+    [Fact]
+    public void Version_reports_installed_when_the_executable_on_disk_differs()
+    {
+        var other = Path.Combine(Environment.SystemDirectory, "notepad.exe");
+        using var application = CreateApplication(installedPath: other);
+        application.Start();
+
+        var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest { Cmd = Command.Version });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.Equal(AppIdentity.Installed(other), response.Result!.Installed);
+        Assert.NotNull(response.Result.Installed);
+    }
+
+    [Fact]
+    public void Sidebar_width_is_stored_in_the_targeted_window_and_echoed_clamped()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var frontmost = client.Send(new ControlRequest
+        {
+            Cmd = Command.SidebarWidth, Args = new ControlArgs { SidebarWidth = 300 },
+        });
+        var other = client.Send(new ControlRequest
+        {
+            Cmd = Command.SidebarWidth,
+            Args = new ControlArgs { SidebarWidth = 9000, Window = secondId.ToString("D") },
+        });
+
+        Assert.Equal(300, frontmost.Result?.SidebarWidth);
+        Assert.Equal(560, other.Result?.SidebarWidth);
+        Assert.Equal(300, application.GetOpenWindow(firstId).Store.SidebarWidth);
+        Assert.Equal(560, application.GetOpenWindow(secondId).Store.SidebarWidth);
+    }
+
+    [Fact]
+    public void Workspace_go_steps_the_targeted_window_only()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        var spare = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, new Snapshot
+        {
+            SelectedSessionId = sessionId,
+            Workspaces =
+            [
+                new WorkspaceSnapshot
+                {
+                    Id = Guid.NewGuid(), Name = "a",
+                    Sessions = [new SessionSnapshot { Id = sessionId, Cwd = Path.GetTempPath() }],
+                },
+                new WorkspaceSnapshot { Id = spare, Name = "b", Sessions = Array.Empty<SessionSnapshot>() },
+            ],
+        });
+        WriteWindowSnapshot(secondId, "solo");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var stepped = client.Send(new ControlRequest
+        {
+            Cmd = Command.WorkspaceGo, Args = new ControlArgs { To = "next" },
+        });
+        var refused = client.Send(new ControlRequest
+        {
+            Cmd = Command.WorkspaceGo, Args = new ControlArgs { To = "next", Window = secondId.ToString("D") },
+        });
+
+        Assert.True(stepped.Ok, stepped.Error);
+        Assert.Equal(spare.ToString("D").ToUpperInvariant(), stepped.Result?.Id);
+        Assert.Equal(spare, application.GetOpenWindow(firstId).Store.CurrentWorkspaceId);
+        Assert.Equal("no other workspace to navigate to", refused.Error);
+    }
+
+    private LiveApplicationHost CreateApplication(ILiveWindowController? windows = null, string? installedPath = null) =>
         new(new LiveApplicationHostOptions
         {
             StateDir = _stateDir,
             HomeDirectory = _stateDir,
             PipeName = "agterm-window-control-" + Guid.NewGuid().ToString("N"),
             WindowController = windows,
+            InstalledExecutablePath = installedPath,
         });
 
     private static string FindRepositoryRoot()

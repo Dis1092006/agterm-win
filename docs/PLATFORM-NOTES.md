@@ -731,6 +731,13 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Any overlay or HUD already open on the session keeps its slot, and no panel opens over it (the HUD open is refused with `overlay already open`).
   - A command without `--error-hud` that exits non-zero shows nothing. Upstream posts a macOS notification banner for it.
   - `--repeat` is not adopted, so it is not among the options.
+- `version`, `sidebar.width`, `workspace.go` and `window.go` (upstream `5d22904a`, `18da29cb`, `7977f202`, `3624dd05`, `99c8c50d`).
+  - The app version is the assembly informational version without its `+` suffix, and `commit` is the first 7 characters after the `+`; it is left out when the build has none. Upstream reads the bundle's version string and a build stamp.
+  - `installed` is read from the executable on disk through `FileVersionInfo.ProductVersion` on each call, and is left out when it equals `app` or the file cannot be read. The headless host has no executable, so it never reports `installed`.
+  - `agtermctl version` prints `client: PATH` from its own `Environment.ProcessPath`. `--json` leaves the line out.
+  - `window.go` in the headless host always answers `no other open window to navigate to`, since it has one window and no frame to raise.
+  - `sidebar.width` echoes the stored (clamped) width. The CLI prints it as Swift does for a `Double`, so a whole number keeps `.0`.
+  - Not taken from v0.40.0: `tree.app` and the built-in actions that came with these commands, such as `previous_window`.
 
 ## Windows-only extensions
 
