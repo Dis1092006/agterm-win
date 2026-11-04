@@ -3459,6 +3459,8 @@ window.agterm = {
   text: (paneId, all, lines) =>
     withPane(paneId, (p) => bufferText(p.term, all, lines)),
   selection: (paneId) => withPane(paneId, (p) => p.term.getSelection()),
+  // zero-based column of the cursor in the active buffer (surface.cursor)
+  cursorColumn: (paneId) => withPane(paneId, (p) => p.term.buffer.active.cursorX),
   selectAll: (paneId) =>
     withPane(paneId, (p) => {
       p.term.selectAll();

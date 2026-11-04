@@ -346,6 +346,17 @@ public class SocketClientTests
     }
 
     [Fact]
+    public void FormatResponseCursorIsTheBareColumn()
+    {
+        var response = new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult { Id = "surface:X:left", Cursor = new ControlCursor { Column = 12 } },
+        };
+        Assert.Equal("12", ClientOutput.FormatResponse(response, json: false));
+    }
+
+    [Fact]
     public void FormatResponseErrorFallback()
     {
         // an error response with no message falls back to a generic line.
@@ -386,6 +397,30 @@ public class SocketClientTests
         Assert.Equal("* work  [w1]", lines[0]);
         // active session (*), the (split) suffix, id and cwd columns.
         Assert.Equal("  * shell (split)  [s1]  /tmp", lines[1]);
+    }
+
+    [Fact]
+    public void FormatTreeTagsAHiddenSplitAndNotAnAbsentOne()
+    {
+        ControlSessionNode Node(bool split, bool? hasSplit) => new()
+        {
+            Id = "s4", Name = "shell", Cwd = "/tmp", Active = true, Split = split, HasSplit = hasSplit,
+        };
+        string Line(ControlSessionNode session) => ClientOutput.FormatResponse(new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult
+            {
+                Tree = new ControlTree
+                {
+                    Workspaces = new[] { new ControlWorkspaceNode { Id = "w4", Name = "work", Active = true, Sessions = new[] { session } } },
+                },
+            },
+        }, json: false).Split('\n')[1];
+
+        Assert.Equal("  * shell (split hidden)  [s4]  /tmp", Line(Node(split: false, hasSplit: true)));
+        Assert.Equal("  * shell (split)  [s4]  /tmp", Line(Node(split: true, hasSplit: true)));
+        Assert.Equal("  * shell  [s4]  /tmp", Line(Node(split: false, hasSplit: null)));
     }
 
     [Fact]

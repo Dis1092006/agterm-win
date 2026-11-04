@@ -196,6 +196,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 EagerSurfaceRealization = true,
                 DeferBootstrap = true,
                 PaneFocusRequested = QueuePaneFocusRequested,
+                SessionPanesSwapped = QueueSessionPanesSwapped,
                 SearchUpdated = QueueSearchUpdated,
                 QuickChanged = QueueQuickChanged,
                 ZoomActiveChanged = QueueZoomActiveChanged,
@@ -228,6 +229,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 dashboardBaseFontSize: options.BaseFontSize,
                 homeDirectory: options.HomeDirectory,
                 paneFocusRequested: QueuePaneFocusRequested,
+                sessionPanesSwapped: QueueSessionPanesSwapped,
                 searchUpdated: QueueSearchUpdated,
                 quickChanged: QueueQuickChanged,
                 zoomActiveChanged: QueueZoomActiveChanged,
@@ -279,13 +281,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                     ReportTerminalNotification(paneSurface, report);
                 paneSurface.Pane.Terminal.TerminalFocused += () => ReportTerminalFocused(paneSurface);
 
-                if (request.Kind == LiveSurfaceKind.Main && request.SessionId is { } sessionId)
+                if (request.Kind is LiveSurfaceKind.Main or LiveSurfaceKind.Split && request.SessionId is { } paneSessionId)
                 {
-                    Bind(sessionId, paneSurface);
-                }
-                else if (request.Kind == LiveSurfaceKind.Split && request.SessionId is { } splitSessionId)
-                {
-                    BindSplit(splitSessionId, paneSurface);
+                    BindPane(paneSessionId, paneSurface);
                 }
                 else if (request.Kind == LiveSurfaceKind.Scratch && request.SessionId is { } scratchSessionId)
                 {
@@ -1243,6 +1241,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     private void QueueQuickChanged() =>
         _storeCoordinator?.PublishSelectionSnapshotLocked();
 
+    /// <summary>A swap changes which pane a delivered banner or toast belonged to, so it is dropped.</summary>
+    private void QueueSessionPanesSwapped(Guid sessionId) =>
+        QueueNotificationDelivery(new LiveNotificationDelivery.Clear(sessionId));
+
     private void QueueZoomChanged()
     {
         if (Host.Actions.Zoom.Target is not null && Host.Actions.Dashboard.IsOpen)
@@ -1555,6 +1557,11 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                         ? WindowsCommandLine.FromArgv(capturedForeground) + "\n"
                         : null;
                 }
+                else if (session.SplitInitialCommand is { } splitCommand &&
+                         (!session.WasRestored || restoreRunningCommand))
+                {
+                    argv = CommandTokenizer.Tokenize(splitCommand);
+                }
 
                 cwd = session.InitialSplitCwd ?? session.EffectiveCwd;
                 sessionId = session.Id;
@@ -1695,8 +1702,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Live reports → session fields. Every mutation hops to the thread pool and takes
-    /// the host gate; the UI thread never enters RunLocked.</summary>
-    private void Bind(Guid sessionId, XtermPaneSurface surface)
+    /// the host gate; the UI thread never enters RunLocked. A pane reports into the slot it occupies
+    /// now, not the one it was opened in: session.swap moves a live pane between the two slots.</summary>
+    private void BindPane(Guid sessionId, XtermPaneSurface surface)
     {
         BindStatusClear(sessionId, surface);
         surface.Pane.TitleChanged += title => Task.Run(() => Host.RunLocked(() =>
@@ -1705,6 +1713,11 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             if (OwnsMainPane(live, surface))
             {
                 live!.OscTitle = title;
+                Host.Store.NotifySidebar();
+            }
+            else if (OwnsSplitPane(live, surface))
+            {
+                live!.SplitTitle = title;
                 Host.Store.NotifySidebar();
             }
         }));
@@ -1716,8 +1729,13 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 live!.CurrentCwd = cwd;
                 Host.Store.NotifySidebar();
             }
+            else if (OwnsSplitPane(live, surface))
+            {
+                live!.SplitCwd = cwd;
+                Host.Store.NotifySidebar();
+            }
         }));
-        _ = CloseOnExitAsync(sessionId, surface);
+        _ = ClosePaneOnExitAsync(sessionId, surface);
     }
 
     /// <summary>upstream onFontSizeChange → store.setFontSize: only the pane in the main slot saves
@@ -1729,44 +1747,6 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             if (ReferenceEquals(Host.Store.SessionWithId(sessionId)?.Surface, surface))
                 Host.Store.SetFontSize(sessionId, size);
         });
-
-    private void BindSplit(Guid sessionId, XtermPaneSurface surface)
-    {
-        BindStatusClear(sessionId, surface);
-        surface.Pane.TitleChanged += title => Task.Run(() => Host.RunLocked(() =>
-        {
-            var live = Host.Store.SessionWithId(sessionId);
-            if (OwnsSplitPane(live, surface))
-            {
-                live!.SplitTitle = title;
-                Host.Store.NotifySidebar();
-                return;
-            }
-
-            if (surface.IsPromotedToPrimaryPane && OwnsMainPane(live, surface))
-            {
-                live!.OscTitle = title;
-                Host.Store.NotifySidebar();
-            }
-        }));
-        surface.Pane.CwdChanged += cwd => Task.Run(() => Host.RunLocked(() =>
-        {
-            var live = Host.Store.SessionWithId(sessionId);
-            if (OwnsSplitPane(live, surface))
-            {
-                live!.SplitCwd = cwd;
-                Host.Store.NotifySidebar();
-                return;
-            }
-
-            if (surface.IsPromotedToPrimaryPane && OwnsMainPane(live, surface))
-            {
-                live!.CurrentCwd = cwd;
-                Host.Store.NotifySidebar();
-            }
-        }));
-        _ = CloseSplitOnExitAsync(sessionId, surface);
-    }
 
     private void BindScratch(Guid sessionId, XtermPaneSurface surface)
     {
@@ -1834,7 +1814,8 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         {
             var live = Host.Store.SessionWithId(sessionId);
             var shellPane = OwnsSplitPane(live, surface)
-                || (OwnsMainPane(live, surface) && live!.InitialCommand is null);
+                ? live!.SplitInitialCommand is null
+                : OwnsMainPane(live, surface) && live!.InitialCommand is null;
             holds = shellPane && !Volatile.Read(ref _notificationSettings).ClosesPaneOnShellExit(exitCode);
         });
         return holds;
@@ -1863,7 +1844,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         return Volatile.Read(ref _shutdownStarted) == 0;
     }
 
-    private async Task CloseOnExitAsync(Guid sessionId, XtermPaneSurface surface)
+    private async Task ClosePaneOnExitAsync(Guid sessionId, XtermPaneSurface surface)
     {
         if (!await ShellExitedAndReleasedAsync(sessionId, surface).ConfigureAwait(false))
         {
@@ -1877,40 +1858,19 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 return;
             }
 
+            // the slot the pane sits in now decides what closes: a swap can have moved it
             var live = Host.Store.SessionWithId(sessionId);
-            if (!OwnsMainPane(live, surface)) return; // closed via control, or pane replaced
-            // session.new --command --wait: hold the pane open after the command exits
-            if (live!.InitialCommand is not null && live.CommandWait) return;
-            Host.Store.ClosePrimaryPane(live.Id);
-            ReconcileSurfacesLocked();
-        });
-    }
-
-    private async Task CloseSplitOnExitAsync(Guid sessionId, XtermPaneSurface surface)
-    {
-        if (!await ShellExitedAndReleasedAsync(sessionId, surface).ConfigureAwait(false))
-        {
-            return;
-        }
-
-        Host.RunLocked(() =>
-        {
-            if (Volatile.Read(ref _shutdownStarted) != 0)
+            if (OwnsMainPane(live, surface))
             {
-                return;
-            }
-
-            var live = Host.Store.SessionWithId(sessionId);
-            if (OwnsSplitPane(live, surface))
-            {
-                Host.Store.CloseSplitPane(live!.Id);
+                // session.new --command --wait: hold the pane open after the command exits
+                if (live!.InitialCommand is not null && live.CommandWait) return;
+                Host.Store.ClosePrimaryPane(live.Id);
                 ReconcileSurfacesLocked();
-                return;
             }
-
-            if (surface.IsPromotedToPrimaryPane && OwnsMainPane(live, surface))
+            else if (OwnsSplitPane(live, surface))
             {
-                Host.Store.ClosePrimaryPane(live!.Id);
+                if (live!.SplitInitialCommand is not null && live.SplitCommandWait) return;
+                Host.Store.CloseSplitPane(live.Id);
                 ReconcileSurfacesLocked();
             }
         });

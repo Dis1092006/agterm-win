@@ -17,7 +17,10 @@
     { "wire": "workspace.go", "upstream": "3624dd05" },
     { "wire": "workspace.filter", "upstream": "6722755a" },
     { "wire": "window.go", "upstream": "99c8c50d" },
-    { "wire": "session.context", "upstream": "73b63b71" }
+    { "wire": "session.context", "upstream": "73b63b71" },
+    { "wire": "session.split.close", "upstream": "79852e71" },
+    { "wire": "session.swap", "upstream": "db62080d" },
+    { "wire": "surface.cursor", "upstream": "2279c722" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -47,7 +50,8 @@
     { "name": "ask", "upstream": "32ec288d" },
     { "name": "keymap", "upstream": "f4b7a4aa" },
     { "name": "app", "upstream": "5d22904a" },
-    { "name": "installed", "upstream": "18da29cb" }
+    { "name": "installed", "upstream": "18da29cb" },
+    { "name": "cursor", "upstream": "2279c722" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },
@@ -59,10 +63,14 @@
     { "name": "hud", "upstream": "d0bec154" },
     { "name": "context", "upstream": "73b63b71" },
     { "name": "realized", "upstream": "8e67daa4" },
-    { "name": "splitCwd", "upstream": "16af9dc3" }
+    { "name": "splitCwd", "upstream": "16af9dc3" },
+    { "name": "hasSplit", "upstream": "a5856949" },
+    { "name": "splitCommandWait", "upstream": "db62080d" }
   ],
   "sessionSnapshot": [
-    { "name": "context", "upstream": "73b63b71" }
+    { "name": "context", "upstream": "73b63b71" },
+    { "name": "splitInitialCommand", "upstream": "db62080d" },
+    { "name": "splitCommandWait", "upstream": "db62080d" }
   ],
   "keymapActions": [
     { "wire": "toggle_workspace_filter", "upstream": "6722755a" }

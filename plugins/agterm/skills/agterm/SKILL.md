@@ -14,7 +14,7 @@ description: >
   GitHub issue.
 when_to_use: >
   Trigger on: agterm, agterm-win, agtermctl, agterm control socket, session.new, session.close, session.type,
-  session.split, session.scratch, session.focus, session.resize, surface.zoom, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
+  session.split, session.split.close, session.swap, session.scratch, session.focus, session.resize, surface.zoom, surface.cursor, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
   session.flag, session.context, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
   window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, select theme, edit keymap,

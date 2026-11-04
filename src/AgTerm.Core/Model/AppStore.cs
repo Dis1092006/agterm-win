@@ -298,6 +298,7 @@ public sealed partial class AppStore
                     Title = session.OscTitle,
                     Active = session.Id == activeId,
                     Split = session.IsSplit,
+                    HasSplit = session.HasSplit ? true : null,
                     SplitRatio = session.HasSplit ? session.SplitRatio : null,
                     SplitFocused = session.HasSplit ? session.SplitFocused : null,
                     Overlay = session.OverlayActive,
@@ -314,6 +315,7 @@ public sealed partial class AppStore
                     Flagged = session.Flagged,
                     Context = session.Context,
                     CommandWait = session.InitialCommand is not null && session.CommandWait ? true : null,
+                    SplitCommandWait = session.SplitInitialCommand is not null && session.SplitCommandWait ? true : null,
                     Foreground = foreground?.Invoke(session),
                     SplitForeground = splitForeground?.Invoke(session),
                     // the PERSISTED overrides, never the transient pending payloads, so a read after
@@ -1285,6 +1287,8 @@ public sealed partial class AppStore
         };
         session.HasSplit = session.IsSplit;
         session.SplitRestoreCommand = session.IsSplit ? snapshot.SplitRestoreCommand : null;
+        session.SplitInitialCommand = session.IsSplit ? snapshot.SplitInitialCommand : null;
+        session.SplitCommandWait = session.IsSplit && (snapshot.SplitCommandWait ?? false);
         if (launchRestore)
         {
             session.PendingRestoreCommand = snapshot.RestoreCommand;

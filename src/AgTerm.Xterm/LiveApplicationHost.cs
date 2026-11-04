@@ -681,14 +681,14 @@ public sealed class LiveApplicationHost : IDisposable
         if (request.Cmd == Command.Version)
             return AppVersion();
         if (request.Cmd is Command.Quick or Command.QuickType or Command.QuickText
-            || request.Cmd == Command.SurfaceZoom && request.Target?.Trim() == "quick")
+            || request.Cmd is Command.SurfaceZoom or Command.SurfaceCursor && request.Target?.Trim() == "quick")
         {
             LiveWindowHost? active;
             lock (_gate) active = ActiveWindowIdLocked() is { } id ? _openWindows[id] : null;
             if (active is null)
-                return new ControlResponse { Ok = false, Error = request.Cmd == Command.SurfaceZoom
+                return new ControlResponse { Ok = false, Error = request.Cmd is Command.SurfaceZoom or Command.SurfaceCursor
                     ? "surface not available: quick" : "no open window" };
-            if (request.Cmd is Command.QuickType or Command.QuickText && Quick.Visible)
+            if (request.Cmd is Command.QuickType or Command.QuickText or Command.SurfaceCursor && Quick.Visible)
                 await EnsureQuickSurfaceAsync(cancellationToken).ConfigureAwait(false);
             var result = await active.DispatchAsync(request with
             {
@@ -1610,10 +1610,13 @@ public sealed class LiveApplicationHost : IDisposable
         or Command.SessionStatus
         or Command.SessionRestore
         or Command.SessionSplit
+        or Command.SessionSplitClose
+        or Command.SessionSwap
         or Command.SessionScratch
         or Command.SessionFocus
         or Command.SessionResize
         or Command.SurfaceZoom
+        or Command.SurfaceCursor
         or Command.SessionType
         or Command.SessionCopy
         or Command.SessionPaste

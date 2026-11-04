@@ -54,10 +54,22 @@ public interface IControlActions
     ControlResponse SetSessionRestore(string? target, string? window, ControlSessionRestoreUpdate update);
 
     ControlResponse SplitSession(string? target, string? window, string? mode);
+
+    /// <summary>Closes a session's split pane for good (shown or hidden), tearing its terminal down;
+    /// a session without a split answers ok. Keyboard focus goes to the main pane.</summary>
+    ControlResponse CloseSessionSplit(string? target, string? window);
+
+    /// <summary>Exchanges a split session's two panes with their live roles and state. A session without
+    /// a split, a pane still being realized or a surface that cannot change role answers an error.</summary>
+    Task<ControlResponse> SwapSessionPanes(string? target, string? window);
     ControlResponse ScratchSession(string? target, string? window, string? mode, string? command);
     ControlResponse FocusSessionPane(string? target, string? window, string? pane);
     ControlResponse ResizeSplit(string? target, string? window, ControlSplitResize resize);
     ControlResponse SetSurfaceZoom(string? target, string? window, ControlToggleMode mode);
+    /// <summary>Reports a surface's zero-based cursor column. Takes surface.zoom's target vocabulary
+    /// (surface:&lt;id&gt;:&lt;kind&gt;, quick, active); a non-empty paneId requires a session target and
+    /// picks the pane by its token.</summary>
+    ControlResponse ReadSurfaceCursor(string? target, string? window, string? paneId);
     ControlResponse SetDashboard(IReadOnlyList<string> targets, string? window, bool close,
                                  DashboardFontMode fontMode, bool mru);
     ControlResponse Font(string? target, string? window, string? pane, string action);

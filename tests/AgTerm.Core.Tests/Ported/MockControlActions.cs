@@ -52,10 +52,13 @@ public sealed class MockControlActions : IControlActions
         public sealed record SessionStatus(string? Target, string? Window, ControlSessionStatusUpdate Update) : Call;
         public sealed record SessionRestore(string? Target, string? Window, ControlSessionRestoreUpdate Update) : Call;
         public sealed record SessionSplit(string? Target, string? Window, string? Mode) : Call;
+        public sealed record SessionSplitClose(string? Target, string? Window) : Call;
+        public sealed record SessionSwap(string? Target, string? Window) : Call;
         public sealed record SessionScratch(string? Target, string? Window, string? Mode, string? Command) : Call;
         public sealed record SessionFocus(string? Target, string? Window, string? Pane) : Call;
         public sealed record SessionResize(string? Target, string? Window, ControlSplitResize Resize) : Call;
         public sealed record SurfaceZoom(string? Target, string? Window, ControlToggleMode Mode) : Call;
+        public sealed record SurfaceCursor(string? Target, string? Window, string? PaneId) : Call;
         public sealed record Dashboard(IReadOnlyList<string> Targets, string? Window, bool Close,
                                        DashboardFontMode FontMode, bool Mru) : Call
         {
@@ -166,6 +169,7 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextSessionBackgroundResponse = new() { Ok = true };
     public ControlResponse NextSessionTextResponse = new() { Ok = true };
     public ControlResponse NextSurfaceZoomResponse = new() { Ok = true };
+    public ControlResponse NextSurfaceCursorResponse = new() { Ok = true };
     public ControlResponse NextDashboardResponse = new() { Ok = true };
     public ControlResponse NextWindowNewResponse = new() { Ok = true };
     public ControlResponse NextWindowListResponse = new() { Ok = true };
@@ -369,6 +373,18 @@ public sealed class MockControlActions : IControlActions
         return new ControlResponse { Ok = true };
     }
 
+    public ControlResponse CloseSessionSplit(string? target, string? window)
+    {
+        Calls.Add(new Call.SessionSplitClose(target, window));
+        return new ControlResponse { Ok = true };
+    }
+
+    public Task<ControlResponse> SwapSessionPanes(string? target, string? window)
+    {
+        Calls.Add(new Call.SessionSwap(target, window));
+        return Task.FromResult(new ControlResponse { Ok = true });
+    }
+
     public ControlResponse ScratchSession(string? target, string? window, string? mode, string? command)
     {
         Calls.Add(new Call.SessionScratch(target, window, mode, command));
@@ -391,6 +407,12 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.SurfaceZoom(target, window, mode));
         return NextSurfaceZoomResponse;
+    }
+
+    public ControlResponse ReadSurfaceCursor(string? target, string? window, string? paneId)
+    {
+        Calls.Add(new Call.SurfaceCursor(target, window, paneId));
+        return NextSurfaceCursorResponse;
     }
 
     public ControlResponse SetDashboard(IReadOnlyList<string> targets, string? window, bool close,

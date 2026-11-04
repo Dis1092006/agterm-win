@@ -1336,6 +1336,42 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task SplitCloseRoutesTheTargetAndTheWindow()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionSplitClose, Target = "session", Args = new ControlArgs { Window = "win" },
+        });
+
+        ExpectResponse(Ok(), response);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SessionSplitClose("session", "win"),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task SessionSwapRoutesTheTargetAndTheWindow()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionSwap, Target = "session", Args = new ControlArgs { Window = "win" },
+        });
+
+        ExpectResponse(Ok(), response);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SessionSwap("session", "win"),
+        }, actions.Calls);
+    }
+
+    [Fact]
     public async Task SplitScratchFocusAndResizeRouteParsedInputs()
     {
         var actions = new MockControlActions();
@@ -2372,6 +2408,46 @@ public class ControlDispatcherTests
         Assert.Equal(new MockControlActions.Call[]
         {
             new MockControlActions.Call.SurfaceZoom("surface:s1:right", "win", ControlToggleMode.On),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task SurfaceCursorRoutesTargetWindowAndPaneId()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+        actions.NextSurfaceCursorResponse = Ok(new ControlResult
+        {
+            Id = "surface:s1:right", Cursor = new ControlCursor { Column = 7 },
+        });
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SurfaceCursor, Target = "surface:s1:right",
+            Args = new ControlArgs { Window = "win", PaneId = "tok" },
+        });
+
+        ExpectResponse(Ok(new ControlResult
+        {
+            Id = "surface:s1:right", Cursor = new ControlCursor { Column = 7 },
+        }), response);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SurfaceCursor("surface:s1:right", "win", "tok"),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task SurfaceCursorDefaultsTargetWindowAndPaneIdToNull()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        _ = await dispatcher.Dispatch(new ControlRequest { Cmd = Command.SurfaceCursor });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SurfaceCursor(null, null, null),
         }, actions.Calls);
     }
 

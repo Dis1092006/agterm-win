@@ -21,6 +21,17 @@ public interface ITerminalSurface
     void PromoteToPrimaryPane();
 }
 
+/// <summary>The role a pane holds in a split session; a swap exchanges them.</summary>
+public enum SwappablePaneRole { Primary, Split }
+
+/// <summary>Optional capability of a surface: its live role can change without recreating it
+/// (upstream PaneRoleMutableSurface). Only the routing changes; the pane token and the child
+/// environment stay as they were at spawn. A surface without it refuses a swap.</summary>
+public interface IPaneRoleMutableSurface
+{
+    void SetPaneRole(SwappablePaneRole role);
+}
+
 /// <summary>Optional non-blocking exit-code projection for a terminal process that has already
 /// completed. Hosts that cannot report a process status do not implement this interface.</summary>
 public interface ICompletedExitCodeSurface
@@ -113,6 +124,12 @@ public sealed class Session
     /// (session.new --command --wait). Meaningful only with InitialCommand. Persisted.</summary>
     public bool CommandWait { get; set; }
 
+    /// <summary>The split pane's creation command, the split analogue of InitialCommand. Persisted so
+    /// a pane that a swap moved into the split role keeps its exec lifecycle across a restore.</summary>
+    public string? SplitInitialCommand { get; set; }
+
+    /// <summary>The split pane's hold-after-exit policy. Meaningful only with SplitInitialCommand.</summary>
+    public bool SplitCommandWait { get; set; }
     /// <summary>True when this session was rebuilt from a snapshot rather than freshly created;
     /// gates the InitialCommand re-run. Transient.</summary>
     public bool WasRestored { get; set; }
@@ -220,6 +237,14 @@ public sealed class Session
     }
 
     internal void ForgetSplitPaneIdentity() => _splitPaneIdentity = null;
+
+    /// <summary>A swap: each terminal keeps its identity and moves to the other slot.</summary>
+    internal void SwapPaneIdentities()
+    {
+        var split = _splitPaneIdentity ?? Guid.NewGuid();
+        _splitPaneIdentity = PaneIdentity;
+        PaneIdentity = split;
+    }
 
     public OverlayPane? PaneRole(Guid identity)
     {
@@ -480,6 +505,8 @@ public sealed class Session
         SplitForegroundCommand = SplitForegroundCommand,
         InitialCommand = InitialCommand,
         CommandWait = CommandWait ? true : null,
+        SplitInitialCommand = SplitInitialCommand,
+        SplitCommandWait = SplitCommandWait ? true : null,
         BackgroundWatermark = BackgroundWatermark,
         RestoreCommand = RestoreCommand,
         SplitRestoreCommand = SplitRestoreCommand,

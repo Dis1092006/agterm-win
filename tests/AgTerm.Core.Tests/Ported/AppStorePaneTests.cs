@@ -57,6 +57,8 @@ public class AppStorePaneTests
         session.SplitSurface = split;
         session.SplitCwd = "/var/log";
         session.SplitRatio = 0.7;
+        session.SplitInitialCommand = "make watch";
+        session.SplitCommandWait = true;
         store.CloseSplit(session.Id);
         Assert.False(session.IsSplit);
         Assert.False(session.HasSplit);
@@ -64,8 +66,32 @@ public class AppStorePaneTests
         Assert.Null(session.SplitSurface);
         Assert.Null(session.SplitCwd);
         Assert.Null(session.InitialSplitCwd);
+        Assert.Null(session.SplitInitialCommand); // a fresh split must be a plain shell
+        Assert.False(session.SplitCommandWait);
         Assert.Null(session.SplitRatio); // teardown clears geometry too, so a fresh re-split opens even
         Assert.Equal(1, split.TeardownCount);
+    }
+
+    [Fact]
+    public void ClosePrimaryPanePromotesTheSplitCommandAndItsWaitPolicy()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/a")!;
+        session.Surface = new SpySurface();
+        session.SplitSurface = new SpySurface();
+        session.IsSplit = true;
+        session.HasSplit = true;
+        session.InitialCommand = "make left";
+        session.CommandWait = false;
+        session.SplitInitialCommand = "make right";
+        session.SplitCommandWait = true;
+
+        store.ClosePrimaryPane(session.Id);
+
+        Assert.Equal("make right", session.InitialCommand);
+        Assert.True(session.CommandWait);
+        Assert.Null(session.SplitInitialCommand);
+        Assert.False(session.SplitCommandWait);
     }
 
     [Fact]

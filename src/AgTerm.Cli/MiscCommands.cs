@@ -449,7 +449,45 @@ internal static class SurfaceCommands
     {
         var surface = new System.CommandLine.Command("surface", "Terminal surface commands.");
         surface.Subcommands.Add(BuildZoom(bindings));
+        surface.Subcommands.Add(BuildCursor(bindings));
         return surface;
+    }
+
+    internal sealed class Cursor : IRequestCommand
+    {
+        public string? PaneId { get; init; }
+        public required SurfaceTargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.SurfaceCursor,
+            Target = Target.Target,
+            Args = Client.WithWindow(new ControlArgs { PaneId = PaneId }),
+        };
+    }
+
+    private static System.CommandLine.Command BuildCursor(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("cursor",
+            "Report a terminal surface's zero-based cursor column.");
+        var paneId = new Option<string?>("--pane-id")
+        {
+            Description = "Stable pane token ($AGTERM_PANE_ID). With it --target names the session ('active' or a session id), not a surface.",
+        };
+        var target = new SurfaceTargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Options.Add(paneId);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Cursor
+        {
+            PaneId = result.GetValue(paneId),
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
     }
 
     private static System.CommandLine.Command BuildZoom(CommandBindings bindings)

@@ -54,6 +54,11 @@ public sealed record ControlSessionNode
     [JsonPropertyName("split")]
     public bool Split { get; init; }
 
+    /// <summary>True for a session that HAS a split pane, shown or hidden; null without one. Present
+    /// exactly when splitRatio and splitFocused can be, so Split alone means "shown".</summary>
+    [JsonPropertyName("hasSplit")]
+    public bool? HasSplit { get; init; }
+
     /// <summary>The left-pane fraction (0.05..0.95) of a session that HAS a split; null when no split
     /// or never explicitly set (divider at the default 0.5).</summary>
     [JsonPropertyName("splitRatio")]
@@ -92,6 +97,10 @@ public sealed record ControlSessionNode
     /// <summary>Whether a --command session holds its surface after the command exits.</summary>
     [JsonPropertyName("commandWait")]
     public bool? CommandWait { get; init; }
+
+    /// <summary>Whether the split pane's --command holds its surface after the command exits.</summary>
+    [JsonPropertyName("splitCommandWait")]
+    public bool? SplitCommandWait { get; init; }
 
     /// <summary>The main pane's live foreground argv; null at the shell prompt.</summary>
     [JsonPropertyName("foreground")]

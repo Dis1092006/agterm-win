@@ -122,6 +122,26 @@ public sealed class LiveWindowHost
         ControlRequest request,
         CancellationToken cancellationToken = default)
     {
+        var response = await DispatchOnceAsync(request, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd != Command.SessionSwap)
+            return response;
+        // a pane realizes on a task of its own; wait for it outside the host gate, as upstream does
+        for (var attempt = 1; attempt < SwapRealizeAttempts && response is { Ok: false, Error: SwapNotRealizedError }; attempt++)
+        {
+            await Task.Delay(SwapRealizeInterval, cancellationToken).ConfigureAwait(false);
+            response = await DispatchOnceAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+        return response;
+    }
+
+    private const string SwapNotRealizedError = "session not realized";
+    private const int SwapRealizeAttempts = 13;
+    private static readonly TimeSpan SwapRealizeInterval = TimeSpan.FromMilliseconds(30);
+
+    private async Task<ControlResponse?> DispatchOnceAsync(
+        ControlRequest request,
+        CancellationToken cancellationToken)
+    {
         IControlDispatchScope? scope = null;
         ControlResponse? response;
         await _dispatchGate.WaitAsync(cancellationToken).ConfigureAwait(false);

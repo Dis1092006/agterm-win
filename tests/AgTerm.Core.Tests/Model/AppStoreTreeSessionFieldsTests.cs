@@ -76,6 +76,51 @@ public class AppStoreTreeSessionFieldsTests
         Assert.DoesNotContain("splitCwd", ControlJson.Serialize(node));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HasSplitIsTrueForAShownAndAHiddenSplit(bool shown)
+    {
+        _session.HasSplit = true;
+        _session.IsSplit = shown;
+
+        var node = Node();
+
+        Assert.True(node.HasSplit);
+        Assert.Equal(shown, node.Split);
+        Assert.Contains("\"hasSplit\":true", ControlJson.Serialize(node));
+    }
+
+    [Fact]
+    public void NoSplitOmitsHasSplit()
+    {
+        var node = Node();
+
+        Assert.Null(node.HasSplit);
+        Assert.DoesNotContain("hasSplit", ControlJson.Serialize(node));
+    }
+
+    [Fact]
+    public void SplitCommandWaitIsReportedOnlyForASplitCommandThatHolds()
+    {
+        _session.HasSplit = true;
+        _session.SplitInitialCommand = "make watch";
+        _session.SplitCommandWait = true;
+
+        var node = Node();
+
+        Assert.True(node.SplitCommandWait);
+        Assert.Contains("\"splitCommandWait\":true", ControlJson.Serialize(node));
+
+        _session.SplitCommandWait = false;
+        Assert.Null(Node().SplitCommandWait);
+
+        _session.SplitCommandWait = true;
+        _session.SplitInitialCommand = null;
+        Assert.Null(Node().SplitCommandWait);
+        Assert.DoesNotContain("splitCommandWait", ControlJson.Serialize(Node()));
+    }
+
     [Fact]
     public void RealizedIsFalseWithoutAHostAndFollowsTheHostCallback()
     {

@@ -46,7 +46,7 @@ public sealed class XtermSurfaceOptions
 /// and blocks (bounded) — a timeout or a torn-down pane reports as "not realized" (false/null),
 /// which the arms map to the pinned wire errors, never a crash.
 /// </summary>
-public sealed class XtermPaneSurface : IHeadlessSurface, IFontSizeReportingSurface, ICompletedExitCodeSurface, ILiveShutdownSurface, IScrollbackSurface, IDisposable
+public sealed class XtermPaneSurface : IHeadlessSurface, IFontSizeReportingSurface, ICompletedExitCodeSurface, ILiveShutdownSurface, IScrollbackSurface, IPaneRoleMutableSurface, IDisposable
 {
     private static readonly TimeSpan UiCallBudget = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ShutdownBudget = TimeSpan.FromSeconds(5);
@@ -199,6 +199,8 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IFontSizeReportingSurfa
 
     public bool IsRealized => !IsOutputStopped;
 
+    public int? CursorColumn => OnUi(() => Pane.Terminal.ReadCursorColumnAsync());
+
     public string? SelectedText =>
         OnUi(() => Pane.Terminal.GetSelectionAsync()) is { Length: > 0 } text ? text : null;
 
@@ -279,6 +281,13 @@ public sealed class XtermPaneSurface : IHeadlessSurface, IFontSizeReportingSurfa
     public void PromoteToPrimaryPane()
     {
         Interlocked.Exchange(ref _promotedToPrimaryPane, 1);
+    }
+
+    /// <summary>A swap moves this surface between the two slots. Only routing changes; the
+    /// ConPTY process, xterm instance, pane token and child environment stay as they were.</summary>
+    public void SetPaneRole(SwappablePaneRole role)
+    {
+        Interlocked.Exchange(ref _promotedToPrimaryPane, role == SwappablePaneRole.Primary ? 1 : 0);
     }
 
     public void Dispose() => Teardown();

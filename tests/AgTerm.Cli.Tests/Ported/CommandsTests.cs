@@ -654,6 +654,56 @@ public class CommandsTests
     }
 
     [Fact]
+    public void SessionSplitVisibilityMatchesTheDefaultForm()
+    {
+        var expected = new ControlRequest
+        {
+            Cmd = WireCommand.SessionSplit, Target = "active",
+            Args = new ControlArgs { Mode = "off" },
+        };
+        CanonicalJson.AssertEqual(expected, Request("session", "split", "visibility", "off"));
+    }
+
+    [Fact]
+    public void SessionSplitClose()
+    {
+        var expected = new ControlRequest
+        {
+            Cmd = WireCommand.SessionSplitClose, Target = "active",
+        };
+        CanonicalJson.AssertEqual(expected, Request("session", "split", "close"));
+    }
+
+    [Fact]
+    public void SessionSplitCloseTakesTargetAndWindow()
+    {
+        var expected = new ControlRequest
+        {
+            Cmd = WireCommand.SessionSplitClose, Target = "dev",
+            Args = new ControlArgs { Window = "w1" },
+        };
+        CanonicalJson.AssertEqual(expected, Request("session", "split", "close", "--target", "dev", "--window", "w1"));
+    }
+
+    [Fact]
+    public void SessionSwapDefaultsToActive()
+    {
+        var expected = new ControlRequest { Cmd = WireCommand.SessionSwap, Target = "active" };
+        CanonicalJson.AssertEqual(expected, Request("session", "swap"));
+    }
+
+    [Fact]
+    public void SessionSwapWithTargetAndWindow()
+    {
+        var expected = new ControlRequest
+        {
+            Cmd = WireCommand.SessionSwap, Target = "s1",
+            Args = new ControlArgs { Window = "w1" },
+        };
+        CanonicalJson.AssertEqual(expected, Request("session", "swap", "--target", "s1", "--window", "w1"));
+    }
+
+    [Fact]
     public void SessionScratchDefaultsToggle()
     {
         var expected = new ControlRequest
@@ -1741,6 +1791,44 @@ public class CommandsTests
                 Args = new ControlArgs { Mode = "hide", Window = "win" },
             },
             Request("surface", "zoom", "hide", "--window", "win"));
+    }
+
+    [Fact]
+    public void SurfaceCursorDefaultsToActive()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SurfaceCursor, Target = "active",
+                Args = new ControlArgs(),
+            },
+            Request("surface", "cursor"));
+    }
+
+    [Fact]
+    public void SurfaceCursorTargetsSurfaceIDAndWindow()
+    {
+        var id = "surface:5E5B1C5B-75C5-49E6-8806-2C61D8D6BBA9:right";
+
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SurfaceCursor, Target = id,
+                Args = new ControlArgs { Window = "win" },
+            },
+            Request("surface", "cursor", "--target", id, "--window", "win"));
+    }
+
+    [Fact]
+    public void SurfaceCursorPaneIdNamesTheSession()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SurfaceCursor, Target = "active",
+                Args = new ControlArgs { PaneId = "pane-tok" },
+            },
+            Request("surface", "cursor", "--pane-id", "pane-tok"));
     }
 
     // MARK: - dashboard

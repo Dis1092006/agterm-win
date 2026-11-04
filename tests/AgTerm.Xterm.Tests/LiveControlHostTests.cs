@@ -194,6 +194,33 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
+    public async Task Surface_cursor_reports_the_live_xterm_column()
+    {
+        var (_, client) = await StartHostAsync();
+        WaitForText(client, ">");
+
+        ControlResponse Cursor() => Ok(client.Send(new ControlRequest { Cmd = Command.SurfaceCursor }));
+
+        var before = Cursor().Result!.Cursor!.Column;
+        Assert.True(before > 0, "the cmd prompt leaves the cursor past column 0");
+        Ok(client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionType,
+            Args = new ControlArgs { Text = "abc" },
+        }));
+
+        var deadline = Environment.TickCount64 + 30000;
+        var column = before;
+        while (Environment.TickCount64 < deadline && column != before + 3)
+        {
+            Thread.Sleep(100);
+            column = Cursor().Result!.Cursor!.Column;
+        }
+        Assert.Equal(before + 3, column);
+        Assert.StartsWith("surface:", Cursor().Result!.Id);
+    }
+
+    [Fact]
     public async Task Session_new_with_command_realizes_the_argv_child()
     {
         var (_, client) = await StartHostAsync();

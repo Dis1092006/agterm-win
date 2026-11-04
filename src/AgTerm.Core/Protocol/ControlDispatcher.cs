@@ -32,8 +32,8 @@ public sealed class ControlDispatcher
                 or Command.SessionSeen or Command.SessionStatus or Command.SessionRestore
                 or Command.SessionContext:
                 return DispatchSessionCommand(request);
-            case Command.SessionSplit or Command.SessionScratch or Command.SessionFocus
-                or Command.SessionResize or Command.SurfaceZoom or Command.SessionType
+            case Command.SessionSplit or Command.SessionSplitClose or Command.SessionSwap or Command.SessionScratch or Command.SessionFocus
+                or Command.SessionResize or Command.SurfaceZoom or Command.SurfaceCursor or Command.SessionType
                 or Command.SessionCopy or Command.SessionPaste or Command.SessionSelectAll
                 or Command.SessionSearch or Command.SessionOverlayOpen or Command.SessionOverlayClose
                 or Command.SessionOverlayResize or Command.SessionOverlayResult
@@ -676,6 +676,10 @@ public sealed class ControlDispatcher
         {
             case Command.SessionSplit:
                 return _actions.SplitSession(request.Target, request.Args?.Window, request.Args?.Mode);
+            case Command.SessionSplitClose:
+                return _actions.CloseSessionSplit(request.Target, request.Args?.Window);
+            case Command.SessionSwap:
+                return await _actions.SwapSessionPanes(request.Target, request.Args?.Window);
             case Command.SessionScratch:
                 return _actions.ScratchSession(request.Target, request.Args?.Window, request.Args?.Mode,
                     request.Args?.Command);
@@ -699,6 +703,8 @@ public sealed class ControlDispatcher
                     return Err($"invalid surface zoom mode: {request.Args?.Mode ?? "toggle"}");
                 return _actions.SetSurfaceZoom(request.Target, request.Args?.Window, mode.Value);
             }
+            case Command.SurfaceCursor:
+                return _actions.ReadSurfaceCursor(request.Target, request.Args?.Window, request.Args?.PaneId);
             case Command.SessionType:
             {
                 if (request.Args?.Text is not { } text)

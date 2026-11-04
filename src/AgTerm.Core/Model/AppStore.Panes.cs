@@ -1,5 +1,8 @@
 namespace AgTerm.Core.Model;
 
+/// <summary>Why a swap did not happen. Each case is one wire refusal of session.swap.</summary>
+public enum SwapRefusal { NoSession, NoSplit, SlotNotRealized, RoleNotMutable }
+
 // Split, overlay, and scratch panes (port of AppStore+Panes.swift)
 
 public sealed partial class AppStore
@@ -145,6 +148,8 @@ public sealed partial class AppStore
         // persisted pin and any payload still armed for this launch (a fresh split must be a plain shell).
         session.SplitRestoreCommand = null;
         session.PendingSplitRestoreCommand = null;
+        session.SplitInitialCommand = null;
+        session.SplitCommandWait = false;
         session.SplitRatio = null; // tearing down the split clears its geometry too, so a fresh split opens even
         // a search bar pinned to the torn-down split surface would otherwise stay stuck, so reset
         // search on the surviving session.
@@ -185,10 +190,12 @@ public sealed partial class AppStore
         session.HasSplit = false;
         session.SplitFocused = false;
         session.SplitRatio = null; // promoted to a single pane; a later split should open even, not stale
-        // the command pane is gone — the promoted survivor is a plain shell, so drop the creation
-        // command (and its held-open flag) together.
-        session.InitialCommand = null;
-        session.CommandWait = false;
+        // the command pane is gone. The survivor's own command (null for a plain split shell) becomes
+        // the primary's, with its wait policy, so a restart re-runs the right command on the right pane.
+        session.InitialCommand = session.SplitInitialCommand;
+        session.CommandWait = session.SplitCommandWait;
+        session.SplitInitialCommand = null;
+        session.SplitCommandWait = false;
         // migrate the split pane's live/persisted metadata up to the session (main) fields, then
         // clear the now-meaningless split fields so nothing still describes a pane that no longer
         // exists. cwd prefers the split's live PWD, then its restore-seed, and only falls back to
@@ -248,6 +255,64 @@ public sealed partial class AppStore
             return;
         }
         CloseSplit(sessionId);
+    }
+
+    /// <summary>
+    /// Exchanges a split session's two terminals in position and in model role (upstream
+    /// swapPanes). Each pane's cwd, title, foreground, restore pair, creation command and identity
+    /// move with it, and a pane-tagged status follows its terminal. Focus follows the terminal too,
+    /// so SplitFocused flips; the divider ratio stays with the layout. It works on a hidden split.
+    /// Returns null on success, else the reason. Nothing changes on a refusal.
+    /// </summary>
+    public SwapRefusal? SwapPanes(Guid sessionId)
+    {
+        if (SessionWithId(sessionId) is not { } session) return SwapRefusal.NoSession;
+        if (!session.HasSplit) return SwapRefusal.NoSplit;
+        if (session.Surface is not { } primary || session.SplitSurface is not { } split)
+            return SwapRefusal.SlotNotRealized;
+        if (primary is not IPaneRoleMutableSurface primaryRole || split is not IPaneRoleMutableSurface splitRole)
+            return SwapRefusal.RoleNotMutable;
+
+        var primaryCwd = session.CurrentCwd ?? session.InitialCwd;
+        var splitCwd = session.SplitCwd ?? session.InitialSplitCwd ?? primaryCwd;
+        session.CurrentCwd = splitCwd;
+        session.SplitCwd = primaryCwd;
+        session.InitialSplitCwd = primaryCwd;
+
+        primaryRole.SetPaneRole(SwappablePaneRole.Split);
+        splitRole.SetPaneRole(SwappablePaneRole.Primary);
+        session.Surface = split;
+        session.SplitSurface = primary;
+        session.SwapPaneIdentities();
+
+        (session.OscTitle, session.SplitTitle) = (session.SplitTitle, session.OscTitle);
+        (session.ForegroundCommand, session.SplitForegroundCommand) =
+            (session.SplitForegroundCommand, session.ForegroundCommand);
+        (session.RestoreCommand, session.SplitRestoreCommand) =
+            (session.SplitRestoreCommand, session.RestoreCommand);
+        (session.PendingRestoreCommand, session.PendingSplitRestoreCommand) =
+            (session.PendingSplitRestoreCommand, session.PendingRestoreCommand);
+        (session.InitialCommand, session.SplitInitialCommand) =
+            (session.SplitInitialCommand, session.InitialCommand);
+        (session.CommandWait, session.SplitCommandWait) = (session.SplitCommandWait, session.CommandWait);
+
+        // an idle indicator names no pane; a pane tag follows its terminal; a scratch tag stays
+        var indicator = session.AgentIndicator;
+        session.AgentIndicator = indicator.Status == AgentStatus.Idle
+            ? indicator with { StatusPane = null }
+            : indicator with
+            {
+                StatusPane = (indicator.StatusPane ?? StatusPane.Left) switch
+                {
+                    StatusPane.Left => StatusPane.Right,
+                    StatusPane.Right => StatusPane.Left,
+                    var other => other,
+                },
+            };
+
+        session.SplitFocused = !session.SplitFocused;
+        Save();
+        return null;
     }
 
     /// <summary>Opens an ephemeral overlay terminal on a session running command (e.g. a TUI). The
