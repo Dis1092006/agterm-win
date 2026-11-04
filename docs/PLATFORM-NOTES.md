@@ -643,7 +643,7 @@ As upstream at `7df70fe`, the main pane saves its font size in `session.fontSize
 
 ## Upstream behavior adopted beyond the pin
 
-The pin stays `7df70fe`. The entries below name upstream behavior adopted beyond the pin. Most follow upstream `ed831ab` (v0.36.0); later additions name their own commit.
+The pin stays `7df70fe`. The entries below name upstream behavior adopted beyond the pin. Most follow upstream `ed831ab` (v0.36.0); later additions name their own commit. `docs/upstream/delta-ed831ab-to-v0.40.0.md` lists the upstream changes after `ed831ab`.
 
 - Session pickers follow upstream `dc1110bf` (v0.38.0): recent sessions, Ctrl-Tab, session and attention palettes, and caller-supplied picks draw a non-idle agent glyph on the right, with the sidebar's shape and color settings and per-call overrides. Picker glyphs do not blink. Session and attention palette rows update in place as status changes, without changing the query, order, selection or scroll position. Ctrl-Tab keeps its frozen candidate order while refreshing indicators. Windows uses gate-captured status snapshots instead of Swift Observation. Recent sessions keeps native `MenuFlyoutItem` rows with a trailing-glyph template, native menu keyboard/accessibility and dismissal behavior, and the existing auto-follow suppression. The three optional pick item strings `status`, `statusColor`, and `statusShape` are recorded in `parity/adopted.json`; absent fields are omitted from JSON. `pick.open` checks provided fields using upstream's exact errors, without echoing rejected values. CLI flags and pick result JSON are unchanged. The same upstream commit adds remote `zmx tree` status fields; those are not ported because agterm-win has no zmx or remote attachment.
 

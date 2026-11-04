@@ -25,6 +25,7 @@ what scripts and the agent-skill (`Bash(agtermctl:*)`) actually call. Explicitly
 The parity pin is upstream `7df70fe` (after v0.16.1), and `parity/surface.json` is its snapshot. The pin does not move. Features that upstream added after it are taken one at a time:
 
 - `docs/upstream/delta-7df70fe-to-v0.36.0.md` lists what upstream added after the pin, and `docs/upstream/surface-v0.36.0.json` is the upstream snapshot at `ed831ab`.
+- `docs/upstream/delta-ed831ab-to-v0.40.0.md` continues it up to v0.40.0, and `docs/upstream/surface-v0.40.0.json` is the upstream snapshot at `c63e5158`.
 - A command, argument or field taken from upstream goes into `parity/adopted.json` with its upstream sha.
 - A command or field that upstream does not have goes into `parity/windows-only.json`.
 
@@ -63,7 +64,7 @@ plugins/agterm/            the agent skill, packaged as a plugin
 ```
 
 See the portable spec (`docs/agterm-windows-spec.md`) for the full data model, protocol, and keymap format
-that drive the implementation. The spec and the upstream catalog in `docs/upstream/` are written in Russian.
+that drive the implementation. The spec is written in Russian; the upstream catalogs in `docs/upstream/` are in English.
 
 ## Running
 

@@ -183,9 +183,9 @@ These items change what agterm-win already does at the pin. They do not depend o
 - No code: recipes in `cookbook/`, documentation.
 - The bundled agent skill and the plugin marketplace for Claude Code and Codex are no longer outside parity: the port keeps its own adapted copy of the skill and its own marketplace (`docs/PLATFORM-NOTES.md`, section "Agent skill").
 
-## Upstream changes after `ed831ab` already in the port
+## Upstream changes after `ed831ab`
 
-- The agent status glyph in session pickers (upstream `dc1110bf`, v0.38.0) in agterm-win #22, and `session.selectall` writing the selection buffer (upstream `bca6ad8b`, v0.38.0) in agterm-win #24. See PLATFORM-NOTES "Upstream behavior adopted beyond the pin".
+`docs/upstream/delta-ed831ab-to-v0.40.0.md` lists them, up to v0.40.0, with their port status.
 
 ## Open questions
 

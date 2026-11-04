@@ -13,6 +13,7 @@ The contract matched byte for byte is the `agtermctl` CLI and the JSON wire prot
 The parity pin is upstream `7df70fe`, and `parity/surface.json` is its snapshot. The pin does not move: upstream features after it are taken one at a time.
 
 - `docs/upstream/delta-7df70fe-to-v0.36.0.md` lists what upstream added after the pin; `docs/upstream/surface-v0.36.0.json` is the upstream snapshot at `ed831ab`.
+- `docs/upstream/delta-ed831ab-to-v0.40.0.md` continues it up to v0.40.0; `docs/upstream/surface-v0.40.0.json` is the upstream snapshot at `c63e5158`.
 - A command, arg or field taken from upstream goes into `parity/adopted.json` with its upstream sha.
 - A command or field upstream does not have goes into `parity/windows-only.json` and the PLATFORM-NOTES section "Windows-only extensions".
 - A change in how upstream answers an already implemented command goes into the PLATFORM-NOTES section "Upstream behavior adopted beyond the pin".
