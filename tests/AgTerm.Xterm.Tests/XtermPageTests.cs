@@ -232,7 +232,7 @@ public class XtermPageTests
     {
         var page = await InitializedAsync();
         var terminal = await page.OpenTerminalAsync("p1");
-        var keys = new List<bool>();
+        var keys = new List<StatusKeystroke>();
         terminal.UserKeystroke += keys.Add;
 
         _host.RaiseMessage("""{"type":"userKeystroke","paneId":"missing","code":"Escape","key":"Escape"}""");
@@ -240,10 +240,17 @@ public class XtermPageTests
         _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"KeyC","key":"\u0441","ctrl":true}""");
         _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"KeyC","key":"C","ctrl":true,"shift":true}""");
         _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"Escape","key":"Escape"}""");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"Enter","key":"Enter"}""");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"NumpadEnter","key":"Enter"}""");
+        _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"Enter","key":"Enter","shift":true}""");
         await page.ClosePaneAsync("p1");
         _host.RaiseMessage("""{"type":"userKeystroke","paneId":"p1","code":"Escape","key":"Escape"}""");
 
-        Assert.Equal([false, true, false, true], keys);
+        Assert.Equal(
+        [
+            StatusKeystroke.Other, StatusKeystroke.Interrupt, StatusKeystroke.Other, StatusKeystroke.Interrupt,
+            StatusKeystroke.Submit, StatusKeystroke.Submit, StatusKeystroke.Other,
+        ], keys);
     }
 
     [Fact]

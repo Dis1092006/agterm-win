@@ -80,16 +80,25 @@ public static class AgentStatusExtensions
     };
 
     /// <summary>
-    /// Whether a keystroke in the session's terminal should clear this glyph back to idle: blocked and
-    /// completed clear on ANY key; active clears ONLY on an interrupt keystroke (Escape or Ctrl-C), so
-    /// ordinary typing while the agent works does not wipe the "working" glyph. Idle has no glyph.
+    /// Whether a keystroke in the session's terminal should clear this glyph back to idle. Blocked and
+    /// completed follow the statusReset mode: firstKey clears on any key, enter only on a submit (and an
+    /// interrupt also clears blocked, since cancelling a prompt fires no hook), never not at all. Active
+    /// clears ONLY on an interrupt keystroke (Escape or Ctrl-C) in every mode, so ordinary typing while
+    /// the agent works does not wipe the "working" glyph. Idle has no glyph.
     /// </summary>
-    internal static bool ClearedByKeystroke(this AgentStatus status, bool isInterrupt) => status switch
-    {
-        AgentStatus.Blocked or AgentStatus.Completed => true,
-        AgentStatus.Active => isInterrupt,
-        _ => false,
-    };
+    internal static bool ClearedByKeystroke(this AgentStatus status, StatusKeystroke keystroke, StatusReset reset) =>
+        status switch
+        {
+            AgentStatus.Blocked or AgentStatus.Completed => reset switch
+            {
+                StatusReset.FirstKey => true,
+                StatusReset.Enter => keystroke == StatusKeystroke.Submit
+                    || (status == AgentStatus.Blocked && keystroke == StatusKeystroke.Interrupt),
+                _ => false,
+            },
+            AgentStatus.Active => keystroke == StatusKeystroke.Interrupt,
+            _ => false,
+        };
 
     /// <summary>
     /// The sound to play for a session.status call, or null for none. An explicit per-call sound always
@@ -178,6 +187,45 @@ public readonly record struct AgentIndicator(
     /// status itself is clearable by that keystroke. Keeps foreground typing from wiping a status set
     /// by a background pane.
     /// </summary>
-    public bool ClearedBy(StatusPane pane, bool isInterrupt) =>
-        (StatusPane ?? Model.StatusPane.Left) == pane && Status.ClearedByKeystroke(isInterrupt);
+    public bool ClearedBy(StatusPane pane, StatusKeystroke keystroke, StatusReset reset) =>
+        (StatusPane ?? Model.StatusPane.Left) == pane && Status.ClearedByKeystroke(keystroke, reset);
+
+    /// <summary>The pane tag with a Right tag read as Left when the session has no split (a promoted
+    /// survivor's shell keeps its baked AGTERM_PANE=right). A null tag stays null.</summary>
+    public StatusPane? NormalizedPane(bool hasSplit) =>
+        StatusPane == Model.StatusPane.Right && !hasSplit ? Model.StatusPane.Left : StatusPane;
+}
+
+/// <summary>What a keystroke (or injected text) is, for clearing a status glyph.</summary>
+public enum StatusKeystroke { Interrupt, Submit, Other }
+
+/// <summary>When a blocked or completed glyph clears (the statusReset setting).</summary>
+public enum StatusReset { FirstKey, Enter, Never }
+
+public static class StatusResets
+{
+    public static string ToWire(this StatusReset reset) => reset switch
+    {
+        StatusReset.Enter => "enter",
+        StatusReset.Never => "never",
+        _ => "firstKey",
+    };
+
+    /// <summary>The raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static StatusReset? FromWire(string? wire) => wire switch
+    {
+        "firstKey" => StatusReset.FirstKey,
+        "enter" => StatusReset.Enter,
+        "never" => StatusReset.Never,
+        _ => null,
+    };
+}
+
+/// <summary>The outcome of a control-channel status write: applied, or refused because another pane
+/// owns a blocked status.</summary>
+public readonly record struct StatusWriteResult(StatusPane? RefusedOwner)
+{
+    public static StatusWriteResult Applied => default;
+
+    public static StatusWriteResult Refused(StatusPane owner) => new(owner);
 }

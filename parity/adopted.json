@@ -66,6 +66,7 @@
     { "name": "realized", "upstream": "8e67daa4" },
     { "name": "splitCwd", "upstream": "16af9dc3" },
     { "name": "hasSplit", "upstream": "a5856949" },
+    { "name": "statusChangedAt", "upstream": "5fae4f68" },
     { "name": "splitAxis", "upstream": "eb29d556" },
     { "name": "splitCommandWait", "upstream": "db62080d" }
   ],

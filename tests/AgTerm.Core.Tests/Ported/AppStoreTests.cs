@@ -295,15 +295,15 @@ public class AppStoreTests
     }
 
     [Fact]
-    public void SetAgentIndicatorClearsStatusChangedAtOnIdle()
+    public void SetAgentIndicatorKeepsStatusChangedAtOnIdle()
     {
         var store = MakeStore();
         var ws = store.AddWorkspace("work");
         var a = store.AddSession(ws.Id, "/a")!;
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked), a.Id);
         Assert.NotNull(a.StatusChangedAt);
-        store.SetAgentIndicator(new AgentIndicator(), a.Id); // back to idle clears the stamp
-        Assert.Null(a.StatusChangedAt);
+        store.SetAgentIndicator(new AgentIndicator(), a.Id); // idle is a set too: it restamps, it does not clear
+        Assert.NotNull(a.StatusChangedAt);
     }
 
     [Fact]
@@ -1878,6 +1878,7 @@ public class AppStoreTests
                     SplitFocused = false, HasSplit = true, SplitAxis = "vertical",
                     Overlay = true, Scratch = true, Flagged = true,
                     Status = "blocked", StatusPane = "right",
+                    StatusChangedAt = tree.Workspaces[1].Sessions.Single(s => s.Name == "remote:~/b").StatusChangedAt,
                     Background = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "PROD" },
                     Surfaces = new[]
                     {

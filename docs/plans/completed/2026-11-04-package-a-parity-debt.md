@@ -181,6 +181,20 @@ Upstream reference (`git -C <agterm-clone> show v0.40.0:<path>`): `eb29d556` (ho
 - [x] **Task 7: layout and UI.** `TerminalLayout.Split` axis, `bridge.js` grid and drag on Y, the divider double click, the title-bar glyphs and the click action.
 - [x] **Task 8: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.30 in the three files, `<Version>` 0.1.79, `parity/adopted.json`, PLATFORM-NOTES, the `Port:` lines in the catalog (lines 89, 97, 171), `SkillTextTests` samples.
 
-## A6
+## A6: status write rules
 
-Detailed tasks are written when the PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. A6: `statusChangedAt`, `statusReset`, a blocked pane is not overwritten by its neighbor; the A6 PR moves this plan to `docs/plans/completed/`.
+Upstream reference (`git -C <agterm-clone> show v0.40.0:<path>`): `c8860a91` (#523), `4ef26bb1` (#585), `5fae4f68` (#465), `48dabf83` (#617). Files: `AppStore+Status.swift`, `AgentStatus.swift`, `AppSettings.swift`, `ControlDispatcher.swift`, `agtermCore/Sources/agtermCore/InterruptKeystroke.swift`.
+
+### Global Constraints
+
+- Every accepted `SetAgentIndicator` stamps `statusChangedAt` (idle and repeated values too) and it is never cleared. `tree` reports it as epoch seconds with no idle guard.
+- A write that is not `blocked` is refused while the status is `blocked` and owned by another pane: `blocked status owned by pane <pane> (write from that pane to change it)`. An untagged write reads as `left`; `right` folds to `left` without a split. A refused write plays no sound and requests no notification. Internal writes bypass the rule.
+- `statusReset` (`firstKey` | `enter` | `never`) decides which key clears `blocked` and `completed`. `active` clears only on an interrupt. `session.type` clears like a keystroke for non-empty text, never as an interrupt, and without a user-activity signal.
+- No new wire command: the count stays 85. `parity/adopted.json` carries `sessionNode.statusChangedAt` with sha `5fae4f68`; the settings field has no parity section and is recorded in PLATFORM-NOTES.
+
+### Tasks
+
+- [x] **Task 1: core model.** `StatusKeystroke`, `StatusReset`, `StatusWriteResult`, `AppStore.ApplyControlStatus`, the stamp rule, `statusChangedAt` in `tree`, `statusReset` in `AppSettings` and `SettingsEditor`.
+- [x] **Task 2: keystroke classes.** `InterruptKeystroke.Classify` for key events and for `session type` text; the page posts Enter as a submit.
+- [x] **Task 3: hosts.** The refusal in `session.status`, the `session.type` clear, `StatusReset` kept current in the headless and live hosts.
+- [x] **Task 4: docs and parity.** Skill (`SKILL.md`, `reference.md`), plugin version 0.1.31 in the three files, `<Version>` 0.1.80, `parity/adopted.json`, PLATFORM-NOTES, the `Port:` lines in the catalog.

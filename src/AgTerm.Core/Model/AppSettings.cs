@@ -60,6 +60,7 @@ public sealed record AppSettings
     [JsonPropertyName("dockBounce")] public string? DockBounce { get; init; }
     [JsonPropertyName("notificationSoundName")] public string? NotificationSoundName { get; init; }
     [JsonPropertyName("blockedStatusSoundName")] public string? BlockedStatusSoundName { get; init; }
+    [JsonPropertyName("statusReset")] public string? StatusReset { get; init; }
     [JsonPropertyName("rightClickPaste")] public bool? RightClickPaste { get; init; }
     [JsonPropertyName("newSessionDirectory")] public string? NewSessionDirectory { get; init; }
     [JsonPropertyName("newSessionCustomDirectory")] public string? NewSessionCustomDirectory { get; init; }
@@ -160,7 +161,7 @@ public sealed record AppSettings
          other.SidebarFontSize, other.AutoHideSidebarInactiveWindows,
          other.SidebarThemeStyle, other.RestoreScrollback, other.OverlayOpacity,
          other.CloseOnShellExit) &&
-        CopyOnSelect == other.CopyOnSelect &&
+        CopyOnSelect == other.CopyOnSelect && StatusReset == other.StatusReset &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&
@@ -203,6 +204,10 @@ public sealed record AppSettings
     /// vertical padding (the default 13pt maps to the historical 28pt row).</summary>
     public static double SidebarRowHeight(double fontSize) =>
         Math.Round(ClampSidebarFontSize(fontSize), MidpointRounding.AwayFromZero) + 15;
+
+    /// <summary>The resolved status-reset mode: the explicit statusReset when a KNOWN raw value, else
+    /// firstKey.</summary>
+    [JsonIgnore] public Model.StatusReset EffectiveStatusReset => StatusResets.FromWire(StatusReset) ?? Model.StatusReset.FirstKey;
 
     /// <summary>The configured glyph silhouette for one agent status: the raw name when it is a
     /// KNOWN shape, else null (= the default plain circle at the glyph site). Idle renders no

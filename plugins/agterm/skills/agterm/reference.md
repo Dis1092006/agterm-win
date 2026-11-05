@@ -129,6 +129,9 @@ glyph-tint override — the `--color` value; omitted when idle or using the conf
 `circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or using the configured shape.
 Like `statusColor` it reports the PER-CALL override only, so a shape set in settings.json
 (`activeStatusShape` and so on) reads back as absent),
+`statusChangedAt` (epoch seconds, fractional, of the last accepted `session status` write; any write stamps it,
+including `idle` and a repeat of the same value, and returning to idle keeps it, so it is the time the session
+last changed its status; omitted until a status has been written),
 `foreground`/`splitForeground` (upstream reports each pane's foreground process here; agterm-win never
 reads a pane's foreground process, so the running app always omits both),
 `restoreCommand`/`splitRestoreCommand` (each pane's persisted restore-command override — the read side of
@@ -431,7 +434,14 @@ All thirteen are read-only projections of GUI state.
   A `--shape` on `idle` is accepted and ignored, since an idle session draws no glyph.
   `--pane` (`left`|`right`|`scratch`, `left`=main, `right`=split; defaults to `left` when omitted) records
   which pane set the status. When that pane goes away (the split closes, the scratch shell exits),
-  agterm-win clears the status. agterm-win does not clear a status on a keystroke. Attention navigation
+  agterm-win clears the status. A key typed in the tagged pane clears an `active` status only on an
+  interrupt (Ctrl+C, Escape) and clears `blocked` and `completed` as the `statusReset` setting says (see
+  Settings): `firstKey` (default) clears on any key, `enter` on Enter (a `blocked` status also clears on an
+  interrupt), `never` clears nothing. `session type` text counts as typing in the pane it goes to, but is
+  never an interrupt, and text with a line break counts as Enter. A pane can only change a `blocked` status it
+  owns: a write that is not `blocked` from another pane errors `blocked status owned by pane <pane> (write from
+  that pane to change it)` and changes nothing. A write without `--pane` reads as `left`, so a bare
+  `session status idle` cannot clear a block owned by the right pane or the scratch. Attention navigation
   (in the GUI or `session go --to next-attention|prev-attention`) only STEPS the selection to attention
   sessions; it does not move focus into the tagged pane. An agent that runs in a split or scratch should
   set its own pane. The value is read back on `tree` as the session node's `statusPane`. An invalid
@@ -1201,8 +1211,10 @@ Fields this reference names: `fontFamily`, `fontSize`, `theme`,
 `darkTheme`, `followSystemAppearance`, `backgroundOpacity`, `backgroundBlur`, `notificationsEnabled`,
 `notificationBadgeEnabled`, `notificationSoundName`, `blockedStatusSoundName`, `dockBounce`, the
 `active`/`blocked`/`completed` `StatusColorHex` and `StatusShape` fields, `configDirectory`,
-`restoreRunningCommand`, `newSessionDirectory` and `closeGraceUndoEnabled`. An omitted field keeps its
+`restoreRunningCommand`, `newSessionDirectory`, `closeGraceUndoEnabled` and `statusReset`. An omitted field keeps its
 default.
+
+`statusReset` (`firstKey` | `enter` | `never`, default `firstKey`; absent or unknown reads as `firstKey`) decides when a key typed in the pane that owns a `blocked` or `completed` status clears it: on the first key, on Enter only (a `blocked` status also clears on an interrupt), or never. `session type` follows it too. An `active` status clears only on an interrupt in every mode. Settings > Agent Status has the same choice, and `config reload` applies it.
 
 Windows-only `overlayOpacity` controls the background of Keyboard Shortcuts, palettes, the session switcher and session questions. Absent or `null` keeps the current theme look. An explicit number from `0` (transparent) to `1` (opaque) applies that opacity to an opaque light/dark theme base color; text, controls and scrims are unchanged. Finite out-of-range numbers are clamped when applied, without changing the saved value. A wrong JSON type, an overflowing number or malformed JSON triggers the existing whole-file recovery to default settings. Windows Settings > Personalization > Colors > Transparency effects off forces opaque panel backgrounds regardless of this setting; switching it on restores the configured opacity or the current theme look. Windows switch changes apply while the app runs. After editing `settings.json`, run `agtermctl config reload` to update all windows, including panels already open. For example, `"overlayOpacity": 1` makes panels opaque even when Windows transparency effects are on.
 

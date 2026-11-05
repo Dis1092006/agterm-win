@@ -142,6 +142,11 @@ public sealed record ControlSessionNode
     [JsonPropertyName("statusShape")]
     public string? StatusShape { get; init; }
 
+    /// <summary>Epoch seconds (the ControlEvent ts clock) of the last status write, idle included; absent
+    /// for a session that never had one.</summary>
+    [JsonPropertyName("statusChangedAt")]
+    public double? StatusChangedAt { get; init; }
+
     /// <summary>The background watermark spec; null when none is set.</summary>
     [JsonPropertyName("background")]
     public BackgroundWatermark? Background { get; init; }

@@ -7,9 +7,30 @@ namespace AgTerm.Core.Model;
 public sealed partial class AppStore
 {
     /// <summary>
+    /// The control channel's session.status write. Refuses a non-blocked write from a pane other than the
+    /// one that owns a blocked status, so a background pane cannot wipe a prompt another pane is waiting
+    /// on; a blocked write from any pane replaces. An untagged write reads as the left pane, and a Right
+    /// tag reads as Left when the session has no split. Internal clears go through SetAgentIndicator.
+    /// </summary>
+    public StatusWriteResult ApplyControlStatus(AgentIndicator indicator, Guid forSession)
+    {
+        if (SessionWithId(forSession) is not { } session) return StatusWriteResult.Applied;
+        var current = session.AgentIndicator;
+        if (current.Status == AgentStatus.Blocked && indicator.Status != AgentStatus.Blocked)
+        {
+            var owner = current.NormalizedPane(session.HasSplit) ?? StatusPane.Left;
+            var writer = indicator.NormalizedPane(session.HasSplit) ?? StatusPane.Left;
+            if (owner != writer) return StatusWriteResult.Refused(owner);
+        }
+        SetAgentIndicator(indicator, forSession);
+        return StatusWriteResult.Applied;
+    }
+
+    /// <summary>
     /// Sets a session's agent status indicator (the sidebar status glyph). The single mutation
     /// point for the control channel's session.status. Stamps StatusChangedAt with the current time
-    /// on any non-idle status (the attention list's newest-first sort key) and clears it on idle.
+    /// on every accepted write, idle and repeated values included (the stamp is never cleared; the
+    /// attention list only sorts non-idle sessions, so an idle stamp is harmless).
     /// Clears the session's AutoFollowConsumed on a transition INTO blocked, re-arming idle
     /// auto-follow for the fresh episode. No-op for an unknown id. Not persisted (the indicator is
     /// ephemeral), so it never triggers a Save.
@@ -27,12 +48,9 @@ public sealed partial class AppStore
         // Gated on HasSplit, NOT SplitSurface == null: a scripted session.split + immediate
         // session.status --pane right lands in the realization window where Right is the correct
         // forward tag and must NOT be rewritten.
-        if (indicator.StatusPane == StatusPane.Right && !session.HasSplit)
-        {
-            indicator = indicator with { StatusPane = StatusPane.Left };
-        }
+        indicator = indicator with { StatusPane = indicator.NormalizedPane(session.HasSplit) };
         session.AgentIndicator = indicator;
-        session.StatusChangedAt = indicator.Status == AgentStatus.Idle ? null : DateTimeOffset.UtcNow;
+        session.StatusChangedAt = DateTimeOffset.UtcNow;
         // a fresh block episode (entering blocked from a non-blocked status) re-arms idle
         // auto-follow for this session; a re-asserted blocked-over-blocked is not a new episode.
         if (!wasBlocked && indicator.Status == AgentStatus.Blocked) session.AutoFollowConsumed = false;

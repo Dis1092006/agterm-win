@@ -38,6 +38,26 @@ public sealed class StatusSoundTests : IDisposable
         Assert.Equal(2, requests.Count);
     }
 
+    // a refused write fires no sound or notification request
+    [Fact]
+    public void A_refused_status_write_requests_no_notification()
+    {
+        var requests = new List<LiveStatusNotificationRequest>();
+        using var host = new HeadlessHost(new() { StateDir = directory, StatusNotificationRequested = requests.Add });
+        var id = host.Store.SelectedSessionId!.Value;
+        host.Store.SessionWithId(id)!.HasSplit = true;
+        Assert.True(host.Actions.SetSessionStatus(null, null,
+            new(AgentStatus.Blocked, null, null, null, Pane: StatusPane.Left)).Ok);
+        requests.Clear();
+
+        var refused = host.Actions.SetSessionStatus(null, null,
+            new(AgentStatus.Completed, null, null, "default", Pane: StatusPane.Right));
+
+        Assert.False(refused.Ok);
+        Assert.Equal("blocked status owned by pane left (write from that pane to change it)", refused.Error);
+        Assert.Empty(requests);
+    }
+
     private static ControlSessionStatusUpdate Update(string? sound) =>
         new(AgentStatus.Blocked, null, null, sound);
 }

@@ -58,30 +58,73 @@ public class AgentStatusTests
     {
         var indicator = new AgentIndicator { Status = AgentStatus.Blocked, StatusPane = StatusPane.Right };
 
-        Assert.True(indicator.ClearedBy(StatusPane.Right, isInterrupt: false));
-        Assert.False(indicator.ClearedBy(StatusPane.Left, isInterrupt: false));
+        Assert.True(indicator.ClearedBy(StatusPane.Right, StatusKeystroke.Other, StatusReset.FirstKey));
+        Assert.False(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Other, StatusReset.FirstKey));
     }
 
     [Fact]
     public void NilStatusPaneIsTreatedAsLeft()
     {
         var indicator = new AgentIndicator { Status = AgentStatus.Completed };
-        Assert.True(indicator.ClearedBy(StatusPane.Left, isInterrupt: false));
-        Assert.False(indicator.ClearedBy(StatusPane.Right, isInterrupt: false));
+        Assert.True(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Other, StatusReset.FirstKey));
+        Assert.False(indicator.ClearedBy(StatusPane.Right, StatusKeystroke.Other, StatusReset.FirstKey));
     }
 
     [Fact]
     public void ActiveClearsOnlyOnAnInterruptKeystroke()
     {
         var indicator = new AgentIndicator { Status = AgentStatus.Active };
-        Assert.False(indicator.ClearedBy(StatusPane.Left, isInterrupt: false));
-        Assert.True(indicator.ClearedBy(StatusPane.Left, isInterrupt: true));
+        Assert.False(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Other, StatusReset.FirstKey));
+        Assert.True(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Interrupt, StatusReset.FirstKey));
     }
 
     [Fact]
     public void IdleIsNeverClearedByKeystroke()
     {
         var indicator = new AgentIndicator();
-        Assert.False(indicator.ClearedBy(StatusPane.Left, isInterrupt: true));
+        Assert.False(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Interrupt, StatusReset.FirstKey));
+    }
+
+    [Theory]
+    [InlineData(AgentStatus.Blocked, StatusReset.FirstKey, StatusKeystroke.Other, true)]
+    [InlineData(AgentStatus.Blocked, StatusReset.FirstKey, StatusKeystroke.Submit, true)]
+    [InlineData(AgentStatus.Blocked, StatusReset.FirstKey, StatusKeystroke.Interrupt, true)]
+    [InlineData(AgentStatus.Completed, StatusReset.FirstKey, StatusKeystroke.Other, true)]
+    [InlineData(AgentStatus.Completed, StatusReset.FirstKey, StatusKeystroke.Submit, true)]
+    [InlineData(AgentStatus.Completed, StatusReset.FirstKey, StatusKeystroke.Interrupt, true)]
+    [InlineData(AgentStatus.Blocked, StatusReset.Enter, StatusKeystroke.Other, false)]
+    [InlineData(AgentStatus.Completed, StatusReset.Enter, StatusKeystroke.Other, false)]
+    [InlineData(AgentStatus.Blocked, StatusReset.Enter, StatusKeystroke.Submit, true)]
+    [InlineData(AgentStatus.Completed, StatusReset.Enter, StatusKeystroke.Submit, true)]
+    [InlineData(AgentStatus.Blocked, StatusReset.Enter, StatusKeystroke.Interrupt, true)] // cancelling a prompt fires no hook
+    [InlineData(AgentStatus.Completed, StatusReset.Enter, StatusKeystroke.Interrupt, false)]
+    [InlineData(AgentStatus.Blocked, StatusReset.Never, StatusKeystroke.Other, false)]
+    [InlineData(AgentStatus.Blocked, StatusReset.Never, StatusKeystroke.Submit, false)]
+    [InlineData(AgentStatus.Blocked, StatusReset.Never, StatusKeystroke.Interrupt, false)]
+    [InlineData(AgentStatus.Completed, StatusReset.Never, StatusKeystroke.Submit, false)]
+    [InlineData(AgentStatus.Completed, StatusReset.Never, StatusKeystroke.Interrupt, false)]
+    public void BlockedAndCompletedClearAsTheResetModeSays(
+        AgentStatus status, StatusReset reset, StatusKeystroke keystroke, bool cleared) =>
+        Assert.Equal(cleared, new AgentIndicator { Status = status }.ClearedBy(StatusPane.Left, keystroke, reset));
+
+    [Theory]
+    [InlineData(StatusReset.FirstKey)]
+    [InlineData(StatusReset.Enter)]
+    [InlineData(StatusReset.Never)]
+    public void ActiveClearsOnAnInterruptInEveryMode(StatusReset reset)
+    {
+        var indicator = new AgentIndicator { Status = AgentStatus.Active };
+        Assert.True(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Interrupt, reset));
+        Assert.False(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Submit, reset));
+        Assert.False(indicator.ClearedBy(StatusPane.Left, StatusKeystroke.Other, reset));
+    }
+
+    [Fact]
+    public void ResetModesParseFromTheirRawValues()
+    {
+        Assert.Equal(StatusReset.FirstKey, StatusResets.FromWire("firstKey"));
+        Assert.Equal(StatusReset.Enter, StatusResets.FromWire("enter"));
+        Assert.Equal(StatusReset.Never, StatusResets.FromWire("never"));
+        Assert.Null(StatusResets.FromWire("bogus"));
     }
 }

@@ -525,7 +525,7 @@ public class ControlSidebarStatusTests : ControlApiTestCase
             // an ordinary (non-interrupt) keystroke from the owning pane clears an attention state —
             // the store-seam equivalent of app.typeKey(.escape) landing in the focused terminal.
             var session = Host.Store.SessionWithId(Guid.Parse(seeded))!;
-            Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Left, isInterrupt: false),
+            Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Left, StatusKeystroke.Other, StatusReset.FirstKey),
                 $"typing into a {state} session should clear its glyph");
             Host.Store.SetAgentIndicator(new AgentIndicator(), session.Id);
             Assert.Null(SessionNode(seeded)["status"]); // the glyph is gone
@@ -550,13 +550,113 @@ public class ControlSidebarStatusTests : ControlApiTestCase
 
         var session = Host.Store.SessionWithId(Guid.Parse(seeded))!;
         // ordinary typing must NOT clear active (the agent is still working)…
-        Assert.False(session.AgentIndicator.ClearedBy(StatusPane.Left, isInterrupt: false));
+        Assert.False(session.AgentIndicator.ClearedBy(StatusPane.Left, StatusKeystroke.Other, StatusReset.FirstKey));
         // …but Ctrl-C (an interrupt) must.
-        Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Left, isInterrupt: true),
+        Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Left, StatusKeystroke.Interrupt, StatusReset.FirstKey),
             "Ctrl-C into an active session should clear its glyph");
         Host.Store.SetAgentIndicator(new AgentIndicator(), session.Id);
         Assert.Null(SessionNode(seeded)["status"]);
     }
+
+    // a write from another pane cannot replace a blocked status: the owner is named in the error, the
+    // status stays, and a blocked write from the other pane still replaces it (upstream c8860a91)
+    [Fact]
+    public void AnotherPanesWriteDoesNotReplaceABlockedStatus()
+    {
+        var seeded = SeededSessionId();
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"session.split","target":"{{{seeded}}}","args":{"mode":"on"}}""")["ok"]!.GetValue<bool>());
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"blocked","pane":"left"}}""")["ok"]!
+            .GetValue<bool>());
+
+        var refused = SendCommand(
+            $$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"active","pane":"right"}}""");
+        Assert.False(refused["ok"]!.GetValue<bool>(), refused.ToJsonString());
+        Assert.Equal("blocked status owned by pane left (write from that pane to change it)",
+            refused["error"]!.GetValue<string>());
+        Assert.Equal("blocked", SessionNode(seeded)["status"]?.GetValue<string>());
+
+        var replaced = SendCommand(
+            $$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"blocked","pane":"right"}}""");
+        Assert.True(replaced["ok"]!.GetValue<bool>(), replaced.ToJsonString());
+        Assert.Equal("right", SessionNode(seeded)["statusPane"]?.GetValue<string>());
+    }
+
+    // statusChangedAt reports the last write, idle included, as epoch seconds
+    [Fact]
+    public void TreeReportsStatusChangedAtAfterIdle()
+    {
+        var seeded = SeededSessionId();
+        Assert.Null(SessionNode(seeded)["statusChangedAt"]);
+        SendCommand($$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"active"}}""");
+        SendCommand($$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"idle"}}""");
+
+        Assert.Null(SessionNode(seeded)["status"]);
+        Assert.True(SessionNode(seeded)["statusChangedAt"]!.GetValue<double>() > 1_700_000_000);
+    }
+
+    // session.type clears a blocked glyph like a keystroke does, but only when the text is not empty
+    [Fact]
+    public void TypingTextClearsABlockedStatusOfThatPane()
+    {
+        var seeded = SeededSessionId();
+        var session = Host.Store.SessionWithId(Guid.Parse(seeded))!;
+        session.Surface = new FakeSurface();
+        SendCommand($$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"blocked"}}""");
+
+        Assert.True(SendCommand($$$"""{"cmd":"session.type","target":"{{{seeded}}}","args":{"text":""}}""")["ok"]!
+            .GetValue<bool>());
+        Assert.Equal("blocked", SessionNode(seeded)["status"]?.GetValue<string>());
+
+        Assert.True(SendCommand($$$"""{"cmd":"session.type","target":"{{{seeded}}}","args":{"text":"y"}}""")["ok"]!
+            .GetValue<bool>());
+        Assert.Null(SessionNode(seeded)["status"]);
+    }
+
+    // under statusReset=enter only text that carries a line break clears; an interrupt never comes from text
+    [Fact]
+    public void TypingTextFollowsTheStatusResetMode()
+    {
+        var seeded = SeededSessionId();
+        var session = Host.Store.SessionWithId(Guid.Parse(seeded))!;
+        session.Surface = new FakeSurface();
+        Host.Actions.StatusReset = StatusReset.Enter;
+        SendCommand($$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"blocked"}}""");
+
+        SendCommand($$$"""{"cmd":"session.type","target":"{{{seeded}}}","args":{"text":"y"}}""");
+        Assert.Equal("blocked", SessionNode(seeded)["status"]?.GetValue<string>());
+
+        SendCommand($$$"""{"cmd":"session.type","target":"{{{seeded}}}","args":{"text":"y\n"}}""");
+        Assert.Null(SessionNode(seeded)["status"]);
+
+        Host.Actions.StatusReset = StatusReset.Never;
+        SendCommand($$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"blocked"}}""");
+        SendCommand($$$"""{"cmd":"session.type","target":"{{{seeded}}}","args":{"text":"y\n"}}""");
+        Assert.Equal("blocked", SessionNode(seeded)["status"]?.GetValue<string>());
+    }
+
+    // typing into the left pane leaves a status owned by the right pane alone
+    [Fact]
+    public void TypingTextLeavesAnotherPanesStatus()
+    {
+        var seeded = SeededSessionId();
+        SendCommand($$$"""{"cmd":"session.split","target":"{{{seeded}}}","args":{"mode":"on"}}""");
+        var session = Host.Store.SessionWithId(Guid.Parse(seeded))!;
+        session.Surface = new FakeSurface();
+        session.SplitSurface = new FakeSurface();
+        SendCommand($$$"""{"cmd":"session.status","target":"{{{seeded}}}","args":{"status":"blocked","pane":"right"}}""");
+
+        SendCommand($$$"""{"cmd":"session.type","target":"{{{seeded}}}","args":{"text":"y","pane":"left"}}""");
+        Assert.Equal("blocked", SessionNode(seeded)["status"]?.GetValue<string>());
+
+        SendCommand($$$"""{"cmd":"session.type","target":"{{{seeded}}}","args":{"text":"y","pane":"right"}}""");
+        Assert.Null(SessionNode(seeded)["status"]);
+    }
+
+    private string SeededSessionId() =>
+        SendCommand("""{"cmd":"tree"}""")["result"]!["tree"]!["workspaces"]![0]!["sessions"]![0]!["id"]!
+            .GetValue<string>();
 
     // session.seen clears a session's unseen badge WITHOUT changing the selection/focus — the focus-free
     // counterpart to notify. Fire notify on a non-selected session so the badge + tree `unseen` read-back

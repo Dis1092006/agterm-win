@@ -259,6 +259,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             Host.Actions.Theme.Dark = initialTheme.Dark;
         }
         Host.Actions.ThemeUpdateRequested += update => ThemeUpdateRequested?.Invoke(update);
+        Host.Actions.StatusReset = _notificationSettings.EffectiveStatusReset;
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
@@ -718,6 +719,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(settings);
         Volatile.Write(ref _notificationSettings, settings);
+        Host.Actions.StatusReset = settings.EffectiveStatusReset;
     }
 
     public Task ApplySettingsAsync(SettingsSnapshot snapshot, CancellationToken cancellationToken = default) =>
@@ -1756,7 +1758,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     private void BindStatusClear(Guid sessionId, XtermPaneSurface surface)
     {
-        surface.Pane.Terminal.UserKeystroke += isInterrupt => _ = _options.UserKeystrokeScheduler(() => Host.RunLocked(() =>
+        surface.Pane.Terminal.UserKeystroke += keystroke => _ = _options.UserKeystrokeScheduler(() => Host.RunLocked(() =>
         {
             if (Volatile.Read(ref _shutdownStarted) != 0) return;
             var session = Store.SessionWithId(sessionId);
@@ -1765,14 +1767,15 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 : OwnsScratchPane(session, surface) ? StatusPane.Scratch
                 : null;
             if (pane is not null) Store.NoteUserActivity();
-            if (pane is { } owner && session!.AgentIndicator.ClearedBy(owner, isInterrupt))
+            var reset = Volatile.Read(ref _notificationSettings).EffectiveStatusReset;
+            if (pane is { } owner && session!.AgentIndicator.ClearedBy(owner, keystroke, reset))
                 Store.SetAgentIndicator(new AgentIndicator(), sessionId);
         }));
     }
 
     private void BindOverlay(Guid sessionId, XtermPaneSurface surface)
     {
-        surface.Pane.Terminal.UserKeystroke += isInterrupt => _ = _options.UserKeystrokeScheduler(() => Host.RunLocked(() =>
+        surface.Pane.Terminal.        UserKeystroke += keystroke => _ = _options.UserKeystrokeScheduler(() => Host.RunLocked(() =>
         {
             if (Volatile.Read(ref _shutdownStarted) == 0
                 && ReferenceEquals(Store.SessionWithId(sessionId)?.OverlaySurface, surface))
