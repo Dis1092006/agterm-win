@@ -30,6 +30,7 @@ public sealed partial class SidebarView : UserControl
     private SidebarRowThemes? _rowThemes;
     private readonly SidebarRowIcons _rowIcons = new();
     private readonly SolidColorBrush _rowIconFill = new(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
+    private SidebarTintInks _sidebarInks = SidebarTintInks.Dark;
     private Window? _ownerWindow;
     private AppSettings _settings = new();
     private Keymap _keymap = Keymap.Empty;
@@ -181,6 +182,9 @@ public sealed partial class SidebarView : UserControl
         SetBrush("SidebarPillBrush", palette.PillFill);
         SetBrush("SidebarWashBrush", palette.SidebarWash);
         _rowIconFill.Color = ToColor(palette.Foreground with { A = 0x60 });
+        if (_sidebarInks == palette.SidebarInks) return;
+        _sidebarInks = palette.SidebarInks;
+        RecolorRows();
     }
 
     private void SetBrush(string key, ChromeColor color) =>
@@ -269,7 +273,8 @@ public sealed partial class SidebarView : UserControl
     private SidebarRowLook LookOf(SidebarRow row)
     {
         var style = _settings.EffectiveSidebarThemeStyle();
-        return SidebarRowLook.From(_rowThemes?.ColorsFor(row, style != SidebarThemeStyle.Off), style);
+        var look = SidebarRowLook.From(_rowThemes?.ColorsFor(row, style != SidebarThemeStyle.Off), style);
+        return look with { Tint = SidebarRowTint.For(row.Tint, look, _sidebarInks) };
     }
 
     private void RecolorRows()
@@ -622,6 +627,7 @@ public sealed partial class SidebarView : UserControl
         flyout.Items.Add(Item(
             allFlagged ? (plural ? "Unflag Sessions" : "Unflag") : (plural ? "Flag Sessions" : "Flag"),
             () => _controller?.SetFlag(targets, !allFlagged)));
+        flyout.Items.Add(TintMenu(targetRows.Select(r => r.Tint).ToList(), choice => _controller?.SetTint(targets, choice)));
         if (!plural)
             flyout.Items.Add(Item("Reveal in Explorer", () => _controller?.RevealSession(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -649,6 +655,7 @@ public sealed partial class SidebarView : UserControl
         flyout.Items.Add(Item("Rename", () => BeginRename(row)));
         flyout.Items.Add(Item("Theme…", () => WorkspaceThemeRequested?.Invoke(row.Id)));
         flyout.Items.Add(Item("Icon…", () => WorkspaceIconRequested?.Invoke(row.Id)));
+        flyout.Items.Add(TintMenu([row.Row.Tint], choice => _controller?.SetWorkspaceTint(row.Id, choice)));
         flyout.Items.Add(Item("New Session", () => _controller?.NewSession(row.Id)));
         flyout.Items.Add(Item("Open Directory…", () => _ = OpenDirectoryIntoAsync(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -680,6 +687,39 @@ public sealed partial class SidebarView : UserControl
                 _controller?.NewSession(workspaceId, folder.Path);
         }
         finally { NativeDialogStateChanged?.Invoke(false); }
+    }
+
+    /// <summary>The Tint submenu (upstream WorkspaceSidebar+TintMenu.swift). Each color shows a swatch in
+    /// the color the sidebar draws it.</summary>
+    private MenuFlyoutSubItem TintMenu(IReadOnlyList<SidebarTint?> current, Action<SidebarTintChoice> apply)
+    {
+        var tint = new MenuFlyoutSubItem { Text = "Tint" };
+        foreach (var entry in SidebarTintMenu.Colors(current))
+        {
+            var item = TintItem(entry, apply);
+            if (entry.Choice.Color is { } color)
+            {
+                item.Icon = new FontIcon
+                {
+                    FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
+                    Glyph = "\uE91F", // FullCircle
+                    Foreground = SidebarRowViewModel.BrushFrom(_sidebarInks.For(color)),
+                };
+            }
+            tint.Items.Add(item);
+        }
+        tint.Items.Add(new MenuFlyoutSeparator());
+        tint.Items.Add(new MenuFlyoutItem { Text = "Show On", IsEnabled = false });
+        foreach (var entry in SidebarTintMenu.Placements(current))
+            tint.Items.Add(TintItem(entry, apply));
+        return tint;
+    }
+
+    private static ToggleMenuFlyoutItem TintItem(SidebarTintMenuEntry entry, Action<SidebarTintChoice> apply)
+    {
+        var item = new ToggleMenuFlyoutItem { Text = entry.Title, IsChecked = entry.IsChecked, IsEnabled = entry.IsEnabled };
+        item.Click += (_, _) => apply(entry.Choice);
+        return item;
     }
 
     private static MenuFlyoutItem Item(string text, Action action)

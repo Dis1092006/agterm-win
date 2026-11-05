@@ -117,6 +117,34 @@ public sealed class ChromePaletteTests
         Assert.True(palette.SidebarIsDark);
     }
 
+    [Fact]
+    public void The_sidebar_inks_are_the_global_theme_ansi_colors()
+    {
+        var settings = new AppSettings { Theme = "Moonwalk" };
+        var palette = ChromePalette.From(LiveThemeSettings.Resolve(settings, ThemeCatalog.Default, systemDark: true), settings);
+
+        Assert.Equal(SidebarTintInks.FromAnsi(ThemeCatalog.Default.Resolve("Moonwalk")!.AnsiColors), palette.SidebarInks);
+        Assert.NotNull(palette.SidebarInks);
+    }
+
+    [Fact]
+    public void Without_a_usable_palette_the_sidebar_inks_follow_the_sidebar_brightness()
+    {
+        var settings = new AppSettings();
+        var presentation = Presentation(settings, "#ffffff");
+        presentation = presentation with
+        {
+            RendererSettings = presentation.RendererSettings with { AnsiColors = null },
+        };
+
+        Assert.Equal(SidebarTintInks.Light, ChromePalette.From(presentation, settings).SidebarInks);
+    }
+
+    [Fact]
+    public void High_contrast_takes_the_fallback_inks_of_its_brightness() =>
+        Assert.Equal(SidebarTintInks.Dark,
+            ChromePalette.HighContrast(new ChromeColor(0xFF, 0, 0, 0), new ChromeColor(0xFF, 0xFF, 0xFF, 0xFF)).SidebarInks);
+
     private static LiveThemePresentation Presentation(AppSettings settings, string background)
     {
         var theme = new TerminalTheme("Test", "#ffffff", background, "#ffffff", "#000000", "#444444", "#ffffff",

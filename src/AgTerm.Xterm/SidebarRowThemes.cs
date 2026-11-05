@@ -2,14 +2,18 @@ using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
-/// <summary>The colors of one sidebar row, copied from a theme: "#rrggbb" each.</summary>
-public sealed record SidebarRowColors(string Background, string Foreground);
+/// <summary>The colors of one sidebar row, copied from a theme: "#rrggbb" each, and the tint inks of
+/// the theme's ANSI palette.</summary>
+public sealed record SidebarRowColors(string Background, string Foreground, SidebarTintInks? Inks = null);
 
 /// <summary>Where a row shows its theme colors: on the whole row or in a block around the name. At
 /// most one slot is set; none for a row with no theme colors.</summary>
 public sealed record SidebarRowLook(SidebarRowColors? Row, SidebarRowColors? Label)
 {
     public static SidebarRowLook Default { get; } = new(null, null);
+
+    /// <summary>The tint colors of the row's icon and name.</summary>
+    public SidebarRowTint Tint { get; init; } = SidebarRowTint.None;
 
     public static SidebarRowLook From(SidebarRowColors? colors, SidebarThemeStyle style) => colors is null
         ? Default
@@ -44,7 +48,8 @@ public sealed class SidebarRowThemes
             return null;
         var name = _override.TryGet(row.WorkspaceId, out var shown) ? shown : row.ThemeName;
         return name is not null && _resolve(name) is { } theme
-            ? new SidebarRowColors(theme.BackgroundColor, theme.ForegroundColor)
+            ? new SidebarRowColors(theme.BackgroundColor, theme.ForegroundColor,
+                SidebarTintInks.Of(theme.AnsiColors, theme.IsDark))
             : null;
     }
 

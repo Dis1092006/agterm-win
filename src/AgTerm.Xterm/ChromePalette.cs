@@ -41,6 +41,9 @@ public sealed record ChromePalette(
     private static readonly ChromeColor DefaultBackground = new(0xFF, 0x0C, 0x0C, 0x0C);
     private static readonly ChromeColor DefaultForeground = new(0xFF, 0xCC, 0xCC, 0xCC);
 
+    /// <summary>The tint inks of a row part on the plain sidebar: the global theme's ANSI colors.</summary>
+    public SidebarTintInks SidebarInks { get; init; } = SidebarTintInks.Dark;
+
     public static ChromePalette From(LiveThemePresentation presentation, AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(presentation);
@@ -56,6 +59,7 @@ public sealed record ChromePalette(
             ? ChromeColor.Transparent
             : new ChromeColor(0xFF, washChannel, washChannel, washChannel).WithOpacity(Math.Min(1, Math.Abs(shift)));
 
+        var sidebarIsDark = ThemeBrightness.IsDark(background.R / 255.0, background.G / 255.0, background.B / 255.0, shift);
         return new ChromePalette(
             background.WithOpacity(renderer.BackgroundOpacity),
             foreground,
@@ -65,7 +69,10 @@ public sealed record ChromePalette(
             foreground.WithOpacity(0.15),
             wash,
             presentation.UseDarkChrome,
-            ThemeBrightness.IsDark(background.R / 255.0, background.G / 255.0, background.B / 255.0, shift));
+            sidebarIsDark)
+        {
+            SidebarInks = SidebarTintInks.Of(renderer.AnsiColors, sidebarIsDark),
+        };
     }
 
     /// <summary>Windows high contrast: the system window and text colors, solid, with no wash.</summary>
@@ -77,6 +84,9 @@ public sealed record ChromePalette(
         return new ChromePalette(
             background, text, text, text, text,
             ChromeColor.Transparent, ChromeColor.Transparent,
-            dark, dark);
+            dark, dark)
+        {
+            SidebarInks = SidebarTintInks.Of(null, dark),
+        };
     }
 }

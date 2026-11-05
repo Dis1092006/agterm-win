@@ -537,7 +537,8 @@ All thirteen are read-only projections of GUI state.
   `invalid tint: <value> (red|orange|yellow|green|blue|purple|gray)`, `invalid tint placement: <parts> (icon,name)`,
   `session.tint clear takes no color or placement`, `invalid tint mode: <mode> (set|clear)` (wire side).
   Returns the session id. Persisted across a relaunch; a duplicated session starts untinted. Read back from
-  the node's `tint`/`tintOn`. agterm-win stores and reports the tint, but the sidebar does not draw it yet.
+  the node's `tint`/`tintOn`. agterm-win draws the tint in the theme's ANSI colors, so it stays readable on a
+  dark or a light theme; the row menu's Tint submenu and the palette's "Tint Session" rows set it too.
 - `session seen [--target] [--window W]` — clear the session's unseen-notification badge without changing
   the selection, focus, or agent status. Wire: `session.seen`. It is the focus-free counterpart to
   `notify`: `notify` raises the red badge, and the other way to clear it is visiting the

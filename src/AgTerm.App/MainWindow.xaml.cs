@@ -2444,7 +2444,12 @@ public sealed partial class MainWindow : Window
             (themeName, cancellationToken) => SavePaletteThemeAsync(themeName, cancellationToken),
             executeInstallerCommandAsync: (installerId, _) => RunInstallerAsync(installerId),
             executeAppCommandAsync: ExecutePaletteAppCommandAsync,
-            uiActionsEnabled: UiActionsEnabled());
+            uiActionsEnabled: UiActionsEnabled(),
+            executeTintAsync: (color, cancellationToken) => _host is { } tintHost
+                ? tintHost.StoreCoordinator.MutateAsync(
+                    store => WindowPaletteActions.TintSelectedSession(store, color),
+                    cancellationToken)
+                : Task.CompletedTask);
 
         if (result.RestoreTerminalFocus)
             FocusActiveTerminal();

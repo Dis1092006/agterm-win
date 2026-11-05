@@ -1,10 +1,15 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Graphics.Imaging;
+using Windows.Storage;
+using Windows.Storage.Streams;
 using Windows.UI;
 using Windows.UI.Text;
 
@@ -25,6 +30,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     private string? _iconName;
     private ImageSource? _image;
     private bool _imageFailed;
+    private string? _imageInk;
+    private int _imageLoad;
 
     public SidebarRowViewModel(
         SidebarRow row,
@@ -82,8 +89,10 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     private void LoadImage()
     {
+        var load = ++_imageLoad;
         _imageFailed = false;
         _image = null;
+        _imageInk = _look.Tint.Icon;
         if (!IsWorkspace || SidebarWorkspaceIcon.ImageFile(_iconName) is not { } path) return;
         // the wire takes absolute file paths only, but a hand-edited snapshot can hold any URL
         if (!Uri.TryCreate(path, UriKind.Absolute, out var uri) || !uri.IsFile)
@@ -92,9 +101,16 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
             return;
         }
 
+        var isSvg = Path.GetExtension(path).Equals(".svg", StringComparison.OrdinalIgnoreCase);
+        if (_imageInk is { } ink)
+        {
+            _ = LoadSilhouetteAsync(load, uri.LocalPath, isSvg, ink);
+            return;
+        }
+
         // a bitmap's decode size is set before its source, so the file is decoded once at row size;
         // an SVG renders at the Image's size
-        if (Path.GetExtension(path).Equals(".svg", StringComparison.OrdinalIgnoreCase))
+        if (isSvg)
         {
             var svg = new SvgImageSource();
             svg.OpenFailed += (sender, _) => ImageFailed(sender);
@@ -108,6 +124,57 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
             bitmap.UriSource = uri;
             _image = bitmap;
         }
+    }
+
+    /// <summary>An icon tint draws an image file as a one-color silhouette (upstream draws it as a
+    /// template image). The image shows when it is ready; a load the row replaced meanwhile is dropped.</summary>
+    private async Task LoadSilhouetteAsync(int load, string path, bool isSvg, string ink)
+    {
+        ImageSource? image;
+        try
+        {
+            image = isSvg ? await SvgSilhouetteAsync(path, ink) : await BitmapSilhouetteAsync(path, ink);
+        }
+        catch (Exception) // a missing, unreadable or undecodable file shows the grid, as for an untinted image
+        {
+            image = null;
+        }
+
+        if (load != _imageLoad) return;
+        _image = image;
+        _imageFailed = image is null;
+        Raise(nameof(WorkspaceImage), nameof(WorkspaceImageVisibility), nameof(GridIconVisibility));
+    }
+
+    private static async Task<ImageSource?> SvgSilhouetteAsync(string path, string ink)
+    {
+        if (SvgSilhouette.Recolor(await File.ReadAllTextAsync(path), ink) is not { } svg) return null;
+        using var stream = new InMemoryRandomAccessStream();
+        await stream.WriteAsync(Encoding.UTF8.GetBytes(svg).AsBuffer());
+        stream.Seek(0);
+        var source = new SvgImageSource();
+        return await source.SetSourceAsync(stream) == SvgImageSourceLoadStatus.Success ? source : null;
+    }
+
+    // decoded at up to 64 pixels a side, so the 16-pixel icon stays sharp at 400% scale
+    private static async Task<ImageSource?> BitmapSilhouetteAsync(string path, string ink)
+    {
+        var file = await StorageFile.GetFileFromPathAsync(path);
+        using var stream = await file.OpenReadAsync();
+        var decoder = await BitmapDecoder.CreateAsync(stream);
+        var scale = Math.Min(1.0, 64.0 / Math.Max(decoder.PixelWidth, decoder.PixelHeight));
+        var width = Math.Max(1u, (uint)Math.Round(decoder.PixelWidth * scale));
+        var height = Math.Max(1u, (uint)Math.Round(decoder.PixelHeight * scale));
+        var data = await decoder.GetPixelDataAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
+            new BitmapTransform { ScaledWidth = width, ScaledHeight = height, InterpolationMode = BitmapInterpolationMode.Fant },
+            ExifOrientationMode.RespectExifOrientation, ColorManagementMode.DoNotColorManage);
+        var pixels = data.DetachPixelData();
+        if (!BitmapSilhouette.Recolor(pixels, ink)) return null;
+        var bitmap = new WriteableBitmap((int)width, (int)height);
+        using (var target = bitmap.PixelBuffer.AsStream())
+            await target.WriteAsync(pixels);
+        bitmap.Invalidate();
+        return bitmap;
     }
 
     // a failure of an image the row no longer shows is ignored
@@ -168,7 +235,12 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public Brush? RowForeground => _look.Row is { } colors ? BrushFrom(colors.Foreground) : null;
 
-    public Brush? LabelForeground => (_look.Row ?? _look.Label) is { } colors ? BrushFrom(colors.Foreground) : null;
+    /// <summary>The icon's color: the icon tint, else the row foreground.</summary>
+    public Brush? IconForeground => _look.Tint.Icon is { } ink ? BrushFrom(ink) : RowForeground;
+
+    public Brush? LabelForeground => _look.Tint.Name is { } ink ? BrushFrom(ink)
+        : (_look.Row ?? _look.Label) is { } colors ? BrushFrom(colors.Foreground)
+        : null;
 
     public Brush? LabelBlockBackground => _look.Label is { } colors ? BrushFrom(colors.Background) : null;
 
@@ -214,8 +286,9 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         ? MarkFill()
         : new SolidColorBrush(Colors.Transparent);
 
-    private Brush MarkFill() => _look.Row is { } colors
-        ? BrushFrom(colors.Foreground, alpha: 0x60)
+    // a tinted icon fills in its tint, as upstream fills the tinted symbol
+    private Brush MarkFill() => _look.Tint.Icon is { } ink ? BrushFrom(ink, alpha: 0x60)
+        : _look.Row is { } colors ? BrushFrom(colors.Foreground, alpha: 0x60)
         : DefaultIconFill;
 
     // agent-status glyph (idle → hidden; shape/color resolved per-call → settings → defaults)
@@ -292,7 +365,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _settings = settings;
         _surfaceStatus = surfaceStatus;
         _look = look;
-        if (_iconName != iconName)
+        if (_iconName != iconName || _imageInk != look.Tint.Icon)
         {
             _iconName = iconName;
             LoadImage();
@@ -309,12 +382,12 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
               nameof(UnseenAutomationName), nameof(FocusedWorkspaceAutomationName),
               nameof(IsSurfacePending), nameof(IsSurfaceFailed),
               nameof(PendingVisibility), nameof(FailedVisibility),
-              nameof(RowBackground), nameof(RowFrame), nameof(RowForeground),
+              nameof(RowBackground), nameof(RowFrame), nameof(RowForeground), nameof(IconForeground),
               nameof(LabelForeground), nameof(LabelBlockBackground), nameof(LabelBlockPadding));
     }
 
     /// <summary>A brush from a "#rrggbb" color, as settings and theme files write them.</summary>
-    private static SolidColorBrush BrushFrom(string hex, byte alpha = 0xFF) =>
+    internal static SolidColorBrush BrushFrom(string hex, byte alpha = 0xFF) =>
         new(Color.FromArgb(alpha,
             Convert.ToByte(hex.Substring(1, 2), 16),
             Convert.ToByte(hex.Substring(3, 2), 16),

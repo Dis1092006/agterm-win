@@ -24,6 +24,7 @@ public static class SidebarAutomationText
                 parts.Add("focused");
             }
 
+            AddTint(parts, row.Tint);
             var unseen = Unseen(row.Unseen);
             if (!string.IsNullOrEmpty(unseen))
             {
@@ -46,6 +47,7 @@ public static class SidebarAutomationText
                 parts.Add("flagged");
             }
 
+            AddTint(parts, row.Tint);
             var agent = Agent(row.Indicator.Status);
             if (!string.IsNullOrEmpty(agent))
             {
@@ -102,6 +104,15 @@ public static class SidebarAutomationText
         }
 
         return count == 1 ? "1 unseen notification" : $"{count} unseen notifications";
+    }
+
+    // upstream names the tint as the row icon's accessibility value
+    private static void AddTint(List<string> parts, SidebarTint? tint)
+    {
+        if (tint is not null)
+        {
+            parts.Add($"{TintColors.Wire(tint.Color)} tint");
+        }
     }
 
     private static string Kind(SidebarRowKind kind) => kind switch

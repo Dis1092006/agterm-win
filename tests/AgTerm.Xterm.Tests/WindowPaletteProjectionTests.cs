@@ -142,6 +142,44 @@ public sealed class WindowPaletteProjectionTests
     }
 
     [Fact]
+    public void Commands_end_with_the_tint_rows_for_the_selected_session()
+    {
+        var store = TestStores.Scratch();
+        Assert.DoesNotContain(
+            WindowPaletteProjection.Create(WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items,
+            item => item.Id.StartsWith("tint-", StringComparison.Ordinal));
+        store.AddSession(store.AddWorkspace("Work").Id, @"C:\work");
+
+        var items = WindowPaletteProjection.Create(WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items;
+
+        Assert.Equal(
+            [
+                ("tint-red", "Tint Session: Red"),
+                ("tint-orange", "Tint Session: Orange"),
+                ("tint-yellow", "Tint Session: Yellow"),
+                ("tint-green", "Tint Session: Green"),
+                ("tint-blue", "Tint Session: Blue"),
+                ("tint-purple", "Tint Session: Purple"),
+                ("tint-gray", "Tint Session: Gray"),
+                ("tint-none", "Tint Session: None"),
+            ],
+            items.TakeLast(8).Select(item => (item.Id, item.Title)));
+    }
+
+    [Theory]
+    [InlineData("tint-red", true, TintColor.Red)]
+    [InlineData("tint-gray", true, TintColor.Gray)]
+    [InlineData("tint-none", true, null)]
+    [InlineData("tint-pink", false, null)]
+    [InlineData("tint-Red", false, null)]
+    [InlineData("red", false, null)]
+    public void Tint_row_ids_parse_back_to_their_color(string itemId, bool parsed, TintColor? expected)
+    {
+        Assert.Equal(parsed, WindowPaletteProjection.TryParseTint(itemId, out var color));
+        Assert.Equal(expected, color);
+    }
+
+    [Fact]
     public void Commands_offer_clear_flagged_and_clear_focus_only_when_there_is_something_to_clear()
     {
         var store = TestStores.Scratch();
@@ -705,6 +743,34 @@ public sealed class WindowPaletteAcceptanceTests
     }
 
     [Theory]
+    [InlineData("tint-blue", TintColor.Blue)]
+    [InlineData("tint-none", null)]
+    public async Task Tint_rows_run_the_tint_handler_and_restore_focus(string itemId, TintColor? expected)
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        var calls = 0;
+        var result = await WindowPaletteAcceptance.AcceptAsync(
+            WindowPaletteMode.Commands,
+            Item(itemId),
+            UnexpectedSessionAsync,
+            UnexpectedActionAsync,
+            UnexpectedCustomCommandAsync,
+            UnexpectedThemeAsync,
+            cancellationSource.Token,
+            executeAppCommandAsync: (_, _) => throw new InvalidOperationException("The app handler should not be called."),
+            executeTintAsync: (actual, cancellationToken) =>
+            {
+                calls++;
+                Assert.Equal(expected, actual);
+                Assert.Equal(cancellationSource.Token, cancellationToken);
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(1, calls);
+        Assert.True(result.RestoreTerminalFocus);
+    }
+
+    [Theory]
     [InlineData("app:edit-keymap", PaletteAppCommand.EditKeymap)]
     [InlineData("app:reload-keymap", PaletteAppCommand.ReloadKeymap)]
     [InlineData("app:edit-hooks", PaletteAppCommand.EditHooks)]
@@ -998,6 +1064,35 @@ public sealed class WindowPaletteActionsTests
         Assert.Equal(current.Id, store.SelectedSessionId);
     }
 
+    // the palette's rows outlive a selection change made while it is open, so the target is read at run
+    [Fact]
+    public void TintSelectedSession_tints_the_session_selected_when_the_row_runs()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var first = store.AddSession(workspace.Id, @"C:\first")!;
+        var second = store.AddSession(workspace.Id, @"C:\second", select: false)!;
+        store.SetSessionTint(second.Id, new SidebarTint(TintColor.Green, TintParts.Name));
+        store.SelectSession(second.Id);
+
+        WindowPaletteActions.TintSelectedSession(store, TintColor.Red);
+
+        Assert.Null(first.Tint);
+        Assert.Equal(new SidebarTint(TintColor.Red, TintParts.Name), second.Tint);
+        WindowPaletteActions.TintSelectedSession(store, null);
+        Assert.Null(second.Tint);
+    }
+
+    [Fact]
+    public void TintSelectedSession_does_nothing_without_a_selected_session()
+    {
+        var store = TestStores.Scratch();
+
+        WindowPaletteActions.TintSelectedSession(store, TintColor.Red);
+
+        Assert.Null(store.SelectedSessionId);
+    }
+
     [Theory]
     [InlineData(BuiltinAction.ToggleSidebar, true)]
     [InlineData(BuiltinAction.ToggleFlag, true)]
@@ -1116,6 +1211,7 @@ public sealed class MainWindowPaletteWiringTests
         Assert.Contains("WindowPaletteAcceptance.AcceptAsync", source, StringComparison.Ordinal);
         Assert.Contains("snapshot.PreserveInputOrderForEmptyQuery", source, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteActions.SelectSession", source, StringComparison.Ordinal);
+        Assert.Contains("WindowPaletteActions.TintSelectedSession", source, StringComparison.Ordinal);
         Assert.Contains("FocusActiveTerminal", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.SessionPalette]", source, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.CommandPalette]", source, StringComparison.Ordinal);

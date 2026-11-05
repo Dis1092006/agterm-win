@@ -7,19 +7,23 @@ public sealed class SidebarRowThemesTests
     private static readonly Guid Ws1 = Guid.NewGuid();
     private static readonly Guid Ws2 = Guid.NewGuid();
 
-    private static readonly SidebarRowColors SolarizedColors = new("#002b36", "#839496");
-    private static readonly SidebarRowColors GruvboxColors = new("#fbf1c7", "#3c3836");
-    private static readonly SidebarRowColors NordColors = new("#2e3440", "#d8dee9");
+    private static readonly string[] BlackAnsi = Enumerable.Repeat("#000000", 16).ToArray();
+    private static readonly SidebarTintInks BlackInks = SidebarTintInks.FromAnsi(BlackAnsi)!;
 
-    private static TerminalTheme Theme(string name, SidebarRowColors colors) =>
+    private static readonly SidebarRowColors SolarizedColors = new("#002b36", "#839496", BlackInks);
+    private static readonly SidebarRowColors GruvboxColors = new("#fbf1c7", "#3c3836", BlackInks);
+    private static readonly SidebarRowColors NordColors = new("#2e3440", "#d8dee9", BlackInks);
+
+    private static TerminalTheme Theme(string name, SidebarRowColors colors, string[]? ansi = null) =>
         new(name, colors.Foreground, colors.Background, "#ffffff", "#000000", "#cccccc", "#000000",
-            Enumerable.Repeat("#000000", 16).ToArray());
+            ansi ?? BlackAnsi);
 
     private static readonly Dictionary<string, TerminalTheme> Catalog = new()
     {
         ["Solarized"] = Theme("Solarized", SolarizedColors),
         ["Gruvbox Light"] = Theme("Gruvbox Light", GruvboxColors),
         ["Nord"] = Theme("Nord", NordColors),
+        ["Broken Light"] = Theme("Broken Light", GruvboxColors, ["#000000"]),
     };
 
     private static SidebarRowThemes Themes() =>
@@ -53,6 +57,12 @@ public sealed class SidebarRowThemesTests
     public void A_row_of_a_themed_workspace_gets_the_exact_theme_colors()
     {
         Assert.Equal(SolarizedColors, Themes().ColorsFor(Row(Ws1, "Solarized"), enabled: true));
+    }
+
+    [Fact]
+    public void A_theme_without_a_usable_ansi_palette_gives_the_fallback_inks_of_its_brightness()
+    {
+        Assert.Equal(SidebarTintInks.Light, Themes().ColorsFor(Row(Ws1, "Broken Light"), enabled: true)!.Inks);
     }
 
     [Fact]

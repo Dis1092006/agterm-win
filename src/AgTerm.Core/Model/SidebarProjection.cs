@@ -32,6 +32,9 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
     public Guid WorkspaceId { get; init; }
     public string? ThemeName { get; init; }
 
+    // both: the row's own tint; a workspace tint never reaches its session rows
+    public SidebarTint? Tint { get; init; }
+
     // workspace rows
     public string? IconName { get; init; }
 }
@@ -69,6 +72,7 @@ public static class SidebarProjection
                 WorkspaceId = workspace.Id,
                 ThemeName = workspace.ThemeName,
                 IconName = workspace.IconName,
+                Tint = workspace.Tint,
             });
             if (!workspace.IsExpanded) continue;
             foreach (var session in workspace.Sessions)
@@ -102,6 +106,7 @@ public static class SidebarProjection
             HasSplit = session.HasSplit,
             Indicator = session.AgentIndicator,
             Unseen = session.UnseenCount,
+            Tint = session.Tint,
         };
 
     // stage 3 (a theme per session) changes only this: the session's own theme first

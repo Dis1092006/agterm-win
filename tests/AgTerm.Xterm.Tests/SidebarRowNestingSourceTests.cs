@@ -31,7 +31,7 @@ public sealed class SidebarRowNestingSourceTests
             "Background=\"{x:Bind LabelBlockBackground, Mode=OneWay}\"");
         var icon = Between(label, "<Path Data=\"" + WorkspaceIconData + "\"", "</Path>");
 
-        Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+        Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind IconForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
         Assert.Contains("Visibility=\"{x:Bind GridIconVisibility, Mode=OneWay}\"", icon, StringComparison.Ordinal);
         Assert.Contains("Margin=\"0,0,6,0\"", icon, StringComparison.Ordinal);
         Assert.Contains("<Setter Property=\"Stroke\" Value=\"{StaticResource SidebarSecondaryBrush}\" />", icon, StringComparison.Ordinal);
@@ -51,7 +51,7 @@ public sealed class SidebarRowNestingSourceTests
         Assert.Contains("FontSize=\"14\"", icon, StringComparison.Ordinal);
         Assert.Contains("Width=\"16\"", icon, StringComparison.Ordinal);
         Assert.Contains("Margin=\"0,0,6,0\"", icon, StringComparison.Ordinal);
-        Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+        Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind IconForeground, Mode=OneWay}\"", icon, StringComparison.Ordinal);
         Assert.Contains("<Setter Property=\"Foreground\" Value=\"{StaticResource SidebarSecondaryBrush}\" />", icon, StringComparison.Ordinal);
     }
 
@@ -61,7 +61,7 @@ public sealed class SidebarRowNestingSourceTests
         var model = Source("SidebarRowViewModel.cs");
 
         Assert.Contains("SidebarWorkspaceIcon.Glyph(_iconName, SymbolGlyphs.Has)", model, StringComparison.Ordinal);
-        var raised = Between(model, "public void Update(", "private static SolidColorBrush BrushFrom");
+        var raised = Between(model, "public void Update(", "internal static SolidColorBrush BrushFrom");
         Assert.Contains("nameof(WorkspaceGlyph)", raised, StringComparison.Ordinal);
         Assert.Contains("nameof(WorkspaceGlyphVisibility)", raised, StringComparison.Ordinal);
         Assert.Contains("nameof(GridIconVisibility)", raised, StringComparison.Ordinal);
@@ -95,7 +95,7 @@ public sealed class SidebarRowNestingSourceTests
         Assert.Contains("|| !uri.IsFile", model, StringComparison.Ordinal);
         Assert.Contains(".ImageFailed +=", model, StringComparison.Ordinal);
         Assert.Contains(".OpenFailed +=", model, StringComparison.Ordinal);
-        var raised = Between(model, "public void Update(", "private static SolidColorBrush BrushFrom");
+        var raised = Between(model, "public void Update(", "internal static SolidColorBrush BrushFrom");
         Assert.Contains("nameof(WorkspaceImage)", raised, StringComparison.Ordinal);
         Assert.Contains("nameof(WorkspaceImageVisibility)", raised, StringComparison.Ordinal);
     }
