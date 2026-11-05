@@ -553,7 +553,7 @@ Upstream at the pin shows a `+` on a workspace row while the pointer is over it 
 - The `+` appears while the pointer is over a workspace row and never on a session row. It takes the agent-glyph column, which a workspace row never uses, so the row does not reflow when it appears. Upstream instead widens a zero-width slot.
 - A click runs the same `SidebarController.NewSession` as the workspace menu's `New Session`, and does not also toggle the workspace. A right-click on it opens the workspace menu, as Control-click does upstream.
 - It is out of the tab order, as upstream's is hover-only. The row menu and the `new_session` hotkey reach the same action from the keyboard. Its UI Automation name is `New Session`, with automation id `workspace-add-session`.
-- `hiddenInterfaceElements` containing `workspaceAddSession` hides it. `InterfaceElement` ports upstream's twelve raw values, and `AppSettings.IsInterfaceElementHidden` matches a raw value exactly. Upstream checks the setting only when the pointer enters a row. The port re-evaluates on every settings change, so a `config.reload` hides a `+` already on screen.
+- `hiddenInterfaceElements` containing `workspaceAddSession` hides it. `InterfaceElement` ports upstream's raw values, the pin's twelve plus `workspaceIcons` and `sessionIcons`, and `AppSettings.IsInterfaceElementHidden` matches a raw value exactly. Upstream checks the setting only when the pointer enters a row. The port re-evaluates on every settings change, so a `config.reload` hides a `+` already on screen.
 - The port honours the elements whose chrome it draws, and re-applies them on every settings change:
   - `workspaceAddSession`.
   - `sidebarToggle`: the title bar's pane-toggle button.
@@ -562,6 +562,7 @@ Upstream at the pin shows a `+` on a workspace row while the pointer is over it 
   - `newWorkspace` and `flaggedView`: the sidebar footer buttons.
   - `newSession`: the footer's New Session menu (automation name `Add session`, id `add-session`). Its "New Session" adds a session to the active workspace at the `newSessionDirectory` cwd, and its "Open Directory…" adds one from a picked directory, as upstream's `actions.newSession()` and `actions.openDirectory()` do. The footer follows upstream's `WindowContentView` at `7df70fe`: new workspace and new session on the left, the focus pill and the flagged-view toggle on the right, all borderless glyph buttons in the theme foreground. The flagged-view toggle shows an outline flag in the tree and a filled flag in the flagged view, and it is dimmed and disabled in the tree when no session is flagged. Clear Flagged is a command palette row, as upstream, not a footer button (see "Command palette: app commands").
   - `recentSessions`, `scratch`, `split`, `dashboard` and `quickTerminal`: the title bar's trailing buttons, described below.
+  - `workspaceIcons` and `sessionIcons`: the leading icon of a sidebar row (see "Upstream features adopted beyond the pin").
 
 Upstream's title bar has a trailing button cluster, and the port now draws it in `TitleBar.RightHeader`. The order is recent sessions and attention, then scratch and split, then dashboard and quick terminal. A divider sits only where two groups that each still show two or more buttons meet (`InterfaceElementExtensions.TitlebarGroupDividers`, a port of upstream's rule with upstream's cases). The buttons read `TitleBarState`, which is captured with each sidebar snapshot under the host gate.
 - **Scratch, split, dashboard and quick terminal** run the same builtin actions as their hotkeys through the window command router. Scratch shows a filled inset while the scratch terminal is up. Split fills the visible halves: none, both, left or right, as upstream's four glyph states. Scratch, split and dashboard are disabled without an active session, as upstream's are.
@@ -818,6 +819,12 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
 - `lastSelectedAt` on the tree session node and in the saved session (upstream `c002d121`, #818, with the batch-close fix `21dc9909`). The names are in `parity/adopted.json`.
   - A change of a window's selected session stamps the session entered and the session left with the same time. A restore does not stamp. A soft close of the selected session stamps it before it leaves the tree, because undo may select another session of the batch.
   - The tree and the saved session write epoch seconds with millisecond precision, as `statusChangedAt` does. A saved value that is not a number, or is outside the range a `DateTimeOffset` holds, loads as absent, and the rest of the session loads.
+- The interface elements `workspaceIcons` and `sessionIcons` (upstream `91332589`, #865). Upstream lists the elements it shows; the port keeps the pin's `hiddenInterfaceElements`, so both icons show unless the list names them, as upstream's default.
+  - A hidden icon takes its row kind's leading icon away, and the name moves into its place. The setting is re-applied on every settings change.
+  - A hidden workspace icon hides the four-square grid, the Segoe glyph or the image file of `workspace.icon`, and with them the fill that marks a focused workspace. The focus pill on the row stays.
+  - A hidden session icon hides the split divider and the flag fill the icon draws. The session row moves left by the icon column and its spacing (22 px), in the tree and in the flagged view.
+  - Upstream moves the remote notice of a hidden icon into the name's tooltip. The port has no remote sessions, so there is nothing to move.
+  - The Settings window lists both as checkboxes with the other interface elements, labeled as they are ("Workspace Icons", "Session Icons").
 
 ## Windows-only extensions
 

@@ -68,7 +68,7 @@ Remote companions are in section 9.
 
 - Tint #836: `session.tint <color|clear> [--on icon|name|icon,name]`, `workspace.tint`, and `--tint`, `--tint-on` on `session new` and `workspace new`. Seven colors, on the icon, the name or both. A workspace tint colors only its own row. Args `tint`, `tintOn`; `tint` and `tintOn` on the session and workspace nodes in `tree`. Port: not done. The port has its own `workspace.theme` and `workspace.icon` (PLATFORM-NOTES "Windows-only extensions"); the names do not clash.
 - Session info line #864: `session.info TEXT`, with `--markdown` and `--hide-after SECONDS`. One line under the session row. It is not saved across a restart. `tree` reports `info`, `infoMarkdown` and `infoHideAfter`. The setting `sessionInfoDisplay` shows it always, in the flagged view only, or never. Port: not done.
-- Workspace icons and session icons can be turned off, as `workspaceIcons` and `sessionIcons` in `shownInterfaceElements`; both are on by default #865. A hidden icon also hides the state it shows. Port: not done. The port keeps the pin's `hiddenInterfaceElements` (first catalog, section 10).
+- Workspace icons and session icons can be turned off, as `workspaceIcons` and `sessionIcons` in `shownInterfaceElements`; both are on by default #865. A hidden icon also hides the state it shows. Port: done (B2b). The port keeps the pin's `hiddenInterfaceElements` (first catalog, section 10).
 - `lastSelectedAt` in `tree` and in the saved session: the last time the session became or stopped being its window's selection #818. Port: done (B2a).
 
 ## 4. Flagged view and workspace focus

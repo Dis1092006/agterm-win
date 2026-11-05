@@ -160,7 +160,8 @@
                                   local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
                                   Visibility="{x:Bind WorkspaceVisibility, Mode=OneWay}" />
 
-                        <!-- session icon: terminal rect (+split divider), filled when flagged -->
+                        <!-- session icon: terminal rect (+split divider), filled when flagged; the
+                             sessionIcons interface element hides it and the name takes its place -->
                         <Path Grid.Column="0"
                               Data="{x:Bind IconData, Mode=OneWay}"
                               Fill="{x:Bind IconFill, Mode=OneWay}"
@@ -168,7 +169,7 @@
                               StrokeThickness="1"
                               Width="16" Height="15"
                               VerticalAlignment="Center"
-                              Visibility="{x:Bind SessionVisibility, Mode=OneWay}">
+                              Visibility="{x:Bind SessionIconVisibility, Mode=OneWay}">
                             <!-- in a style, so clearing the theme stroke on a default row falls back to it -->
                             <Path.Style>
                                 <Style TargetType="Path">
@@ -188,7 +189,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <!-- workspace icon: upstream's square.grid.2x2, drawn like the session
-                                 icon. A margin, not column spacing, so a session row leaves no gap -->
+                                 icon. A margin, not column spacing, so a session row, or a workspace
+                                 row with the workspaceIcons element hidden, leaves no gap -->
                             <Path Data="M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z"
                                   local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
                                   StrokeThickness="1"
