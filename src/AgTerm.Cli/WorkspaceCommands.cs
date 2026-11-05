@@ -24,6 +24,7 @@ internal static class WorkspaceCommands
         workspace.Subcommands.Add(BuildFilter(bindings));
         workspace.Subcommands.Add(BuildCollapse(bindings));
         workspace.Subcommands.Add(BuildExpand(bindings));
+        workspace.Subcommands.Add(TintCommands.BuildWorkspaceTint(bindings));
         workspace.Subcommands.Add(BuildTheme(bindings));
         workspace.Subcommands.Add(BuildIcon(bindings));
         return workspace;
@@ -33,14 +34,17 @@ internal static class WorkspaceCommands
     {
         public string? Name { get; init; }
         public bool Collapsed { get; init; }
+        public required TintCreateOptions Tint { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
         public bool EchoesResultId => true;
 
+        public void Validate() => Tint.Validate();
+
         public ControlRequest MakeRequest() => new()
         {
             Cmd = WireCommand.WorkspaceNew,
-            Args = Client.WithWindow(new ControlArgs { Name = Name, Collapsed = Collapsed ? true : null }),
+            Args = Client.WithWindow(Tint.Apply(new ControlArgs { Name = Name, Collapsed = Collapsed ? true : null })),
         };
     }
 
@@ -56,14 +60,17 @@ internal static class WorkspaceCommands
         {
             Description = "Create the workspace collapsed in the sidebar.",
         };
+        var tint = new TintCreateOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(name);
         cmd.Options.Add(collapsed);
+        tint.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new New
         {
             Name = result.GetValue(name),
             Collapsed = result.GetValue(collapsed),
+            Tint = tint.Read(result),
             Client = options.Read(result),
         });
         return cmd;

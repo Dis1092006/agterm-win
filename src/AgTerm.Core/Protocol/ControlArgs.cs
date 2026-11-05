@@ -43,6 +43,16 @@ public sealed record ControlArgs
     [JsonPropertyName("collapsed")]
     public bool? Collapsed { get; init; }
 
+    /// <summary>The tint color for session.tint / workspace.tint set, and the creation tint of
+    /// session.new / workspace.new.</summary>
+    [JsonPropertyName("tint")]
+    public string? Tint { get; init; }
+
+    /// <summary>Which parts the tint colors (icon, name); absent keeps the row's parts on a set and
+    /// means the icon at creation.</summary>
+    [JsonPropertyName("tintOn")]
+    public string[]? TintOn { get; init; }
+
     /// <summary>For session.new: create in the background without selecting or focusing.</summary>
     [JsonPropertyName("noSelect")]
     public bool? NoSelect { get; init; }

@@ -557,7 +557,10 @@ public sealed partial class HeadlessControlActions : IControlActions
 
     // MARK: - session.new / duplicate / select / go / close / rename / reveal
 
-    public ControlResponse CreateSession(ControlSessionCreateOptions options)
+    public ControlResponse CreateSession(ControlSessionCreateOptions options) => CreateSession(options, null);
+
+    /// <summary>session.new with an optional creation tint, carried on every placement path.</summary>
+    public ControlResponse CreateSession(ControlSessionCreateOptions options, SidebarTint? tint)
     {
         return ResolvePlacementStore(options.Window, store =>
         {
@@ -568,7 +571,7 @@ public sealed partial class HeadlessControlActions : IControlActions
                 return ResolveAnchorLocation(anchor, store, location =>
                 {
                     var index = placeBefore ? location.Index : location.Index + 1;
-                    return MakeSessionResponse(store, location.Workspace, options, index);
+                    return MakeSessionResponse(store, location.Workspace, options, tint, index);
                 });
             }
             // name addressing: reuse-or-create with createWorkspace, else require an existing match.
@@ -583,24 +586,24 @@ public sealed partial class HeadlessControlActions : IControlActions
                     : store.WorkspaceNamed(name);
                 if (workspace is null)
                     return Err($"no workspace named \"{name}\" (pass --create-workspace to add it)");
-                return MakeSessionResponse(store, workspace.Id, options);
+                return MakeSessionResponse(store, workspace.Id, options, tint);
             }
             // id addressing (default active): the canonical prefix/active resolver.
             var target = options.Workspace ?? "active";
             return Resolve(target, store.Workspaces.Select(w => w.Id).ToArray(),
                 store.CurrentWorkspaceId, "workspace",
-                workspaceId => MakeSessionResponse(store, workspaceId, options));
+                workspaceId => MakeSessionResponse(store, workspaceId, options, tint));
         });
     }
 
     /// <summary>Port of ControlServer.makeSessionResponse (cwd defaults to the home directory).
     /// The upstream focusActiveSession keyboard-focus hop is a headless no-op.</summary>
     private ControlResponse MakeSessionResponse(AppStore store, Guid workspaceId,
-                                                ControlSessionCreateOptions options, int? at = null)
+                                                ControlSessionCreateOptions options, SidebarTint? tint, int? at = null)
     {
         var cwd = options.Cwd ?? _homeDirectory;
         var session = store.AddSession(workspaceId, cwd, command: options.Command, name: options.Name,
-            wait: options.Wait ?? false, at: at, select: !options.NoSelect);
+            wait: options.Wait ?? false, at: at, select: !options.NoSelect, tint: tint);
         if (session is null) return Err("could not create session");
         return OkId(session.Id);
     }
@@ -725,11 +728,15 @@ public sealed partial class HeadlessControlActions : IControlActions
 
     // MARK: - workspace commands
 
-    public ControlResponse CreateWorkspace(string? window, string? name, bool collapsed)
+    public ControlResponse CreateWorkspace(string? window, string? name, bool collapsed) =>
+        CreateWorkspace(window, name, collapsed, null);
+
+    public ControlResponse CreateWorkspace(string? window, string? name, bool collapsed, SidebarTint? tint)
     {
         return ResolvePlacementStore(window, store =>
         {
-            var workspace = store.AddWorkspace(Trimmed(name) ?? store.DefaultWorkspaceName, collapsed, holdsTarget: !collapsed);
+            var workspace = store.AddWorkspace(Trimmed(name) ?? store.DefaultWorkspaceName, collapsed,
+                holdsTarget: !collapsed, tint: tint);
             return OkId(workspace.Id);
         });
     }
@@ -998,6 +1005,27 @@ public sealed partial class HeadlessControlActions : IControlActions
         return ResolveSession(target, window, (store, id) =>
         {
             store.SetContext(context, id); // no-op + no save when unchanged (idempotent)
+            return OkId(id);
+        });
+    }
+
+    public ControlResponse SetSessionTint(string? target, string? window, ControlTintUpdate update)
+    {
+        return ResolveSession(target, window, (store, id) =>
+        {
+            if (store.SessionWithId(id) is not { } session)
+                return Err($"no such session: {target ?? "active"}");
+            store.SetSessionTint(id, update.Resolved(session.Tint));
+            return OkId(id);
+        });
+    }
+
+    public ControlResponse SetWorkspaceTint(string? target, string? window, ControlTintUpdate update)
+    {
+        return ResolveWorkspace(target, window, (store, id) =>
+        {
+            var current = store.Workspaces.FirstOrDefault(w => w.Id == id)?.Tint;
+            store.SetWorkspaceTint(id, update.Resolved(current));
             return OkId(id);
         });
     }

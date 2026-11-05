@@ -3,7 +3,7 @@ name: agterm
 description: >
   Drive agterm-win, a Windows terminal app, programmatically via its agtermctl CLI and a local
   control named pipe. Use when running inside an agterm-win session and asked to control the terminal:
-  create, rename, close, select, or reorder sessions and workspaces; split panes; toggle the
+  create, rename, close, select, tint, or reorder sessions and workspaces; split panes; toggle the
   per-session scratch terminal; open or close overlay terminals and read their exit status; type
   into a session, copy its selection, or search its scrollback; post desktop notifications; message other panes; manage windows (new, list,
   select, close, resize, move); change font size; or reload and edit the keymap and the app
@@ -15,7 +15,7 @@ description: >
 when_to_use: >
   Trigger on: agterm, agterm-win, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.split.close, session.swap, session.scratch, session.focus, session.resize, surface.zoom, surface.cursor, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
-  session.flag, session.context, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
+  session.flag, session.context, session.tint, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, workspace.tint, tint a session or workspace row a color, window.new, window.list,
   window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, pane.focused, app.launched, session wait, wait for session status,
   recent.list, recent.open, recent.clear, recently closed sessions, reopen closed session, clipboard set, select theme, edit keymap,
@@ -258,9 +258,10 @@ hook with its running child, queue depth, dropped count and last failure, then t
 as one JSON object on stdin and `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST`, `AGT_SESSION_ID`,
 `AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET`. The palette's Edit Hooks opens the file, and Reload Hooks applies it.
 
-**workspace** — `new [name] [--collapsed]` (`--collapsed` creates it closed in the sidebar so you can fill
-it with `session new --no-select` without it opening) · `rename <name>` · `delete` · `select` ·
+**workspace** — `new [name] [--collapsed] [--tint COLOR [--tint-on PARTS]]` (`--collapsed` creates it closed in the sidebar so you can fill
+it with `session new --no-select` without it opening; `--tint` creates it tinted) · `rename <name>` · `delete` · `select` ·
 `move --to up|down|top|bottom` ·
+`tint <COLOR|clear> [--on PARTS]` (tint the workspace's OWN row, as `session tint` does; its sessions keep their own tints; read back as the workspace node's `tint`/`tintOn`) ·
 `theme [NAME]` (the workspace's own terminal theme; no name clears it) · `icon [NAME]` (the workspace's own sidebar icon, a Segoe Fluent Icons name or the path of an .ico, .png or .svg file such as a project's favicon; no name clears it; `agtermctl icon list` prints the names) ·
 `focus [on|off|toggle|add]` (mark a workspace in the sidebar focus set; `add` marks without applying the filter; read the marked set back from the tree workspace nodes' `focused` flag) ·
 `filter [on|off|toggle] [--window W]` (apply or lift the sidebar filter over the marked set, keeping the set; no `--target`; read back from the tree's top-level `workspaceFilter`) ·
@@ -270,7 +271,7 @@ read the open/closed state back from the tree workspace node's `collapsed` flag,
 omitted when expanded).
 
 **session**
-- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--wait] [--name NAME] [--after SID | --before SID] [--no-select]` —
+- `new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--wait] [--name NAME] [--after SID | --before SID] [--no-select] [--tint COLOR [--tint-on PARTS]]` —
   create (and focus) a session. Target the workspace by id/prefix (`--workspace`) OR by name
   (`--workspace-name`, mutually exclusive); add `--create-workspace` to reuse-or-create the named
   workspace when absent. `--command` runs that program as the session process instead of the default shell
@@ -287,7 +288,8 @@ omitted when expanded).
   workspace, so it's mutually exclusive with `--workspace`/`--workspace-name`. `new --after active` =
   create right after the current session. `--no-select` creates the session in the BACKGROUND — it is
   added to the sidebar but NOT selected or focused, leaving the current selection untouched (the new node
-  is not `active` in `tree`); omit it for the default select-and-focus behavior.
+  is not `active` in `tree`); omit it for the default select-and-focus behavior. `--tint COLOR` creates it
+  with a row tint, `--tint-on` says where (default icon).
 - `duplicate [--target]` — create a fresh session (a plain login shell) in the target's workspace, right
   after it, rooted at the target's focused-pane cwd; selects + focuses it and returns the new id. ONLY the
   directory carries over — no custom name, command, split, scratch, status, flag, font size, or background.
@@ -338,6 +340,7 @@ omitted when expanded).
 - `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` and `--sound beep` are aliases for the same Windows system alert; use a Windows WAV filename stem such as `"Windows Notify Calendar"` or a user WAV name for a distinct sound. Unknown names return `unknown sound: <name> (use 'default', 'beep', or one of: <Windows list>)` without changing the status. Names are case-insensitive; empty means no explicit sound. Settings lists available sounds with Preview. Put user WAV files in `<state directory>\sounds` (normally `~\.agterm-win\sounds`); user files override same-name Windows files. `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so the status is cleared when that pane goes away, read back as the tree `statusPane` field (a key typed in that pane, or `session type` text sent to it, clears a `blocked` or `completed` status as the `statusReset` setting says, and an `active` one only on an interrupt; a write that is not `blocked` from another pane errors `blocked status owned by pane <pane> (write from that pane to change it)`; `session go` attention steps only move the selection, they do not reveal the pane; the GUI attention keys do reveal it); `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
 - `flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
 - `context [TEXT] [--clear]` — set or clear what the session is about (a PR, an issue, a task), shown in the title bar. Trimmed, at most 256 UTF-8 bytes, no control characters or line breaks; it persists until `--clear`. Read back as the tree `context` field.
+- `tint <red|orange|yellow|green|blue|purple|gray|clear> [--on icon|name|icon,name]` — color the session's sidebar row so it stands out, e.g. red for production. `session new`/`workspace new` take `--tint`/`--tint-on`. Persisted; read back as the tree node's `tint`/`tintOn`. agterm-win stores the tint but does not draw it in the sidebar yet; details in reference.md.
 - `seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
   selection or focus (the focus-free counterpart to `notify`, which raises the badge). Idempotent — a
   no-op when already zero. Read the current count from the tree node's `unseen` field. Use it so an

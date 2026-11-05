@@ -353,6 +353,8 @@ public sealed partial class AppStore
                         : session.AgentIndicator.Shape is { } shape ? ShapeWire(shape) : null,
                     StatusChangedAt = session.StatusChangedAt?.ToUnixTimeMilliseconds() / 1000.0,
                     LastSelectedAt = session.LastSelectedAt?.ToUnixTimeMilliseconds() / 1000.0,
+                    Tint = session.Tint?.ColorName,
+                    TintOn = session.Tint?.PartNames,
                     Background = session.BackgroundWatermark,
                     Unseen = session.UnseenCount > 0 ? session.UnseenCount : null,
                     FontSize = fontSize?.Invoke(session),
@@ -369,6 +371,8 @@ public sealed partial class AppStore
                 Active = workspace.Id == activeWorkspaceId,
                 Focused = FocusedWorkspaceIds.Contains(workspace.Id) ? true : null,
                 Collapsed = workspace.IsExpanded ? null : true,
+                Tint = workspace.Tint?.ColorName,
+                TintOn = workspace.Tint?.PartNames,
                 Sessions = sessions,
                 Theme = workspace.ThemeName,
                 Icon = workspace.IconName,
@@ -426,11 +430,13 @@ public sealed partial class AppStore
     /// <summary>Creates a workspace and appends it. When revealNewWorkspace (the default) and the
     /// focus filter is on, the new (empty) workspace joins the marked set so it is immediately
     /// visible. Pass collapsed: true to create it already collapsed in the sidebar (backs
-    /// workspace.new --collapsed). The new workspace becomes the current one until the selection
+    /// workspace.new --collapsed). An optional tint is set before the first save (workspace.new
+    /// --tint). The new workspace becomes the current one until the selection
     /// moves when holdsTarget is true; null follows revealNewWorkspace.</summary>
-    public Workspace AddWorkspace(string name, bool collapsed = false, bool revealNewWorkspace = true, bool? holdsTarget = null)
+    public Workspace AddWorkspace(string name, bool collapsed = false, bool revealNewWorkspace = true, bool? holdsTarget = null,
+                                  SidebarTint? tint = null)
     {
-        var workspace = new Workspace(TerminalText.Sanitized(name), isExpanded: !collapsed);
+        var workspace = new Workspace(TerminalText.Sanitized(name), isExpanded: !collapsed) { Tint = tint };
         Workspaces.Add(workspace);
         if (revealNewWorkspace) RevealNewFocusMember(workspace.Id);
         if (holdsTarget ?? revealNewWorkspace) _freshWorkspaceId = workspace.Id;
@@ -515,9 +521,11 @@ public sealed partial class AppStore
     /// selects it; select: false appends it in the background, leaving selection/focus/recency
     /// untouched (backs session.new --no-select). An optional name seeds CustomName (trimmed; blank
     /// = the auto basename). index null appends (default); set inserts at the clamped position,
-    /// backing session.new --after/--before. Returns null if no workspace matches.</summary>
+    /// backing session.new --after/--before. An optional tint is set before the first save
+    /// (session.new --tint). Returns null if no workspace matches.</summary>
     public Session? AddSession(Guid toWorkspace, string cwd, string? command = null,
-                               string? name = null, bool wait = false, int? at = null, bool select = true)
+                               string? name = null, bool wait = false, int? at = null, bool select = true,
+                               SidebarTint? tint = null)
     {
         var wsIndex = Workspaces.FindIndex(w => w.Id == toWorkspace);
         if (wsIndex < 0) return null;
@@ -526,6 +534,7 @@ public sealed partial class AppStore
         {
             InitialCommand = command,
             CommandWait = wait,
+            Tint = tint,
         };
         WatchPaneFocus(session);
         if (at is { } index)
@@ -1118,6 +1127,7 @@ public sealed partial class AppStore
             // only a collapsed workspace writes the flag; an expanded one omits it (null) so an
             // all-expanded tree serializes identically to a legacy snapshot.
             Collapsed = workspace.IsExpanded ? null : true,
+            Tint = workspace.Tint,
             Theme = workspace.ThemeName,
             Icon = workspace.IconName,
         }).ToArray();
@@ -1181,6 +1191,7 @@ public sealed partial class AppStore
             restored.Add(new Workspace(workspaceSnapshot.Id, workspaceSnapshot.Name, sessions,
                 isExpanded: !(workspaceSnapshot.Collapsed ?? false))
             {
+                Tint = workspaceSnapshot.Tint,
                 ThemeName = workspaceSnapshot.Theme,
                 IconName = workspaceSnapshot.Icon,
             });
@@ -1329,6 +1340,7 @@ public sealed partial class AppStore
             SplitRatio = snapshot.SplitRatio is { } ratio ? ClampSplitRatio(ratio) : null,
             Flagged = snapshot.Flagged ?? false,
             Context = snapshot.Context,
+            Tint = snapshot.Tint,
             InitialCommand = snapshot.InitialCommand,
             CommandWait = snapshot.CommandWait ?? false,
             WasRestored = true,
@@ -1368,6 +1380,7 @@ public sealed partial class AppStore
             snapshot.Sessions.Select(s => SessionFrom(s)).ToList(),
             isExpanded: !(snapshot.Collapsed ?? false))
         {
+            Tint = snapshot.Tint,
             ThemeName = snapshot.Theme,
             IconName = snapshot.Icon,
         };

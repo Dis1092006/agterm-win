@@ -48,7 +48,7 @@ The event kinds and payloads are:
   visible window tree. Undo emits a new `session.created`; grace-period finalization does not emit a
   second close.
 - `tree.changed`: an empty payload and the affected window id. Name, membership, and ordering changes
-  emit it. Opening or closing a session overlay and opening, closing or expiring a HUD also emit it.
+  emit it, and so does a `session tint` or `workspace tint` that changes the row's tint. Opening or closing a session overlay and opening, closing or expiring a HUD also emit it.
   Read `tree --json` for the current snapshot.
 - `pane.focused`: `name` (the session name), `pane` (`left` or `right`) and `paneID` (the stable
   surface token of the focused pane, omitted when the pane has none). It fires when the focused pane of
@@ -143,6 +143,8 @@ to restore the exact size), `hud` (the open HUD message panel, see `session hud`
 a gui-style question is reported by the top-level `askPending` instead), `scratch` (scratch shown),
 `flagged` (in the
 flagged working-set), `context` (what the session is about, set with `session context`; omitted when unset),
+`tint`/`tintOn` (the sidebar row's tint color and the parts it colors, e.g. `["icon"]` or
+`["icon","name"]`, the read side of `session tint`; both omitted when untinted),
 `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
@@ -191,7 +193,8 @@ from the top-level `zoomedSurface`. Workspace nodes carry
 SELECTED workspace; omitted unless marked, so it is absent entirely when the set is empty; the set can hold several workspaces),
 and `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the read side of
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
-when expanded, so an all-expanded tree carries no `collapsed` keys).
+when expanded, so an all-expanded tree carries no `collapsed` keys), and `tint`/`tintOn` (the workspace
+row's own tint, the read side of `workspace tint`; both omitted when untinted).
 
 The tree object itself carries these top-level read-only fields: `workspaceFilter` (whether the sidebar focus filter is applied over the marked set — the read side of `workspace filter`; always reported, `false` when off), `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
@@ -222,11 +225,13 @@ All thirteen are read-only projections of GUI state.
 
 ## workspace
 
-- `workspace new [name] [--collapsed] [--window W]` — create a workspace; returns its id. Wire:
+- `workspace new [name] [--collapsed] [--tint COLOR [--tint-on PARTS]] [--window W]` — create a workspace; returns its id. Wire:
   `workspace.new`. Name defaults
   to an auto-generated one. `--collapsed` creates it CLOSED in the sidebar tree so a script can build a
   workspace and fill it with `session new --no-select` without it ever opening (a fresh workspace is
   expanded by default). Read the state back from the tree workspace node's `collapsed` flag.
+  `--tint`/`--tint-on` create it with a row tint, as `workspace tint` sets one; `--tint-on` without
+  `--tint` is refused, and an invalid value creates nothing.
 - `workspace rename <name> [--target] [--window W]`. Wire: `workspace.rename`.
 - `workspace theme [name] [--target] [--window W]`: Windows-only. Set the workspace's own terminal theme; a missing or blank name clears it, and the workspace shows the global theme again. An unknown name returns `unknown theme: <name>`, the string `theme.set` uses. Answers `{"id":...}`, as `workspace.rename` does. The tree's workspace node reports `theme` with the stored name. Wire: `workspace.theme`.
 - `workspace icon [name] [--target] [--window W]`: Windows-only. Set the workspace's own sidebar icon, a Segoe Fluent Icons name such as `MapPin`. A missing or blank name clears it, and the row shows the default icon again. An unknown name returns `unknown icon: <name>`, with the name trimmed. Names match exactly, including case: `mappin` is unknown. Answers `{"id":...}`. The tree's workspace node reports `icon` with the stored name. On a machine whose fonts lack the glyph (Windows 10), an accepted name draws as the default icon. The name can instead be the path of an `.ico`, `.png` or `.svg` file (any value with a character other than a letter or a digit is a path); the row draws it at 16 px in its own colors. A relative path is resolved against agtermctl's current directory. Errors: `icon file not found: <path>`, `unsupported icon file: <path>`, and, for a relative path sent over the wire, `icon file path must be absolute: <path>`. The path is stored, not the file; a file that is gone later draws the default icon. Wire: `workspace.icon`.
@@ -244,6 +249,10 @@ All thirteen are read-only projections of GUI state.
   `workspace.focus`. `on` marks the target alone and applies the filter. `off` unmarks it (the filter switches off when the set empties). `toggle` (default) replaces the set with the target and applies the filter, or clears when the target is the only marked one and the filter is applied. `add` marks the target alongside the others and leaves the filter flag alone, so a set is built one workspace at a time with the whole tree on screen. Per-window and persisted; orthogonal to `sidebar mode` (the flagged flat list ignores the filter).
   While the filter is applied, `session go` and `workspace go` are scoped to the marked workspaces (and to the flagged set in flagged mode), a new workspace joins the set, and closing the current session reselects inside the visible set. An explicit `session select` or `workspace select` outside the set turns the filter off and keeps the set. An unknown mode errors.
 - `workspace filter [on|off|toggle] [--window W]` — apply or lift the filter over the marked set, keeping the set; answers `{"ok":true}`. Wire: `workspace.filter`. It acts on the whole window, so it takes no `--target`. Read the state back from the tree's top-level `workspaceFilter`; the marked set is each workspace node's `focused` flag. `on` with an empty set shows the full tree.
+- `workspace tint <COLOR|clear> [--on PARTS] [--target W] [--window W]` — tint the workspace's OWN sidebar
+  row, with the same colors, `--on` and refusals as `session tint`. It never colors the sessions inside,
+  which keep their own tints. Returns the workspace id. Wire: `workspace.tint`. Read back from the
+  workspace node's `tint`/`tintOn`.
 - `workspace collapse [--target] [--window W]` — collapse ONE workspace's subtree in the sidebar tree
   (hide its sessions); returns the workspace id. Wire: `workspace.collapse`. The per-workspace
   counterpart of `sidebar collapse`
@@ -258,7 +267,7 @@ All thirteen are read-only projections of GUI state.
 
 ## session
 
-- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--wait] [--name NAME] [--after SID | --before SID] [--no-select] [--window W]`
+- `session new [--cwd DIR] [--workspace W] [--workspace-name NAME] [--create-workspace] [--command CMD] [--wait] [--name NAME] [--after SID | --before SID] [--no-select] [--tint COLOR [--tint-on PARTS]] [--window W]`
   — create a session and focus it; returns the new id. Wire: `session.new`. `--cwd` sets the start
   directory (default the user's home directory). The destination workspace is addressed one of two
   mutually-exclusive ways: `--workspace`
@@ -293,7 +302,9 @@ All thirteen are read-only projections of GUI state.
   untouched (the new node is not `active` in `tree` — that flag is the read-back); omit it for the default
   select-and-focus behavior. Every other addressing/placement option composes with it, and a background
   `--create-workspace` create does not clear a focused-workspace filter either (it leaves the sidebar view
-  put instead of revealing the new workspace).
+  put instead of revealing the new workspace). `--tint COLOR` creates the session with a row tint and
+  `--tint-on` places it as `session tint --on` does (default icon); `--tint-on` without `--tint` is
+  refused, and an invalid value creates nothing.
 - `session duplicate [--target] [--window W]` — create a fresh session in the SAME workspace as the
   target, inserted directly AFTER it, rooted at the target's focused-pane working directory (the live
   cwd the sidebar row shows); selects + focuses the new session and
@@ -516,6 +527,17 @@ All thirteen are read-only projections of GUI state.
   A normal title bar shows it on its second line in place of the working directory; a compact one appends it
   after the session name as `name · context`. The `sessionContext` interface element hides it. A duplicated
   session does not inherit it. The tree's `context` field is the read side.
+- `session tint <COLOR|clear> [--on PARTS] [--target] [--window W]` — color the session's sidebar row so it
+  stands out at a glance (red for production, green for dev). COLOR is `red|orange|yellow|green|blue|purple|gray`.
+  `--on` is `icon`, `name` or `icon,name`; omitted, a recolor keeps the row's placement and an untinted row
+  starts on the icon. `clear` removes the tint and refuses `--on`. Wire: `session.tint` with `args.mode`
+  `set` (plus `args.tint` and an optional `args.tintOn` array) or `clear`, which refuses either. Errors:
+  `tint must be one of: red|orange|yellow|green|blue|purple|gray, or clear`, `--on does not apply to clear`,
+  `--on must list icon and/or name, comma-separated` (client side); `session.tint set requires a color`,
+  `invalid tint: <value> (red|orange|yellow|green|blue|purple|gray)`, `invalid tint placement: <parts> (icon,name)`,
+  `session.tint clear takes no color or placement`, `invalid tint mode: <mode> (set|clear)` (wire side).
+  Returns the session id. Persisted across a relaunch; a duplicated session starts untinted. Read back from
+  the node's `tint`/`tintOn`. agterm-win stores and reports the tint, but the sidebar does not draw it yet.
 - `session seen [--target] [--window W]` — clear the session's unseen-notification badge without changing
   the selection, focus, or agent status. Wire: `session.seen`. It is the focus-free counterpart to
   `notify`: `notify` raises the red badge, and the other way to clear it is visiting the

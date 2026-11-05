@@ -120,6 +120,11 @@ public sealed record WorkspaceSnapshot
     [JsonConverter(typeof(LossyBoolConverter))]
     public bool? Collapsed { get; init; }
 
+    /// <summary>The workspace row's sidebar tint. LOSSY decode: an unknown color drops only the tint.</summary>
+    [JsonPropertyName("tint")]
+    [JsonConverter(typeof(LossySidebarTintConverter))]
+    public SidebarTint? Tint { get; init; }
+
     /// <summary>The workspace's own terminal theme (Windows-only). LOSSY decode: a value that is
     /// not a string, or a blank one, reads as null, because a strict failure here would make the
     /// loader discard every workspace over one cosmetic field.</summary>
@@ -186,6 +191,11 @@ public sealed record SessionSnapshot
     [JsonPropertyName("context")]
     [JsonConverter(typeof(LossyContextConverter))]
     public string? Context { get; init; }
+
+    /// <summary>The session row's sidebar tint. LOSSY decode: an unknown color drops only the tint.</summary>
+    [JsonPropertyName("tint")]
+    [JsonConverter(typeof(LossySidebarTintConverter))]
+    public SidebarTint? Tint { get; init; }
 
     /// <summary>The main pane's foreground argv at the last clean quit (restore-running-command).</summary>
     [JsonPropertyName("foregroundCommand")]

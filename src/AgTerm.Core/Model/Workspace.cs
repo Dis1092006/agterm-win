@@ -39,6 +39,10 @@ public sealed class Workspace
     /// the catalog lacks is kept.</summary>
     public string? IconName { get; set; }
 
+    /// <summary>The workspace row's own sidebar tint (workspace.tint), or null for none. It colors
+    /// only this row; the sessions keep their own tints.</summary>
+    public SidebarTint? Tint { get; set; }
+
     /// <summary>Total unseen-notification count across this workspace's sessions, for the badge on a
     /// collapsed workspace row.</summary>
     public int UnseenCount => Sessions.Sum(s => s.UnseenCount);
@@ -52,6 +56,7 @@ public sealed class Workspace
         Name = Name,
         Sessions = Sessions.Select(s => s.ToSnapshot()).ToArray(),
         Collapsed = IsExpanded ? null : true,
+        Tint = Tint,
         Theme = ThemeName,
         Icon = IconName,
     };

@@ -66,7 +66,7 @@ Remote companions are in section 9.
 
 ## 3. Sidebar rows
 
-- Tint #836: `session.tint <color|clear> [--on icon|name|icon,name]`, `workspace.tint`, and `--tint`, `--tint-on` on `session new` and `workspace new`. Seven colors, on the icon, the name or both. A workspace tint colors only its own row. Args `tint`, `tintOn`; `tint` and `tintOn` on the session and workspace nodes in `tree`. Port: not done. The port has its own `workspace.theme` and `workspace.icon` (PLATFORM-NOTES "Windows-only extensions"); the names do not clash.
+- Tint #836: `session.tint <color|clear> [--on icon|name|icon,name]`, `workspace.tint`, and `--tint`, `--tint-on` on `session new` and `workspace new`. Seven colors, on the icon, the name or both. A workspace tint colors only its own row. Args `tint`, `tintOn`; `tint` and `tintOn` on the session and workspace nodes in `tree`. Port: the wire, CLI, tree and saved state are done (B2c1); the sidebar does not draw it yet (B2c2). The port has its own `workspace.theme` and `workspace.icon` (PLATFORM-NOTES "Windows-only extensions"); the names do not clash.
 - Session info line #864: `session.info TEXT`, with `--markdown` and `--hide-after SECONDS`. One line under the session row. It is not saved across a restart. `tree` reports `info`, `infoMarkdown` and `infoHideAfter`. The setting `sessionInfoDisplay` shows it always, in the flagged view only, or never. Port: not done.
 - Workspace icons and session icons can be turned off, as `workspaceIcons` and `sessionIcons` in `shownInterfaceElements`; both are on by default #865. A hidden icon also hides the state it shows. Port: done (B2b). The port keeps the pin's `hiddenInterfaceElements` (first catalog, section 10).
 - `lastSelectedAt` in `tree` and in the saved session: the last time the session became or stopped being its window's selection #818. Port: done (B2a).
@@ -145,7 +145,7 @@ Nothing is removed or renamed.
 - `ignoreReduceTransparency` keeps the window's opacity and blur while macOS Reduce Transparency is on; palettes still follow the system #814. Port: not done. The Windows switch is Settings > Personalization > Colors > Transparency effects, and the port reads it for overlay panels only (PLATFORM-NOTES "Windows-only extensions").
 - `terminalInputSource` locks one keyboard layout while a terminal has the keyboard #727. A layout switch made in a terminal is switched back, and the previous layout returns when focus leaves. It has no control command. Port: not done.
 - New values of existing settings: `overlayToggle`, `workspaceIcons` and `sessionIcons` in `shownInterfaceElements` (sections 3 and 5); `overlay95`, `overlay75` and `overlay50` in `linkOpenMode` (section 5). Port: not done.
-- Snapshot: `flaggedOrder` #833. WorkspaceSnapshot: `tint` #836. SessionSnapshot: `tint` #836, `lastSelectedAt` #818, `parentID` and `collapsed` #840. Port: partly. `lastSelectedAt` is done (B2a); the rest is not done.
+- Snapshot: `flaggedOrder` #833. WorkspaceSnapshot: `tint` #836. SessionSnapshot: `tint` #836, `lastSelectedAt` #818, `parentID` and `collapsed` #840. Port: partly. `lastSelectedAt` (B2a) and both `tint` fields (B2c1) are done; the rest is not done.
 
 ## 12. Behavior changes in commands already implemented
 

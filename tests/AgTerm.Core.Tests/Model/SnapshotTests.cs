@@ -21,6 +21,7 @@ public class SnapshotTests
     {
         Id = SessionId, CustomName = "api", Cwd = "/home/u/proj", IsSplit = true, SplitAxis = SplitAxis.TopBottom, FontSize = 14.0,
         SplitCwd = "/home/u/other", SplitRatio = 0.4, Flagged = true, Context = "PR #517",
+        Tint = new SidebarTint(TintColor.Red, TintParts.Name),
         ForegroundCommand = new[] { "ssh", "host" }, SplitForegroundCommand = new[] { "top" },
         InitialCommand = "ssh host", CommandWait = true,
         SplitInitialCommand = "top", SplitCommandWait = true,
@@ -76,6 +77,33 @@ public class SnapshotTests
         var session = ControlJson.Deserialize<SessionSnapshot>(json)!;
         Assert.Null(session.LastSelectedAt);
         Assert.Equal("keep", session.CustomName);
+    }
+
+    // upstream anUnknownTintColorDropsOnlyTheTint (f3fea57b)
+    [Fact]
+    public void AnUnknownTintColorDropsOnlyTheTint()
+    {
+        var session = ControlJson.Deserialize<SessionSnapshot>(
+            "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\",\"flagged\":true,\"tint\":{\"color\":\"teal\",\"on\":[\"name\"]}}")!;
+        Assert.Null(session.Tint);
+        Assert.True(session.Flagged);
+
+        var workspace = ControlJson.Deserialize<WorkspaceSnapshot>(
+            "{\"id\":\"" + WorkspaceId + "\",\"name\":\"w\",\"sessions\":[],\"collapsed\":true,\"tint\":\"red\"}")!;
+        Assert.Null(workspace.Tint);
+        Assert.True(workspace.Collapsed);
+    }
+
+    [Fact]
+    public void TintRoundTripsInBothSnapshots()
+    {
+        var sessionJson = "{\"id\":\"" + SessionId.ToString().ToUpperInvariant() +
+                          "\",\"cwd\":\"/h\",\"tint\":{\"color\":\"blue\",\"on\":[\"icon\",\"name\"]}}";
+        Assert.Equal(sessionJson, ControlJson.Serialize(ControlJson.Deserialize<SessionSnapshot>(sessionJson)));
+
+        var workspaceJson = "{\"id\":\"" + WorkspaceId.ToString().ToUpperInvariant() +
+                            "\",\"name\":\"w\",\"sessions\":[],\"tint\":{\"color\":\"gray\",\"on\":[\"name\"]}}";
+        Assert.Equal(workspaceJson, ControlJson.Serialize(ControlJson.Deserialize<WorkspaceSnapshot>(workspaceJson)));
     }
 
     [Fact]
@@ -155,11 +183,15 @@ public class SnapshotTests
         var workspace = new WorkspaceSnapshot
         {
             Id = WorkspaceId, Name = "w", Sessions = Array.Empty<SessionSnapshot>(),
-            Collapsed = true, Theme = "Nord", Icon = "MapPin",
+            Collapsed = true, Tint = new SidebarTint(TintColor.Red), Theme = "Nord", Icon = "MapPin",
         };
         using var doc = JsonDocument.Parse(ControlJson.Serialize(workspace));
+        // the pin plus what adopted.json takes, in upstream order, then the Windows-only fields
+        var wanted = SurfaceFieldNames("workspaceSnapshot").Concat(ParitySurface.Adopted("workspaceSnapshot"))
+            .ToHashSet(StringComparer.Ordinal);
         Assert.Equal(
-            SurfaceFieldNames("workspaceSnapshot").Concat(ParitySurface.WindowsOnly("workspaceSnapshot")).ToList(),
+            ParitySurface.LatestUpstreamPersistence("workspaceSnapshot").Where(wanted.Contains)
+                .Concat(ParitySurface.WindowsOnly("workspaceSnapshot")).ToList(),
             doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
     }
 
