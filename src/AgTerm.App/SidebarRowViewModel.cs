@@ -75,7 +75,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public Visibility GridIconVisibility => IconVisibility(SidebarWorkspaceIconKind.Grid);
 
     private Visibility IconVisibility(SidebarWorkspaceIconKind kind) =>
-        IsWorkspace && SidebarWorkspaceIcon.KindOf(_iconName, SymbolGlyphs.Has, _imageFailed) == kind
+        IsWorkspace && SidebarRowIcon.IsShown(Kind, _settings)
+        && SidebarWorkspaceIcon.KindOf(_iconName, SymbolGlyphs.Has, _imageFailed) == kind
             ? Visibility.Visible
             : Visibility.Collapsed;
 
@@ -117,7 +118,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         Raise(nameof(WorkspaceImageVisibility), nameof(GridIconVisibility));
     }
 
-    public Visibility SessionVisibility => IsSession ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility SessionIconVisibility =>
+        IsSession && SidebarRowIcon.IsShown(Kind, _settings) ? Visibility.Visible : Visibility.Collapsed;
 
     public string AutomationName => SidebarAutomationText.Row(_row, _surfaceStatus);
 
@@ -134,7 +136,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public string Chevron => _row.Collapsed ? "" : ""; // ChevronRight / ChevronDown
 
     // a mode change rebuilds the rows, so the mode is fixed for a row's lifetime
-    public Thickness ContentMargin => new(8 + SidebarRowIndent.Of(Kind, _mode), 0, 8, 0);
+    public Thickness ContentMargin =>
+        new(8 + SidebarRowIndent.Of(Kind, _mode, SidebarRowIcon.IsShown(Kind, _settings)), 0, 8, 0);
 
     public FontWeight LabelWeight =>
         IsWorkspace ? Microsoft.UI.Text.FontWeights.SemiBold
@@ -296,7 +299,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         }
         Raise(nameof(Label), nameof(Chevron), nameof(LabelWeight),
               nameof(WorkspaceGlyph), nameof(WorkspaceGlyphVisibility), nameof(GridIconVisibility),
-              nameof(WorkspaceImage), nameof(WorkspaceImageVisibility),
+              nameof(WorkspaceImage), nameof(WorkspaceImageVisibility), nameof(SessionIconVisibility), nameof(ContentMargin),
               nameof(FontSize), nameof(RowHeight),
               nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill), nameof(GridIconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),

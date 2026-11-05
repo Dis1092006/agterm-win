@@ -282,8 +282,21 @@ public class AppSettingsTests : IDisposable
     {
         Assert.Equal(
             ["sidebarToggle", "sessionName", "windowName", "sessionContext", "recentSessions", "scratch", "split",
-             "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession"],
+             "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession",
+             "workspaceIcons", "sessionIcons"],
             Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
+    }
+
+    // upstream 91332589 (#865): the row icons are shown by default and hide independently
+    [Theory]
+    [InlineData(InterfaceElement.WorkspaceIcons, InterfaceElement.SessionIcons)]
+    [InlineData(InterfaceElement.SessionIcons, InterfaceElement.WorkspaceIcons)]
+    public void Row_icon_elements_hide_independently(InterfaceElement element, InterfaceElement other)
+    {
+        var settings = new AppSettings { HiddenInterfaceElements = [element.RawValue()] };
+
+        Assert.True(settings.IsInterfaceElementHidden(element));
+        Assert.False(settings.IsInterfaceElementHidden(other));
     }
 
     [Fact]

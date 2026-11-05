@@ -18,7 +18,7 @@ public sealed class SidebarRowNestingSourceTests
         var model = Source("SidebarRowViewModel.cs");
         var view = Source("SidebarView.xaml.cs");
 
-        Assert.Contains("new(8 + SidebarRowIndent.Of(Kind, _mode), 0, 8, 0)",
+        Assert.Contains("new(8 + SidebarRowIndent.Of(Kind, _mode, SidebarRowIcon.IsShown(Kind, _settings)), 0, 8, 0)",
             Between(model, "public Thickness ContentMargin =>", ";"), StringComparison.Ordinal);
         Assert.Contains("new SidebarRowViewModel(row, _settings, snapshot.Mode,", view, StringComparison.Ordinal);
     }

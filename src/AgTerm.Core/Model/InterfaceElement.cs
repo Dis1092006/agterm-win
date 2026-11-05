@@ -23,6 +23,8 @@ public enum InterfaceElement
     FlaggedView,
     FocusFilter,
     WorkspaceAddSession,
+    WorkspaceIcons,
+    SessionIcons,
 }
 
 public static class InterfaceElementExtensions
