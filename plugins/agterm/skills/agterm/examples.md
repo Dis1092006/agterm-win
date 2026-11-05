@@ -580,9 +580,11 @@ agtermctl session status idle --target "$AGTERM_SESSION_ID"             # clear
 An agent running in a split or scratch pane sets `--pane` so the status records the pane it came from;
 `tree` reports it as the session's `statusPane`. When that pane goes away (the split closes, the scratch
 shell exits), agterm-win clears the status, so no glyph is left without a pane behind it. Without `--pane`
-the status counts as coming from the main (`left`) pane. agterm-win does not clear a status on a keystroke
-and does not move focus into the tagged pane: attention navigation, in the GUI or through
-`session go --to next-attention`, only changes the selected session.
+the status counts as coming from the main (`left`) pane. A key typed in the tagged pane, or `session type`
+text sent to it, clears a `blocked` or `completed` status as the `statusReset` setting says (`firstKey` by
+default), and an `active` status only on an interrupt. Another pane cannot replace a `blocked` status:
+`blocked status owned by pane <pane> (write from that pane to change it)`. `session go --to next-attention`
+only changes the selected session; the GUI attention keys also show the tagged pane.
 
 ```bash
 # an agent working in the split pane; a custom keymap command gets it as {AGT_PANE}, else name it

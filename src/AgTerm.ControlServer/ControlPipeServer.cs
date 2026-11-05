@@ -62,14 +62,29 @@ public sealed class ControlPipeServer : IDisposable
     /// <summary>Whether the accept loop is running (the pipe is being served).</summary>
     public bool IsListening => _acceptLoop is not null;
 
+    /// <summary>Whether the last Start created the pipe right away, the analogue of upstream's
+    /// bound socket path. A refused first bind leaves the loop retrying, but this stays false.</summary>
+    public bool IsBound { get; private set; }
+
     /// <summary>Bind and start the serial accept loop. Idempotent: a no-op if already listening.
-    /// On failure it logs and returns, leaving the host to start normally.</summary>
+    /// The first pipe instance is created here, so IsBound answers at once. On failure it logs
+    /// and keeps retrying in the loop, leaving the host to start normally.</summary>
     public void Start()
     {
         if (_acceptLoop is not null) return;
+        NamedPipeServerStream? first = null;
+        try
+        {
+            first = Create();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _log?.Invoke($"control pipe accept failed: {e.Message}");
+        }
+        IsBound = first is not null;
         var cts = new CancellationTokenSource();
         _cts = cts;
-        _acceptLoop = Task.Run(() => AcceptLoop(cts.Token), CancellationToken.None);
+        _acceptLoop = Task.Run(() => AcceptLoop(first, cts.Token), CancellationToken.None);
     }
 
     /// <summary>Stop the listener. A connection currently being served finishes best-effort.</summary>
@@ -84,14 +99,15 @@ public sealed class ControlPipeServer : IDisposable
 
     public void Dispose() => Stop();
 
-    private async Task AcceptLoop(CancellationToken token)
+    private async Task AcceptLoop(NamedPipeServerStream? first, CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
-            NamedPipeServerStream? pipe = null;
+            NamedPipeServerStream? pipe = first;
+            first = null;
             try
             {
-                pipe = Create();
+                pipe ??= Create();
                 await pipe.WaitForConnectionAsync(token).ConfigureAwait(false);
                 await HandleConnection(pipe, token).ConfigureAwait(false);
             }
@@ -117,6 +133,8 @@ public sealed class ControlPipeServer : IDisposable
                 pipe?.Dispose();
             }
         }
+        // a Stop before the first iteration must still release the pipe Start created.
+        first?.Dispose();
     }
 
     /// <summary>One instance at a time — the accept loop is serial like the upstream socket server;

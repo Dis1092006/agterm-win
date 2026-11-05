@@ -117,7 +117,8 @@ public sealed class Session
 
     private bool _splitFocused;
 
-    /// <summary>Set by the owning store: told when the focused pane flag flips.</summary>
+    /// <summary>Set by the owning store: told when the focused pane flag flips or a pane identity
+    /// changes (a primary exit promotes the split terminal into the left slot).</summary>
     internal Action? PaneFocusChanged { get; set; }
 
     /// <summary>The identity of the pane that holds focus, which a swap leaves alone: it exchanges both
@@ -259,9 +260,14 @@ public sealed class Session
     {
         PaneIdentity = _splitPaneIdentity ?? Guid.NewGuid();
         _splitPaneIdentity = null;
+        PaneFocusChanged?.Invoke();
     }
 
-    internal void ForgetSplitPaneIdentity() => _splitPaneIdentity = null;
+    internal void ForgetSplitPaneIdentity()
+    {
+        _splitPaneIdentity = null;
+        PaneFocusChanged?.Invoke();
+    }
 
     /// <summary>A swap: each terminal keeps its identity and moves to the other slot.</summary>
     internal void SwapPaneIdentities()
@@ -269,6 +275,7 @@ public sealed class Session
         var split = _splitPaneIdentity ?? Guid.NewGuid();
         _splitPaneIdentity = PaneIdentity;
         PaneIdentity = split;
+        PaneFocusChanged?.Invoke();
     }
 
     public OverlayPane? PaneRole(Guid identity)

@@ -133,10 +133,12 @@ public sealed class AutoFollowRuntimeTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
+    // upstream autoFollowed goes through revealActiveBlockedPane: a scratch status shows the scratch and
+    // leaves the split focus alone, a left status hides the scratch and moves focus to the main pane
     [Theory]
     [InlineData(StatusPane.Left)]
     [InlineData(StatusPane.Scratch)]
-    public async Task Key_window_reveals_scratch_or_hides_it_without_forcing_the_left_split(StatusPane pane)
+    public async Task Key_window_reveals_the_scratch_or_the_main_pane_the_status_names(StatusPane pane)
     {
         var directory = Directory.CreateTempSubdirectory("agterm-follow-pane-").FullName;
         try
@@ -146,6 +148,7 @@ public sealed class AutoFollowRuntimeTests
             host.Host.RunLocked(() =>
             {
                 target = host.Store.ActiveSession!;
+                target.Surface ??= new FakeSurface();
                 target.SplitSurface = new FakeSurface();
                 target.HasSplit = true;
                 target.SplitFocused = true;
@@ -154,9 +157,9 @@ public sealed class AutoFollowRuntimeTests
                 host.Store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked, StatusPane: pane), target.Id);
             });
             var token = await host.RevealAutoFollowedAsync(target!.Id, () => true);
-            Assert.Equal(pane == StatusPane.Scratch ? target.ScratchSurface!.PaneToken : target.SplitSurface!.PaneToken, token);
+            Assert.Equal(pane == StatusPane.Scratch ? target.ScratchSurface!.PaneToken : target.Surface!.PaneToken, token);
             Assert.Equal(pane == StatusPane.Scratch, target.ScratchActive);
-            Assert.True(target.SplitFocused);
+            Assert.Equal(pane == StatusPane.Scratch, target.SplitFocused);
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

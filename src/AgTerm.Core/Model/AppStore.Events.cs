@@ -25,6 +25,9 @@ public sealed partial class AppStore
 
     internal void EmitSessionCreated(Session session, Guid workspace)
     {
+        // every path that hands this store a session ends here (new, undone close, recent restore),
+        // so it is where the session's pane-focus baseline is taken
+        WatchPaneFocus(session);
         EmitControlEvent(ControlEventKind.SessionCreated, workspace, session.Id,
             new ControlEventPayload { Name = session.DisplayName });
         ScheduleTreeChanged();

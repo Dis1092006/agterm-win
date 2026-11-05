@@ -203,6 +203,40 @@ public class AppStoreOverlayAndPaneEventsTests : IDisposable
     }
 
     [Fact]
+    public void ThePrimaryPaneExitingUnderTheSelectionIsReported()
+    {
+        SplitShown();
+        _session.Surface = new FakeSurface("tok-left");
+        _session.SplitSurface = new FakeSurface("tok-right");
+        _session.SplitFocused = false;
+        Settle();
+        _events.Clear();
+
+        _store.ClosePrimaryPane(_session.Id);
+        Settle();
+
+        var focused = Assert.Single(PaneFocused());
+        Assert.Equal("left", focused.Payload.Pane);
+        Assert.Equal("tok-right", focused.Payload.PaneId);
+    }
+
+    [Fact]
+    public void AnUndoneCloseReportsTheFirstFlipAfterwards()
+    {
+        SplitShown();
+        Assert.True(_store.SoftCloseSession(_session.Id));
+        _store.EmitPaneFocusChanges();
+        Assert.True(_store.UndoPendingClose());
+        Settle();
+        _events.Clear();
+
+        _session.SplitFocused = !_session.SplitFocused;
+        Settle();
+
+        Assert.Single(PaneFocused());
+    }
+
+    [Fact]
     public void ASettledDebounceRunsOnTheHostScheduler()
     {
         SplitShown();

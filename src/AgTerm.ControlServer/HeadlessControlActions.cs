@@ -2303,13 +2303,10 @@ public sealed class HeadlessControlActions : IControlActions
         },
     };
 
-    /// <summary>recent.clear: empty the list; a list that is still not empty afterwards means the file
-    /// could not be written.</summary>
-    public ControlResponse ClearRecentClosed()
-    {
-        _recentClosed?.Clear();
-        return (_recentClosed?.Load().Count ?? 0) > 0 ? Err("could not clear recent items") : Ok();
-    }
+    /// <summary>recent.clear: empty the list. The store reports whether the empty list was written,
+    /// so a close recorded right after does not read as a failed clear.</summary>
+    public ControlResponse ClearRecentClosed() =>
+        _recentClosed?.Clear() is false ? Err("could not clear recent items") : Ok();
 
     /// <summary>recent.open: reopen an entry (the newest by default) into the one window. The entry is
     /// consumed only when the restore placed every session; otherwise it stays so a later open can finish.</summary>

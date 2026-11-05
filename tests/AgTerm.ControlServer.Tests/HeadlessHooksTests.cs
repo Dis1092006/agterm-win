@@ -102,6 +102,27 @@ public sealed class HeadlessHooksTests : IDisposable
     }
 
     [Fact]
+    public void Hooks_load_at_start_even_when_the_pipe_cannot_bind()
+    {
+        File.WriteAllText(HooksPath, "on session.created echo made\n");
+        var pipeName = "agterm-test-" + Guid.NewGuid().ToString("N");
+        using var taken = new System.IO.Pipes.NamedPipeServerStream(pipeName, System.IO.Pipes.PipeDirection.InOut, 1);
+        _host = new HeadlessHost(new HeadlessHostOptions
+        {
+            StateDir = _dir,
+            ConfigDir = _dir,
+            PipeName = pipeName,
+            HookLauncher = _launcher,
+        });
+
+        _host.Start();
+
+        var list = _host.Actions.ListHooks();
+        Assert.True(list.Ok, list.Error);
+        Assert.Equal("echo made", Assert.Single(list.Result!.Hooks!.Hooks).Command);
+    }
+
+    [Fact]
     public async Task A_launched_hook_started_at_boot_sees_app_launched_and_later_events()
     {
         File.WriteAllText(HooksPath, "on app.launched echo up\non session.created echo made\n");

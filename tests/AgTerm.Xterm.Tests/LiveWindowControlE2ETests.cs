@@ -165,6 +165,75 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.True(blocked.SplitFocused);
     }
 
+    // Upstream revealActiveBlockedPane gates on needsAttention, so a completed status shows its pane too.
+    [Fact]
+    public async Task Attention_step_reveals_the_pane_of_a_completed_status()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var sourceId = Assert.Single(application.Windows).Id;
+        var source = application.GetOpenWindow(sourceId);
+        var first = source.Store.ActiveSession!;
+        Session done = null!;
+        source.RunLocked(() =>
+        {
+            done = source.Store.AddSession(source.Store.Workspaces[0].Id, _stateDir)!;
+            done.HasSplit = true;
+            done.SplitSurface = new BadgeSurface("done-split");
+            source.Store.SelectSession(first.Id);
+        });
+        SetStatus(source, done.Id, new AgentIndicator(AgentStatus.Completed, StatusPane: StatusPane.Right));
+
+        Assert.Equal((sourceId, done.Id), await application.StepAttentionAsync(sourceId, forward: true));
+
+        Assert.True(done.SplitFocused);
+    }
+
+    [Fact]
+    public async Task Attention_step_to_a_main_pane_status_moves_focus_off_the_split()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var sourceId = Assert.Single(application.Windows).Id;
+        var source = application.GetOpenWindow(sourceId);
+        var first = source.Store.ActiveSession!;
+        Session blocked = null!;
+        source.RunLocked(() =>
+        {
+            blocked = source.Store.AddSession(source.Store.Workspaces[0].Id, _stateDir)!;
+            blocked.HasSplit = true;
+            blocked.SplitSurface = new BadgeSurface("left-split");
+            blocked.SplitFocused = true;
+            source.Store.SelectSession(first.Id);
+        });
+        SetStatus(source, blocked.Id, new AgentIndicator(AgentStatus.Blocked, StatusPane: StatusPane.Left));
+
+        Assert.Equal((sourceId, blocked.Id), await application.StepAttentionAsync(sourceId, forward: true));
+
+        Assert.False(blocked.SplitFocused);
+    }
+
+    // Upstream stepAttention reveals the current session's pane when the step finds no other stop.
+    [Fact]
+    public async Task Attention_step_without_another_stop_reveals_the_current_sessions_pane()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var sourceId = Assert.Single(application.Windows).Id;
+        var source = application.GetOpenWindow(sourceId);
+        var only = source.Store.ActiveSession!;
+        source.RunLocked(() =>
+        {
+            only.HasSplit = true;
+            only.SplitSurface = new BadgeSurface("only-split");
+        });
+        SetStatus(source, only.Id, new AgentIndicator(AgentStatus.Blocked, StatusPane: StatusPane.Right));
+
+        Assert.Null(await application.StepAttentionAsync(sourceId, forward: true));
+
+        Assert.True(only.SplitFocused);
+    }
+
     [Fact]
     public void Notification_badge_toggle_hides_and_shows_badge_without_losing_unseen_count()
     {

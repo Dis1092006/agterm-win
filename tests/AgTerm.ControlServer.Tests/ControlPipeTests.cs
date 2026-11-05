@@ -104,6 +104,20 @@ public class ControlPipeServerTests
             TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     [Fact]
+    public void StartReportsWhetherThePipeBound()
+    {
+        var pipe = FreshPipe();
+        using (var bound = StartEcho(pipe))
+            Assert.True(bound.IsBound);
+
+        var taken = FreshPipe();
+        using var holder = new System.IO.Pipes.NamedPipeServerStream(taken, System.IO.Pipes.PipeDirection.InOut, 1);
+        using var refused = StartEcho(taken);
+        Assert.True(refused.IsListening);
+        Assert.False(refused.IsBound);
+    }
+
+    [Fact]
     public async Task RoundTripsOneRequestPerConnection()
     {
         var pipe = FreshPipe();

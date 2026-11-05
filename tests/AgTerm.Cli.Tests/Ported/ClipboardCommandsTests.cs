@@ -105,12 +105,14 @@ public class ClipboardCommandsTests
     }
 
     [Fact]
-    public void ExecuteRefusesAnInteractiveStandardInputWithoutText()
+    public void ExecuteRefusesAnInteractiveStandardInputWithoutTextAsAUsageError()
     {
+        // upstream throws ValidationError from run(), which ArgumentParser exits with 64
         var app = new Harness();
         var command = WithStdin(Array.Empty<string>(), Array.Empty<byte>(), terminal: true);
-        var error = Assert.Throws<CliValidationException>(() => command.Execute(app.Environment));
-        Assert.Equal("give the text as an argument or pipe it on standard input", error.Message);
+        Assert.Equal(64, command.Execute(app.Environment));
+        Assert.Equal("error: give the text as an argument or pipe it on standard input" + Environment.NewLine,
+            app.Error.ToString());
         Assert.Empty(app.Copied);
     }
 
