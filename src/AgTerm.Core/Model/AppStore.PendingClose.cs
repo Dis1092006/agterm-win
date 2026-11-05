@@ -110,6 +110,9 @@ public sealed partial class AppStore
 
         var previousSelection = SelectedSessionId;
         var removingActive = previousSelection is { } prev && targetIds.Contains(prev);
+        // the selection setter cannot stamp a session already removed, and undo may select a batch mate
+        if (removingActive && SessionWithId(previousSelection!.Value) is { } leaving)
+            leaving.LastSelectedAt = DateTimeOffset.UtcNow;
         foreach (var close in closes
                      .OrderByDescending(c => c.WorkspaceIndex)
                      .ThenByDescending(c => c.SessionIndex))

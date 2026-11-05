@@ -27,6 +27,12 @@ public sealed partial class AppStore
             var previous = _selectedSessionId;
             _freshWorkspaceId = null;
             _selectedSessionId = value;
+            if (!_restoringSelection)
+            {
+                var now = DateTimeOffset.UtcNow;
+                foreach (var id in new[] { previous, value })
+                    if (id is { } sessionId && SessionWithId(sessionId) is { } session) session.LastSelectedAt = now;
+            }
             EmitSessionSelected(previous);
         }
     }
@@ -346,6 +352,7 @@ public sealed partial class AppStore
                     StatusShape = idle ? null
                         : session.AgentIndicator.Shape is { } shape ? ShapeWire(shape) : null,
                     StatusChangedAt = session.StatusChangedAt?.ToUnixTimeMilliseconds() / 1000.0,
+                    LastSelectedAt = session.LastSelectedAt?.ToUnixTimeMilliseconds() / 1000.0,
                     Background = session.BackgroundWatermark,
                     Unseen = session.UnseenCount > 0 ? session.UnseenCount : null,
                     FontSize = fontSize?.Invoke(session),
@@ -1327,6 +1334,7 @@ public sealed partial class AppStore
             WasRestored = true,
             BackgroundWatermark = snapshot.BackgroundWatermark,
             RestoreCommand = snapshot.RestoreCommand,
+            LastSelectedAt = EpochSecondsOrNull(snapshot.LastSelectedAt),
         };
         session.HasSplit = session.IsSplit;
         session.SplitAxis = session.IsSplit ? snapshot.SplitAxis ?? SplitAxis.LeftRight : SplitAxis.LeftRight;
@@ -1342,6 +1350,17 @@ public sealed partial class AppStore
         }
         WatchPaneFocus(session);
         return session;
+    }
+
+    /// <summary>A saved epoch-seconds stamp as a time; null when absent or outside what
+    /// DateTimeOffset holds, so a hand-edited value cannot fail the restore.</summary>
+    private static DateTimeOffset? EpochSecondsOrNull(double? seconds)
+    {
+        const double min = -62_135_596_800; // DateTimeOffset.MinValue
+        const double max = 253_402_300_799; // DateTimeOffset.MaxValue
+        return seconds is { } s && s >= min && s <= max
+            ? DateTimeOffset.FromUnixTimeMilliseconds((long)Math.Round(s * 1000))
+            : null;
     }
 
     internal Workspace WorkspaceFrom(WorkspaceSnapshot snapshot) =>

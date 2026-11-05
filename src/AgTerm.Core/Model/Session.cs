@@ -89,6 +89,10 @@ public sealed class Session
     /// Ephemeral.</summary>
     public DateTimeOffset? StatusChangedAt { get; set; }
 
+    /// <summary>When the session last became or stopped being its window's selection, on the same
+    /// wall clock as StatusChangedAt. Persisted.</summary>
+    public DateTimeOffset? LastSelectedAt { get; set; }
+
     /// <summary>Whether idle auto-follow has already pulled the user to THIS blocked episode. Ephemeral.</summary>
     public bool AutoFollowConsumed { get; set; }
 
@@ -550,6 +554,7 @@ public sealed class Session
         BackgroundWatermark = BackgroundWatermark,
         RestoreCommand = RestoreCommand,
         SplitRestoreCommand = SplitRestoreCommand,
+        LastSelectedAt = LastSelectedAt?.ToUnixTimeMilliseconds() / 1000.0,
     };
 
     /// <summary>The longest context the control API stores, in UTF-8 bytes.</summary>

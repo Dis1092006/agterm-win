@@ -151,6 +151,10 @@ public sealed record ControlSessionNode
     [JsonPropertyName("statusChangedAt")]
     public double? StatusChangedAt { get; init; }
 
+    /// <summary>Session.LastSelectedAt as epoch seconds; absent when no selection time was recorded.</summary>
+    [JsonPropertyName("lastSelectedAt")]
+    public double? LastSelectedAt { get; init; }
+
     /// <summary>The background watermark spec; null when none is set.</summary>
     [JsonPropertyName("background")]
     public BackgroundWatermark? Background { get; init; }

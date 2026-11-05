@@ -157,6 +157,10 @@ Like `statusColor` it reports the PER-CALL override only, so a shape set in sett
 `session status` write, including `idle` and a repeat of the same value, and a clear by a key, by
 `session type` or by the pane going away. Returning to idle keeps it, so it is the time the session
 last changed its status; omitted until a status has been set),
+`lastSelectedAt` (when the session last became or stopped being its window's selected session, in epoch
+seconds on the same clock; persisted, omitted when no selection has been recorded, which includes a
+session restored from a build that did not record it, so absence is not proof of never being used.
+Read it with `active`: an active session is selected right now),
 `foreground`/`splitForeground` (upstream reports each pane's foreground process here; agterm-win never
 reads a pane's foreground process, so the running app always omits both),
 `restoreCommand`/`splitRestoreCommand` (each pane's persisted restore-command override — the read side of

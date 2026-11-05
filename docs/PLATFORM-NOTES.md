@@ -815,6 +815,9 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The mailboxes are dropped at the same points as upstream: a session leaving the tree (hard close, soft close, workspace close), split close, scratch close, the exit of the main pane, and window close. Two points differ. The port has no `session restart` and no respawn of the main pane, so those drops do not exist. A reload of a window's terminal page (`ReloadSurfacesAsync`) gives every pane a new renderer and a new token, so it drops every mailbox of that window.
   - The application host looks up the session of an address in every open window, with `active` meaning the active window's selected session. `--all` without `--workspace` spans every open window. `--workspace` with `--window` resolves the workspace in that window; without `--window`, in whichever open window holds it.
   - `msg read --wait --timeout` uses the same watchdog thread as `session wait`.
+- `lastSelectedAt` on the tree session node and in the saved session (upstream `c002d121`, #818, with the batch-close fix `21dc9909`). The names are in `parity/adopted.json`.
+  - A change of a window's selected session stamps the session entered and the session left with the same time. A restore does not stamp. A soft close of the selected session stamps it before it leaves the tree, because undo may select another session of the batch.
+  - The tree and the saved session write epoch seconds with millisecond precision, as `statusChangedAt` does. A saved value that is not a number, or is outside the range a `DateTimeOffset` holds, loads as absent, and the rest of the session loads.
 
 ## Windows-only extensions
 

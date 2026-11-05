@@ -596,6 +596,20 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         Assert.True(SessionNode(seeded)["statusChangedAt"]!.GetValue<double>() > 1_700_000_000);
     }
 
+    // lastSelectedAt stamps the session entered and the session left (upstream c002d121)
+    [Fact]
+    public void TreeReportsLastSelectedAtForTheSessionEnteredAndLeft()
+    {
+        var seeded = SeededSessionId();
+        var created = SendCommand("""{"cmd":"session.new"}""");
+        Assert.True(created["ok"]!.GetValue<bool>(), created.ToJsonString());
+        var fresh = created["result"]!["id"]!.GetValue<string>();
+
+        var left = SessionNode(seeded)["lastSelectedAt"]!.GetValue<double>();
+        Assert.True(left > 1_700_000_000);
+        Assert.Equal(left, SessionNode(fresh)["lastSelectedAt"]!.GetValue<double>());
+    }
+
     // session.type clears a blocked glyph like a keystroke does, but only when the text is not empty
     [Fact]
     public void TypingTextClearsABlockedStatusOfThatPane()

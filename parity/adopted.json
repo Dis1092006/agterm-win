@@ -93,13 +93,15 @@
     { "name": "hasSplit", "upstream": "a5856949" },
     { "name": "statusChangedAt", "upstream": "5fae4f68" },
     { "name": "splitAxis", "upstream": "eb29d556" },
-    { "name": "splitCommandWait", "upstream": "db62080d" }
+    { "name": "splitCommandWait", "upstream": "db62080d" },
+    { "name": "lastSelectedAt", "upstream": "c002d121" }
   ],
   "sessionSnapshot": [
     { "name": "context", "upstream": "73b63b71" },
     { "name": "splitAxis", "upstream": "eb29d556" },
     { "name": "splitInitialCommand", "upstream": "db62080d" },
-    { "name": "splitCommandWait", "upstream": "db62080d" }
+    { "name": "splitCommandWait", "upstream": "db62080d" },
+    { "name": "lastSelectedAt", "upstream": "c002d121" }
   ],
   "keymapActions": [
     { "wire": "toggle_workspace_filter", "upstream": "6722755a" },
