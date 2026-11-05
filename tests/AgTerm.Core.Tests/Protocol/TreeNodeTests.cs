@@ -54,6 +54,19 @@ public class TreeNodeTests
     }
 
     [Fact]
+    public void SurfaceNodeEncodesItsPendingMessagesAfterThePaneId()
+    {
+        var node = new ControlSurfaceNode
+        {
+            Id = "s", Kind = "left", Active = true, Visible = true, PaneId = "tok", PendingMessages = 2,
+        };
+
+        Assert.Equal(
+            "{\"id\":\"s\",\"kind\":\"left\",\"active\":true,\"visible\":true,\"paneID\":\"tok\",\"pendingMessages\":2}",
+            ControlJson.Serialize(node));
+    }
+
+    [Fact]
     public void SessionNodeRoundTrips()
     {
         var json = ControlJson.Serialize(FullSessionNode());

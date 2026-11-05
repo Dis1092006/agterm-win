@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 using AgTerm.Core.Tests.TestSupport;
 
@@ -102,6 +103,8 @@ public class ControlPickTests
                 },
                 Window = "w", Complete = true,
             },
+            MessageId = "m", Delivered = ["a"], Rejected = [new MessageRejection("a", MessageRejectionReason.UnknownPane)],
+            Messages = [], Remaining = 0, Acked = ["m"],
             Icons = new[] { "a" },
         };
 

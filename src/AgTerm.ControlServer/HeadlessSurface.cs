@@ -18,7 +18,7 @@ namespace AgTerm.ControlServer;
 /// A false Inject / PerformBindingAction or a null ReadScreenText models "the view exists but its
 /// libghostty surface isn't realized yet" — the arms map it to the upstream error strings.
 /// </summary>
-public interface IHeadlessSurface : ITerminalSurface
+public interface IHeadlessSurface : ITerminalSurface, IRealizableSurface
 {
     /// <summary>Send text as keystrokes to the pane's pty. False = surface not realized.</summary>
     bool Inject(string text);
@@ -42,7 +42,7 @@ public interface IHeadlessSurface : ITerminalSurface
 
     /// <summary>False while the pane has no terminal behind it (pending realize, output stopped).
     /// session.selectall and session.copy check it; Paste reports the same state by returning false.</summary>
-    bool IsRealized => true;
+    bool IRealizableSurface.IsRealized => true;
 
     /// <summary>The pane's own live font size in points (upstream currentFontSize), or null when the
     /// surface does not know it. The tree reports it as fontSize / splitFontSize / scratchFontSize.</summary>

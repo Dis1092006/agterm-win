@@ -40,7 +40,7 @@ public sealed record LiveWindowEntry(
     [property: JsonPropertyName("isOpen")]
     bool IsOpen);
 
-public sealed class LiveApplicationHost : IDisposable
+public sealed partial class LiveApplicationHost : IDisposable
 {
     private readonly Lock _gate = new();
     private readonly TerminalNotificationLimiter _terminalNotificationLimiter = new();
@@ -883,6 +883,8 @@ public sealed class LiveApplicationHost : IDisposable
             await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
             window.RunLocked(window.Store.CancelAllAsks);
             window.RunLocked(window.Store.CloseAllHuds);
+            // a closed window's panes end; their mail must not reach the panes a reopen starts
+            window.RunLocked(window.Store.DisposeAllMailboxes);
             EmitWindowLifecycleEvents(
                 windowId,
                 window.CaptureLifecycleSessions(),
@@ -972,6 +974,8 @@ public sealed class LiveApplicationHost : IDisposable
             return await DispatchActiveWindowAdapterAsync(request, cancellationToken).ConfigureAwait(false);
         if (request.Cmd is Command.RecentList or Command.RecentOpen or Command.RecentClear)
             return await DispatchRecentAsync(request, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd is Command.MsgSend or Command.MsgRead or Command.MsgAck)
+            return Messages.Dispatch(request);
         if (request.Cmd == Command.WindowList)
             return await ListWindowsAsync(cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowNew && _windowController is not null)

@@ -5,7 +5,7 @@ description: >
   control named pipe. Use when running inside an agterm-win session and asked to control the terminal:
   create, rename, close, select, or reorder sessions and workspaces; split panes; toggle the
   per-session scratch terminal; open or close overlay terminals and read their exit status; type
-  into a session, copy its selection, or search its scrollback; post desktop notifications; manage windows (new, list,
+  into a session, copy its selection, or search its scrollback; post desktop notifications; message other panes; manage windows (new, list,
   select, close, resize, move); change font size; or reload and edit the keymap and the app
   settings. Also covers the
   window/workspace/session addressing model and the AGTERM_* environment a spawned shell sees, plus
@@ -19,6 +19,7 @@ when_to_use: >
   window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, pane.focused, app.launched, session wait, wait for session status,
   recent.list, recent.open, recent.clear, recently closed sessions, reopen closed session, clipboard set, select theme, edit keymap,
+  msg.send, msg.read, msg.ack, message bus, send a message to the other pane or another agent, read my messages, wait for a message,
   hooks.reload, hooks.list, hooks.conf, event hooks, run a command on an event, session.selected, pane.split, pane.scratch,
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
   keymap chord does nothing, custom action / custom command not working, agterm diagnostics, file an agterm
@@ -242,7 +243,8 @@ applied to the cells, omitted when untouched), and `dashboardFontMode` (`auto`|`
 
 **events**: continuously print control events, subscribing from the current tail when no cursor is
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
-`--kind status|notify|session.created|session.closed|session.selected|tree.changed|pane.split|pane.scratch|pane.focused|remote.opened|remote.closed|app.launched`; resume with paired
+`--kind status|notify|session.created|session.closed|session.selected|tree.changed|pane.split|pane.scratch|pane.focused|remote.opened|remote.closed|app.launched|message`
+(`message`: mail queued for a pane; carries `paneID`, `from` and `messageID`, never the body); resume with paired
 `--run RUN --after SEQ`; and set page size with `--limit 1...1000`. The app retains 4,096 events for
 one process run. Cursor run changes, expiry, and ahead-of-tail errors are fatal and are never silently
 rebaselined. There is no terminal-output event stream. `session.selected`, `pane.split` and `pane.scratch` are new
@@ -493,6 +495,14 @@ Visibility/mode act on the frontmost window; `expand`/`collapse` default to the 
 With Settings > Interface > Show sidebar only in the active window (`autoHideSidebarInactiveWindows`) enabled, every terminal-window activation shows that window's sidebar and hides the others. Manual visibility changes last until the next activation. Disabling the setting keeps the current visibility of each window.
 
 **notify** — `notify <body> [--title T]` — post a desktop notification attributed to a session. To signal that you need the user, prefer `session status` (`blocked`/`completed`), a persistent typed attention state rather than a one-shot banner; keep `notify` for a one-off nudge.
+
+**msg** — `msg send TEXT|--stdin --to SESSION:PANE [--to ...]` or `--all [--workspace W]` · `msg read [--ack] [--wait [--timeout N]]` ·
+`msg ack ID...` — per-pane mailboxes for passing a message to another pane's program without typing into its
+terminal. PANE is a pane id (`surfaces[].paneID` in `tree`) or `left`/`right`/`scratch`; `--all` reaches every live pane
+but the sender. Inside a pane the CLI acts as that pane through `AGTERM_SESSION_ID`/`AGTERM_PANE_ID` (`--as SESSION:PANE-ID`
+overrides). `read` prints `ID from SENDER` then the body, oldest first, and removes nothing until `ack`; `read --ack` takes
+the batch in one step. Mail is in memory only and is dropped when the pane closes. Read back
+`pendingMessages` on the tree surface and the `message` event. See [reference.md](reference.md#msg).
 
 Settings > Notifications > Flash taskbar button offers Off (default) and Once. Once flashes the notification's owning terminal window while the app is in the background, even with banners off, Do Not Disturb enabled, or Windows notifications disabled for the app. It adds no sound. Only one window has pending notification attention; repeats do not restart it. Real activation of any agterm window, switching the setting Off, closing the target, or shutdown clears it. Stored `dockBounce: "untilFocused"` runs as Once without being rewritten; unknown values run as Off and remain preserved.
 

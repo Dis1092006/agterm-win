@@ -504,6 +504,29 @@ agtermctl recent clear
 
 `agtermctl clipboard set "text"` and `... | agtermctl clipboard set` copy to the Windows clipboard.
 
+## Pass a message to another pane
+
+One agent hands work to the program in the split pane of the same session, and the receiver takes it
+when it is ready. Mail is not typed into the terminal and survives until it is acknowledged or the pane
+closes.
+
+```powershell
+# sender, inside a pane: it is addressed as $env:AGTERM_SESSION_ID:$env:AGTERM_PANE_ID
+agtermctl msg send "review src/api.ts" --to "$($env:AGTERM_SESSION_ID):right"
+Get-Content notes.md -Raw | agtermctl msg send --stdin --all --workspace active
+
+# receiver, inside the split pane: wait up to 10 minutes, print the batch and remove it
+agtermctl msg read --ack --wait --timeout 600
+if ($LASTEXITCODE -eq 124) { "no mail" }
+
+# or read first, act, and acknowledge only what was handled
+agtermctl msg read --json
+agtermctl msg ack 6F1C2A9E-0000-4000-8000-000000000001
+```
+
+`tree --json` shows `pendingMessages` on a pane with unread mail, and `agtermctl events --kind message`
+(or `on message` in `hooks.conf`) reports each delivery without the body.
+
 ## Relay accepted notifications
 
 The notification event exists even when desktop banners are disabled. Forward each accepted event as

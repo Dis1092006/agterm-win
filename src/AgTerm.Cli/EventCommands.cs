@@ -82,6 +82,7 @@ internal static class EventFormatter
         ControlEventKind.RemoteOpened => "remote.opened",
         ControlEventKind.RemoteClosed => "remote.closed",
         ControlEventKind.AppLaunched => "app.launched",
+        ControlEventKind.Message => "message",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -117,6 +118,9 @@ internal static class EventFormatter
                 return $"{time} {Wire(@event.Kind)} {name} {@event.Payload.Pane ?? "-"} pane-id={@event.Payload.PaneId ?? "-"}";
             case ControlEventKind.AppLaunched:
                 return $"{time} {Wire(@event.Kind)}";
+            case ControlEventKind.Message:
+                return $"{time} {Wire(@event.Kind)} {name} pane-id={@event.Payload.PaneId ?? "-"}"
+                    + $" from={@event.Payload.From ?? "-"} id={@event.Payload.MessageId ?? "-"}";
             default: // sessionCreated, sessionClosed, treeChanged
                 return $"{time} {Wire(@event.Kind)} {name}";
         }

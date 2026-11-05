@@ -48,9 +48,9 @@ None of the names in `parity/windows-only.json` is in the v0.40.0 snapshot.
 
 ## 1. Message bus between panes
 
-- `msg.send`, `msg.read`, `msg.ack` #847. Each live pane has a mailbox for the current app run. `msg send TEXT --to SESSION:PANE` (repeatable) or `--all [--workspace W]` delivers to each recipient separately. `msg read [--ack] [--wait]` returns the oldest messages, and `msg ack ID...` removes handled ones. The sender is the calling pane, from `AGTERM_SESSION_ID` and `AGTERM_PANE_ID`, or `--as`. Args: `recipients`, `identity`, `ack`, `ids`. Results: `messageID`, `delivered`, `rejected`, `messages`, `remaining`, `acked`. Port: not done.
-- Closing the pane, its session, workspace or window, `session restart` and a respawn drop the mailbox. Nothing is saved across a quit. Port: not done.
-- `tree` reports `surfaces[].pendingMessages`. A `message` event names the sender and the recipient, never the text. Port: not done.
+- `msg.send`, `msg.read`, `msg.ack` #847. Each live pane has a mailbox for the current app run. `msg send TEXT --to SESSION:PANE` (repeatable) or `--all [--workspace W]` delivers to each recipient separately. `msg read [--ack] [--wait]` returns the oldest messages, and `msg ack ID...` removes handled ones. The sender is the calling pane, from `AGTERM_SESSION_ID` and `AGTERM_PANE_ID`, or `--as`. Args: `recipients`, `identity`, `ack`, `ids`. Results: `messageID`, `delivered`, `rejected`, `messages`, `remaining`, `acked`. Port: done (B6).
+- Closing the pane, its session, workspace or window, `session restart` and a respawn drop the mailbox. Nothing is saved across a quit. Port: done (B6). The port has no `session restart` and no respawn; a reload of the terminal page drops the window's mailboxes (PLATFORM-NOTES).
+- `tree` reports `surfaces[].pendingMessages`. A `message` event names the sender and the recipient, never the text. Port: done (B6).
 
 ## 2. Companion sessions
 
@@ -135,7 +135,7 @@ These extend the first catalog, section 8. The port has the event stream from th
 - `app.launched` fires once per app run, after `hooks.conf` is loaded and the control socket accepts connections #736. Port: done (B3, B7).
 - `tree.changed` also fires when a program, page, pane overlay or HUD opens or closes #736. Port: partly done (B3): session overlays and HUDs; pane, page and remote overlays wait for those features. The port fires `tree.changed` on changes of the session tree and on those.
 - `pane.focused` fires when focus moves between the split panes of a session. It carries the session, `pane` and `paneID`. A move and back within 100 ms is not reported #785. Port: done (B3).
-- `message` from the message bus (section 1) #847. Port: not done.
+- `message` from the message bus (section 1) #847. Port: done (B6).
 
 ## 11. Settings and persistence
 

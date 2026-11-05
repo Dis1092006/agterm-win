@@ -24,6 +24,10 @@ public sealed record ControlSurfaceNode
     /// <summary>The token <c>--pane-id</c> resolves; omitted for a slot whose surface carries none.</summary>
     [JsonPropertyName("paneID")]
     public string? PaneId { get; init; }
+
+    /// <summary>The pane's unacked bus messages; omitted at zero.</summary>
+    [JsonPropertyName("pendingMessages")]
+    public int? PendingMessages { get; init; }
 }
 
 /// <summary>A session as projected into the tree response. Field order mirrors the Swift struct.</summary>

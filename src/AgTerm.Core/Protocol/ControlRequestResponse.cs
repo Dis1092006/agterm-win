@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using AgTerm.Core.Model;
 
 namespace AgTerm.Core.Protocol;
 
@@ -138,6 +139,28 @@ public sealed record ControlResult
     /// <summary>session.close --undoable: whether the close went into the undo grace window.</summary>
     [JsonPropertyName("undoable")]
     public bool? Undoable { get; init; }
+
+    /// <summary>The id every copy of a msg.send shares.</summary>
+    [JsonPropertyName("messageID")]
+    public string? MessageId { get; init; }
+
+    /// <summary>msg.send's per-recipient results.</summary>
+    [JsonPropertyName("delivered")]
+    public IReadOnlyList<string>? Delivered { get; init; }
+
+    [JsonPropertyName("rejected")]
+    public IReadOnlyList<MessageRejection>? Rejected { get; init; }
+
+    /// <summary>The oldest of the reader's mailbox; remaining counts the pending ones left out.</summary>
+    [JsonPropertyName("messages")]
+    public IReadOnlyList<BusMessage>? Messages { get; init; }
+
+    [JsonPropertyName("remaining")]
+    public int? Remaining { get; init; }
+
+    /// <summary>The messages removed, present on every msg.ack and msg.read --ack reply, empty included.</summary>
+    [JsonPropertyName("acked")]
+    public IReadOnlyList<string>? Acked { get; init; }
 
     /// <summary>The icon names workspace.icon accepts, for icon.list. Windows-only
     /// (parity/windows-only.json); declared last so the upstream fields keep upstream order.</summary>

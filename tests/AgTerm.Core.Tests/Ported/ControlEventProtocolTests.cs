@@ -23,6 +23,7 @@ public class ControlEventProtocolTests
         (ControlEventKind.RemoteOpened, "remote.opened"),
         (ControlEventKind.RemoteClosed, "remote.closed"),
         (ControlEventKind.AppLaunched, "app.launched"),
+        (ControlEventKind.Message, "message"),
     };
 
     private static ControlEvent[] SampleEvents(string? statusShape = null) => new[]
@@ -85,6 +86,11 @@ public class ControlEventProtocolTests
             Seq = 12, Ts = 12.5, Kind = ControlEventKind.RemoteClosed, Window = "win", Workspace = "work",
             Session = "sess", Payload = new ControlEventPayload { Name = "api", Host = "box" },
         },
+        new ControlEvent
+        {
+            Seq = 14, Ts = 14.5, Kind = ControlEventKind.Message, Window = "win", Workspace = "work",
+            Session = "sess", Payload = new ControlEventPayload { Name = "api", PaneId = "tok", From = "S:Q", MessageId = "m1" },
+        },
     };
 
     [Fact]
@@ -119,6 +125,7 @@ public class ControlEventProtocolTests
             "{\"kind\":\"pane.scratch\",\"payload\":{\"name\":\"api\",\"status\":\"hidden\"},\"seq\":10,\"session\":\"sess\",\"ts\":10.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"remote.opened\",\"payload\":{\"host\":\"box\",\"name\":\"api\"},\"seq\":11,\"session\":\"sess\",\"ts\":11.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"remote.closed\",\"payload\":{\"host\":\"box\",\"name\":\"api\"},\"seq\":12,\"session\":\"sess\",\"ts\":12.5,\"window\":\"win\",\"workspace\":\"work\"}",
+            "{\"kind\":\"message\",\"payload\":{\"from\":\"S:Q\",\"messageID\":\"m1\",\"name\":\"api\",\"paneID\":\"tok\"},\"seq\":14,\"session\":\"sess\",\"ts\":14.5,\"window\":\"win\",\"workspace\":\"work\"}",
         };
 
         Assert.Equal(expected, events.Select(CanonicalJson.Of));

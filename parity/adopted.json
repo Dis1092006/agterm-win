@@ -25,7 +25,10 @@
     { "wire": "recent.open", "upstream": "6b564749" },
     { "wire": "recent.clear", "upstream": "6b564749" },
     { "wire": "hooks.reload", "upstream": "a4944436" },
-    { "wire": "hooks.list", "upstream": "a4944436" }
+    { "wire": "hooks.list", "upstream": "a4944436" },
+    { "wire": "msg.send", "upstream": "b0839692" },
+    { "wire": "msg.read", "upstream": "b0839692" },
+    { "wire": "msg.ack", "upstream": "b0839692" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -48,7 +51,11 @@
     { "name": "frame", "upstream": "3ac149e6" },
     { "name": "sidebarWidth", "upstream": "7977f202" },
     { "name": "axis", "upstream": "eb29d556" },
-    { "name": "undoable", "upstream": "0107bc95" }
+    { "name": "undoable", "upstream": "0107bc95" },
+    { "name": "recipients", "upstream": "b0839692" },
+    { "name": "identity", "upstream": "b0839692" },
+    { "name": "ack", "upstream": "b0839692" },
+    { "name": "ids", "upstream": "b0839692" }
   ],
   "result": [
     { "name": "sidebarWidth", "upstream": "7977f202" },
@@ -62,7 +69,13 @@
     { "name": "undoable", "upstream": "0107bc95" },
     { "name": "recent", "upstream": "6b564749" },
     { "name": "recentOpen", "upstream": "6b564749" },
-    { "name": "hooks", "upstream": "a4944436" }
+    { "name": "hooks", "upstream": "a4944436" },
+    { "name": "messageID", "upstream": "b0839692" },
+    { "name": "delivered", "upstream": "b0839692" },
+    { "name": "rejected", "upstream": "b0839692" },
+    { "name": "messages", "upstream": "b0839692" },
+    { "name": "remaining", "upstream": "b0839692" },
+    { "name": "acked", "upstream": "b0839692" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },

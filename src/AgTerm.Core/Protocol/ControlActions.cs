@@ -7,7 +7,7 @@ namespace AgTerm.Core.Protocol;
 /// The dispatcher owns command parsing and response shape; the host keeps target resolution and
 /// platform-specific side effects. The 1:1 port of the Swift ControlActions protocol.
 /// </summary>
-public interface IControlActions
+public interface IControlActions : IMessagePaneHost
 {
     ControlResponse ControlTree(string? window);
     ControlResponse ReadEvents(ControlEventReadOptions options);
@@ -145,6 +145,21 @@ public interface IControlActions
     ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement);
     ControlResponse UpdateHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement);
     ControlResponse CloseHud(string? target, string? window);
+}
+
+/// <summary>The host side of msg.*: address resolution and the message event. The defaults are a host
+/// without the bus.</summary>
+public interface IMessagePaneHost
+{
+    /// <summary>Resolves a bus address to a live pane.</summary>
+    MessagePaneResult<MessageRecipient> ResolveMessagePane(MessageAddress address) => MessagePaneError.Unsupported;
+
+    /// <summary>msg.send --all: every live pane in scope (a workspace, a window, or the whole app).</summary>
+    MessagePaneResult<IReadOnlyList<MessageRecipient>> MessagePanes(string? workspace, string? window) =>
+        MessagePaneError.Unsupported;
+
+    /// <summary>msg.send queued a message for these panes; the host records one message event per pane.</summary>
+    void MessageQueued(Guid messageId, string? from, IReadOnlyList<MessageRecipient> recipients) { }
 }
 
 public sealed record ControlSessionTypeOptions(string Text, bool Select, string? Pane, string? PaneId = null);
