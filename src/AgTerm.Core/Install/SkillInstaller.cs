@@ -93,13 +93,14 @@ public static class SkillInstaller
     public const string NotBundledMessage = "The agent skill is not bundled in this build.";
 
     /// <summary>Runs the install and returns the dialog to show. Never throws.</summary>
-    public static InstallOutcome Run(string home, IReadOnlyList<SkillFile> files, ISkillInstallFileSystem fs)
+    public static InstallOutcome Run(string home, IReadOnlyList<SkillFile> files, ISkillInstallFileSystem fs,
+        string? copilotHome = null)
     {
         if (files.Count == 0)
             return new InstallOutcome("Install Failed", NotBundledMessage, IsWarning: true);
         try
         {
-            return Install(home, files, fs).ToOutcome();
+            return Install(home, files, fs, copilotHome).ToOutcome();
         }
         catch (Exception ex)
         {
@@ -107,13 +108,15 @@ public static class SkillInstaller
         }
     }
 
-    public static SkillInstallReport Install(string home, IReadOnlyList<SkillFile> files, ISkillInstallFileSystem fs)
+    public static SkillInstallReport Install(string home, IReadOnlyList<SkillFile> files, ISkillInstallFileSystem fs,
+        string? copilotHome = null)
     {
         var targets = SkillInstall.InstallTargets(
             home,
             claudeExists: fs.Exists(Path.Join(home, ".claude")),
             codexExists: fs.Exists(Path.Join(home, ".codex")),
-            copilotExists: fs.Exists(Path.Join(home, ".copilot")));
+            copilotExists: fs.Exists(SkillInstall.CopilotDirectory(home, copilotHome)),
+            copilotHome: copilotHome);
         var report = new SkillInstallReport();
         foreach (var target in targets)
         {
