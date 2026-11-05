@@ -30,7 +30,8 @@
     { "wire": "msg.read", "upstream": "b0839692" },
     { "wire": "msg.ack", "upstream": "b0839692" },
     { "wire": "session.tint", "upstream": "f3fea57b" },
-    { "wire": "workspace.tint", "upstream": "f3fea57b" }
+    { "wire": "workspace.tint", "upstream": "f3fea57b" },
+    { "wire": "session.info", "upstream": "80f822bf" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -100,7 +101,10 @@
     { "name": "splitCommandWait", "upstream": "db62080d" },
     { "name": "lastSelectedAt", "upstream": "c002d121" },
     { "name": "tint", "upstream": "f3fea57b" },
-    { "name": "tintOn", "upstream": "f3fea57b" }
+    { "name": "tintOn", "upstream": "f3fea57b" },
+    { "name": "info", "upstream": "80f822bf" },
+    { "name": "infoMarkdown", "upstream": "80f822bf" },
+    { "name": "infoHideAfter", "upstream": "80f822bf" }
   ],
   "workspaceNode": [
     { "name": "tint", "upstream": "f3fea57b" },

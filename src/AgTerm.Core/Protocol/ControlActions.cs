@@ -58,6 +58,10 @@ public interface IControlActions : IMessagePaneHost
     /// <summary>Sets (trimmed, validated text) or clears (null) what a session is about.</summary>
     ControlResponse SetSessionContext(string? target, string? window, string? context);
 
+    /// <summary>Sets or clears (null) the session's sidebar info line; the dispatcher has validated and
+    /// parsed it.</summary>
+    ControlResponse SetSessionInfo(string? target, string? window, SessionInfo? info);
+
     /// <summary>session.tint: set or clear a session row's tint; the update resolves over the
     /// row's current tint.</summary>
     ControlResponse SetSessionTint(string? target, string? window, ControlTintUpdate update);

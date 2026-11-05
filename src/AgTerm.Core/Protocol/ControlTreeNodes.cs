@@ -163,6 +163,18 @@ public sealed record ControlSessionNode
     [JsonPropertyName("tintOn")]
     public string[]? TintOn { get; init; }
 
+    /// <summary>The session info line's source, as session.info set it; null when there is no line.</summary>
+    [JsonPropertyName("info")]
+    public string? Info { get; init; }
+
+    /// <summary>Whether the info line is markdown; null when there is no line.</summary>
+    [JsonPropertyName("infoMarkdown")]
+    public bool? InfoMarkdown { get; init; }
+
+    /// <summary>The info line's configured expiry in seconds, 0 for none; null when there is no line.</summary>
+    [JsonPropertyName("infoHideAfter")]
+    public double? InfoHideAfter { get; init; }
+
     /// <summary>The background watermark spec; null when none is set.</summary>
     [JsonPropertyName("background")]
     public BackgroundWatermark? Background { get; init; }

@@ -15,7 +15,8 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        var deferred = new[] { "compactToolbar" };
+        // sessionInfoDisplay: the picker comes with the info line drawing (B2d2)
+        var deferred = new[] { "compactToolbar", "sessionInfoDisplay" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
                 .OfType<System.Text.Json.Serialization.JsonPropertyNameAttribute>().SingleOrDefault()?.Name)

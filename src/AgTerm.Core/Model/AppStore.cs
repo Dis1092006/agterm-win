@@ -112,6 +112,9 @@ public sealed partial class AppStore
     /// lands on the host's model lock. Tests set it to fire timers by hand.</summary>
     public Func<TimeSpan, Action, IDisposable>? HudAutoHideScheduler { get; set; }
 
+    /// <summary>Arms a session info line's expiry, the same way HudAutoHideScheduler arms a HUD's.</summary>
+    public Func<TimeSpan, Action, IDisposable>? InfoExpiryScheduler { get; set; }
+
     private readonly PersistenceStore _persistence;
     internal readonly RecentClosedStore? RecentClosedStore;
     internal Action? RecentClosedDidChange;
@@ -355,6 +358,9 @@ public sealed partial class AppStore
                     LastSelectedAt = session.LastSelectedAt?.ToUnixTimeMilliseconds() / 1000.0,
                     Tint = session.Tint?.ColorName,
                     TintOn = session.Tint?.PartNames,
+                    Info = session.Info?.Source,
+                    InfoMarkdown = session.Info?.Markdown,
+                    InfoHideAfter = session.Info?.HideAfter,
                     Background = session.BackgroundWatermark,
                     Unseen = session.UnseenCount > 0 ? session.UnseenCount : null,
                     FontSize = fontSize?.Invoke(session),
@@ -637,6 +643,7 @@ public sealed partial class AppStore
         var removed = workspace.Sessions[location.SessionIndex];
         CancelPendingAsk(removed);
         CloseHudOf(removed);
+        ClearInfoOf(removed);
         workspace.Sessions.RemoveAt(location.SessionIndex);
         EmitSessionClosed(removed, workspace.Id);
         RecordRecentClosedSession(removed, workspace.Id, workspace.Name,
@@ -680,6 +687,7 @@ public sealed partial class AppStore
         {
             CancelPendingAsk(session);
             CloseHudOf(session);
+            ClearInfoOf(session);
         }
         var removingActive = SelectedSessionId is { } active
             && workspace.Sessions.Any(s => s.Id == active);

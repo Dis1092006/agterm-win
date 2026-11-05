@@ -32,7 +32,7 @@ public sealed partial class ControlDispatcher
                 or Command.SessionGo or Command.SessionClose or Command.SessionRename
                 or Command.SessionReveal or Command.SessionMove or Command.SessionFlag
                 or Command.SessionSeen or Command.SessionStatus or Command.SessionRestore
-                or Command.SessionContext:
+                or Command.SessionContext or Command.SessionInfo:
                 return DispatchSessionCommand(request);
             case Command.SessionTint or Command.WorkspaceTint:
                 return DispatchTint(request);
@@ -460,6 +460,8 @@ public sealed partial class ControlDispatcher
                 return _actions.SetSessionFlag(request.Target, request.Args?.Window, request.Args?.Mode);
             case Command.SessionContext:
                 return DispatchSessionContext(request);
+            case Command.SessionInfo:
+                return DispatchSessionInfo(request);
             case Command.SessionSeen:
                 return _actions.MarkSessionSeen(request.Target, request.Args?.Window);
             case Command.SessionStatus:
@@ -605,6 +607,31 @@ public sealed partial class ControlDispatcher
                 return _actions.SetSessionContext(request.Target, args?.Window, null);
             default:
                 return Err($"invalid context mode: {args?.Mode ?? ""} (set|clear)");
+        }
+    }
+
+    /// <summary>session.info: set takes text plus optional markdown and hideAfter, clear takes none of
+    /// them. The whole line is built and validated here, so a refused set reaches no action and leaves the
+    /// line and its timer standing.</summary>
+    private ControlResponse DispatchSessionInfo(ControlRequest request)
+    {
+        var args = request.Args;
+        switch (args?.Mode ?? "")
+        {
+            case "set":
+            {
+                if (args?.Text is not { } text)
+                    return Err("session.info set requires text");
+                if (SessionInfo.Make(text, args.Markdown ?? false, args.HideAfter ?? 0, out var rejection) is not { } info)
+                    return Err($"session.info: {rejection}");
+                return _actions.SetSessionInfo(request.Target, args.Window, info);
+            }
+            case "clear":
+                if (args?.Text is not null || args?.Markdown is not null || args?.HideAfter is not null)
+                    return Err("session.info clear takes no text, markdown or hide-after");
+                return _actions.SetSessionInfo(request.Target, args?.Window, null);
+            default:
+                return Err($"invalid info mode: {args?.Mode ?? ""} (set|clear)");
         }
     }
 

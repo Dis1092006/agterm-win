@@ -48,7 +48,7 @@ The event kinds and payloads are:
   visible window tree. Undo emits a new `session.created`; grace-period finalization does not emit a
   second close.
 - `tree.changed`: an empty payload and the affected window id. Name, membership, and ordering changes
-  emit it, and so does a `session tint` or `workspace tint` that changes the row's tint. Opening or closing a session overlay and opening, closing or expiring a HUD also emit it.
+  emit it, and so does a `session tint` or `workspace tint` that changes the row's tint. Opening or closing a session overlay and opening, closing or expiring a HUD also emit it. A `session info` set or clear that changes the line, and an info line that expires, emit it too.
   Read `tree --json` for the current snapshot.
 - `pane.focused`: `name` (the session name), `pane` (`left` or `right`) and `paneID` (the stable
   surface token of the focused pane, omitted when the pane has none). It fires when the focused pane of
@@ -143,6 +143,8 @@ to restore the exact size), `hud` (the open HUD message panel, see `session hud`
 a gui-style question is reported by the top-level `askPending` instead), `scratch` (scratch shown),
 `flagged` (in the
 flagged working-set), `context` (what the session is about, set with `session context`; omitted when unset),
+`info`/`infoMarkdown`/`infoHideAfter` (the sidebar info line from `session info`: its source, whether it is
+markdown, and its configured `--hide-after` seconds; all omitted when there is no line),
 `tint`/`tintOn` (the sidebar row's tint color and the parts it colors, e.g. `["icon"]` or
 `["icon","name"]`, the read side of `session tint`; both omitted when untinted),
 `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
@@ -527,6 +529,43 @@ All thirteen are read-only projections of GUI state.
   A normal title bar shows it on its second line in place of the working directory; a compact one appends it
   after the session name as `name · context`. The `sessionContext` interface element hides it. A duplicated
   session does not inherit it. The tree's `context` field is the read side.
+- `session info <TEXT|--clear> [--markdown] [--hide-after SECONDS] [--target] [--window W]` — show one line
+  under the session's sidebar row saying what it is doing NOW: the step an agent is on, a count, a test
+  run's progress. Use `session context` for what the session is for; this line is for activity.
+  - Wire: `session.info` with `args.mode` `set` (plus `args.text`, optional `args.markdown` and
+    `args.hideAfter`) or `clear`. Answers `{"id":...}`.
+  - Exactly one of TEXT or `--clear`; `--clear` refuses TEXT, `--markdown` and `--hide-after`. Client errors:
+    `provide exactly one of a TEXT or --clear`, `--clear takes no --markdown or --hide-after`,
+    `hide-after must be 0...86400 seconds`. A rejected set leaves the line and its expiry as they were.
+  - Each successful set replaces the whole line. Leaving out `--markdown` sends plain text, and leaving out
+    `--hide-after` cancels an earlier expiry, so pass every flag on every set.
+  - TEXT is at most 512 UTF-8 bytes, markup included, and must show as one non-blank line with no control
+    characters or line breaks.
+  - `--markdown` reads TEXT as inline markdown: `**bold**`, `*italic*`, `` `code` ``, a link (its label
+    shows), `^[text](color: "NAME")` and `^[text](dim: true)`, which combine as
+    `^[text](color: "red", dim: true)`. NAME is `red`, `orange`, `yellow`, `green`, `blue`, `purple` or
+    `gray`, quoted; an unknown NAME is refused. An unknown attribute key is ignored and its text shows unstyled.
+  - `--hide-after SECONDS` (0 to 86400, 0 for never) clears the line by itself. Every successful set with a
+    positive `--hide-after` restarts that interval, even with identical text. A hook or loop reporting
+    activity must pass a positive value and repeat it on each refresh, so a line from a process that died
+    goes away.
+  - Wire errors, each prefixed `session.info: `: `info text is empty`, `info text must be one line`,
+    `info text contains a control character`, `info text is over 512 bytes`,
+    `invalid info markdown; quote attribute values: ^[text](color: "green")`,
+    `unknown info color: <name> (red|orange|yellow|green|blue|purple|gray)`,
+    `--hide-after must be 0...86400 seconds`. Also `session.info set requires text`,
+    `session.info clear takes no text, markdown or hide-after` and `invalid info mode: <mode> (set|clear)`.
+  - The line is never saved: it is gone after a relaunch, a duplicate starts without it, and closing the
+    session drops it. Undoing a close brings back a line without `--hide-after`, never a timed one.
+  - The tree reads back `info` (the source as sent), `infoMarkdown` and `infoHideAfter` (the configured
+    seconds, not the time left), all omitted when there is no line. A set or clear that changes the line
+    shown emits `tree.changed`.
+  - agterm-win keeps the line and reports it in the tree; the sidebar row does not draw it yet.
+
+  ```powershell
+  agtermctl session info --markdown --hide-after 30 --target $env:AGTERM_SESSION_ID '**3** agents ^[running](color: "green") ^[1 idle](dim: true)'
+  agtermctl session info --clear --target $env:AGTERM_SESSION_ID
+  ```
 - `session tint <COLOR|clear> [--on PARTS] [--target] [--window W]` — color the session's sidebar row so it
   stands out at a glance (red for production, green for dev). COLOR is `red|orange|yellow|green|blue|purple|gray`.
   `--on` is `icon`, `name` or `icon,name`; omitted, a recolor keeps the row's placement and an untinted row

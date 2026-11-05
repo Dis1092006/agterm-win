@@ -838,6 +838,12 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The command palette has "Tint Session: Red" to "Tint Session: Gray" and "Tint Session: None", with the ids `tint-<color>` and `tint-none`. They are offered only while a session is selected and tint the session selected when the row runs. They come after the installer items, at the end of the list.
   - A workspace's tint is separate from its Windows-only `theme` and `icon`. Setting one does not change the others.
   - Upstream does not mirror the tint of an attached remote row. The port has no remote sessions, so that rule has nothing to apply to.
+- Session info line: `session.info`, the args `markdown` and `hideAfter` with modes `set` and `clear`, and `info`, `infoMarkdown` and `infoHideAfter` on the tree session node (upstream `80f822bf`, #864). The names are in `parity/adopted.json`. `agtermctl session info` follows upstream's arguments, help and error strings. The `sessionInfoDisplay` setting (`always`, `flagged`, `off`; a missing or unknown value means `always`) is a settings field, so it has no entry in `parity/adopted.json`.
+  - The port stores the line, reports it in the tree and emits `tree.changed` when a set or clear changes it or the line expires. The line is never saved and a duplicate does not copy it, as upstream.
+  - The sidebar does not draw the line yet, and the Settings window has no picker for `sessionInfoDisplay` yet. The command help leaves out upstream's sentence about that picker.
+  - Upstream arms the `--hide-after` timer in the app's control server. The port arms it in the store, on the same host lock as the HUD auto-hide. A set that replaces the line, a clear, a session close, a workspace removal, a window close and the app exit cancel it.
+  - Markdown is read with Markdig's inline parsers over the line as one paragraph, plus a parser for the `^[text](attributes)` blocks. Upstream uses Foundation's inline-only parser. Block syntax stays literal in both. Markdig trims a paragraph's outer spaces, which Foundation keeps, so the port puts them back around the parsed text. Strikethrough has no style in the line; its text shows plain.
+  - Upstream mirrors the line of an attached remote session. The port has no remote sessions, so that rule has nothing to apply to.
 
 ## Windows-only extensions
 
