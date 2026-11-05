@@ -20,7 +20,7 @@ public static class ParitySurface
     public static IReadOnlyList<string> Pin(string section) => ControlNames(Load("parity/surface.json"), section);
 
     public static IReadOnlyList<string> Upstream(string section) =>
-        ControlNames(Load("docs/upstream/surface-v0.36.0.json"), section);
+        ControlNames(Load("docs/upstream/surface-v0.40.0.json"), section);
 
     public static IReadOnlyList<string> Adopted(string section) =>
         Load("parity/adopted.json").GetProperty(section).EnumerateArray()

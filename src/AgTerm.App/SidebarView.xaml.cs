@@ -588,12 +588,17 @@ public sealed partial class SidebarView : UserControl
         var targetRows = rows.Where(r => targets.Contains(r.Id)).ToList();
         var plural = targets.Count > 1;
 
-        if (targetRows.Any(r => r.Indicator.Status != AgentStatus.Idle))
+        var anyIdle = targetRows.Any(r => r.Indicator.Status == AgentStatus.Idle);
+        var anyStatus = targetRows.Any(r => r.Indicator.Status != AgentStatus.Idle);
+        if (anyIdle)
+            flyout.Items.Add(Item("Mark for Attention", () => _controller?.MarkForAttention(targets)));
+        if (anyStatus)
         {
             flyout.Items.Add(Item(plural ? "Clear Statuses" : "Clear Status",
                 () => _controller?.ClearStatuses(targets)));
-            flyout.Items.Add(new MenuFlyoutSeparator());
         }
+        if (anyIdle || anyStatus)
+            flyout.Items.Add(new MenuFlyoutSeparator());
         if (!plural)
         {
             flyout.Items.Add(Item("Rename", () => BeginRename(row)));

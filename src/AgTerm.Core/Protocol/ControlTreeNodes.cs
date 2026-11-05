@@ -224,6 +224,15 @@ public sealed record ControlTree
     [JsonPropertyName("autoFollowMs")]
     public int? AutoFollowMs { get; init; }
 
+    /// <summary>Whether attention navigation also stops on active sessions (upstream #807).</summary>
+    [JsonPropertyName("attentionIncludesActive")]
+    public bool? AttentionIncludesActive { get; init; }
+
+    /// <summary>Whether the GUI attention shortcuts cross windows (upstream #824). session go stays
+    /// window-scoped; this is a read-back for scripts.</summary>
+    [JsonPropertyName("attentionNavigationAcrossWindows")]
+    public bool? AttentionNavigationAcrossWindows { get; init; }
+
     /// <summary>Whether the projected window's sidebar is visible (live).</summary>
     [JsonPropertyName("sidebarVisible")]
     public bool? SidebarVisible { get; init; }

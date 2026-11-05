@@ -20,12 +20,13 @@ public sealed class MockControlActions : IControlActions
         public sealed record SessionDuplicate(string? Target, string? Window) : Call;
         public sealed record SessionSelect(string? Target, string? Window) : Call;
         public sealed record SessionGo(string? Window, SessionNavigation Direction) : Call;
-        public sealed record SessionClose(string? Target, string? Window) : Call;
-        public sealed record SessionCloseBatch(IReadOnlyList<string> Targets, string? Window) : Call
+        public sealed record SessionClose(string? Target, string? Window, bool Undoable = false) : Call;
+        public sealed record SessionCloseBatch(IReadOnlyList<string> Targets, string? Window, bool Undoable = false) : Call
         {
             public bool Equals(SessionCloseBatch? other) =>
-                other is not null && Targets.SequenceEqual(other.Targets) && Window == other.Window;
-            public override int GetHashCode() => HashCode.Combine(Targets.Count, Window);
+                other is not null && Targets.SequenceEqual(other.Targets) && Window == other.Window
+                && Undoable == other.Undoable;
+            public override int GetHashCode() => HashCode.Combine(Targets.Count, Window, Undoable);
         }
         public sealed record SessionRename(string? Target, string? Window, string Name) : Call;
         public sealed record SessionReveal(string? Target, string? Window) : Call;
@@ -54,7 +55,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record SessionSplit(string? Target, string? Window, string? Mode, SplitAxis? Axis = null) : Call;
         public sealed record SessionSplitClose(string? Target, string? Window) : Call;
         public sealed record SessionSwap(string? Target, string? Window) : Call;
-        public sealed record SessionScratch(string? Target, string? Window, string? Mode, string? Command) : Call;
+        public sealed record SessionScratch(string? Target, string? Window, string? Mode, string? Command, bool Follow = false) : Call;
         public sealed record SessionFocus(string? Target, string? Window, string? Pane) : Call;
         public sealed record SessionResize(string? Target, string? Window, ControlSplitResize Resize) : Call;
         public sealed record SurfaceZoom(string? Target, string? Window, ControlToggleMode Mode) : Call;
@@ -229,15 +230,15 @@ public sealed class MockControlActions : IControlActions
         return new ControlResponse { Ok = true };
     }
 
-    public ControlResponse CloseSession(string? target, string? window)
+    public ControlResponse CloseSession(string? target, string? window, bool undoable = false)
     {
-        Calls.Add(new Call.SessionClose(target, window));
+        Calls.Add(new Call.SessionClose(target, window, undoable));
         return new ControlResponse { Ok = true };
     }
 
-    public ControlResponse CloseSessions(IReadOnlyList<string> targets, string? window)
+    public ControlResponse CloseSessions(IReadOnlyList<string> targets, string? window, bool undoable = false)
     {
-        Calls.Add(new Call.SessionCloseBatch(targets, window));
+        Calls.Add(new Call.SessionCloseBatch(targets, window, undoable));
         return new ControlResponse { Ok = true };
     }
 
@@ -385,9 +386,9 @@ public sealed class MockControlActions : IControlActions
         return Task.FromResult(new ControlResponse { Ok = true });
     }
 
-    public ControlResponse ScratchSession(string? target, string? window, string? mode, string? command)
+    public ControlResponse ScratchSession(string? target, string? window, string? mode, string? command, bool follow = false)
     {
-        Calls.Add(new Call.SessionScratch(target, window, mode, command));
+        Calls.Add(new Call.SessionScratch(target, window, mode, command, follow));
         return new ControlResponse { Ok = true };
     }
 

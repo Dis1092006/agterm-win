@@ -23,6 +23,10 @@ public sealed record ControlArgs
     [JsonPropertyName("targets")]
     public string[]? Targets { get; init; }
 
+    /// <summary>For session.close: soft-close with the undo grace window instead of closing at once.</summary>
+    [JsonPropertyName("undoable")]
+    public bool? Undoable { get; init; }
+
     /// <summary>Target workspace (id / unique prefix / "active") for session.new and session.move.</summary>
     [JsonPropertyName("workspace")]
     public string? Workspace { get; init; }
@@ -180,7 +184,7 @@ public sealed record ControlArgs
     [JsonPropertyName("full")]
     public bool? Full { get; init; }
 
-    /// <summary>For session.overlay.open: select the target after opening (default = background).</summary>
+    /// <summary>For session.overlay.open and session.scratch: select the target after opening (default = background).</summary>
     [JsonPropertyName("follow")]
     public bool? Follow { get; init; }
 

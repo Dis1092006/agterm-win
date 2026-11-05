@@ -481,6 +481,63 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task SessionCloseUndoableIsForwardedForSingleAndBatchTargets()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var single = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionClose, Target = "s", Args = new ControlArgs { Undoable = true },
+        });
+        var batch = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionClose, Args = new ControlArgs { Targets = new[] { "a", "b" }, Undoable = true },
+        });
+        var explicitFalse = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionClose, Target = "s", Args = new ControlArgs { Undoable = false },
+        });
+        var emptyBatch = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionClose, Args = new ControlArgs { Targets = Array.Empty<string>(), Undoable = true },
+        });
+
+        ExpectResponse(Ok(), single);
+        ExpectResponse(Ok(), batch);
+        ExpectResponse(Ok(), explicitFalse);
+        ExpectResponse(Err("session.close requires at least one --target"), emptyBatch);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SessionClose("s", null, true),
+            new MockControlActions.Call.SessionCloseBatch(new[] { "a", "b" }, null, true),
+            new MockControlActions.Call.SessionClose("s", null),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task SessionScratchFollowIsForwarded()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionScratch, Target = "s", Args = new ControlArgs { Mode = "on", Follow = true },
+        });
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionScratch, Target = "s", Args = new ControlArgs { Mode = "on" },
+        });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.SessionScratch("s", null, "on", null, true),
+            new MockControlActions.Call.SessionScratch("s", null, "on", null),
+        }, actions.Calls);
+    }
+
+    [Fact]
     public async Task SessionGoAndRenameRejectInvalidInputsWithoutCallingActions()
     {
         var actions = new MockControlActions();

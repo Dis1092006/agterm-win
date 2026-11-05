@@ -222,17 +222,20 @@ internal static class SessionCommands
     internal sealed class Close : IRequestCommand
     {
         public required BatchTargetOptions Target { get; init; }
+        public bool Undoable { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
 
         public ControlRequest MakeRequest()
         {
-            var batchArgs = Target.BatchTargets is { } batch ? new ControlArgs { Targets = batch } : null;
+            var closeArgs = Target.BatchTargets is null && !Undoable
+                ? null
+                : new ControlArgs { Targets = Target.BatchTargets, Undoable = Undoable ? true : null };
             return new ControlRequest
             {
                 Cmd = WireCommand.SessionClose,
                 Target = Target.Targets.Count > 0 ? Target.Targets[0] : "active",
-                Args = Client.WithWindow(batchArgs),
+                Args = Client.WithWindow(closeArgs),
             };
         }
     }
@@ -240,13 +243,19 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildClose(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("close", "Close a session.");
+        var undoable = new Option<bool>("--undoable")
+        {
+            Description = "Give a single close Ctrl+W's undo grace, so undo inside it brings the running shell back; closes at once when Settings turns undo off.",
+        };
         var target = new BatchTargetOptions.Binder();
         var options = new ClientOptions.Binder();
         target.AddTo(cmd);
+        cmd.Options.Add(undoable);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Close
         {
             Target = target.Read(result),
+            Undoable = result.GetValue(undoable),
             Client = options.Read(result),
         });
         return cmd;
@@ -701,6 +710,7 @@ internal static class SessionCommands
     {
         public string Mode { get; init; } = "toggle";
         public string? Command { get; init; }
+        public bool Follow { get; init; }
         public required TargetOptions Target { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
@@ -709,7 +719,10 @@ internal static class SessionCommands
         {
             Cmd = WireCommand.SessionScratch,
             Target = Target.Target,
-            Args = Client.WithWindow(new ControlArgs { Mode = Mode, Command = Command }),
+            Args = Client.WithWindow(new ControlArgs
+            {
+                Mode = Mode, Command = Command, Follow = Follow ? true : null,
+            }),
         };
     }
 
@@ -727,16 +740,22 @@ internal static class SessionCommands
         {
             Description = "When showing, run this command as the scratch's process instead of a login shell (run-once; respawns the scratch if one is already open).",
         };
+        var follow = new Option<bool>("--follow")
+        {
+            Description = "Select (switch to) the target session when showing its scratch (default: show without switching).",
+        };
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(mode);
         cmd.Options.Add(command);
+        cmd.Options.Add(follow);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Scratch
         {
             Mode = result.GetValue(mode) ?? "toggle",
             Command = result.GetValue(command),
+            Follow = result.GetValue(follow),
             Target = target.Read(result),
             Client = options.Read(result),
         });

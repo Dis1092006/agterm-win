@@ -121,6 +121,14 @@ public sealed partial class AppStore
     /// opt-in "don't auto-follow away from a running session" toggle). Default false.</summary>
     internal bool AutoFollowStayOnActive;
 
+    /// <summary>Whether next/previous attention navigation also stops on an active session
+    /// (attentionIncludesActive, default off). Pushed to every window's store with the settings.</summary>
+    public bool AttentionIncludesActive { get; set; }
+
+    /// <summary>Whether the attention shortcuts and palette steps cross windows
+    /// (attentionNavigationAcrossWindows, default off). Window-scoped navigation reads only its own store.</summary>
+    public bool AttentionNavigationAcrossWindows { get; set; }
+
     /// <summary>The last time the user interacted with this window (a keystroke or a manual
     /// selection), stamped unconditionally by NoteUserActivity so the idle metric is independent of
     /// the feature being on. Null until the first interaction.</summary>
@@ -356,6 +364,8 @@ public sealed partial class AppStore
             Workspaces = nodes,
             IdleMs = IdleMs(),
             AutoFollowMs = AutoFollowMs,
+            AttentionIncludesActive = AttentionIncludesActive,
+            AttentionNavigationAcrossWindows = AttentionNavigationAcrossWindows,
             SidebarVisible = SidebarVisible,
             SidebarMode = SidebarMode == SidebarMode.Flagged ? "flagged" : "tree",
             WorkspaceFilter = FocusEnabled,
@@ -867,10 +877,17 @@ public sealed partial class AppStore
         {
             var idx = ((start + step * k) % count + count) % count;
             if (curIndex is { } cur && idx == cur) break; // wrapped back to the current session, none other
-            if (sessions[idx].AgentIndicator.Status.NeedsAttention()) return ids[idx];
+            if (StopsAttentionNavigation(sessions[idx])) return ids[idx];
         }
         return null;
     }
+
+    /// <summary>Whether next/previous attention navigation stops on this session: blocked or
+    /// completed, plus active when attentionIncludesActive is on. NeedsAttention itself is unchanged,
+    /// so auto-follow, the bell and the attention list keep their rule.</summary>
+    public bool StopsAttentionNavigation(Session session) =>
+        session.AgentIndicator.Status.NeedsAttention()
+        || (AttentionIncludesActive && session.AgentIndicator.Status == AgentStatus.Active);
 
     /// <summary>Records a session's terminal font size (points) and persists it. No-ops when
     /// unchanged. The save is debounced (~0.3 s) so a font ramp coalesces into one write.</summary>

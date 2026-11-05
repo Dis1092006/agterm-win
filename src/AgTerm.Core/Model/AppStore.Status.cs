@@ -77,6 +77,22 @@ public sealed partial class AppStore
     }
 
     /// <summary>
+    /// The sidebar row action "Mark for Attention": gives each idle session a plain completed status
+    /// with no auto-reset, so it stays on the attention list and navigation stops on it until the usual
+    /// completed clear (keystroke, Clear Status, hook). A session that already has a status is skipped,
+    /// so a live blocked, active or completed status is never overwritten. Equals session.status
+    /// completed on idle targets; there is no control command for it.
+    /// </summary>
+    public void MarkForAttention(IEnumerable<Guid> ids)
+    {
+        foreach (var id in ids)
+        {
+            if (SessionWithId(id) is { } session && session.AgentIndicator.Status == AgentStatus.Idle)
+                SetAgentIndicator(new AgentIndicator(AgentStatus.Completed), id);
+        }
+    }
+
+    /// <summary>
     /// The window-wide non-idle sessions, the single source of truth for the attention icon and the
     /// attention palette. Spans ALL workspaces and deliberately IGNORES the focus/flagged sidebar
     /// filter (unlike NavigableSessions) — the point is window-wide visibility even when the sidebar

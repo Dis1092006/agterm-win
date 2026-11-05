@@ -415,6 +415,79 @@ public class ControlApiTests : ControlApiTestCase, IDisposable
         Assert.Equal(1, PersistedSessionCounts().Sum());
     }
 
+    // session.close --undoable (upstream #804): a single target soft-closes only when asked and the
+    // grace setting is on; the result says what happened. Without the flag the close is immediate.
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(false, true, false)]
+    public void SessionCloseUndoableReportsWhetherTheGraceWindowWasUsed(bool graceEnabled, bool undoable, bool expected)
+    {
+        const string firstId = "AD100000-0000-0000-0000-000000000001";
+        const string secondId = "AD200000-0000-0000-0000-000000000002";
+        const string thirdId = "AD300000-0000-0000-0000-000000000003";
+        var host = Relaunch(ThreeSessionSnapshot(firstId, secondId, thirdId),
+            new HeadlessHostOptions { CloseGraceUndoEnabled = graceEnabled });
+
+        var closed = SendTo(host, $$$"""{"cmd":"session.close","target":"{{{secondId}}}","args":{"undoable":{{{(undoable ? "true" : "false")}}}}}""");
+
+        Assert.True(closed["ok"]!.GetValue<bool>(), closed.ToJsonString());
+        Assert.Equal(secondId, closed["result"]!["id"]!.GetValue<string>(), ignoreCase: true);
+        Assert.Equal(expected, closed["result"]!["undoable"]!.GetValue<bool>());
+        Assert.Null(SessionNode(SendTo(host, """{"cmd":"tree"}"""), secondId));
+        // a soft close leaves the pre-close snapshot on disk for the undo window; a hard close saves now
+        Assert.Equal(expected ? 3 : 2, PersistedSessionCounts().Sum());
+    }
+
+    [Fact]
+    public void SessionCloseWithoutUndoableOmitsTheField()
+    {
+        const string firstId = "AE100000-0000-0000-0000-000000000001";
+        const string secondId = "AE200000-0000-0000-0000-000000000002";
+        const string thirdId = "AE300000-0000-0000-0000-000000000003";
+        var host = Relaunch(ThreeSessionSnapshot(firstId, secondId, thirdId),
+            new HeadlessHostOptions { CloseGraceUndoEnabled = true });
+
+        var single = SendTo(host, $$$"""{"cmd":"session.close","target":"{{{secondId}}}"}""");
+        var batch = SendTo(host, $$$"""{"cmd":"session.close","args":{"targets":["{{{firstId}}}","{{{thirdId}}}"]}}""");
+
+        Assert.Null(single["result"]!["undoable"]);
+        Assert.Null(batch["result"]!["undoable"]);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void SessionCloseBatchUndoableReportsTheSettingOutcome(bool graceEnabled, bool expected)
+    {
+        const string firstId = "AF100000-0000-0000-0000-000000000001";
+        const string secondId = "AF200000-0000-0000-0000-000000000002";
+        const string thirdId = "AF300000-0000-0000-0000-000000000003";
+        var host = Relaunch(ThreeSessionSnapshot(firstId, secondId, thirdId),
+            new HeadlessHostOptions { CloseGraceUndoEnabled = graceEnabled });
+
+        var closed = SendTo(host, $$$"""{"cmd":"session.close","args":{"targets":["{{{secondId}}}","{{{thirdId}}}"],"undoable":true}}""");
+
+        Assert.True(closed["ok"]!.GetValue<bool>(), closed.ToJsonString());
+        Assert.Equal(2, closed["result"]!["affected"]!.GetValue<int>());
+        Assert.Equal(expected, closed["result"]!["undoable"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void SessionCloseOneMemberBatchBehavesAsSingular()
+    {
+        const string firstId = "B0100000-0000-0000-0000-000000000001";
+        const string secondId = "B0200000-0000-0000-0000-000000000002";
+        const string thirdId = "B0300000-0000-0000-0000-000000000003";
+        var host = Relaunch(ThreeSessionSnapshot(firstId, secondId, thirdId),
+            new HeadlessHostOptions { CloseGraceUndoEnabled = true });
+
+        var closed = SendTo(host, $$$"""{"cmd":"session.close","args":{"targets":["{{{secondId}}}"],"undoable":true}}""");
+
+        Assert.True(closed["ok"]!.GetValue<bool>(), closed.ToJsonString());
+        Assert.True(closed["result"]!["undoable"]!.GetValue<bool>());
+        Assert.Equal(secondId, closed["result"]!["id"]!.GetValue<string>(), ignoreCase: true);
+    }
+
     // Batch target resolution is all-or-nothing: an unknown or ambiguous target fails the WHOLE
     // request without closing the valid member.
     [Fact]

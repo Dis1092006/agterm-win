@@ -260,6 +260,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }
         Host.Actions.ThemeUpdateRequested += update => ThemeUpdateRequested?.Invoke(update);
         Host.Actions.StatusReset = _notificationSettings.EffectiveStatusReset;
+        Host.Actions.CloseGraceUndoEnabled = _notificationSettings.CloseGraceUndoEnabled ?? true;
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
@@ -727,11 +728,16 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         {
             Host.Actions.ApplySettings(snapshot, _options.StateDir ?? PersistenceStore.DefaultDirectory);
             SetNotificationSettings(snapshot.Settings);
+            Host.Actions.CloseGraceUndoEnabled = snapshot.Settings.CloseGraceUndoEnabled ?? true;
             ApplyAutoFollowSettings(snapshot.Settings);
         }, cancellationToken);
 
-    private void ApplyAutoFollowSettings(AppSettings settings) =>
+    private void ApplyAutoFollowSettings(AppSettings settings)
+    {
         Store.SetAutoFollow(settings.AutoFollowTimeout(), settings.AutoFollowStayOnActive == true);
+        Store.AttentionIncludesActive = settings.EffectiveAttentionIncludesActive;
+        Store.AttentionNavigationAcrossWindows = settings.EffectiveAttentionNavigationAcrossWindows;
+    }
 
     public Task NoteUserActivityAsync(CancellationToken cancellationToken = default) =>
         StoreCoordinator.MutateAsync(store => store.NoteUserActivity(), cancellationToken);
@@ -762,19 +768,51 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 || store.SelectedSessionId != sessionId || store.SessionWithId(sessionId) is not { } session
                 || session.AgentIndicator.Status != AgentStatus.Blocked)
                 return;
-            var pane = session.AgentIndicator.StatusPane;
-            if (pane != StatusPane.Scratch && session.ScratchActive) store.ToggleScratch(sessionId);
-            if (pane == StatusPane.Scratch && !session.ScratchActive) store.ToggleScratch(sessionId);
-            if (pane == StatusPane.Right && session.SplitSurface is not null && !session.SplitFocused)
-            {
-                session.SplitFocused = true;
-                store.Save();
-                store.NotifySidebar();
-            }
+            RevealBlockedPane(store, session, session.AgentIndicator);
             ReconcileSurfacesLocked();
             paneId = session.TopmostSurface?.PaneToken;
         }, cancellationToken).ConfigureAwait(false);
         return paneId;
+    }
+
+    /// <summary>Shows the pane that set a blocked status: the scratch, the split, or neither. Needs a
+    /// surface reconcile by the caller when it runs on an attached window.</summary>
+    internal static void RevealBlockedPane(AppStore store, Session session, AgentIndicator captured)
+    {
+        if (captured.Status != AgentStatus.Blocked) return;
+        var pane = captured.StatusPane;
+        if (pane != StatusPane.Scratch && session.ScratchActive) store.ToggleScratch(session.Id);
+        if (pane == StatusPane.Scratch && !session.ScratchActive) store.ToggleScratch(session.Id);
+        if (pane == StatusPane.Right && session.SplitSurface is not null && !session.SplitFocused)
+        {
+            session.SplitFocused = true;
+            store.Save();
+            store.NotifySidebar();
+        }
+    }
+
+    /// <summary>Selects the session an attention step landed on and reveals the blocked pane
+    /// (upstream selectNextAttentionSession). The indicator is read before the selection, which can
+    /// clear a viewed status.</summary>
+    internal static bool SelectAttentionSession(AppStore store, Guid sessionId)
+    {
+        if (store.SessionWithId(sessionId) is not { } session) return false;
+        var captured = session.AgentIndicator;
+        store.NoteUserActivity();
+        store.SelectSession(sessionId);
+        RevealBlockedPane(store, session, captured);
+        return true;
+    }
+
+    internal async Task<bool> SelectAttentionSessionAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        var selected = false;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            selected = SelectAttentionSession(store, sessionId);
+            if (selected) ReconcileSurfacesLocked();
+        }, cancellationToken).ConfigureAwait(false);
+        return selected;
     }
 
     internal async Task<bool> RevealNotificationAsync(

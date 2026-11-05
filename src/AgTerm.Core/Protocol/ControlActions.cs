@@ -15,8 +15,8 @@ public interface IControlActions
     ControlResponse DuplicateSession(string? target, string? window);
     ControlResponse SelectSession(string? target, string? window);
     ControlResponse GoSession(string? window, SessionNavigation direction);
-    ControlResponse CloseSession(string? target, string? window);
-    ControlResponse CloseSessions(IReadOnlyList<string> targets, string? window);
+    ControlResponse CloseSession(string? target, string? window, bool undoable = false);
+    ControlResponse CloseSessions(IReadOnlyList<string> targets, string? window, bool undoable = false);
     ControlResponse RenameSession(string? target, string? window, string name);
     ControlResponse RevealSession(string? target, string? window);
     ControlResponse CreateWorkspace(string? window, string? name, bool collapsed);
@@ -62,7 +62,7 @@ public interface IControlActions
     /// <summary>Exchanges a split session's two panes with their live roles and state. A session without
     /// a split, a pane still being realized or a surface that cannot change role answers an error.</summary>
     Task<ControlResponse> SwapSessionPanes(string? target, string? window);
-    ControlResponse ScratchSession(string? target, string? window, string? mode, string? command);
+    ControlResponse ScratchSession(string? target, string? window, string? mode, string? command, bool follow = false);
     ControlResponse FocusSessionPane(string? target, string? window, string? pane);
     ControlResponse ResizeSplit(string? target, string? window, ControlSplitResize resize);
     ControlResponse SetSurfaceZoom(string? target, string? window, ControlToggleMode mode);

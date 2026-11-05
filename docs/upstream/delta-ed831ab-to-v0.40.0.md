@@ -108,12 +108,12 @@ These extend the first catalog, section 4. The port's `ask` has buttons only.
 
 ## 8. Navigation and agent status
 
-- The setting `attentionNavigationAcrossWindows`, off by default: next and previous attention step through every open window and bring forward the window they stop in #824. `session go --to next-attention|prev-attention` stays in its window. Port: not done.
-- The setting `attentionIncludesActive`, off by default: the attention steps and `session go --to next-attention|prev-attention` stop on active sessions too #807. Port: not done.
-- Mark for Attention on the session row menu gives an idle session a `completed` status that survives a visit #763. Port: not done.
+- The setting `attentionNavigationAcrossWindows`, off by default: next and previous attention step through every open window and bring forward the window they stop in #824. `session go --to next-attention|prev-attention` stay in its window. Port: done (B1, `parity-b1-attention`).
+- The setting `attentionIncludesActive`, off by default: the attention steps and `session go --to next-attention|prev-attention` stop on active sessions too #807. Port: done (B1).
+- Mark for Attention on the session row menu gives an idle session a `completed` status that survives a visit #763. Port: done (B1).
 - `agtermctl session wait --target S --until completed --until blocked [--timeout SEC]` #765. It is a CLI command built on the event stream (`status`, `session.closed`) and `tree`, not a wire command. Exit 2 means the session left the tree, 124 the timeout. Port: not done. The port has `events` and `tree`, so this is CLI work only.
 - The agent status glyph in session pickers; `pick` items take `status`, `statusColor` and `statusShape` #774. Port: done in agterm-win #22 (upstream `dc1110bf`). The `zmx tree` status fields of the same change are not ported: the port has no zmx.
-- `session close --undoable` gives one session the close grace the close chord gets; it falls back to a hard close when undo after closing is off #804. Arg and result `undoable`. Port: not done. The port has close grace and undo on the UI path (`closeGraceUndoEnabled`, PLATFORM-NOTES).
+- `session close --undoable` gives one session the close grace the close chord gets; it falls back to a hard close when undo after closing is off #804. Arg and result `undoable`. Port: done (B1). The batch form on the live host now follows `closeGraceUndoEnabled` (PLATFORM-NOTES).
 - With two OpenCode v1 permission prompts open, answering the first cleared `blocked` #734. Port: not done. The port has no OpenCode integration (first catalog, section 9).
 - The Codex status hook checks for a blocked prompt every 2 seconds #802 and ignores Codex's memory thread #822. The bash status hook keeps the exit status for later `PROMPT_COMMAND` entries #828. Port: not applicable: the port does not install Codex or bash status hooks (PLATFORM-NOTES "Help menu").
 
@@ -141,7 +141,7 @@ These extend the first catalog, section 8. The port has the event stream from th
 
 Nothing is removed or renamed.
 
-- `AppSettings`, new fields: `attentionIncludesActive` #807, `attentionNavigationAcrossWindows` #824, `ignoreReduceTransparency` #814, `sessionInfoDisplay` #864, `terminalInputSource` #727. Port: not done.
+- `AppSettings`, new fields: `attentionIncludesActive` #807, `attentionNavigationAcrossWindows` #824 (both ported in B1), `ignoreReduceTransparency` #814, `sessionInfoDisplay` #864, `terminalInputSource` #727. Port: partly done; the two attention fields are done.
 - `ignoreReduceTransparency` keeps the window's opacity and blur while macOS Reduce Transparency is on; palettes still follow the system #814. Port: not done. The Windows switch is Settings > Personalization > Colors > Transparency effects, and the port reads it for overlay panels only (PLATFORM-NOTES "Windows-only extensions").
 - `terminalInputSource` locks one keyboard layout while a terminal has the keyboard #727. A layout switch made in a terminal is switched back, and the previous layout returns when focus leaves. It has no control command. Port: not done.
 - New values of existing settings: `overlayToggle`, `workspaceIcons` and `sessionIcons` in `shownInterfaceElements` (sections 3 and 5); `overlay95`, `overlay75` and `overlay50` in `linkOpenMode` (section 5). Port: not done.
@@ -153,7 +153,7 @@ These items change what agterm-win already does. They do not depend on new featu
 
 - A mouse selection no longer replaces the system clipboard; `session.selectall` writes the selection buffer #792. Port: done in agterm-win #24 (upstream `bca6ad8b`). The Windows-only `copyOnSelect` plays the role of Ghostty's `copy-on-select`; see PLATFORM-NOTES "Selection buffer and middle-click paste".
 - A custom command in a session whose directory was removed now runs in HOME instead of being refused #740 (`e6fadf08`). `AGT_SESSION_PWD` still carries the path the session reported. This reverses upstream `312987af`, which the port adopted in `1668561`: the port refuses with `session directory <path> no longer exists`. Port: not done. See Open questions.
-- **Behavior change:** `session scratch on --target A` shows the scratch on A without switching to A; `--follow` selects A #730 (`da375b93`). Port: not done. The port selects the target, as at the pin.
+- **Behavior change:** `session scratch on --target A` shows the scratch on A without switching to A; `--follow` selects A #730 (`da375b93`). Port: done (B1).
 - `session scratch on --command CMD` against a scratch already shown answered ok and never ran CMD #730. Port: done since `5dd02cf`: the port already closed the shown scratch and started it again with CMD, which is what upstream now does.
 - A second instance on a state directory in use exits with status 1 before it reads or writes anything #749. Port: done in a Windows form in port PR 53 (`fa75507`): a second launch hands its activation to the running app and exits. See PLATFORM-NOTES "One instance per state directory".
 - `agtermctl notify` no longer shares a notification slot with the session's OSC 9/777 banners, so the next terminal banner does not replace the note #772. Port: not done. In the port, an explicit `notify` and an OSC banner from the main pane get the same toast Tag and Group, so the banner replaces the note.

@@ -472,25 +472,50 @@ public class ControlOverlaySplitTests : ControlApiTestCase
         Assert.True(session.ScratchActive, "the scratch should be up running the command");
     }
 
-    // session.scratch on a NON-active target selects it first (the scratch is full-coverage and
-    // grabs focus on show, so it must be the visible session), then shows the scratch on it.
+    // session.scratch on a NON-active target shows the scratch without switching (upstream #730);
+    // the scratch is only visible when the session is selected, so --follow selects it as overlay.open does.
     [Fact]
-    public void SessionScratchOnSelectsTarget()
+    public void SessionScratchOnDoesNotSwitchWithoutFollow()
     {
-        // the seeded session is active; capture its id.
         var seededId = ActiveSessionId();
-
-        // create a second session — session.new focuses it, so the seeded one is no longer active.
         var newId = CreateSession();
         Assert.NotEqual(newId.ToLowerInvariant(), seededId.ToLowerInvariant());
 
-        // show scratch on the non-active seeded session: it should become active AND report scratch:true.
         var on = SendCommand($$$"""{"cmd":"session.scratch","target":"{{{seededId}}}","args":{"mode":"on"}}""");
         Assert.True(on["ok"]?.GetValue<bool>(),
             $"session.scratch on a non-active target should succeed: {on.ToJsonString()}");
         var seeded = SessionNode(seededId);
+        Assert.True(Flag(seeded, "scratch"), "the scratch is shown on the target");
+        Assert.False(Flag(seeded, "active"), "without --follow the target is not selected");
+        Assert.True(Flag(SessionNode(newId), "active"), "the previously active session stays selected");
+    }
+
+    [Fact]
+    public void SessionScratchOnWithFollowSelectsTarget()
+    {
+        var seededId = ActiveSessionId();
+        var newId = CreateSession();
+        Assert.NotEqual(newId.ToLowerInvariant(), seededId.ToLowerInvariant());
+
+        var on = SendCommand($$$"""{"cmd":"session.scratch","target":"{{{seededId}}}","args":{"mode":"on","follow":true}}""");
+        Assert.True(on["ok"]?.GetValue<bool>(),
+            $"session.scratch on --follow should succeed: {on.ToJsonString()}");
+        var seeded = SessionNode(seededId);
         Assert.True(Flag(seeded, "active") && Flag(seeded, "scratch"),
-            "showing scratch should select the target and report scratch:true");
+            "--follow selects the target and reports scratch:true");
+    }
+
+    [Fact]
+    public void SessionScratchOffWithFollowDoesNotSelect()
+    {
+        var seededId = ActiveSessionId();
+        var newId = CreateSession();
+        SendCommand($$$"""{"cmd":"session.scratch","target":"{{{seededId}}}","args":{"mode":"on"}}""");
+
+        var off = SendCommand($$$"""{"cmd":"session.scratch","target":"{{{seededId}}}","args":{"mode":"off","follow":true}}""");
+        Assert.True(off["ok"]?.GetValue<bool>(), off.ToJsonString());
+        Assert.False(Flag(SessionNode(seededId), "active"));
+        Assert.True(Flag(SessionNode(newId), "active"));
     }
 
     // session.focus errors on a non-split session, succeeds on each pane once split, and rejects an

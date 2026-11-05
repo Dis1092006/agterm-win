@@ -99,6 +99,12 @@ public sealed class SettingsEditor
                 new("s30", "30 sec idle"), new("s60", "60 sec idle"), new("m5", "5 min idle")]),
         new("autoFollowStayOnActive", "Agent Status", "Auto-follow away from a running session",
             SettingControl.Toggle, false, Hint: "Only applies while auto-follow is on."),
+        new("attentionIncludesActive", "Agent Status", "Attention navigation includes active sessions",
+            SettingControl.Toggle, false,
+            Hint: "Next and previous attention session also stop on a running session. Auto-follow and the attention list are unchanged."),
+        new("attentionNavigationAcrossWindows", "Agent Status", "Attention navigation crosses windows",
+            SettingControl.Toggle, false,
+            Hint: "The shortcuts and palette steps move to a session in another window. session go stays within one window."),
         new("configDirectory", "Key Mapping", "Keymap directory", SettingControl.Directory,
             Hint: "Default is the state directory. Changing it reloads keymap.conf in every window."),
     ];

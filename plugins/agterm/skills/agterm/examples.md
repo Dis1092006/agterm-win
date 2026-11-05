@@ -191,6 +191,7 @@ agtermctl session move --after "$anchor" --target "$server" --target "$logs"
 
 # close several sessions with one grace-period undo
 agtermctl session close --target "$server" --target "$logs"
+agtermctl session close --target "$server" --undoable    # ok (undoable) / ok (not undoable)
 ```
 
 `--after`/`--before` are mutually exclusive with each other, with `--to`, and with a destination
@@ -290,7 +291,8 @@ agtermctl session background clear --target "$AGTERM_SESSION_ID"
 A third per-session full-coverage shell. Hide keeps it alive; `exit` in it recreates on next show.
 
 ```bash
-agtermctl session scratch on        # show (selects the target)
+agtermctl session scratch on        # show, without switching sessions
+agtermctl session scratch on --target "$AGTERM_SESSION_ID" --follow   # show and select the target
 agtermctl session scratch off       # hide, shell stays alive
 agtermctl session scratch toggle
 agtermctl session scratch on --command "lazygit"   # run a program instead of a shell (run-once); argv-split, no shell, so an .exe on PATH
@@ -804,7 +806,7 @@ file is read once per command; nothing watches it, so push each change with an `
 
 ```bash
 agtermctl session go --to next            # step selection to the next session
-agtermctl session go --to next-attention  # jump to the next blocked/completed session
+agtermctl session go --to next-attention  # jump to the next blocked/completed session (plus active when enabled)
 agtermctl workspace go --to next          # step to the next workspace, wrapping
 agtermctl window go --to prev             # raise the previous open window, wrapping
 agtermctl version                         # which agterm-win answers on the pipe

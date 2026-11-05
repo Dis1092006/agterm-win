@@ -163,9 +163,12 @@ and `collapsed` (whether this workspace is COLLAPSED in the sidebar tree — the
 `workspace collapse`/`workspace expand` and `workspace new --collapsed`; `true` when collapsed, omitted
 when expanded, so an all-expanded tree carries no `collapsed` keys).
 
-The tree object itself carries thirteen top-level read-only fields: `workspaceFilter` (whether the sidebar focus filter is applied over the marked set — the read side of `workspace filter`; always reported, `false` when off), `idleMs` (milliseconds since the last
+The tree object itself carries these top-level read-only fields: `workspaceFilter` (whether the sidebar focus filter is applied over the marked set — the read side of `workspace filter`; always reported, `false` when off), `idleMs` (milliseconds since the last
 user input in the window, omitted before any activity), `autoFollowMs` (the window's Auto-follow
-timeout in milliseconds, omitted when Auto-follow is disabled), `sidebarVisible` (whether the
+timeout in milliseconds, omitted when Auto-follow is disabled), `attentionIncludesActive` (whether
+next-attention/prev-attention also stop on `active` sessions, Settings ▸ Agent Status; no command sets it),
+`attentionNavigationAcrossWindows` (whether the GUI attention keys walk every open window, Settings ▸ Agent
+Status; no command sets it, and `session go` stays in its window either way), `sidebarVisible` (whether the
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
@@ -278,10 +281,13 @@ All thirteen are read-only projections of GUI state.
   primary the source node's `tree.cwd` reports the primary pane while the duplicate carries the focused
   pane's directory. It is the control half of the sidebar row's **Duplicate Session** context-menu item
   (single-selection only).
-- `session close [--target T ...] [--window W]` — close one session, or repeat `--target` to close
+- `session close [--target T ...] [--undoable] [--window W]` — close one session, or repeat `--target` to close
   several sessions in the same window/store. Wire: `session.close`. Batch close honors the grace-undo
   setting (`closeGraceUndoEnabled` in settings.json, default on): one grouped
-  undo/reopen record when enabled, immediate close when disabled. Returns `result.affected`.
+  undo/reopen record when enabled, immediate close when disabled. Returns `result.affected`. With
+  `--undoable` the close takes the grace window when the setting allows it and the result adds `undoable`
+  (`true` when it can be undone, `false` when the setting is off): `{"id":…,"undoable":true}` for one target,
+  `{"affected":N,"undoable":…}` for a batch. Without `--undoable` the field is left out.
 - `session select [--target] [--window W]`. Wire: `session.select`.
 - `session rename <name> [--target] [--window W]`. Wire: `session.rename`.
 - `session reveal [--target] [--window W]` — select the target session. Wire: `session.reveal`. On
@@ -293,7 +299,8 @@ All thirteen are read-only projections of GUI state.
   flagged sessions in flagged mode, the focused workspace's sessions when a workspace is focused, else
   all sessions (clearing the flag/focus restores the full set). next/prev wrap around at the ends (last→first,
   first→last); first/last jump to the ends of that set; next-attention/prev-attention step only through the filtered
-  sessions needing attention (status blocked/completed), wrapping. Returns the newly selected id.
+  sessions needing attention (status blocked/completed, plus active when the tree reports
+  `attentionIncludesActive: true`), wrapping, always within the addressed window. Returns the newly selected id.
 - `session move <workspace> [--target] [--window W]` — relocate the session to another workspace
   (appends). Wire: `session.move`. OR `session move --to up|down|top|bottom [--target]` — reorder
   within its workspace. OR
@@ -379,10 +386,10 @@ All thirteen are read-only projections of GUI state.
   `commandWait`; the other side supplies `splitCwd`/`splitRestoreCommand`/`splitCommandWait`.
   `AGTERM_PANE` is the shell's spawn role and is stale after a swap; use `AGTERM_PANE_ID`. Answers
   `{"id":...}`.
-- `session scratch [on|off|toggle] [--command CMD] [--target] [--window W]` — a third, full-coverage
+- `session scratch [on|off|toggle] [--command CMD] [--follow] [--target] [--window W]` — a third, full-coverage
   shell that renders like a full overlay but behaves like the split. Wire: `session.scratch`. `off` hides
   it keep-alive; typing
-  `exit` in it closes it and the next `on` spawns a fresh shell. `on` selects the target first (the
+  `exit` in it closes it and the next `on` spawns a fresh shell. `on` does not switch sessions, so a script can show a scratch without pulling the window away; `--follow` selects the target first (the
   scratch is full-coverage and owns focus). `--command` (only when showing) runs that program as the
   scratch's process instead of the default shell — argv-style (no shell, tokenized like
   `session new --command`: wrap in `"pwsh -NoLogo -Command '…'"` for shell syntax or use an
@@ -441,9 +448,10 @@ All thirteen are read-only projections of GUI state.
   never an interrupt, and text with a line break counts as Enter. A pane can only change a `blocked` status it
   owns: a write that is not `blocked` from another pane errors `blocked status owned by pane <pane> (write from
   that pane to change it)` and changes nothing. A write without `--pane` reads as `left`, so a bare
-  `session status idle` cannot clear a block owned by the right pane or the scratch. Attention navigation
-  (in the GUI or `session go --to next-attention|prev-attention`) only STEPS the selection to attention
-  sessions; it does not move focus into the tagged pane. An agent that runs in a split or scratch should
+  `session status idle` cannot clear a block owned by the right pane or the scratch. `session go --to next-attention|prev-attention`
+  only STEPS the selection to attention
+  sessions; it does not move focus into the tagged pane. The GUI attention keys do show the pane that set a
+  `blocked` status. An agent that runs in a split or scratch should
   set its own pane. The value is read back on `tree` as the session node's `statusPane`. An invalid
   value errors (`--pane must be left, right, or scratch`).
   `--pane-id` is the surface's stable spawn token (the shell's `$AGTERM_PANE_ID`) — the agent-status hook

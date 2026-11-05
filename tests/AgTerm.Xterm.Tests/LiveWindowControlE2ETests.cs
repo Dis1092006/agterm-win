@@ -73,6 +73,98 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Single(application.Windows);
     }
 
+    private static void SetStatus(LiveWindowHost window, Guid sessionId, AgentIndicator indicator) =>
+        window.RunLocked(() => window.Store.SetAgentIndicator(indicator, sessionId));
+
+    // Upstream #824: with attentionNavigationAcrossWindows the chord steps through every open window.
+    [Fact]
+    public async Task Attention_step_crosses_windows_raises_the_target_window_and_selects_its_session()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var sourceId = Assert.Single(application.Windows).Id;
+        var created = await application.CreateWindowAsync("other");
+        Assert.True(created.Ok, created.Error);
+        var otherId = Guid.Parse(created.Result!.Id!);
+        var source = application.GetOpenWindow(sourceId);
+        var other = application.GetOpenWindow(otherId);
+        var target = other.Store.ActiveSession!.Id;
+        SetStatus(other, target, new AgentIndicator(AgentStatus.Completed));
+        source.RunLocked(() => source.Store.AttentionNavigationAcrossWindows = true);
+        controller.ActivationRequests.Clear();
+
+        var stepped = await application.StepAttentionAsync(sourceId, forward: true);
+
+        Assert.Equal((otherId, target), stepped);
+        Assert.Equal(target, other.Store.SelectedSessionId);
+        Assert.Contains(otherId, controller.ActivationRequests);
+    }
+
+    [Fact]
+    public async Task Attention_step_stays_in_the_source_window_when_the_setting_is_off()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var sourceId = Assert.Single(application.Windows).Id;
+        var created = await application.CreateWindowAsync("other");
+        var otherId = Guid.Parse(created.Result!.Id!);
+        var source = application.GetOpenWindow(sourceId);
+        var other = application.GetOpenWindow(otherId);
+        SetStatus(other, other.Store.ActiveSession!.Id, new AgentIndicator(AgentStatus.Completed));
+        var second = Guid.Empty;
+        source.RunLocked(() => second = source.Store.AddSession(source.Store.Workspaces[0].Id, _stateDir)!.Id);
+        SetStatus(source, second, new AgentIndicator(AgentStatus.Blocked));
+        source.RunLocked(() => source.Store.SelectSession(source.Store.Workspaces[0].Sessions[0].Id));
+
+        var stepped = await application.StepAttentionAsync(sourceId, forward: true);
+
+        Assert.Equal((sourceId, second), stepped);
+        Assert.Equal(second, source.Store.SelectedSessionId);
+    }
+
+    [Fact]
+    public async Task Attention_step_skips_a_window_under_zoom_but_always_keeps_the_source_window()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var sourceId = Assert.Single(application.Windows).Id;
+        var created = await application.CreateWindowAsync("other");
+        var otherId = Guid.Parse(created.Result!.Id!);
+        var source = application.GetOpenWindow(sourceId);
+        var other = application.GetOpenWindow(otherId);
+        var otherSession = other.Store.ActiveSession!;
+        SetStatus(other, otherSession.Id, new AgentIndicator(AgentStatus.Completed));
+        other.RunLocked(() => other.Actions.Zoom.Set(ControlToggleMode.On,
+            new TerminalZoomTarget.Session(otherSession.Id, TerminalZoomSurface.Primary)));
+        source.RunLocked(() => source.Store.AttentionNavigationAcrossWindows = true);
+
+        Assert.Null(await application.StepAttentionAsync(sourceId, forward: true));
+        Assert.NotEqual(otherSession.Id, source.Store.SelectedSessionId);
+    }
+
+    [Fact]
+    public async Task Attention_step_reveals_the_pane_that_set_the_blocked_status()
+    {
+        var controller = new FakeWindowController();
+        using var application = CreateApplication(controller);
+        var sourceId = Assert.Single(application.Windows).Id;
+        var source = application.GetOpenWindow(sourceId);
+        var first = source.Store.ActiveSession!;
+        Session blocked = null!;
+        source.RunLocked(() =>
+        {
+            blocked = source.Store.AddSession(source.Store.Workspaces[0].Id, _stateDir)!;
+            blocked.HasSplit = true;
+            blocked.SplitSurface = new BadgeSurface("blocked-split");
+            source.Store.SelectSession(first.Id);
+        });
+        SetStatus(source, blocked.Id, new AgentIndicator(AgentStatus.Blocked, StatusPane: StatusPane.Right));
+
+        Assert.Equal((sourceId, blocked.Id), await application.StepAttentionAsync(sourceId, forward: true));
+
+        Assert.True(blocked.SplitFocused);
+    }
+
     [Fact]
     public void Notification_badge_toggle_hides_and_shows_badge_without_losing_unseen_count()
     {

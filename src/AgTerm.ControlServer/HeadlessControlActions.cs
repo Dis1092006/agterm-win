@@ -297,7 +297,15 @@ public sealed class HeadlessControlActions : IControlActions
     private readonly IReadOnlyList<string> _availableThemes;
     private readonly string _homeDirectory;
     private readonly bool _restoreRunningCommand;
-    private readonly bool _closeGraceUndoEnabled;
+    private bool _closeGraceUndoEnabled;
+
+    /// <summary>The closeGraceUndoEnabled setting as the control close paths read it. The Live host
+    /// pushes the user setting (default on) under the host gate; headless takes it from the options.</summary>
+    public bool CloseGraceUndoEnabled
+    {
+        get => Volatile.Read(ref _closeGraceUndoEnabled);
+        set => Volatile.Write(ref _closeGraceUndoEnabled, value);
+    }
     private double _dashboardBaseFontSize;
     private readonly Action<string>? _paneFocusRequested;
     private readonly Action<Guid>? _sessionPanesSwapped;
@@ -623,27 +631,42 @@ public sealed class HeadlessControlActions : IControlActions
         });
     }
 
-    public ControlResponse CloseSession(string? target, string? window)
+    public ControlResponse CloseSession(string? target, string? window, bool undoable = false)
     {
-        return ResolveSession(target, window, (store, id) =>
-        {
-            store.CloseSession(id);
-            return OkId(id);
-        });
+        return ResolveSession(target, window, (store, id) => CloseOne(store, id, undoable));
     }
 
-    public ControlResponse CloseSessions(IReadOnlyList<string> targets, string? window)
+    private ControlResponse CloseOne(AppStore store, Guid id, bool undoable)
+    {
+        if (undoable && CloseGraceUndoEnabled)
+        {
+            if (!store.SoftCloseSession(id)) return Err("could not close session");
+            return new ControlResponse
+            {
+                Ok = true,
+                Result = new ControlResult { Id = Uuid(id), Undoable = true },
+            };
+        }
+        store.CloseSession(id);
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult { Id = Uuid(id), Undoable = undoable ? false : null },
+        };
+    }
+
+    public ControlResponse CloseSessions(IReadOnlyList<string> targets, string? window, bool undoable = false)
     {
         return ResolveBatchSessions(targets, window, (store, ids) =>
         {
             if (ids.Count <= 1)
             {
                 if (ids.Count == 0) return Err("session.close requires at least one --target");
-                store.CloseSession(ids[0]);
-                return OkId(ids[0]);
+                return CloseOne(store, ids[0], undoable);
             }
             int affected;
-            if (_closeGraceUndoEnabled)
+            var soft = CloseGraceUndoEnabled;
+            if (soft)
             {
                 // one grouped grace record, the upstream default. The headless default is OFF (see
                 // PLATFORM-NOTES): the grace timer finalizes off the host's dispatch lock.
@@ -659,7 +682,15 @@ public sealed class HeadlessControlActions : IControlActions
                     affected += 1;
                 }
             }
-            return new ControlResponse { Ok = true, Result = new ControlResult { Affected = affected } };
+            return new ControlResponse
+            {
+                Ok = true,
+                Result = new ControlResult
+                {
+                    Affected = affected,
+                    Undoable = undoable ? soft && affected > 0 : null,
+                },
+            };
         });
     }
 
@@ -1121,7 +1152,7 @@ public sealed class HeadlessControlActions : IControlActions
         static bool IsPending(ITerminalSurface? surface) => surface is IHeadlessSurface { IsRealized: false };
     }
 
-    public ControlResponse ScratchSession(string? target, string? window, string? mode, string? command)
+    public ControlResponse ScratchSession(string? target, string? window, string? mode, string? command, bool follow = false)
     {
         return ResolveSession(target, window, (store, id) =>
         {
@@ -1137,11 +1168,9 @@ public sealed class HeadlessControlActions : IControlActions
                 if (session.ScratchSurface is not null) store.CloseScratch(id);
                 session.ScratchCommand = command;
             }
-            if (want && store.SelectedSessionId != id)
-            {
-                // the scratch is a full-coverage focus-grabbing surface: select the target first.
+            // showing a scratch does not switch sessions unless asked (upstream #730), the same as overlay.open.
+            if (want && follow && store.SelectedSessionId != id)
                 store.SelectSession(id);
-            }
             if (want != session.ScratchActive)
                 store.ToggleScratch(id); // keep-alive hide/show; never tears the shell down
             return OkId(id);
@@ -2034,6 +2063,8 @@ public sealed class HeadlessControlActions : IControlActions
     {
         var settings = snapshot.Settings;
         StatusReset = settings.EffectiveStatusReset;
+        _store.AttentionIncludesActive = settings.EffectiveAttentionIncludesActive;
+        _store.AttentionNavigationAcrossWindows = settings.EffectiveAttentionNavigationAcrossWindows;
         Theme.Light = settings.Theme;
         Theme.Dark = settings.FollowSystemAppearance == true ? settings.DarkTheme : null;
         var keymap = new KeymapStore(settings.ConfigDirectory ?? defaultConfigDirectory);
