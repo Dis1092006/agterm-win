@@ -56,6 +56,9 @@ public sealed partial class AppStore
 
     internal void EmitSessionClosed(Session session, Guid workspace)
     {
+        // every path that takes a session out of the tree ends here (hard and soft closes, workspace
+        // deletes), so it is where the session's mail goes too
+        DisposeMailboxes(session);
         EmitControlEvent(ControlEventKind.SessionClosed, workspace, session.Id,
             new ControlEventPayload { Name = session.DisplayName });
         ScheduleTreeChanged();

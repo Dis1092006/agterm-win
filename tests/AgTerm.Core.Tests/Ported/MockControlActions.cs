@@ -760,4 +760,39 @@ public sealed class MockControlActions : IControlActions
         Calls.Add(new Call.HudClose(target, window));
         return NextHudCloseResponse;
     }
+
+    public sealed record Queued(string Id, string? From, IReadOnlyList<MessageRecipient> Recipients)
+    {
+        public bool Equals(Queued? other) =>
+            other is not null && Id == other.Id && From == other.From && Recipients.SequenceEqual(other.Recipients);
+        public override int GetHashCode() => HashCode.Combine(Id, From, Recipients.Count);
+    }
+
+    public sealed record Scope(string? Workspace, string? Window);
+
+    public Dictionary<MessageAddress, MessageRecipient> MessagePaneMap { get; } = new();
+    public List<MessageRecipient> BroadcastPanes { get; } = new();
+    public List<Queued> QueuedMessages { get; } = new();
+    public List<Scope> BroadcastScopes { get; } = new();
+
+    /// <summary>Answers what the IControlActions default answers, for a host without the bus.</summary>
+    public bool MessagesUnsupported { get; set; }
+
+    public MessagePaneResult<MessageRecipient> ResolveMessagePane(MessageAddress address)
+    {
+        if (MessagesUnsupported) return MessagePaneError.Unsupported;
+        return MessagePaneMap.TryGetValue(address, out var recipient)
+            ? MessagePaneResult<MessageRecipient>.Ok(recipient)
+            : new MessagePaneError($"pane not found: {address.Session}:{address.Pane.Text}");
+    }
+
+    public MessagePaneResult<IReadOnlyList<MessageRecipient>> MessagePanes(string? workspace, string? window)
+    {
+        BroadcastScopes.Add(new Scope(workspace, window));
+        if (MessagesUnsupported) return MessagePaneError.Unsupported;
+        return MessagePaneResult<IReadOnlyList<MessageRecipient>>.Ok(BroadcastPanes.ToArray());
+    }
+
+    public void MessageQueued(Guid messageId, string? from, IReadOnlyList<MessageRecipient> recipients) =>
+        QueuedMessages.Add(new Queued(messageId.ToString("D").ToUpperInvariant(), from, recipients));
 }

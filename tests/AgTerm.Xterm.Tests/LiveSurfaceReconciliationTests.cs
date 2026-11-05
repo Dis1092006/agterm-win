@@ -613,6 +613,29 @@ public sealed class LiveSurfaceReconciliationTests : IDisposable
     }
 
     [Fact]
+    public async Task Reload_surfaces_drops_the_mail_of_the_replaced_panes()
+    {
+        var requests = new List<SurfaceOpenRequest>();
+        using var host = BuildLiveHost(requests);
+        host.Start();
+        var client = new ControlPipeClient(host.PipeName);
+        var sessionId = await host.StoreCoordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        var pane = Guid.NewGuid();
+        await host.StoreCoordinator.ReadAsync(store =>
+            ((FakeSurface)store.SessionWithId(sessionId)!.Surface!).PaneToken = pane.ToString("N"));
+        AssertOk(client.Send(new ControlRequest
+        {
+            Cmd = Command.MsgSend,
+            Args = new ControlArgs { Body = "hi", Recipients = [MessageAddress.Canonical(sessionId, pane)] },
+        }));
+        Assert.Equal(1, MessageBus.Shared.Pending(pane));
+
+        await host.ReloadSurfacesAsync();
+
+        Assert.Equal(0, MessageBus.Shared.Pending(pane));
+    }
+
+    [Fact]
     public async Task Reload_closes_active_overlay_without_restarting_its_command_or_hanging_the_result_poll()
     {
         var requests = new List<SurfaceOpenRequest>();

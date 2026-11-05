@@ -12,10 +12,12 @@ namespace AgTerm.Core.Protocol;
 public sealed class ControlDispatcher
 {
     private readonly IControlActions _actions;
+    private readonly MessageDispatcher _messages;
 
-    public ControlDispatcher(IControlActions actions)
+    public ControlDispatcher(IControlActions actions, MessageBus? bus = null)
     {
         _actions = actions;
+        _messages = new MessageDispatcher(actions, bus);
     }
 
     public async Task<ControlResponse?> Dispatch(ControlRequest request)
@@ -72,6 +74,8 @@ public sealed class ControlDispatcher
                 return DispatchAskCommand(request);
             case Command.SessionHudOpen or Command.SessionHudUpdate or Command.SessionHudClose:
                 return DispatchHudCommand(request);
+            case Command.MsgSend or Command.MsgRead or Command.MsgAck:
+                return _messages.Dispatch(request);
             case Command.DebugAppearance:
                 // UI-test-only seam handled host-side (out of the parity surface on Windows).
                 return null;

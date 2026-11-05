@@ -326,6 +326,16 @@ public class EventCommandsTests
                 Payload = new ControlEventPayload { Name = "api", Host = "box" },
             },
             new ControlEvent { Seq = 17, Ts = 0, Kind = ControlEventKind.RemoteClosed, Window = "win" },
+            new ControlEvent
+            {
+                Seq = 18, Ts = 0, Kind = ControlEventKind.Message,
+                Payload = new ControlEventPayload { Name = "api", PaneId = "tok", From = "S:Q", MessageId = "m1" },
+            },
+            new ControlEvent
+            {
+                Seq = 19, Ts = 0, Kind = ControlEventKind.Message,
+                Payload = new ControlEventPayload { Name = "api", PaneId = "tok", MessageId = "m2" },
+            },
         };
         // Swift TimeZone(secondsFromGMT: 0) → TimeZoneInfo.Utc.
         var human = events.Select(e => EventFormatter.Human(e, TimeZoneInfo.Utc)).ToArray();
@@ -346,6 +356,8 @@ public class EventCommandsTests
         Assert.Equal("00:00:00 pane.scratch api hidden", human[14]);
         Assert.Equal("00:00:00 remote.opened api host=box", human[15]);
         Assert.Equal("00:00:00 remote.closed win host=", human[16]);
+        Assert.Equal("00:00:00 message api pane-id=tok from=S:Q id=m1", human[17]);
+        Assert.Equal("00:00:00 message api pane-id=tok from=- id=m2", human[18]);
 
         foreach (var @event in events)
         {

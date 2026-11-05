@@ -39,6 +39,13 @@ public interface ICompletedExitCodeSurface
     int? CompletedExitCode { get; }
 }
 
+/// <summary>Optional: a surface that can sit in a slot without a terminal behind it (pending realize,
+/// output stopped). A surface without it counts as realized.</summary>
+public interface IRealizableSurface
+{
+    bool IsRealized { get; }
+}
+
 /// <summary>
 /// One shell session: a sidebar row owning a main pane, an optional split pane, an ephemeral
 /// scratch shell, and an ephemeral overlay. Pure model state — surfaces are opaque host handles.

@@ -25,6 +25,8 @@ public enum ControlEventKind
     RemoteClosed,
     /// <summary>Once per app run, after the control pipe accepts connections.</summary>
     AppLaunched,
+    /// <summary>A bus message was queued for a pane: payload paneID, from and messageID, never the body.</summary>
+    Message,
 }
 
 public static class ControlEventKinds
@@ -43,6 +45,7 @@ public static class ControlEventKinds
         (ControlEventKind.RemoteOpened, "remote.opened"),
         (ControlEventKind.RemoteClosed, "remote.closed"),
         (ControlEventKind.AppLaunched, "app.launched"),
+        (ControlEventKind.Message, "message"),
     };
 
     /// <summary>Every kind, in wire declaration order (the Swift allCases).</summary>
@@ -111,6 +114,14 @@ public sealed record ControlEventPayload
     /// absent while that pane's surface does not exist yet.</summary>
     [JsonPropertyName("paneID")]
     public string? PaneId { get; init; }
+
+    /// <summary>The message event's sender address, absent for a sender outside agterm.</summary>
+    [JsonPropertyName("from")]
+    public string? From { get; init; }
+
+    /// <summary>The message event's message id; the body is never carried.</summary>
+    [JsonPropertyName("messageID")]
+    public string? MessageId { get; init; }
 }
 
 /// <summary>One entry in the event ring.</summary>

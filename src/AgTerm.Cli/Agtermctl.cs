@@ -135,6 +135,7 @@ public static class Agtermctl
                      RestoreCommands.Build(bindings),
                      ClipboardCommands.Build(bindings),
                      RecentCommands.Build(bindings),
+                     MessageCommands.Build(bindings),
                  })
         {
             root.Subcommands.Add(command);

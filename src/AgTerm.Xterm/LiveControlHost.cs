@@ -369,7 +369,11 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 session.SplitSurface = null;
                 session.ScratchSurface = null;
                 foreach (var surface in surfaces)
+                {
+                    // the replacement renderer carries a new pane token, so the old mailbox has no reader
+                    store.DisposeMailbox(surface);
                     surface?.Teardown();
+                }
 
                 var overlay = session.OverlaySurface;
                 if (!store.CloseOverlay(session.Id))

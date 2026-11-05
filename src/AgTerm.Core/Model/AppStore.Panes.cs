@@ -165,6 +165,7 @@ public sealed partial class AppStore
         session.HasSplit = false;
         session.SplitAxis = SplitAxis.LeftRight;
         session.SplitFocused = false;
+        DisposeMailbox(session.SplitSurface);
         session.SplitSurface?.Teardown();
         session.SplitSurface = null;
         session.SplitCwd = null;
@@ -204,6 +205,7 @@ public sealed partial class AppStore
             return;
         }
         var priorPrimary = session.Surface; // the exiting pane, torn down below; scopes the search reset
+        DisposeMailbox(priorPrimary);
         priorPrimary?.Teardown();
         // promote the surviving split pane into the primary slot. PromoteToPrimaryPane flips the
         // surface's split-role flag so its future pwd/title reports write to the main fields.
@@ -446,6 +448,7 @@ public sealed partial class AppStore
         // a Scratch-tagged block loses its owning surface here; clear it so it can't strand a glyph
         // the surviving main/split panes can never keystroke-clear.
         ClearIndicatorOwnedByPane(StatusPane.Scratch, session);
+        DisposeMailbox(scratch);
         scratch.Teardown();
         session.ScratchSurface = null;
         NotifySidebar();

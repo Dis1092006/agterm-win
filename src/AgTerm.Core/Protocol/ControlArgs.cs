@@ -330,4 +330,20 @@ public sealed record ControlArgs
     /// <summary>Populate the dashboard from the window's MRU sessions instead of explicit ids.</summary>
     [JsonPropertyName("mru")]
     public bool? Mru { get; init; }
+
+    /// <summary>The SESSION:PANE addresses msg.send --to names; the scalar to keeps its navigation meaning.</summary>
+    [JsonPropertyName("recipients")]
+    public string[]? Recipients { get; init; }
+
+    /// <summary>The SESSION:PANE-ID the caller acts as on msg.*.</summary>
+    [JsonPropertyName("identity")]
+    public string? Identity { get; init; }
+
+    /// <summary>Makes msg.read remove the batch it returns.</summary>
+    [JsonPropertyName("ack")]
+    public bool? Ack { get; init; }
+
+    /// <summary>The message ids msg.ack removes.</summary>
+    [JsonPropertyName("ids")]
+    public string[]? Ids { get; init; }
 }

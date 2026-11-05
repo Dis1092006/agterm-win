@@ -22,6 +22,7 @@ public class ControlArgsTests
         Window = "s", Width = 3, Height = 3, SidebarWidth = 300.5, X = 3, Y = 3, Display = 3,
         Status = "s", Blink = true, AutoReset = true, Sound = "s", Light = "s", Dark = "s",
         Close = true, FontSize = 12.5, AutoSize = true, Mru = true,
+        Recipients = ["a"], Identity = "s", Ack = true, Ids = ["a"],
     };
 
     [Fact]

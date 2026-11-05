@@ -276,7 +276,7 @@ public sealed record HeadlessSearchUpdate(
     bool FocusInput,
     string? RestorePaneId);
 
-public sealed class HeadlessControlActions : IControlActions
+public sealed partial class HeadlessControlActions : IControlActions
 {
     /// <summary>The pinned wire error for the window arms that need real on-screen windows
     /// (new/close/resize/move/zoom/fullscreen) — a documented headless divergence (PLATFORM-NOTES):

@@ -302,6 +302,7 @@ public sealed partial class AppStore
                         PaneId = surface.PaneRole() is { } role && session.PaneToken(role) is { Length: > 0 } token
                             ? token
                             : null,
+                        PendingMessages = surface.PaneRole() is { } mailRole ? PendingMessages(session.PaneToken(mailRole)) : null,
                     })
                     .ToArray();
                 return new ControlSessionNode
