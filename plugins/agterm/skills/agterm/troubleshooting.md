@@ -14,7 +14,7 @@ You are inside agterm-win (`AGTERM_ENABLED=1`). Use:
 - **Settings** - `agtermctl config reload` re-reads `settings.json` and always prints `ok`. A failed
   reload shows the "Config reload failed" bar in the window. There is no ghostty config in agterm-win.
   `restoreRunningCommand` is read when a window opens, so a change to it needs a restart of agterm-win.
-- **Logs** — agterm-win writes no log file. It writes diagnostics through `System.Diagnostics.Trace`
+- **Logs** — agterm-win writes app diagnostics through `System.Diagnostics.Trace`
   (OutputDebugString); read them with a debug-output viewer such as Sysinternals DebugView. Traced:
   keymap chord conflicts (`keymap: …`), notification registration and show failures, unsupported
   notification sounds, `Settings reload failed: …`, and WebView2 process failures. Failures the user
@@ -120,6 +120,14 @@ session the process lives in, it leaked. Fix a poisoned tmux server without rest
 then restart the affected panes/processes (a respawn is enough; existing processes keep their
 inherited copy). Prevent it: start daemons and session managers with the variables scrubbed
 (`env -u AGTERM_SESSION_ID … <cmd>`, full list in SKILL.md), or from a shell outside agterm-win.
+
+### "Copilot status stays active after an error, or does not update"
+
+Run **Help > Install Agent Status Hooks** again to update the owned Copilot hooks, then restart Copilot CLI so it loads the updated configuration. Both the hooks and skill installers use `COPILOT_HOME` from agterm-win's environment, or `~\.copilot` when it is unset or empty. Set the same value before starting agterm-win and Copilot CLI. An override that points to a missing directory is skipped; it does not install to `~\.copilot` instead.
+
+An unrecoverable Copilot error clears the unfinished status. A recoverable error leaves it active, and an ordinary completed turn keeps its completed indication. Session-end cleanup tracks the Copilot session identity, so detached `/clear` handlers cannot erase a replacement prompt's status. Background subagent events do not change the parent's glyph.
+
+Status delivery failures are recorded locally in `~\.config\agterm\agent-status\agent-status.log`, with a UTC timestamp, the `agtermctl` exit code and stderr. The hooks still exit 0 so a missing tool or unavailable pipe does not interrupt the agent. Successful delivery and calls outside agterm create no log. If the log cannot be written, the hook reports that on stderr. The log contains no hook payload, prompt, transcript or credentials; review and scrub stderr before sharing it. App diagnostics still use Trace, not this file.
 
 ## Reporting: decide bug vs unsupported FIRST
 

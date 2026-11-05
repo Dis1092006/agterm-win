@@ -10,6 +10,8 @@ public static class AgentHooksInstaller
     public const string PiName = "agterm-status.ts";
     public const string WrapperMarker = "agterm-win-status-hook";
     public const string PiMarker = "// agterm-win-pi-status-extension";
+    public const string CopilotLifecycleName = "agterm-copilot-lifecycle.ps1";
+    public const string CopilotLifecycleMarker = "# agterm-win-copilot-status-hook";
 
     private static readonly (string Event, string? Matcher, string State, string? Flag)[] ClaudeEvents =
     [
@@ -20,18 +22,21 @@ public static class AgentHooksInstaller
         ("Notification", "permission_prompt", "blocked", null),
     ];
 
-    /// <summary>The Copilot CLI hooks file agterm-win owns, in <c>~/.copilot/hooks</c>. Windows-only extension.</summary>
+    /// <summary>The Copilot CLI hooks file agterm-win owns, under its configuration root. Windows-only extension.</summary>
     public const string CopilotHooksName = "agterm-win-status.json";
 
     // permissionRequest is left out: Copilot CLI fires it for auto-approved tool calls too.
-    private static readonly (string Event, string? Matcher, string State, string? Flag)[] CopilotEvents =
+    private static readonly (string Event, string? Matcher)[] CopilotEvents =
     [
-        ("userPromptSubmitted", null, "active", "--blink"),
-        ("postToolUse", null, "active", "--blink"),
-        ("postToolUseFailure", null, "active", "--blink"),
-        ("agentStop", null, "completed", "--auto-reset"),
-        ("notification", "permission_prompt", "blocked", null),
-        ("notification", "elicitation_dialog", "blocked", null),
+        ("sessionStart", null),
+        ("userPromptSubmitted", null),
+        ("postToolUse", null),
+        ("postToolUseFailure", null),
+        ("agentStop", null),
+        ("notification", "permission_prompt"),
+        ("notification", "elicitation_dialog"),
+        ("errorOccurred", null),
+        ("sessionEnd", null),
     ];
 
     private static JsonArray StatusArgs(string wrapperPath, string state, string? flag)
@@ -46,13 +51,14 @@ public static class AgentHooksInstaller
     public static string BuildCopilot(string wrapperPath)
     {
         var hooks = new JsonObject();
-        foreach (var (eventName, matcher, state, flag) in CopilotEvents)
+        foreach (var (eventName, matcher) in CopilotEvents)
         {
             var entry = new JsonObject
             {
                 ["type"] = "command",
-                ["exec"] = "cmd.exe",
-                ["args"] = StatusArgs(wrapperPath, state, flag),
+                ["exec"] = "powershell.exe",
+                ["args"] = new JsonArray("-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                    "-File", Path.Join(Path.GetDirectoryName(wrapperPath), CopilotLifecycleName), eventName, "agterm-win"),
                 ["timeoutSec"] = 10,
             };
             if (matcher is not null) entry["matcher"] = matcher;
@@ -71,7 +77,18 @@ public static class AgentHooksInstaller
         if (root is not JsonObject file || file["hooks"] is not JsonObject hooks) return false;
         return hooks.All(property => property.Value is JsonArray entries && entries.All(entry =>
             entry is JsonObject handler && handler["type"]?.ToString() == "command" &&
-            handler["exec"]?.ToString() == "cmd.exe" && handler["args"] is JsonArray args && IsOwnedArgs(args)));
+            handler["args"] is JsonArray args &&
+            ((handler["exec"]?.ToString() == "cmd.exe" && IsOwnedArgs(args)) ||
+             (handler["exec"]?.ToString() == "powershell.exe" && IsOwnedCopilotArgs(args)))));
+    }
+
+    private static bool IsOwnedCopilotArgs(JsonArray args)
+    {
+        var values = args.Select(arg => arg is JsonValue value && value.TryGetValue<string>(out var text) ? text : null).ToArray();
+        return values.Length == 9 && values.Take(6).SequenceEqual(
+            new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File" }) &&
+            Path.GetFileName(values[6]) == CopilotLifecycleName &&
+            CopilotEvents.Any(entry => entry.Event == values[7]) && values[8] == "agterm-win";
     }
 
     public static (string Contents, bool Changed) MergeClaude(string? existing, string wrapperPath)
@@ -151,10 +168,12 @@ public static class AgentHooksInstaller
             Path.GetFileName(values[4]) == WrapperName && values[^1] == "agterm-win";
     }
 
-    public static InstallOutcome Run(string home, string wrapperTemplate, string piTemplate, string toolPath)
+    public static InstallOutcome Run(string home, string wrapperTemplate, string piTemplate, string toolPath,
+        string lifecycleTemplate, string? copilotHome = null)
     {
         if (!File.Exists(toolPath) || !wrapperTemplate.Contains(WrapperMarker, StringComparison.Ordinal) ||
-            !piTemplate.Contains(PiMarker, StringComparison.Ordinal))
+            !piTemplate.Contains(PiMarker, StringComparison.Ordinal) ||
+            !lifecycleTemplate.Contains(CopilotLifecycleMarker, StringComparison.Ordinal))
             return new InstallOutcome("Install Failed", "The agent-status scripts or agtermctl are not bundled in this build.", true);
         if (new[] { home, toolPath }.Any(path => path.IndexOfAny(['%', '!', '^', '&', '"', '\r', '\n']) >= 0))
             return new InstallOutcome("Install Failed",
@@ -167,7 +186,10 @@ public static class AgentHooksInstaller
         try
         {
             EnsureOwnedIfPresent(wrapper, WrapperMarker);
+            var lifecycle = Path.Join(directory, CopilotLifecycleName);
+            EnsureOwnedIfPresent(lifecycle, CopilotLifecycleMarker);
             WriteOwned(wrapper, wrapperTemplate.Replace("__AGTERMCTL_PATH__", toolPath, StringComparison.Ordinal), WrapperMarker);
+            WriteOwned(lifecycle, lifecycleTemplate, CopilotLifecycleMarker);
             installed.Add($"Status script: {wrapper}");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
@@ -191,9 +213,15 @@ public static class AgentHooksInstaller
             skipped.Add($"Claude Code: {ex.Message}");
         }
 
-        if (Directory.Exists(Path.Join(home, ".copilot")))
+        string copilotDirectory;
+        try { copilotDirectory = SkillInstall.CopilotDirectory(home, copilotHome); }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
-            var copilotHooks = Path.Join(home, ".copilot", "hooks", CopilotHooksName);
+            return new InstallOutcome("Install Failed", $"The Copilot CLI configuration path is invalid: {ex.Message}", true);
+        }
+        if (Directory.Exists(copilotDirectory))
+        {
+            var copilotHooks = Path.Join(copilotDirectory, "hooks", CopilotHooksName);
             try
             {
                 var existing = File.Exists(copilotHooks)
@@ -211,7 +239,8 @@ public static class AgentHooksInstaller
                 skipped.Add($"Copilot CLI: {ex.Message}");
             }
         }
-        else skipped.Add("Copilot CLI: not installed (no .copilot directory)");
+        else skipped.Add(string.IsNullOrEmpty(copilotHome) ? "Copilot CLI: not installed (no .copilot directory)" :
+            $"Copilot CLI: not installed (no configuration directory at {copilotDirectory})");
 
         var piAgent = Path.Join(home, ".pi", "agent");
         if (Directory.Exists(piAgent))

@@ -15,7 +15,8 @@ public static class InstallerActions
     }
 
     public static InstallOutcome InstallAgentSkill(string home) =>
-        SkillInstaller.Run(home, SkillBundle.Files, new PhysicalSkillFileSystem());
+        SkillInstaller.Run(home, SkillBundle.Files, new PhysicalSkillFileSystem(),
+            Environment.GetEnvironmentVariable("COPILOT_HOME"));
 
     public static InstallOutcome InstallAgentStatusHooks(string home, string? processPath)
     {
@@ -28,7 +29,9 @@ public static class InstallerActions
         try
         {
             return AgentHooksInstaller.Run(home, AgentStatusBundle.Read(AgentHooksInstaller.WrapperName),
-                AgentStatusBundle.Read(AgentHooksInstaller.PiName), tool);
+                AgentStatusBundle.Read(AgentHooksInstaller.PiName), tool,
+                AgentStatusBundle.Read(AgentHooksInstaller.CopilotLifecycleName),
+                Environment.GetEnvironmentVariable("COPILOT_HOME"));
         }
         catch (IOException ex)
         {

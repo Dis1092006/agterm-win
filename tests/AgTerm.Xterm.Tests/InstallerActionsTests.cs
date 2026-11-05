@@ -3,6 +3,7 @@ using AgTerm.Core.Install;
 
 namespace AgTerm.Xterm.Tests;
 
+[Collection("process-environment")]
 public sealed class InstallerActionsTests : IDisposable
 {
     private readonly string _root = Path.Join(Path.GetTempPath(), $"agterm-installer-actions-{Guid.NewGuid():N}");
@@ -86,6 +87,8 @@ public sealed class InstallerActionsTests : IDisposable
         Assert.Contains("PermissionRequest", File.ReadAllText(Path.Join(_root, ".claude", "settings.json")));
         Assert.Contains(AgentHooksInstaller.WrapperMarker,
             File.ReadAllText(Path.Join(_root, ".config", "agterm", "agent-status", AgentHooksInstaller.WrapperName)));
+        Assert.Equal(AgTerm.Xterm.AgentStatusBundle.Read(AgentHooksInstaller.CopilotLifecycleName),
+            File.ReadAllText(Path.Join(_root, ".config", "agterm", "agent-status", AgentHooksInstaller.CopilotLifecycleName)));
     }
 
     [Fact]
@@ -102,6 +105,31 @@ public sealed class InstallerActionsTests : IDisposable
         Assert.Contains("agterm-agent-status.cmd", extension, StringComparison.Ordinal);
         Assert.Contains("timeout: 5_000", extension, StringComparison.Ordinal);
         Assert.DoesNotContain("__AGTERM_STATUS_WRAPPER__", extension, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BothCopilotInstallersUseCopilotHomeInsteadOfTheDefaultDirectory()
+    {
+        var copilotHome = Path.Join(_root, "custom copilot");
+        Directory.CreateDirectory(copilotHome);
+        Directory.CreateDirectory(Path.Join(_root, ".copilot"));
+        File.WriteAllText(Path.Join(_root, CliInstall.ToolFileName), "");
+        var previous = Environment.GetEnvironmentVariable("COPILOT_HOME");
+        try
+        {
+            Environment.SetEnvironmentVariable("COPILOT_HOME", copilotHome);
+
+            var skill = InstallerActions.InstallAgentSkill(_root);
+            var hooks = InstallerActions.InstallAgentStatusHooks(_root, Path.Join(_root, "agterm-win.exe"));
+
+            Assert.False(skill.IsWarning, skill.Message);
+            Assert.False(hooks.IsWarning, hooks.Message);
+            Assert.True(File.Exists(Path.Join(copilotHome, "skills", "agterm", "SKILL.md")));
+            Assert.True(File.Exists(Path.Join(copilotHome, "hooks", AgentHooksInstaller.CopilotHooksName)));
+            Assert.False(Directory.Exists(Path.Join(_root, ".copilot", "skills")));
+            Assert.False(Directory.Exists(Path.Join(_root, ".copilot", "hooks")));
+        }
+        finally { Environment.SetEnvironmentVariable("COPILOT_HOME", previous); }
     }
 
     private sealed class FakePathEnvironment : IUserPathEnvironment

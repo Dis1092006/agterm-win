@@ -2,7 +2,7 @@ namespace AgTerm.Core.Install;
 
 /// <summary>Host-free helpers for installing the bundled agent skill (<c>agterm</c>) into the skills
 /// directories of Claude Code (<c>~/.claude/skills</c>), Codex (<c>~/.codex/skills</c>) and, as a
-/// Windows-only extension, GitHub Copilot CLI (<c>~/.copilot/skills</c>). Port of agtermCore
+/// Windows-only extension, GitHub Copilot CLI (its config root's <c>skills</c>). Port of agtermCore
 /// SkillInstall.swift (v0.36.0). The copy itself is <see cref="SkillInstaller"/>.</summary>
 public static class SkillInstall
 {
@@ -20,14 +20,19 @@ public static class SkillInstall
     /// agent directory name (<c>.claude</c>, <c>.codex</c> or <c>.copilot</c>).</summary>
     public static string SkillDirectory(string home, string @base) => Path.Join(home, @base, "skills", SkillName);
 
+    /// <summary>The Copilot CLI configuration root. The app passes its COPILOT_HOME override.</summary>
+    public static string CopilotDirectory(string home, string? copilotHome) =>
+        string.IsNullOrEmpty(copilotHome) ? Path.Join(home, ".copilot") : Path.GetFullPath(copilotHome);
+
     /// <summary>Each agent whose base directory exists, Claude Code first. When neither exists, Claude
     /// Code's, so the install is never a no-op.</summary>
     public static IReadOnlyList<Target> InstallTargets(string home, bool claudeExists, bool codexExists)
         => InstallTargets(home, claudeExists, codexExists, copilotExists: false);
 
-    /// <summary>As the upstream overload, plus Copilot CLI (<c>~/.copilot/skills</c>) last when its base
-    /// directory exists. Copilot CLI does not read <c>~/.claude/skills</c>. Windows-only extension.</summary>
-    public static IReadOnlyList<Target> InstallTargets(string home, bool claudeExists, bool codexExists, bool copilotExists)
+    /// <summary>As the upstream overload, plus Copilot CLI last when its selected configuration root
+    /// exists. Copilot CLI does not read <c>~/.claude/skills</c>. Windows-only extension.</summary>
+    public static IReadOnlyList<Target> InstallTargets(string home, bool claudeExists, bool codexExists, bool copilotExists,
+        string? copilotHome = null)
     {
         var targets = new List<Target>();
         if (claudeExists)
@@ -35,7 +40,7 @@ public static class SkillInstall
         if (codexExists)
             targets.Add(new Target("Codex", SkillDirectory(home, ".codex")));
         if (copilotExists)
-            targets.Add(new Target("Copilot CLI", SkillDirectory(home, ".copilot")));
+            targets.Add(new Target("Copilot CLI", Path.Join(CopilotDirectory(home, copilotHome), "skills", SkillName)));
         if (targets.Count == 0)
             targets.Add(new Target("Claude Code", SkillDirectory(home, ".claude")));
         return targets;

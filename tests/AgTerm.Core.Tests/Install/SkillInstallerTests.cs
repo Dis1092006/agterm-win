@@ -184,6 +184,53 @@ public sealed class SkillInstallerTests
         Assert.Contains($@"write {CopilotDest}\scripts\show-image.sh", fs.Log);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void AnAbsentCopilotHomeKeepsTheDefaultDirectory(string? copilotHome)
+    {
+        Assert.Equal(CopilotBase, SkillInstall.CopilotDirectory(Home, copilotHome));
+    }
+
+    [Fact]
+    public void CopilotHomeOverrideChangesOnlyTheCopilotTarget()
+    {
+        const string custom = @"C:\custom copilot";
+        var fs = new FakeFileSystem();
+        foreach (var path in new[] { ClaudeBase, CodexBase, CopilotBase, custom })
+            fs.AddDirectory(path);
+
+        var report = SkillInstaller.Install(Home, Files, fs, copilotHome: custom);
+
+        Assert.Equal(new[] { "Claude Code", "Codex", "Copilot CLI" }, report.Installed.Select(entry => entry.Agent));
+        Assert.Equal(Path.Join(custom, "skills", "agterm"), report.Installed[2].Detail);
+        Assert.DoesNotContain(fs.Log, line => line.Contains(CopilotBase, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AMissingCopilotHomeOverrideDoesNotInstallToTheDefaultDirectory()
+    {
+        var fs = new FakeFileSystem();
+        fs.AddDirectory(CopilotBase);
+        var report = SkillInstaller.Install(Home, Files, fs, copilotHome: @"C:\missing");
+        Assert.Equal(new[] { new SkillInstallReport.Entry("Claude Code", ClaudeDest) }, report.Installed);
+    }
+
+    [Fact]
+    public void CopilotHomeOverrideStillProtectsForeignSkills()
+    {
+        const string custom = @"C:\custom copilot";
+        var destination = Path.Join(custom, "skills", "agterm");
+        var fs = new FakeFileSystem();
+        fs.AddDirectory(custom);
+        fs.AddDirectory(destination);
+        fs.Texts[Path.Join(destination, "SKILL.md")] = "foreign";
+        var outcome = SkillInstaller.Run(Home, Files, fs, copilotHome: custom);
+        Assert.True(outcome.IsWarning);
+        Assert.Contains("left untouched", outcome.Message);
+        Assert.Empty(fs.Log);
+    }
+
     [Fact]
     public void MarkedDestinationIsReplaced()
     {
