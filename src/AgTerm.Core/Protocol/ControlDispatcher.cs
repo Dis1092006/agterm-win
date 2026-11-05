@@ -420,9 +420,9 @@ public sealed class ControlDispatcher
                 {
                     if (targets.Length == 0)
                         return Err("session.close requires at least one --target");
-                    return _actions.CloseSessions(targets, request.Args?.Window);
+                    return _actions.CloseSessions(targets, request.Args?.Window, request.Args?.Undoable == true);
                 }
-                return _actions.CloseSession(request.Target, request.Args?.Window);
+                return _actions.CloseSession(request.Target, request.Args?.Window, request.Args?.Undoable == true);
             }
             case Command.SessionRename:
             {
@@ -696,7 +696,7 @@ public sealed class ControlDispatcher
                 return await _actions.SwapSessionPanes(request.Target, request.Args?.Window);
             case Command.SessionScratch:
                 return _actions.ScratchSession(request.Target, request.Args?.Window, request.Args?.Mode,
-                    request.Args?.Command);
+                    request.Args?.Command, request.Args?.Follow == true);
             case Command.SessionFocus:
                 return _actions.FocusSessionPane(request.Target, request.Args?.Window, request.Args?.Pane);
             case Command.SessionResize:

@@ -226,7 +226,7 @@ public sealed class LiveScratchE2ETests : IDisposable
     // Q2.1: opening scratch for a non-active session selects that session (the scratch is a
     // full-coverage, focus-grabbing surface, so it must bring its owner to the front).
     [Fact]
-    public void Scratch_on_for_a_background_target_selects_that_session()
+    public void Scratch_on_for_a_background_target_selects_that_session_only_with_follow()
     {
         WaitForText(">"); // first (default, active) session's main shell ready
         var backgroundId = CtlOk("session", "new", "--no-select").Trim();
@@ -236,6 +236,13 @@ public sealed class LiveScratchE2ETests : IDisposable
         Assert.NotEqual(Guid.Parse(backgroundId), selectedBefore);
 
         CtlOk("session", "scratch", "on", "--target", backgroundId);
+
+        Guid? selectedWithout = null;
+        _host.Host.RunLocked(() => selectedWithout = _host.Host.Store.SelectedSessionId);
+        Assert.Equal(selectedBefore, selectedWithout);
+
+        CtlOk("session", "scratch", "off", "--target", backgroundId);
+        CtlOk("session", "scratch", "on", "--target", backgroundId, "--follow");
 
         Guid? selectedAfter = null;
         _host.Host.RunLocked(() => selectedAfter = _host.Host.Store.SelectedSessionId);

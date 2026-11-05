@@ -197,6 +197,9 @@ public sealed class SidebarController : IDisposable
         foreach (var id in sessionIds) store.SetAgentIndicator(new AgentIndicator(), id);
     });
 
+    public void MarkForAttention(IReadOnlyList<Guid> sessionIds) =>
+        Mutate(store => store.MarkForAttention(sessionIds));
+
     public void DuplicateSession(Guid sessionId) =>
         Mutate(store => store.DuplicateSession(sessionId));
 

@@ -503,6 +503,70 @@ public sealed class LiveApplicationHost : IDisposable
             _terminalNotificationLimiter.Allow(notification);
     }
 
+    /// <summary>One attention step for the GUI chords (upstream stepAttention). With
+    /// attentionNavigationAcrossWindows on it scans every open window, skipping those under terminal zoom,
+    /// the dashboard or a pending pick; otherwise only the source window. The target window is raised
+    /// first, and its blocked pane is revealed. Returns the landing, or null when nothing stops.</summary>
+    public async Task<(Guid WindowId, Guid SessionId)?> StepAttentionAsync(
+        Guid sourceWindowId, bool forward, CancellationToken cancellationToken = default)
+    {
+        var target = await Task.Run(() =>
+        {
+            LiveWindowHost[] windows;
+            lock (_gate)
+            {
+                if (_disposed || !_openWindows.TryGetValue(sourceWindowId, out var sourceHost)) return null;
+                windows = _windows.Where(entry => entry.IsOpen)
+                    .Select(entry => _openWindows.GetValueOrDefault(entry.Id))
+                    .Where(host => host is not null).Select(host => host!).ToArray();
+                if (!windows.Contains(sourceHost)) windows = windows.Append(sourceHost).ToArray();
+            }
+            var source = windows.First(host => host.WindowId == sourceWindowId);
+            var across = false;
+            Guid? selected = null;
+            source.RunLocked(() =>
+            {
+                across = source.Store.AttentionNavigationAcrossWindows;
+                selected = source.Store.SelectedSessionId;
+            });
+            var snapshot = new List<AttentionWindow>();
+            foreach (var host in windows)
+            {
+                if (!across && host != source) continue;
+                host.RunLocked(() => snapshot.Add(new AttentionWindow(
+                    host.WindowId,
+                    Eligible: host.Actions.Zoom.Target is null && !host.Actions.Dashboard.IsOpen
+                        && host.Actions.Pick.PendingId is null,
+                    host.Store.NavigableSessions
+                        .Select(session => new AttentionCandidate(session.Id, host.Store.StopsAttentionNavigation(session)))
+                        .ToList())));
+            }
+            return AttentionNavigator.Step(snapshot, sourceWindowId, selected, forward);
+        }, cancellationToken).ConfigureAwait(false);
+        if (target is not { } landing) return null;
+
+        if (landing.WindowId != sourceWindowId)
+        {
+            var response = await SelectWindowAsync(landing.WindowId.ToString("D"), cancellationToken).ConfigureAwait(false);
+            if (!response.Ok) throw new InvalidOperationException(response.Error);
+        }
+        LiveWindowHost window;
+        LiveControlHost? attachment;
+        lock (_gate)
+        {
+            if (_disposed || !_openWindows.TryGetValue(landing.WindowId, out window!)) return null;
+            _attachments.TryGetValue(landing.WindowId, out attachment);
+        }
+        var selectedTarget = false;
+        if (attachment is not null)
+            selectedTarget = await attachment.SelectAttentionSessionAsync(landing.SessionId, cancellationToken).ConfigureAwait(false);
+        else
+            await Task.Run(() => window.RunLocked(() =>
+                selectedTarget = LiveControlHost.SelectAttentionSession(window.Store, landing.SessionId)),
+                cancellationToken).ConfigureAwait(false);
+        return selectedTarget ? landing : null;
+    }
+
     public async Task<bool> RevealNotificationAsync(
         LiveNotificationTarget target, CancellationToken cancellationToken = default)
     {

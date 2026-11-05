@@ -123,6 +123,10 @@ public sealed record ControlResult
     [JsonPropertyName("installed")]
     public ControlAppIdentity? Installed { get; init; }
 
+    /// <summary>session.close --undoable: whether the close went into the undo grace window.</summary>
+    [JsonPropertyName("undoable")]
+    public bool? Undoable { get; init; }
+
     /// <summary>The icon names workspace.icon accepts, for icon.list. Windows-only
     /// (parity/windows-only.json); declared last so the upstream fields keep upstream order.</summary>
     [JsonPropertyName("icons")]

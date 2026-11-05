@@ -314,6 +314,20 @@ public class SocketClientTests
         Assert.Equal("3 diagnostic(s)", ClientOutput.FormatResponse(response, json: false));
     }
 
+    [Theory]
+    [InlineData("9F3C", null, true, "ok (undoable)")]
+    [InlineData("9F3C", null, false, "ok (not undoable)")]
+    [InlineData(null, 2, true, "2 sessions (undoable)")]
+    [InlineData(null, 1, false, "1 session (not undoable)")]
+    public void FormatResponseUndoableClose(string? id, int? affected, bool undoable, string expected)
+    {
+        var response = new ControlResponse
+        {
+            Ok = true, Result = new ControlResult { Id = id, Affected = affected, Undoable = undoable },
+        };
+        Assert.Equal(expected, ClientOutput.FormatResponse(response, json: false));
+    }
+
     [Theory] // @Test(arguments:) — the one parameterized test in the Swift suite
     [InlineData(1, "1 session")]
     [InlineData(2, "2 sessions")]

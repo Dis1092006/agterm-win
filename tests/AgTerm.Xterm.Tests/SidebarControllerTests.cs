@@ -186,6 +186,23 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void Mark_for_attention_completes_idle_sessions_and_leaves_statused_ones()
+    {
+        var w1 = Latest.Workspaces.Single().Id;
+        _controller.NewSession(w1);
+        var ids = Latest.Rows.Where(r => r.Kind == SidebarRowKind.Session).Select(r => r.Id).ToList();
+        Assert.True(ids.Count >= 2);
+        var blocked = ids[0];
+        var idle = ids[1];
+        Mutate(store => store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked), blocked));
+
+        _controller.MarkForAttention(new[] { blocked, idle });
+
+        Assert.Equal(AgentStatus.Blocked, Latest.Rows.Single(r => r.Id == blocked).Indicator.Status);
+        Assert.Equal(AgentStatus.Completed, Latest.Rows.Single(r => r.Id == idle).Indicator.Status);
+    }
+
+    [Fact]
     public void New_duplicate_close_and_delete_follow_the_upstream_paths()
     {
         var w1 = Latest.Workspaces.Single().Id;

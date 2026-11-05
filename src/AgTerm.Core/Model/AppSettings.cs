@@ -68,6 +68,8 @@ public sealed record AppSettings
     [JsonPropertyName("closeGraceUndoEnabled")] public bool? CloseGraceUndoEnabled { get; init; }
     [JsonPropertyName("autoFollowAttention")] public string? AutoFollowAttention { get; init; }
     [JsonPropertyName("autoFollowStayOnActive")] public bool? AutoFollowStayOnActive { get; init; }
+    [JsonPropertyName("attentionIncludesActive")] public bool? AttentionIncludesActive { get; init; }
+    [JsonPropertyName("attentionNavigationAcrossWindows")] public bool? AttentionNavigationAcrossWindows { get; init; }
     [JsonPropertyName("sidebarFontSize")] public double? SidebarFontSize { get; init; }
     [JsonPropertyName("hiddenInterfaceElements")] public IReadOnlyList<string>? HiddenInterfaceElements { get; init; }
     [JsonPropertyName("autoHideSidebarInactiveWindows")] public bool? AutoHideSidebarInactiveWindows { get; init; }
@@ -89,6 +91,10 @@ public sealed record AppSettings
     public string? CopyOnSelect { get; init; }
 
     [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
+
+    [JsonIgnore] public bool EffectiveAttentionIncludesActive => AttentionIncludesActive == true;
+
+    [JsonIgnore] public bool EffectiveAttentionNavigationAcrossWindows => AttentionNavigationAcrossWindows == true;
 
     /// <summary>A value is matched exactly, like upstream's enum decode of other settings.</summary>
     public CopyOnSelectMode EffectiveCopyOnSelect() => CopyOnSelect switch
@@ -162,6 +168,8 @@ public sealed record AppSettings
          other.SidebarThemeStyle, other.RestoreScrollback, other.OverlayOpacity,
          other.CloseOnShellExit) &&
         CopyOnSelect == other.CopyOnSelect && StatusReset == other.StatusReset &&
+        AttentionIncludesActive == other.AttentionIncludesActive &&
+        AttentionNavigationAcrossWindows == other.AttentionNavigationAcrossWindows &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&

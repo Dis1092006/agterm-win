@@ -112,6 +112,28 @@ public class ControlProtocolTests
     }
 
     [Fact]
+    public void SessionCloseUndoableOmitsWhenNilAndRoundTripsWhenSet()
+    {
+        var plain = new ControlRequest { Cmd = Command.SessionClose, Target = "9f3c" };
+        Assert.DoesNotContain("undoable", Encoded(plain));
+
+        var undoable = new ControlRequest { Cmd = Command.SessionClose, Target = "9f3c", Args = new ControlArgs { Undoable = true } };
+        Assert.Contains("\"undoable\":true", Encoded(undoable));
+        Assert.True(RoundTrip(undoable).Args!.Undoable);
+    }
+
+    [Fact]
+    public void ResultUndoableOmitsWhenNilAndRoundTripsWhenSet()
+    {
+        var plain = ControlJson.Serialize(new ControlResponse { Ok = true, Result = new ControlResult { Affected = 2 } });
+        Assert.DoesNotContain("undoable", plain);
+
+        var json = ControlJson.Serialize(new ControlResponse { Ok = true, Result = new ControlResult { Affected = 2, Undoable = false } });
+        Assert.Contains("\"undoable\":false", json);
+        Assert.False(ControlJson.Deserialize<ControlResponse>(json)!.Result!.Undoable);
+    }
+
+    [Fact]
     public void SessionOverlayResizeOmitsFullWhenNil()
     {
         var request = new ControlRequest { Cmd = Command.SessionOverlayResize, Target = "9f3c", Args = new ControlArgs { SizePercent = 60 } };

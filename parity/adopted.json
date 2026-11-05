@@ -42,7 +42,8 @@
     { "name": "sticky", "upstream": "3ac149e6" },
     { "name": "frame", "upstream": "3ac149e6" },
     { "name": "sidebarWidth", "upstream": "7977f202" },
-    { "name": "axis", "upstream": "eb29d556" }
+    { "name": "axis", "upstream": "eb29d556" },
+    { "name": "undoable", "upstream": "0107bc95" }
   ],
   "result": [
     { "name": "sidebarWidth", "upstream": "7977f202" },
@@ -52,12 +53,15 @@
     { "name": "keymap", "upstream": "f4b7a4aa" },
     { "name": "app", "upstream": "5d22904a" },
     { "name": "installed", "upstream": "18da29cb" },
-    { "name": "cursor", "upstream": "2279c722" }
+    { "name": "cursor", "upstream": "2279c722" },
+    { "name": "undoable", "upstream": "0107bc95" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },
     { "name": "askPending", "upstream": "32ec288d" },
-    { "name": "workspaceFilter", "upstream": "6722755a" }
+    { "name": "workspaceFilter", "upstream": "6722755a" },
+    { "name": "attentionIncludesActive", "upstream": "6864e35a" },
+    { "name": "attentionNavigationAcrossWindows", "upstream": "ffffd2b8" }
   ],
   "sessionNode": [
     { "name": "ask", "upstream": "1b765e69" },

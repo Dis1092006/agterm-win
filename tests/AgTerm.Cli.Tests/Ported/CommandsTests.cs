@@ -376,6 +376,54 @@ public class CommandsTests
     }
 
     [Fact]
+    public void SessionCloseUndoableSingleTarget()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionClose, Target = "x",
+                Args = new ControlArgs { Undoable = true },
+            },
+            Request("session", "close", "--target", "x", "--undoable"));
+    }
+
+    [Fact]
+    public void SessionCloseUndoableDefaultsToTheActiveSession()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionClose, Target = "active",
+                Args = new ControlArgs { Undoable = true },
+            },
+            Request("session", "close", "--undoable"));
+    }
+
+    [Fact]
+    public void SessionCloseUndoableBatchKeepsTheTargetsAndWindow()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionClose, Target = "a",
+                Args = new ControlArgs { Targets = new[] { "a", "b" }, Window = "w1", Undoable = true },
+            },
+            Request("session", "close", "--target", "a", "--target", "b", "--undoable", "--window", "w1"));
+    }
+
+    [Fact]
+    public void SessionScratchFollow()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionScratch, Target = "active",
+                Args = new ControlArgs { Mode = "on", Follow = true },
+            },
+            Request("session", "scratch", "on", "--follow"));
+    }
+
+    [Fact]
     public void SessionCloseMultipleTargets()
     {
         var expected = new ControlRequest

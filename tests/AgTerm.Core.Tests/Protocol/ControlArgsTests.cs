@@ -14,7 +14,7 @@ public class ControlArgsTests
         Repeats = true, Pane = "s", PaneId = "s", Ratio = 0.5, RatioDelta = 0.5, All = true,
         Lines = 3, To = "s", After = "s", Before = "s", Run = "s", Kinds = new[] { "a" }, Limit = 3,
         Title = "s", Body = "s", Command = "s", Wait = true, SizePercent = 3, Full = true,
-        Follow = true,
+        Follow = true, Undoable = true,
         Message = "s",
         Detail = "s", Spinner = "s", HideAfter = 0.5, Markdown = true, Sticky = true, Frame = true,
         Items = new[] { new ControlPickItem { Id = "a", Label = "A" } }, Prompt = "s", Query = "s", AllowCustom = true, Selection = "s",

@@ -28,6 +28,30 @@ public sealed class AutoFollowRuntimeTests
     }
 
     [Fact]
+    public async Task Attention_navigation_settings_apply_at_startup_and_on_reload()
+    {
+        var directory = Directory.CreateTempSubdirectory("agterm-attention-nav-").FullName;
+        try
+        {
+            using var host = CreateHost(directory, new AppSettings { AttentionIncludesActive = true });
+            host.Host.RunLocked(() =>
+            {
+                Assert.True(host.Store.ControlTree().AttentionIncludesActive);
+                Assert.False(host.Store.ControlTree().AttentionNavigationAcrossWindows);
+            });
+            var settings = new SettingsStore(directory);
+            settings.Save(new AppSettings { AttentionNavigationAcrossWindows = true });
+            await host.ApplySettingsAsync(settings.ReadStrict());
+            host.Host.RunLocked(() =>
+            {
+                Assert.False(host.Store.ControlTree().AttentionIncludesActive);
+                Assert.True(host.Store.ControlTree().AttentionNavigationAcrossWindows);
+            });
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
     public async Task Settings_reload_applies_and_disabling_cancels_pending_follow()
     {
         var directory = Directory.CreateTempSubdirectory("agterm-follow-reload-").FullName;

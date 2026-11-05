@@ -65,9 +65,14 @@ internal static class ClientOutput
         {
             return $"exit {exitCode}";
         }
+        if (response.Result?.Undoable is { } undoable)
+        {
+            var closed = response.Result.Affected is { } closedCount ? FormatAffected(closedCount) : "ok";
+            return $"{closed} ({(undoable ? "undoable" : "not undoable")})";
+        }
         if (response.Result?.Affected is { } affected)
         {
-            return affected == 1 ? "1 session" : $"{affected} sessions";
+            return FormatAffected(affected);
         }
         if (response.Result?.Count is { } count)
         {
@@ -105,6 +110,9 @@ internal static class ClientOutput
         }
         return "ok";
     }
+
+    private static string FormatAffected(int affected) =>
+        affected == 1 ? "1 session" : $"{affected} sessions";
 
     private static string FormatIdentity(ControlAppIdentity identity) =>
         string.IsNullOrEmpty(identity.Commit) ? identity.Version : $"{identity.Version} ({identity.Commit})";

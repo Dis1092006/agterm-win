@@ -144,9 +144,11 @@ session's local `cwd` is stale because it's connected to a remote. `surfaces[].i
 control address for `surface zoom` (`left`, `right`, `scratch`, or `overlay`), including
 hidden-but-alive split/scratch surfaces. `surfaces[].paneID` is the same surface's stable token (the
 shell's `$AGTERM_PANE_ID`), the value `session type`/`session text --pane-id` takes; it is omitted when the
-surface has none. The tree object also carries six
+surface has none. The tree object also carries these
 read-only top-level fields: `workspaceFilter` (whether the sidebar focus filter is applied, reported even when false), `idleMs` (ms since the last user input in the window), `autoFollowMs`
-(the Auto-follow timeout in ms, omitted when Disabled), `sidebarVisible` (whether the window's
+(the Auto-follow timeout in ms, omitted when Disabled), `attentionIncludesActive` (whether attention
+navigation also stops on active sessions), `attentionNavigationAcrossWindows` (whether GUI attention
+navigation walks every open window; `session go` stays in its window), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
 (`tree` or `flagged` — the read side of `sidebar mode`), and `quickVisible` (the same app-level panel visibility in every window's tree). List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
@@ -280,11 +282,12 @@ omitted when expanded).
   `tree`: the new node sits directly after its source carrying the source's focused-pane cwd (equal to the
   source node's `tree.cwd` unless the source is a split focused off its primary pane, where `tree.cwd`
   reports the primary).
-- `close [--target T ...]` — close one session, or repeat `--target` to close a batch with one
-  grace-period undo.
+- `close [--target T ...] [--undoable]` — close one session, or repeat `--target` to close a batch with one
+  grace-period undo. `--undoable` uses the grace window when `closeGraceUndoEnabled` allows it, and the
+  result carries `undoable` (`true` when the close can be undone).
 - `select` · `rename <name>` · `reveal` (checks that the focused pane's cwd exists and selects the session;
   it does not open Explorer — the sidebar's **Reveal in Explorer** item does).
-- `go --to next|prev|first|last|next-attention|prev-attention` — move the selection between sessions.
+- `go --to next|prev|first|last|next-attention|prev-attention` — move the selection between sessions (attention steps stop on blocked/completed, plus active when the tree reports `attentionIncludesActive: true`).
 - `move <workspace>` (relocate) or `move --to up|down|top|bottom` (reorder within the workspace) or
   `move --after SID | --before SID` (place after/before an anchor session; the anchor carries its own
   workspace, so this relocates + positions in one shot, even cross-workspace). For workspace and
@@ -307,8 +310,8 @@ omitted when expanded).
   left/right panes) or stacked (`horizontal`: top/bottom panes); hide keeps it alive. The axis applies only
   when the split is shown: `toggle --axis` on a split of the other axis re-axes it instead of hiding it. Read
   back as the tree `splitAxis` field (present while a split exists, shown or hidden).
-- `scratch [on|off|toggle] [--command CMD]` — full-coverage third shell (hide keeps it alive; `exit`
-  recreates). `--command` (when showing) runs a program instead of a shell, run-once like `session new
+- `scratch [on|off|toggle] [--command CMD] [--follow]` — full-coverage third shell (hide keeps it alive; `exit`
+  recreates). `on` does not switch sessions; `--follow` selects the target. `--command` (when showing) runs a program instead of a shell, run-once like `session new
   --command` (respawns the scratch if one is open). Target your own session with
   `--target "$AGTERM_SESSION_ID"` (see Addressing).
 - `focus [left|right|other]` — move focus between split panes (`top`/`primary` and `bottom`/`split` are
@@ -318,7 +321,7 @@ omitted when expanded).
   the absolute primary-pane (left or top) fraction (0..1, clamped to 0.05..0.95); `--grow-left`/`--grow-right`
   nudge it by a fraction. `--grow-primary`/`--grow-top` and `--grow-split`/`--grow-bottom` are aliases for
   them. Prints the applied (clamped) fraction.
-- `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` and `--sound beep` are aliases for the same Windows system alert; use a Windows WAV filename stem such as `"Windows Notify Calendar"` or a user WAV name for a distinct sound. Unknown names return `unknown sound: <name> (use 'default', 'beep', or one of: <Windows list>)` without changing the status. Names are case-insensitive; empty means no explicit sound. Settings lists available sounds with Preview. Put user WAV files in `<state directory>\sounds` (normally `~\.agterm-win\sounds`); user files override same-name Windows files. `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so the status is cleared when that pane goes away, read back as the tree `statusPane` field (a keystroke does not clear a status, and attention navigation only steps the selection, it does not reveal the pane); `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
+- `status <idle|active|completed|blocked> [--blink] [--auto-reset] [--sound NAME] [--color #rrggbb] [--shape SHAPE] [--pane left|right|scratch] [--pane-id TOKEN]` — set the sidebar agent glyph (`--sound default` and `--sound beep` are aliases for the same Windows system alert; use a Windows WAV filename stem such as `"Windows Notify Calendar"` or a user WAV name for a distinct sound. Unknown names return `unknown sound: <name> (use 'default', 'beep', or one of: <Windows list>)` without changing the status. Names are case-insensitive; empty means no explicit sound. Settings lists available sounds with Preview. Put user WAV files in `<state directory>\sounds` (normally `~\.agterm-win\sounds`); user files override same-name Windows files. `--color` tints the glyph for this call only, reverting on the next status set without it; `--shape` (`circle`, `square`, `triangle`, `diamond`, `capsule`, `star`) picks its silhouette for this call only and reverts the same way, read back as the tree `statusShape` field; `--pane` records which pane set it — `left`=main, `right`=split, `scratch` — so the status is cleared when that pane goes away, read back as the tree `statusPane` field (a keystroke does not clear a status, and `session go` attention steps only move the selection, they do not reveal the pane; the GUI attention keys do reveal it); `--pane-id` is the hook-forwarded stable surface token (`$AGTERM_PANE_ID`) that resolves the pane's live slot and overrides a stale `--pane` after a promote + re-split — scripts set `--pane` directly and leave `--pane-id` to the hook).
 - `flag [on|off|toggle|clear]` — flag a session for the flagged working-set view (`clear` unflags all).
 - `context [TEXT] [--clear]` — set or clear what the session is about (a PR, an issue, a task), shown in the title bar. Trimmed, at most 256 UTF-8 bytes, no control characters or line breaks; it persists until `--clear`. Read back as the tree `context` field.
 - `seen [--target] [--window W]` — clear the session's unseen-notification badge WITHOUT changing the
