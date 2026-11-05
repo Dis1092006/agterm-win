@@ -74,8 +74,13 @@ internal static class EventFormatter
         ControlEventKind.Notify => "notify",
         ControlEventKind.SessionCreated => "session.created",
         ControlEventKind.SessionClosed => "session.closed",
+        ControlEventKind.SessionSelected => "session.selected",
         ControlEventKind.TreeChanged => "tree.changed",
+        ControlEventKind.PaneSplit => "pane.split",
+        ControlEventKind.PaneScratch => "pane.scratch",
         ControlEventKind.PaneFocused => "pane.focused",
+        ControlEventKind.RemoteOpened => "remote.opened",
+        ControlEventKind.RemoteClosed => "remote.closed",
         ControlEventKind.AppLaunched => "app.launched",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
@@ -92,6 +97,7 @@ internal static class EventFormatter
         {
             case ControlEventKind.Status:
                 var parts = new List<string> { time, Wire(@event.Kind), name, @event.Payload.Status ?? "idle" };
+                if (@event.Payload.Previous is { } previous) parts.Add($"previous={previous}");
                 if (@event.Payload.Pane is { } pane) parts.Add($"pane={pane}");
                 if (@event.Payload.Blink == true) parts.Add("blink");
                 if (@event.Payload.Color is { } color) parts.Add($"color={color}");
@@ -99,6 +105,14 @@ internal static class EventFormatter
                 return string.Join(" ", parts);
             case ControlEventKind.Notify:
                 return $"{time} {Wire(@event.Kind)} {name} {@event.Payload.Title ?? name}: {@event.Payload.Body ?? ""}";
+            case ControlEventKind.SessionSelected:
+                return $"{time} {Wire(@event.Kind)} {name} previous={@event.Payload.Previous ?? "-"}";
+            case ControlEventKind.PaneSplit:
+            case ControlEventKind.PaneScratch:
+                return $"{time} {Wire(@event.Kind)} {name} {@event.Payload.Status ?? ""}";
+            case ControlEventKind.RemoteOpened:
+            case ControlEventKind.RemoteClosed:
+                return $"{time} {Wire(@event.Kind)} {name} host={@event.Payload.Host ?? ""}";
             case ControlEventKind.PaneFocused:
                 return $"{time} {Wire(@event.Kind)} {name} {@event.Payload.Pane ?? "-"} pane-id={@event.Payload.PaneId ?? "-"}";
             case ControlEventKind.AppLaunched:

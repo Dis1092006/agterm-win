@@ -19,6 +19,7 @@ when_to_use: >
   window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, pane.focused, app.launched, session wait, wait for session status,
   recent.list, recent.open, recent.clear, recently closed sessions, reopen closed session, clipboard set, select theme, edit keymap,
+  hooks.reload, hooks.list, hooks.conf, event hooks, run a command on an event, session.selected, pane.split, pane.scratch,
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
   keymap chord does nothing, custom action / custom command not working, agterm diagnostics, file an agterm
   bug, report an agterm issue, ask an agterm question / feature request.
@@ -201,7 +202,7 @@ focus, but the newline and shared-buffer hazards of `type`-as-launcher remain �
 rule.) After `--command`, confirm with `session text --target <new-id>` that your program is running,
 not a bare shell prompt. agterm-win does not report a pane's foreground process in `tree`.
 
-## Command summary (70 commands)
+## Command summary (72 commands)
 
 Run `agtermctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -241,10 +242,17 @@ applied to the cells, omitted when untouched), and `dashboardFontMode` (`auto`|`
 
 **events**: continuously print control events, subscribing from the current tail when no cursor is
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
-`--kind status|notify|session.created|session.closed|tree.changed|pane.focused|app.launched`; resume with paired
+`--kind status|notify|session.created|session.closed|session.selected|tree.changed|pane.split|pane.scratch|pane.focused|remote.opened|remote.closed|app.launched`; resume with paired
 `--run RUN --after SEQ`; and set page size with `--limit 1...1000`. The app retains 4,096 events for
 one process run. Cursor run changes, expiry, and ahead-of-tail errors are fatal and are never silently
-rebaselined. There is no terminal-output event stream.
+rebaselined. There is no terminal-output event stream. `session.selected`, `pane.split` and `pane.scratch` are new
+kinds; `remote.opened` and `remote.closed` are accepted by `--kind` but agterm-win has no remote sessions, so they never fire.
+
+**hooks** — `hooks reload` (re-read and apply `hooks.conf`; prints the parse-diagnostic count) · `hooks list [--json]` (every
+hook with its running child, queue depth, dropped count and last failure, then the diagnostics). A `hooks.conf` line
+`on <kind> <shell...>` runs the shell line (cmd.exe `/d /s /c`) when an event of that kind fires. The script gets the event
+as one JSON object on stdin and `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST`, `AGT_SESSION_ID`,
+`AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET`. The palette's Edit Hooks opens the file, and Reload Hooks applies it.
 
 **workspace** — `new [name] [--collapsed]` (`--collapsed` creates it closed in the sidebar so you can fill
 it with `session new --no-select` without it opening) · `rename <name>` · `delete` · `select` ·

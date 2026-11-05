@@ -128,6 +128,8 @@ public sealed class WindowPaletteProjectionTests
             [
                 ("app:edit-keymap", "Edit Keymap"),
                 ("app:reload-keymap", "Reload Keymap"),
+                ("app:edit-hooks", "Edit Hooks"),
+                ("app:reload-hooks", "Reload Hooks"),
                 ("app:reload-config", "Reload Config"),
                 ("app:expand-workspaces", "Expand Workspaces"),
                 ("app:collapse-workspaces", "Collapse Workspaces"),
@@ -297,6 +299,8 @@ public sealed class WindowPaletteProjectionTests
         {
             ("app:edit-keymap", PaletteAppCommand.EditKeymap),
             ("app:reload-keymap", PaletteAppCommand.ReloadKeymap),
+            ("app:edit-hooks", PaletteAppCommand.EditHooks),
+            ("app:reload-hooks", PaletteAppCommand.ReloadHooks),
             ("app:reload-config", PaletteAppCommand.ReloadConfig),
             ("app:clear-flagged", PaletteAppCommand.ClearFlagged),
             ("app:clear-focus", PaletteAppCommand.ClearFocus),
@@ -703,6 +707,8 @@ public sealed class WindowPaletteAcceptanceTests
     [Theory]
     [InlineData("app:edit-keymap", PaletteAppCommand.EditKeymap)]
     [InlineData("app:reload-keymap", PaletteAppCommand.ReloadKeymap)]
+    [InlineData("app:edit-hooks", PaletteAppCommand.EditHooks)]
+    [InlineData("app:reload-hooks", PaletteAppCommand.ReloadHooks)]
     [InlineData("app:reload-config", PaletteAppCommand.ReloadConfig)]
     [InlineData("app:clear-flagged", PaletteAppCommand.ClearFlagged)]
     [InlineData("app:clear-focus", PaletteAppCommand.ClearFocus)]

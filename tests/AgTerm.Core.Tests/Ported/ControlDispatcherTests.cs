@@ -1654,6 +1654,44 @@ public class ControlDispatcherTests
     }
 
     [Fact]
+    public async Task HooksCommandsRouteToActions()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+        actions.NextHooksReloadResponse = Ok(new ControlResult { Count = 1 });
+
+        var reload = await dispatcher.Dispatch(new ControlRequest { Cmd = Command.HooksReload });
+        var list = await dispatcher.Dispatch(new ControlRequest { Cmd = Command.HooksList });
+
+        ExpectResponse(Ok(new ControlResult { Count = 1 }), reload);
+        Assert.True(list!.Ok);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.HooksReload(),
+            new MockControlActions.Call.HooksList(),
+        }, actions.Calls);
+    }
+
+    [Theory]
+    [InlineData(Command.HooksReload, "hooks.reload")]
+    [InlineData(Command.HooksList, "hooks.list")]
+    public async Task HooksCommandsRefuseTargetAndWindow(Command command, string wire)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var target = await dispatcher.Dispatch(new ControlRequest { Cmd = command, Target = "x" });
+        var window = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = command, Args = new ControlArgs { Window = "w" },
+        });
+
+        ExpectResponse(Err($"{wire} takes no target or --window"), target);
+        ExpectResponse(Err($"{wire} takes no target or --window"), window);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
     public async Task NotifyRequiresBodyBeforeCallingActions()
     {
         var actions = new MockControlActions();

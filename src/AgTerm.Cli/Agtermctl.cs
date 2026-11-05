@@ -128,6 +128,7 @@ public static class Agtermctl
                      VersionCommand.Build(bindings),
                      FontCommands.Build(bindings),
                      KeymapCommands.Build(bindings),
+                     HooksCommands.Build(bindings),
                      ConfigCommands.Build(bindings),
                      ThemeCommands.Build(bindings),
                      IconCommands.Build(bindings),

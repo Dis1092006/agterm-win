@@ -87,6 +87,7 @@ public class ControlPickTests
                 Path = "s", Actions = Array.Empty<ControlKeymapAction>(),
                 Commands = Array.Empty<ControlKeymapCommand>(), Diagnostics = Array.Empty<ControlKeymapDiagnostic>(),
             },
+            Hooks = new ControlHooks { Path = "h", Diagnostics = Array.Empty<ControlKeymapDiagnostic>(), Hooks = Array.Empty<ControlHookEntry>() },
             Pick = ControlPickResult.Pending(),
             Ask = ControlAskResult.Pending(),
             Cursor = new ControlCursor { Column = 0 },

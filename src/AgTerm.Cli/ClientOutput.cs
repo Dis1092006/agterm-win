@@ -53,6 +53,10 @@ internal static class ClientOutput
         {
             return FormatKeymap(keymap);
         }
+        if (response.Result?.Hooks is { } hooks)
+        {
+            return FormatHooks(hooks);
+        }
         if (response.Result?.Icons is { } icons)
         {
             return string.Join("\n", icons);
@@ -138,6 +142,37 @@ internal static class ClientOutput
 
     private static string FormatIdentity(ControlAppIdentity identity) =>
         string.IsNullOrEmpty(identity.Commit) ? identity.Version : $"{identity.Version} ({identity.Commit})";
+
+    /// <summary>Render the hooks.list payload: the file path, one row per hook with its live state
+    /// (running child, queue depth, dropped count, last failure, retired), then the parse diagnostics
+    /// (no trailing newline).</summary>
+    public static string FormatHooks(ControlHooks hooks)
+    {
+        var lines = new List<string> { $"hooks: {hooks.Path}" };
+        if (hooks.Hooks.Length == 0) lines.Add("  (no hooks)");
+        foreach (var hook in hooks.Hooks)
+        {
+            var row = $"  line {hook.Line}: on {hook.Kind} {hook.Command}";
+            if (hook.RunningPid is { } pid)
+            {
+                row += $"  running pid {pid}";
+                if (hook.ElapsedSeconds is { } elapsed)
+                    row += $" for {(long)elapsed}s";
+            }
+            if (hook.Pending > 0) row += $"  pending {hook.Pending}";
+            if (hook.Dropped > 0) row += $"  dropped {hook.Dropped}";
+            if (hook.LastFailure is { } failure) row += $"  last failure: {failure}";
+            if (hook.Retired == true) row += "  (retired, removed from the file)";
+            lines.Add(row);
+        }
+        if (hooks.Diagnostics.Length > 0)
+        {
+            lines.Add("");
+            lines.Add("diagnostics:");
+            lines.AddRange(hooks.Diagnostics.Select(d => $"    line {d.Line}: {d.Message}"));
+        }
+        return string.Join("\n", lines);
+    }
 
     /// <summary>Render the keymap.list payload: the file path, one row per action with its chord
     /// (`*` marks one the keymap file moved), then the custom commands and the diagnostics, each block

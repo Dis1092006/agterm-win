@@ -2232,6 +2232,29 @@ public class CommandsTests
     }
 
     [Fact]
+    public void HooksReload()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.HooksReload },
+            Request("hooks", "reload"));
+    }
+
+    [Fact]
+    public void HooksList()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.HooksList },
+            Request("hooks", "list"));
+    }
+
+    [Fact]
+    public void HooksCommandsRejectWindowSelector()
+    {
+        Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "hooks", "reload", "--window", "w1" }));
+        Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "hooks", "list", "--window", "w1" }));
+    }
+
+    [Fact]
     public void ConfigReload()
     {
         CanonicalJson.AssertEqual(

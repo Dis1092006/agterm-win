@@ -102,6 +102,10 @@ public sealed record ControlResult
     [JsonPropertyName("keymap")]
     public ControlKeymap? Keymap { get; init; }
 
+    /// <summary>hooks.list payload.</summary>
+    [JsonPropertyName("hooks")]
+    public ControlHooks? Hooks { get; init; }
+
     /// <summary>pick.result payload.</summary>
     [JsonPropertyName("pick")]
     public ControlPickResult? Pick { get; init; }

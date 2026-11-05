@@ -130,9 +130,9 @@ All items here depend on the first catalog, sections 1 and 2.
 
 ## 10. Events and hooks
 
-These extend the first catalog, section 8. The port has the event stream from the pin, but no `hooks.conf`.
+These extend the first catalog, section 8. The port has the event stream from the pin and, since B7, `hooks.conf`.
 
-- `app.launched` fires once per app run, after `hooks.conf` is loaded and the control socket accepts connections #736. Port: done (B3).
+- `app.launched` fires once per app run, after `hooks.conf` is loaded and the control socket accepts connections #736. Port: done (B3, B7).
 - `tree.changed` also fires when a program, page, pane overlay or HUD opens or closes #736. Port: partly done (B3): session overlays and HUDs; pane, page and remote overlays wait for those features. The port fires `tree.changed` on changes of the session tree and on those.
 - `pane.focused` fires when focus moves between the split panes of a session. It carries the session, `pane` and `paneID`. A move and back within 100 ms is not reported #785. Port: done (B3).
 - `message` from the message bus (section 1) #847. Port: not done.

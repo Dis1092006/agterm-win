@@ -45,6 +45,16 @@ public sealed class SettingsWindowWiringTests
     }
 
     [Fact]
+    public void Settings_key_mapping_tab_reloads_the_hooks_and_lists_their_diagnostics()
+    {
+        var code = Source("SettingsWindow.cs");
+        Assert.Contains("settings-hooks-reload", code);
+        Assert.Contains("settings-hooks-diagnostics", code);
+        Assert.Contains("reloadHooks", code);
+        Assert.Contains("applicationHost.ReloadHooksAsync", Source("App.xaml.cs").Replace("_applicationHost", "applicationHost"));
+    }
+
+    [Fact]
     public void Settings_combo_boxes_align_left_with_other_field_controls()
     {
         Assert.Contains("var combo = new ComboBox { MaxWidth = 380, HorizontalAlignment = HorizontalAlignment.Left,",

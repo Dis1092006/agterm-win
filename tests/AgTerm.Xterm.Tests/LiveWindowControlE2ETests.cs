@@ -1210,7 +1210,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
             Enumerable.Range(1, events.Length).Select(offset => anchor.Next + (ulong)offset),
             events.Select(item => item.Seq));
         Assert.Equal(events[^1].Seq, afterReopen.Next);
-        var lifecycle = events.Where(item => item.Kind != ControlEventKind.TreeChanged).ToArray();
+        var lifecycle = events.Where(item => item.Kind is not (ControlEventKind.TreeChanged or ControlEventKind.SessionSelected)).ToArray();
         Assert.Equal(new[]
         {
             ControlEventKind.Status,

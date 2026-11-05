@@ -71,6 +71,8 @@ public sealed class MockControlActions : IControlActions
         public sealed record Font(string? Target, string? Window, string? Pane, string Action) : Call;
         public sealed record KeymapReload : Call;
         public sealed record KeymapList : Call;
+        public sealed record HooksReload : Call;
+        public sealed record HooksList : Call;
         public sealed record KeymapRun(string Name, string? Target, string? Window) : Call;
         public sealed record ConfigReload : Call;
         public sealed record Notify(string? Target, string? Window, string? Title, string Body) : Call;
@@ -155,6 +157,8 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextNotifyResponse = new() { Ok = true };
     public ControlResponse NextKeymapResponse = new() { Ok = true };
     public ControlResponse NextKeymapListResponse = new() { Ok = true };
+    public ControlResponse NextHooksReloadResponse = new() { Ok = true };
+    public ControlResponse NextHooksListResponse = new() { Ok = true };
     public ControlResponse NextKeymapRunResponse = new() { Ok = true };
     public ControlResponse NextConfigResponse = new() { Ok = true };
     public ControlResponse NextThemeSetResponse = new() { Ok = true };
@@ -449,6 +453,18 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.KeymapReload());
         return NextKeymapResponse;
+    }
+
+    public ControlResponse ReloadHooks()
+    {
+        Calls.Add(new Call.HooksReload());
+        return NextHooksReloadResponse;
+    }
+
+    public ControlResponse ListHooks()
+    {
+        Calls.Add(new Call.HooksList());
+        return NextHooksListResponse;
     }
 
     public ControlResponse ReloadGhosttyConfig()

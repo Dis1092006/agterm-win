@@ -23,6 +23,7 @@ public sealed class LiveWindowHost
     private string _windowName;
     private string? _acceptedPaneId;
     private readonly HeadlessQuickTerminal _quick;
+    private readonly AgTerm.Core.Hooks.HooksController? _hooks;
 
     internal LiveWindowHost(
         Guid windowId,
@@ -35,8 +36,10 @@ public sealed class LiveWindowHost
         bool launchRestore,
         PickRegistry? picks = null,
         Action<Guid>? scheduleTreeChanged = null,
-        HeadlessQuickTerminal? quick = null)
+        HeadlessQuickTerminal? quick = null,
+        AgTerm.Core.Hooks.HooksController? hooks = null)
     {
+        _hooks = hooks;
         _quick = quick ?? new HeadlessQuickTerminal();
         WindowId = windowId;
         Picks = picks ?? new PickRegistry();
@@ -295,6 +298,7 @@ public sealed class LiveWindowHost
                 throw new InvalidOperationException($"window is already attached: {WindowId:D}");
 
             Actions = actions;
+            actions.Hooks = _hooks;
             _dispatcher = new ControlDispatcher(actions);
             _dispatchScopeFactory = dispatchScopeFactory;
             Store.SurfaceRealizer = surfaceRealizer;
@@ -368,5 +372,8 @@ public sealed class LiveWindowHost
             homeDirectory: _homeDirectory,
             pick: Pick,
             picks: Picks,
-            quick: _quick);
+            quick: _quick)
+        {
+            Hooks = _hooks,
+        };
 }

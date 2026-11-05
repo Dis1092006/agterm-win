@@ -58,6 +58,16 @@ The event kinds and payloads are:
 - `app.launched`: an empty payload with no window, workspace or session. The app emits it once per
   process run, when the control server starts accepting connections. It is the first event of a run, so
   a client that reads from the start of the ring sees it, and a client that subscribes from now does not.
+- `session.selected`: `name` (the newly selected session) and `previous` (the session id selected before,
+  omitted for the first selection). The event fires whoever made the selection, a click, a chord or a
+  control command. A cleared selection carries no session.
+- `pane.split` / `pane.scratch`: `name` and `status` (`shown` or `hidden`), when the split pane or the
+  scratch terminal is shown or hidden.
+- `remote.opened` / `remote.closed`: accepted by `--kind` and by `hooks.conf`, but agterm-win has no remote
+  sessions, so they never fire.
+
+`status` events also carry `previous`, the status before the write. It equals `status` when only the
+shape, color, pane or blink changed.
 
 Every event has `seq` (app-wide sequence), `ts` (Unix timestamp), `kind`, optional
 `window`/`workspace`/`session` ids, and `payload`. Human mode prints one compact line. `--json` emits
@@ -1278,6 +1288,39 @@ output prints `ok`. App-global (no `--window`). The GUI's live-preview picker (`
 "Select Theme…" in the command palette)
 previews live; committing it replaces the CURRENT appearance's side when syncing (the pair is
 kept); over the pipe `theme set` is the commit, with no preview.
+
+## hooks
+
+A hook runs a shell line when a control event fires. The lines live in `hooks.conf`, next to `keymap.conf`
+(`~\.agterm-win\hooks.conf` by default). Hooks are app-wide: both commands refuse `--target` and `--window`.
+
+```
+on <kind> <shell...>
+```
+
+`<kind>` is any event kind (`status`, `notify`, `session.created`, `session.closed`, `session.selected`,
+`tree.changed`, `pane.split`, `pane.scratch`, `pane.focused`, `remote.opened`, `remote.closed`,
+`app.launched`). Blank lines and lines starting with `#` are ignored. A line with an unknown kind, a missing
+command or the same kind and command as an earlier line is skipped with a diagnostic.
+
+- Every line runs one child at a time, through `cmd.exe /d /s /c`, with no console window, in the app's
+  working directory. An event that arrives while the child runs waits in order; the queue holds 256 and
+  drops the oldest. Nothing is retried, and the child's output is discarded.
+- The child gets the event on standard input as one JSON object, the shape `agtermctl events --json`
+  prints. It gets these variables: `AGT_EVENT_KIND`, `AGT_EVENT_STATUS`, `AGT_EVENT_HOST` (always empty),
+  `AGT_SESSION_ID`, `AGT_WORKSPACE_ID`, `AGT_WINDOW_ID` and `AGT_SOCKET` (the control pipe name; pass it as
+  `--socket`). In a plain command line cmd keeps `%VAR%` as text when the variable is empty, so put such a
+  test in a `.cmd` file.
+- A hook that emits an event of its own kind runs again. The queue bounds concurrency; it does not detect loops.
+- The palette's Edit Hooks opens the file (a commented starter is written first) and reloads it on close. Reload
+  Hooks and Settings > Key Mapping > Reload hooks apply it too. A hook that cannot start or exits non-zero shows a banner.
+
+- `agtermctl hooks reload` — re-read and apply `hooks.conf`. Wire: `hooks.reload`. Prints the diagnostic count (`ok` with none, else `N diagnostic(s)`). A running child of a line that stays keeps running.
+- `agtermctl hooks list [--json]` — one row per hook in file order: `line N: on <kind> <command>`, then
+  `running pid P for Ns`, `pending N`, `dropped N` and `last failure: …` when they apply, and `(retired, removed
+  from the file)` for a removed line whose child still runs. The parse diagnostics follow. Wire: `hooks.list`.
+  With `--json`, `result.hooks` carries `path`, `hooks` (`line`, `kind`, `command`, and optional `runningPid`,
+  `elapsedSeconds`, `pending`, `dropped`, `lastFailure`, `retired`) and `diagnostics` (`line`, `message`).
 
 ## recent
 

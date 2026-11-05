@@ -11,7 +11,12 @@ public class ControlEventTests
     [InlineData("session.created", ControlEventKind.SessionCreated)]
     [InlineData("session.closed", ControlEventKind.SessionClosed)]
     [InlineData("tree.changed", ControlEventKind.TreeChanged)]
+    [InlineData("session.selected", ControlEventKind.SessionSelected)]
+    [InlineData("pane.split", ControlEventKind.PaneSplit)]
+    [InlineData("pane.scratch", ControlEventKind.PaneScratch)]
     [InlineData("pane.focused", ControlEventKind.PaneFocused)]
+    [InlineData("remote.opened", ControlEventKind.RemoteOpened)]
+    [InlineData("remote.closed", ControlEventKind.RemoteClosed)]
     [InlineData("app.launched", ControlEventKind.AppLaunched)]
     public void EventKindWireStringsRoundTrip(string wire, ControlEventKind kind)
     {
@@ -39,7 +44,8 @@ public class ControlEventTests
         var json = "{\"seq\":7,\"ts\":1721900000.5,\"kind\":\"status\",\"window\":\"w\"," +
                    "\"workspace\":\"ws\",\"session\":\"s\",\"payload\":{\"name\":\"api\"," +
                    "\"status\":\"blocked\",\"pane\":\"left\",\"blink\":true,\"color\":\"#ff0000\"," +
-                   "\"shape\":\"star\",\"title\":\"t\",\"body\":\"b\"}}";
+                   "\"shape\":\"star\",\"previous\":\"idle\",\"title\":\"t\",\"body\":\"b\"," +
+                   "\"host\":\"box\",\"paneID\":\"tok\"}}";
         Assert.Equal(json, ControlJson.Serialize(ControlJson.Deserialize<ControlEvent>(json)));
     }
 

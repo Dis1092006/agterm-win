@@ -23,10 +23,16 @@ public sealed partial class AppStore
         get => _selectedSessionId;
         set
         {
-            if (_selectedSessionId != value) _freshWorkspaceId = null;
+            if (_selectedSessionId == value) return;
+            var previous = _selectedSessionId;
+            _freshWorkspaceId = null;
             _selectedSessionId = value;
+            EmitSessionSelected(previous);
         }
     }
+
+    /// <summary>True while Restore runs: a reload is not a selection.</summary>
+    private bool _restoringSelection;
 
     /// <summary>The workspace that holds the target without owning the selection: a foreground
     /// create, or SelectWorkspace on an empty one. Live state, never saved.</summary>
@@ -528,17 +534,18 @@ public sealed partial class AppStore
         // a select). The live host's eager deck realizes it right here instead.
         if (select)
         {
+            EmitSessionCreated(session, toWorkspace); // ahead of the selection: a consumer hears of the session before its selection
             SelectedSessionId = session.Id;
             DisableFocusIfSelectionOutsideSet(session.Id); // a control-driven add into another workspace must reveal it
             RecordRecency();
             RealizeIfShown(session);
             SelectionChanged?.Invoke();
         }
-        else if (EagerSurfaceRealization)
+        else
         {
-            RealizeIfShown(session);
+            if (EagerSurfaceRealization) RealizeIfShown(session);
+            EmitSessionCreated(session, toWorkspace);
         }
-        EmitSessionCreated(session, toWorkspace);
         Save();
         return session;
     }
@@ -1130,6 +1137,19 @@ public sealed partial class AppStore
     /// mid-process window reload must not execute anything.
     /// </summary>
     public void Restore(Snapshot snapshot, bool launchRestore = false)
+    {
+        _restoringSelection = true;
+        try
+        {
+            RestoreCore(snapshot, launchRestore);
+        }
+        finally
+        {
+            _restoringSelection = false;
+        }
+    }
+
+    private void RestoreCore(Snapshot snapshot, bool launchRestore)
     {
         _freshWorkspaceId = null;
         // fold workspaces sharing an id into the first occurrence, and keep only the first snapshot

@@ -75,6 +75,10 @@ public interface IControlActions
     ControlResponse Font(string? target, string? window, string? pane, string action);
     ControlResponse ReloadKeymap();
     ControlResponse ListKeymap();
+    /// <summary>hooks.reload: re-reads hooks.conf and applies it; result.count is the diagnostic count.</summary>
+    ControlResponse ReloadHooks();
+    /// <summary>hooks.list: the hooks with their running child, queue depth and last failure.</summary>
+    ControlResponse ListHooks();
     Task<ControlResponse> RunCustomCommand(string name, string? target, string? window);
     ControlResponse ReloadGhosttyConfig();
     ControlResponse SendNotification(string? target, string? window, string? title, string body);

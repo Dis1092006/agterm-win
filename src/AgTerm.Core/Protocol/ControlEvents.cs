@@ -10,44 +10,62 @@ public enum ControlEventKind
     Notify,
     SessionCreated,
     SessionClosed,
+    /// <summary>The window's selection changed, whoever made it. A cleared selection carries no session.</summary>
+    SessionSelected,
     /// <summary>A coalesced signal of structural tree changes.</summary>
     TreeChanged,
+    /// <summary>The split pane was shown or hidden (payload status shown/hidden).</summary>
+    PaneSplit,
+    /// <summary>The scratch terminal was shown or hidden (payload status shown/hidden).</summary>
+    PaneScratch,
     /// <summary>The selected pane of a split session settled on another pane.</summary>
     PaneFocused,
+    /// <summary>Parse-only: the port has no remote sessions, so these are never emitted.</summary>
+    RemoteOpened,
+    RemoteClosed,
     /// <summary>Once per app run, after the control pipe accepts connections.</summary>
     AppLaunched,
 }
 
 public static class ControlEventKinds
 {
-    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
-    public static ControlEventKind? FromWire(string wire) => wire switch
+    internal static readonly (ControlEventKind Kind, string Wire)[] Map =
     {
-        "status" => ControlEventKind.Status,
-        "notify" => ControlEventKind.Notify,
-        "session.created" => ControlEventKind.SessionCreated,
-        "session.closed" => ControlEventKind.SessionClosed,
-        "tree.changed" => ControlEventKind.TreeChanged,
-        "pane.focused" => ControlEventKind.PaneFocused,
-        "app.launched" => ControlEventKind.AppLaunched,
-        _ => null,
-    };
-}
-
-public sealed class ControlEventKindConverter : WireEnumConverter<ControlEventKind>
-{
-    public ControlEventKindConverter() : base(
         (ControlEventKind.Status, "status"),
         (ControlEventKind.Notify, "notify"),
         (ControlEventKind.SessionCreated, "session.created"),
         (ControlEventKind.SessionClosed, "session.closed"),
+        (ControlEventKind.SessionSelected, "session.selected"),
         (ControlEventKind.TreeChanged, "tree.changed"),
+        (ControlEventKind.PaneSplit, "pane.split"),
+        (ControlEventKind.PaneScratch, "pane.scratch"),
         (ControlEventKind.PaneFocused, "pane.focused"),
-        (ControlEventKind.AppLaunched, "app.launched"))
+        (ControlEventKind.RemoteOpened, "remote.opened"),
+        (ControlEventKind.RemoteClosed, "remote.closed"),
+        (ControlEventKind.AppLaunched, "app.launched"),
+    };
+
+    /// <summary>Every kind, in wire declaration order (the Swift allCases).</summary>
+    public static IReadOnlyList<ControlEventKind> All { get; } = Map.Select(p => p.Kind).ToArray();
+
+    /// <summary>The Swift raw-value parse: the wire token, or null for an unknown string.</summary>
+    public static ControlEventKind? FromWire(string wire)
+    {
+        foreach (var (kind, token) in Map)
+            if (string.Equals(token, wire, StringComparison.Ordinal)) return kind;
+        return null;
+    }
+
+    public static string ToWire(this ControlEventKind kind) =>
+        Map.First(p => p.Kind == kind).Wire;
+}
+
+public sealed class ControlEventKindConverter : WireEnumConverter<ControlEventKind>
+{
+    public ControlEventKindConverter() : base(ControlEventKinds.Map)
     {
     }
 }
-
 /// <summary>
 /// Kind-specific event data. Optional fields keep the encoded payload compact while preserving one
 /// stable object shape for shell/JSON consumers.
@@ -74,11 +92,20 @@ public sealed record ControlEventPayload
     [JsonPropertyName("shape")]
     public string? Shape { get; init; }
 
+    /// <summary>The status event's status before the accepted write; the session.selected event's
+    /// previously selected session id. Equal to status when only shape, color, pane or blink changed.</summary>
+    [JsonPropertyName("previous")]
+    public string? Previous { get; init; }
+
     [JsonPropertyName("title")]
     public string? Title { get; init; }
 
     [JsonPropertyName("body")]
     public string? Body { get; init; }
+
+    /// <summary>The remote.* host. Parse-only here, the port has no remote sessions.</summary>
+    [JsonPropertyName("host")]
+    public string? Host { get; init; }
 
     /// <summary>The pane.focused pane's surface token, the value tree reports as surfaces[].paneID;
     /// absent while that pane's surface does not exist yet.</summary>

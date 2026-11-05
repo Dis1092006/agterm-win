@@ -37,7 +37,14 @@ public partial class App : Application, ILiveWindowController
                 var response = await Task.Run(() => new ControlPipeClient(applicationHost.PipeName)
                     .Send(new ControlRequest { Cmd = Command.KeymapReload }));
                 if (!response.Ok) throw new IOException(response.Error);
-            }, () => _quickWindow?.GlobalHotkeyError);
+            }, () => _quickWindow?.GlobalHotkeyError,
+            async () =>
+            {
+                var response = await applicationHost.ReloadHooksAsync();
+                if (!response.Ok) throw new IOException(response.Error);
+                return (IReadOnlyList<string>)(applicationHost.Hooks?.Diagnostics
+                    .Select(d => d.Line > 0 ? $"line {d.Line}: {d.Message}" : d.Message).ToArray() ?? []);
+            });
         _settingsWindow.Closed -= OnSettingsClosed;
         _settingsWindow.Closed += OnSettingsClosed;
         _settingsWindow.Activated -= OnAttentionWindowActivated;
@@ -46,6 +53,14 @@ public partial class App : Application, ILiveWindowController
     }
 
     private void OnSettingsClosed(object sender, WindowEventArgs args) => _settingsWindow = null;
+
+    private static string? BundledCliDirectory()
+    {
+        var directory = Path.GetDirectoryName(Environment.ProcessPath);
+        return !string.IsNullOrEmpty(directory) &&
+            File.Exists(Path.Join(directory, AgTerm.Core.Install.CliInstall.ToolFileName))
+            ? directory : null;
+    }
 
     private MainWindow? ActiveMainWindow =>
         _applicationHost?.ActiveWindowId is { } id && _windows.TryGetValue(id, out var window) ? window : null;
@@ -67,8 +82,12 @@ public partial class App : Application, ILiveWindowController
             PipeName = ControlPipeName.Resolve(),
             SocketPath = ControlPipeName.ResolveSocketPath(),
             WindowController = this,
+            HookLauncher = new HookProcessRunner(() => _applicationHost!.PipeName, BundledCliDirectory()),
         });
         _applicationHost = applicationHost;
+        if (applicationHost.Hooks is { } hooks)
+            hooks.HookFailed += (kind, command, detail) =>
+                ActiveMainWindow?.ReportQuickFailure(HooksNotices.Failure(kind, command, detail));
         _notificationPresenter = new WindowsAppNotificationPresenter(
             message => System.Diagnostics.Trace.TraceWarning(message),
             target => ObserveNotificationActivation(target));
@@ -100,6 +119,8 @@ public partial class App : Application, ILiveWindowController
         if (_quickWindow.GlobalHotkeyError is { } hotkeyError)
             _windows.Values.First().ReportQuickFailure(new("Global hotkey unavailable", hotkeyError));
         applicationHost.Start();
+        if (applicationHost.Hooks is { Diagnostics.Count: > 0 and var hookIssues })
+            _windows.Values.First().ReportQuickFailure(HooksNotices.Diagnostics(hookIssues));
         _launchReady.TrySetResult();
         var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
         if (activation.Kind == ExtendedActivationKind.AppNotification)
