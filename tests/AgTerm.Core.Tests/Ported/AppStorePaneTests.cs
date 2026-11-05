@@ -1193,7 +1193,7 @@ public class AppStorePaneTests
         store.ClosePrimaryPane(session.Id); // primary exits → survivor promoted, HasSplit/SplitSurface cleared
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked, StatusPane: StatusPane.Right), session.Id);
         Assert.Equal(StatusPane.Left, session.AgentIndicator.StatusPane);              // coerced — no live split
-        Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Left, isInterrupt: false)); // the sole (left) pane clears it
+        Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Left, StatusKeystroke.Other, StatusReset.FirstKey)); // the sole (left) pane clears it
         // and the tree agrees: split:false with statusPane "left", never the contradictory "right".
         var node = store.ControlTree().Workspaces[0].Sessions.FirstOrDefault();
         Assert.False(node?.Split);
@@ -1226,7 +1226,7 @@ public class AppStorePaneTests
         Assert.Equal(StatusPane.Right, session.AgentIndicator.StatusPane);          // kept — the split is coming up
         // once the deck realizes the surface, the block is exactly where the right pane can clear it.
         session.SplitSurface = new SpySurface();
-        Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Right, isInterrupt: false));
+        Assert.True(session.AgentIndicator.ClearedBy(StatusPane.Right, StatusKeystroke.Other, StatusReset.FirstKey));
         var node = store.ControlTree().Workspaces[0].Sessions.FirstOrDefault();
         Assert.True(node?.Split);
         Assert.Equal("right", node?.StatusPane);

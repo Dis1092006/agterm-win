@@ -329,6 +329,7 @@ public sealed partial class AppStore
                     StatusColor = idle ? null : session.AgentIndicator.Color,
                     StatusShape = idle ? null
                         : session.AgentIndicator.Shape is { } shape ? ShapeWire(shape) : null,
+                    StatusChangedAt = session.StatusChangedAt?.ToUnixTimeMilliseconds() / 1000.0,
                     Background = session.BackgroundWatermark,
                     Unseen = session.UnseenCount > 0 ? session.UnseenCount : null,
                     FontSize = fontSize?.Invoke(session),

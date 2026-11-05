@@ -77,8 +77,9 @@ public sealed class Session
     /// <summary>The per-session agent status, driven over the control channel. Ephemeral.</summary>
     public AgentIndicator AgentIndicator { get; set; } = new();
 
-    /// <summary>The most-recent time the agent status was set to a non-idle value — the attention
-    /// list's sort key. Ephemeral.</summary>
+    /// <summary>The most recent time the agent status was set, to any value including idle. The
+    /// attention list's sort key and the tree's statusChangedAt, so it must stay a wall-clock value.
+    /// Ephemeral.</summary>
     public DateTimeOffset? StatusChangedAt { get; set; }
 
     /// <summary>Whether idle auto-follow has already pulled the user to THIS blocked episode. Ephemeral.</summary>

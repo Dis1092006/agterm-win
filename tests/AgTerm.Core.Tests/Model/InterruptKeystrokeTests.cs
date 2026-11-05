@@ -51,4 +51,38 @@ public class InterruptKeystrokeTests
         Assert.False(modifiers.HasFlag(KeyModifiers.Command));
         Assert.False(modifiers.HasFlag(KeyModifiers.Option));
     }
+
+    [Theory]
+    [InlineData("Enter", "Enter")]
+    [InlineData("NumpadEnter", "Enter")]
+    public void ABareReturnOrKeypadEnterSubmits(string code, string character) =>
+        Assert.Equal(StatusKeystroke.Submit, InterruptKeystroke.Classify(code, character, KeyModifiers.None));
+
+    [Theory]
+    [InlineData(KeyModifiers.Shift)]
+    [InlineData(KeyModifiers.Option)]
+    [InlineData(KeyModifiers.Control)]
+    [InlineData(KeyModifiers.Command)]
+    public void AModifiedReturnIsPlainTyping(KeyModifiers modifiers) =>
+        Assert.Equal(StatusKeystroke.Other, InterruptKeystroke.Classify("Enter", "Enter", modifiers));
+
+    [Fact]
+    public void InterruptsWinOverSubmit()
+    {
+        Assert.Equal(StatusKeystroke.Interrupt, InterruptKeystroke.Classify("Escape", "Escape", KeyModifiers.None));
+        Assert.Equal(StatusKeystroke.Interrupt, InterruptKeystroke.Classify("KeyC", "c", KeyModifiers.Control));
+        Assert.Equal(StatusKeystroke.Other, InterruptKeystroke.Classify("KeyA", "a", KeyModifiers.None));
+    }
+
+    [Theory]
+    [InlineData("ls\n", StatusKeystroke.Submit)]
+    [InlineData("ls\r", StatusKeystroke.Submit)]
+    [InlineData("ls\r\n", StatusKeystroke.Submit)]
+    [InlineData("a\nb", StatusKeystroke.Submit)]
+    [InlineData("ls", StatusKeystroke.Other)]
+    [InlineData("", StatusKeystroke.Other)]
+    [InlineData("\u2028", StatusKeystroke.Other)]
+    [InlineData("\u001b", StatusKeystroke.Other)]
+    public void InjectedTextSubmitsOnlyWithALineBreak(string text, StatusKeystroke expected) =>
+        Assert.Equal(expected, InterruptKeystroke.Classify(text));
 }

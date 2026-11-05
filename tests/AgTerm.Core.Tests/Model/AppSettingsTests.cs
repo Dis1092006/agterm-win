@@ -231,6 +231,22 @@ public class AppSettingsTests : IDisposable
         Assert.Null(settings.EffectiveStatusShape(AgentStatus.Idle));
     }
 
+    [Theory]
+    [InlineData(null, StatusReset.FirstKey)]
+    [InlineData("firstKey", StatusReset.FirstKey)]
+    [InlineData("enter", StatusReset.Enter)]
+    [InlineData("never", StatusReset.Never)]
+    [InlineData("bogus", StatusReset.FirstKey)]
+    public void Effective_status_reset_defaults_to_first_key(string? raw, StatusReset expected) =>
+        Assert.Equal(expected, new AppSettings { StatusReset = raw }.EffectiveStatusReset);
+
+    [Fact]
+    public void Status_reset_takes_part_in_equality()
+    {
+        Assert.NotEqual(new AppSettings(), new AppSettings { StatusReset = "enter" });
+        Assert.Equal(new AppSettings { StatusReset = "never" }, new AppSettings { StatusReset = "never" });
+    }
+
     [Fact]
     public void Status_color_prefers_override_then_settings_then_defaults()
     {

@@ -90,6 +90,10 @@ public sealed class SettingsEditor
         new("completedStatusShape", "Agent Status", "Completed shape", SettingControl.Choice, "circle", Choices: ShapeChoices),
         new("blockedStatusSoundName", "Agent Status", "Blocked sound", SettingControl.Choice, Choices: SoundChoices,
             Hint: "Plays when a session becomes blocked. None disables this default. An explicit status sound takes priority. Add WAV files to the sounds folder in the state directory."),
+        new("statusReset", "Agent Status", "Status reset", SettingControl.Choice, "firstKey",
+            Choices: [new(null, "Default (On first key)"), new("firstKey", "On first key"), new("enter", "On Enter"),
+                new("never", "Disabled")],
+            Hint: "When a blocked or completed glyph clears. Escape and Ctrl+C also clear a running glyph in every mode."),
         new("autoFollowAttention", "Agent Status", "Auto-follow blocked sessions", SettingControl.Choice,
             Choices: [new(null, "Disabled"), new("s5", "5 sec idle"), new("s10", "10 sec idle"),
                 new("s30", "30 sec idle"), new("s60", "60 sec idle"), new("m5", "5 min idle")]),
@@ -173,6 +177,7 @@ public sealed class SettingsEditor
     {
         ActiveStatusColorHex = null, BlockedStatusColorHex = null, CompletedStatusColorHex = null,
         ActiveStatusShape = null, BlockedStatusShape = null, CompletedStatusShape = null, BlockedStatusSoundName = null,
+        StatusReset = null,
     });
 
     private async Task ChangeAsync(Func<AppSettings, AppSettings> change)

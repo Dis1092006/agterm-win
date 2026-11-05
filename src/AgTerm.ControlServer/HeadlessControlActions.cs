@@ -988,8 +988,10 @@ public sealed class HeadlessControlActions : IControlActions
             // a --pane-id that resolves against the session's LIVE surfaces overrides the stale role
             // --pane; an absent/unknown token falls back to the baked --pane value.
             var resolvedPane = (update.PaneId is { } token ? session?.PaneRole(token) : null) ?? update.Pane;
-            store.SetAgentIndicator(new AgentIndicator(update.Status, update.Blink ?? false,
+            var written = store.ApplyControlStatus(new AgentIndicator(update.Status, update.Blink ?? false,
                 update.AutoReset ?? false, update.Color, update.Shape, resolvedPane), id);
+            if (written.RefusedOwner is { } owner)
+                return Err($"blocked status owned by pane {StatusPanes.Wire(owner)} (write from that pane to change it)");
             if (!string.IsNullOrEmpty(update.Sound) || (update.Status == AgentStatus.Blocked && !wasBlocked))
             {
                 _statusNotificationRequested?.Invoke(
@@ -1598,6 +1600,21 @@ public sealed class HeadlessControlActions : IControlActions
     private ControlResponse InjectText(string text, Guid id, AppStore store, bool select, string? requestedPane,
                                        string? paneId)
     {
+        var response = InjectTextCore(text, id, store, select, requestedPane, paneId);
+        if (response.Ok && text.Length > 0 && response.Result?.Pane is { } wire
+            && StatusPanes.FromWire(wire) is { } pane
+            && store.SessionWithId(id) is { } session
+            && session.AgentIndicator.ClearedBy(pane, InterruptKeystroke.Classify(text), StatusReset))
+        {
+            // injected text counts as typing in that pane, like a keystroke, but is no activity signal
+            store.SetAgentIndicator(new AgentIndicator(), id);
+        }
+        return response;
+    }
+
+    private ControlResponse InjectTextCore(string text, Guid id, AppStore store, bool select, string? requestedPane,
+                                           string? paneId)
+    {
         var session = store.SessionWithId(id);
         if (ResolvePaneSelector(session, requestedPane, paneId, out var pane) is { } rejected)
             return rejected;
@@ -2002,10 +2019,21 @@ public sealed class HeadlessControlActions : IControlActions
     /// <summary>The keymap.conf the actions load; ApplySettings can move it to a new config directory.</summary>
     public string KeymapPath => Volatile.Read(ref _keymap).Path;
 
+    /// <summary>The statusReset mode for text injected by session.type, read from the settings. The live
+    /// host keeps it current beside its own settings mirror.</summary>
+    public StatusReset StatusReset
+    {
+        get => (StatusReset)Volatile.Read(ref _statusReset);
+        set => Volatile.Write(ref _statusReset, (int)value);
+    }
+
+    private int _statusReset = (int)AgTerm.Core.Model.StatusReset.FirstKey;
+
     /// <summary>Called under the host gate. Restart-only and deferred settings are not applied here.</summary>
     public void ApplySettings(SettingsSnapshot snapshot, string defaultConfigDirectory)
     {
         var settings = snapshot.Settings;
+        StatusReset = settings.EffectiveStatusReset;
         Theme.Light = settings.Theme;
         Theme.Dark = settings.FollowSystemAppearance == true ? settings.DarkTheme : null;
         var keymap = new KeymapStore(settings.ConfigDirectory ?? defaultConfigDirectory);

@@ -54,8 +54,8 @@ public sealed class XtermTerminal
     /// (Shift+Enter becomes ESC [13;2u), which is what makes it distinguishable from Enter.</summary>
     public event Action<string>? DataReceived;
 
-    /// <summary>A keydown that the pane passed to xterm, with its interrupt classification.</summary>
-    public event Action<bool>? UserKeystroke;
+    /// <summary>A keydown that the pane passed to xterm, classified as an interrupt, a submit or plain typing.</summary>
+    public event Action<StatusKeystroke>? UserKeystroke;
 
     /// <summary>The fit addon recomputed cols/rows — forward to ConPTY resize.</summary>
     public event Action<int, int>? Resized;
@@ -149,7 +149,7 @@ public sealed class XtermTerminal
                 if (msg.Meta == true) modifiers |= KeyModifiers.Command;
                 if (msg.Alt == true) modifiers |= KeyModifiers.Option;
                 if (msg.Shift == true) modifiers |= KeyModifiers.Shift;
-                UserKeystroke?.Invoke(InterruptKeystroke.IsInterrupt(code, key, modifiers));
+                UserKeystroke?.Invoke(InterruptKeystroke.Classify(code, key, modifiers));
                 break;
             case "data" when msg.Data is not null:
                 DataReceived?.Invoke(msg.Data);

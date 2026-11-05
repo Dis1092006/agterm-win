@@ -133,9 +133,9 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 ## 9. Agent status
 
-- `statusReset`: on first key, on Enter, disabled. `session type` follows it too #585. Port: not done. A key in a pane clears the status as at the pin (port PR 13, `9a830c8`); see PLATFORM-NOTES "Agent status on terminal input".
-- `statusChangedAt` in `tree`, set on every accepted set #465, #617. Port: not done.
-- The blocked status of a split pane is not overwritten by its neighbor #523. Port: not done.
+- `statusReset`: on first key, on Enter, disabled. `session type` follows it too #585. Port: done in the A6 PR (version 0.1.80); see PLATFORM-NOTES "Agent status on terminal input".
+- `statusChangedAt` in `tree`, set on every accepted set #465, #617. Port: done in the A6 PR.
+- The blocked status of a split pane is not overwritten by its neighbor #523. Port: done in the A6 PR.
 - New integrations: OpenCode #289, OpenCode 2 #696, Copilot (recipe) #464. Claude hooks set `blocked` when a permission prompt opens #721. Port: partly. OpenCode is not done. Copilot CLI is done in a Windows form in agterm-win #2: *Install Agent Status Hooks…* writes Copilot CLI hooks. #721 is done in port PR 22 (`6a4eb66`). See PLATFORM-NOTES "Help menu".
 - `foregroundShell`, `splitForegroundShell` in `tree` #525. Port: not done.
 

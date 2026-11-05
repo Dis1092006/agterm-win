@@ -201,7 +201,7 @@ public sealed class TerminalPane : IDisposable
     public async Task ShowExitAndWaitForKeystrokeAsync(int exitCode)
     {
         var pressed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnKeystroke(bool _) => pressed.TrySetResult();
+        void OnKeystroke(StatusKeystroke _) => pressed.TrySetResult();
         Terminal.UserKeystroke += OnKeystroke;
         try
         {

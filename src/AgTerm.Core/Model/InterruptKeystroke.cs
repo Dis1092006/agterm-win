@@ -22,4 +22,20 @@ public static class InterruptKeystroke
         if (letter == "c") return true;
         return code == "KeyC" && (letter is null or { Length: not 1 } || letter[0] is < 'a' or > 'z');
     }
+
+    /// <summary>A bare Return or keypad Enter submits; Shift- or Option-Return is plain typing (a newline
+    /// inside the prompt).</summary>
+    public static bool IsSubmit(string? code, KeyModifiers modifiers) =>
+        modifiers == KeyModifiers.None && code is "Enter" or "NumpadEnter";
+
+    /// <summary>Interrupt first, then submit, else other.</summary>
+    public static StatusKeystroke Classify(string? code, string? character, KeyModifiers modifiers) =>
+        IsInterrupt(code, character, modifiers) ? StatusKeystroke.Interrupt
+        : IsSubmit(code, modifiers) ? StatusKeystroke.Submit
+        : StatusKeystroke.Other;
+
+    /// <summary>Injected text counts as a submit when it holds a line break, else as other. It is never an
+    /// interrupt.</summary>
+    public static StatusKeystroke Classify(string text) =>
+        text.AsSpan().IndexOfAny('\n', '\r') >= 0 ? StatusKeystroke.Submit : StatusKeystroke.Other;
 }
