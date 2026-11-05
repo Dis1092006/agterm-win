@@ -12,6 +12,13 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse ControlTree(string? window);
     ControlResponse ReadEvents(ControlEventReadOptions options);
     ControlResponse CreateSession(ControlSessionCreateOptions options);
+
+    /// <summary>session.new with a creation tint. A host that cannot tint refuses a tint rather
+    /// than creating an untinted session and answering ok.</summary>
+    ControlResponse CreateSession(ControlSessionCreateOptions options, SidebarTint? tint) =>
+        tint is null
+            ? CreateSession(options)
+            : new ControlResponse { Ok = false, Error = "session.new --tint is not supported on this platform" };
     ControlResponse DuplicateSession(string? target, string? window);
     ControlResponse SelectSession(string? target, string? window);
     ControlResponse GoSession(string? window, SessionNavigation direction);
@@ -20,6 +27,12 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse RenameSession(string? target, string? window, string name);
     ControlResponse RevealSession(string? target, string? window);
     ControlResponse CreateWorkspace(string? window, string? name, bool collapsed);
+
+    /// <summary>workspace.new with a creation tint; a host that cannot tint refuses the tint.</summary>
+    ControlResponse CreateWorkspace(string? window, string? name, bool collapsed, SidebarTint? tint) =>
+        tint is null
+            ? CreateWorkspace(window, name, collapsed)
+            : new ControlResponse { Ok = false, Error = "workspace.new --tint is not supported on this platform" };
     ControlResponse SelectWorkspace(string? target, string? window);
     ControlResponse RenameWorkspace(string? target, string? window, string name);
     ControlResponse DeleteWorkspace(string? target, string? window);
@@ -44,6 +57,13 @@ public interface IControlActions : IMessagePaneHost
 
     /// <summary>Sets (trimmed, validated text) or clears (null) what a session is about.</summary>
     ControlResponse SetSessionContext(string? target, string? window, string? context);
+
+    /// <summary>session.tint: set or clear a session row's tint; the update resolves over the
+    /// row's current tint.</summary>
+    ControlResponse SetSessionTint(string? target, string? window, ControlTintUpdate update);
+
+    /// <summary>workspace.tint: set or clear a workspace row's tint.</summary>
+    ControlResponse SetWorkspaceTint(string? target, string? window, ControlTintUpdate update);
     ControlResponse MarkSessionSeen(string? target, string? window);
     ControlResponse SetSessionStatus(string? target, string? window, ControlSessionStatusUpdate update);
 

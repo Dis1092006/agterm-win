@@ -64,6 +64,7 @@ internal static class SessionCommands
         session.Subcommands.Add(BuildRestore(bindings));
         session.Subcommands.Add(BuildFlag(bindings));
         session.Subcommands.Add(BuildContext(bindings));
+        session.Subcommands.Add(TintCommands.BuildSessionTint(bindings));
         session.Subcommands.Add(BuildSeen(bindings));
         session.Subcommands.Add(BuildSearch(bindings));
         session.Subcommands.Add(BuildBackground(bindings));
@@ -84,12 +85,14 @@ internal static class SessionCommands
         public string? After { get; init; }
         public string? Before { get; init; }
         public bool NoSelect { get; init; }
+        public required TintCreateOptions Tint { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
         public bool EchoesResultId => true;
 
         public void Validate()
         {
+            Tint.Validate();
             if (After is not null && Before is not null)
                 throw new CliValidationException("use either --after or --before, not both");
             // the anchor sid already names the workspace, so placement can't also address one.
@@ -106,12 +109,12 @@ internal static class SessionCommands
         public ControlRequest MakeRequest() => new()
         {
             Cmd = WireCommand.SessionNew,
-            Args = Client.WithWindow(new ControlArgs
+            Args = Client.WithWindow(Tint.Apply(new ControlArgs
             {
                 Name = Name, Cwd = Cwd, Workspace = Workspace, WorkspaceName = WorkspaceName,
                 CreateWorkspace = CreateWorkspace ? true : null, NoSelect = NoSelect ? true : null,
                 Command = Command, Wait = Wait ? true : null, After = After, Before = Before,
-            }),
+            })),
         };
     }
 
@@ -158,6 +161,7 @@ internal static class SessionCommands
         {
             Description = "Create the session in the background without selecting or focusing it (leaves the current selection untouched).",
         };
+        var tint = new TintCreateOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Options.Add(cwd);
         cmd.Options.Add(workspace);
@@ -169,6 +173,7 @@ internal static class SessionCommands
         cmd.Options.Add(after);
         cmd.Options.Add(before);
         cmd.Options.Add(noSelect);
+        tint.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new New
         {
@@ -182,6 +187,7 @@ internal static class SessionCommands
             After = result.GetValue(after),
             Before = result.GetValue(before),
             NoSelect = result.GetValue(noSelect),
+            Tint = tint.Read(result),
             Client = options.Read(result),
         });
         return cmd;

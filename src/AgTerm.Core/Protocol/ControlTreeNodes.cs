@@ -155,6 +155,14 @@ public sealed record ControlSessionNode
     [JsonPropertyName("lastSelectedAt")]
     public double? LastSelectedAt { get; init; }
 
+    /// <summary>The row's tint color name; null when the row is untinted.</summary>
+    [JsonPropertyName("tint")]
+    public string? Tint { get; init; }
+
+    /// <summary>Which parts the tint colors (icon, name); null when the row is untinted.</summary>
+    [JsonPropertyName("tintOn")]
+    public string[]? TintOn { get; init; }
+
     /// <summary>The background watermark spec; null when none is set.</summary>
     [JsonPropertyName("background")]
     public BackgroundWatermark? Background { get; init; }
@@ -202,6 +210,14 @@ public sealed record ControlWorkspaceNode
     /// <summary>Whether this workspace is collapsed in the sidebar; null when expanded (the default).</summary>
     [JsonPropertyName("collapsed")]
     public bool? Collapsed { get; init; }
+
+    /// <summary>The workspace row's own tint color name; null when untinted.</summary>
+    [JsonPropertyName("tint")]
+    public string? Tint { get; init; }
+
+    /// <summary>Which parts the workspace tint colors (icon, name); null when untinted.</summary>
+    [JsonPropertyName("tintOn")]
+    public string[]? TintOn { get; init; }
 
     [JsonPropertyName("sessions")]
     public required ControlSessionNode[] Sessions { get; init; }

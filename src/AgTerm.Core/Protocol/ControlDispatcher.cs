@@ -9,7 +9,7 @@ namespace AgTerm.Core.Protocol;
 /// and response shape; host actions keep target resolution, window state, and terminal-surface side
 /// effects. The 1:1 port of the Swift ControlDispatcher.
 /// </summary>
-public sealed class ControlDispatcher
+public sealed partial class ControlDispatcher
 {
     private readonly IControlActions _actions;
     private readonly MessageDispatcher _messages;
@@ -34,6 +34,8 @@ public sealed class ControlDispatcher
                 or Command.SessionSeen or Command.SessionStatus or Command.SessionRestore
                 or Command.SessionContext:
                 return DispatchSessionCommand(request);
+            case Command.SessionTint or Command.WorkspaceTint:
+                return DispatchTint(request);
             case Command.SessionSplit or Command.SessionSplitClose or Command.SessionSwap or Command.SessionScratch or Command.SessionFocus
                 or Command.SessionResize or Command.SurfaceZoom or Command.SurfaceCursor or Command.SessionType
                 or Command.SessionCopy or Command.SessionPaste or Command.SessionSelectAll
@@ -405,6 +407,8 @@ public sealed class ControlDispatcher
                 // --wait holds the surface after the command exits, so it is meaningless without a command.
                 if (args?.Wait == true && args?.Command is null)
                     return Err("--wait requires --command");
+                if (CreationTint(args, out var tint) is { } badTint)
+                    return badTint;
                 return _actions.CreateSession(new ControlSessionCreateOptions(
                     Window: args?.Window,
                     Cwd: args?.Cwd,
@@ -416,7 +420,7 @@ public sealed class ControlDispatcher
                     Name: args?.Name,
                     After: args?.After,
                     Before: args?.Before,
-                    NoSelect: args?.NoSelect == true));
+                    NoSelect: args?.NoSelect == true), tint);
             }
             case Command.SessionDuplicate:
                 // no options: the source session names its own workspace AND its cwd, so a duplicate is
@@ -636,8 +640,12 @@ public sealed class ControlDispatcher
         switch (request.Cmd)
         {
             case Command.WorkspaceNew:
+            {
+                if (CreationTint(request.Args, out var tint) is { } badTint)
+                    return badTint;
                 return _actions.CreateWorkspace(request.Args?.Window, request.Args?.Name,
-                    request.Args?.Collapsed ?? false);
+                    request.Args?.Collapsed ?? false, tint);
+            }
             case Command.WorkspaceSelect:
                 return _actions.SelectWorkspace(request.Target, request.Args?.Window);
             case Command.WorkspaceRename:

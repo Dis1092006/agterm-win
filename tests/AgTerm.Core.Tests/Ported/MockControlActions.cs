@@ -49,6 +49,8 @@ public sealed class MockControlActions : IControlActions
         public sealed record WorkspaceExpansion(string? Target, string? Window, bool Expanded) : Call;
         public sealed record SessionFlag(string? Target, string? Window, string? Mode) : Call;
         public sealed record SessionContext(string? Target, string? Window, string? Context) : Call;
+        public sealed record SessionTint(string? Target, string? Window, ControlTintUpdate Update) : Call;
+        public sealed record WorkspaceTint(string? Target, string? Window, ControlTintUpdate Update) : Call;
         public sealed record MarkSessionSeen(string? Target, string? Window) : Call;
         public sealed record SessionStatus(string? Target, string? Window, ControlSessionStatusUpdate Update) : Call;
         public sealed record SessionRestore(string? Target, string? Window, ControlSessionRestoreUpdate Update) : Call;
@@ -355,6 +357,18 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse SetSessionContext(string? target, string? window, string? context)
     {
         Calls.Add(new Call.SessionContext(target, window, context));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetSessionTint(string? target, string? window, ControlTintUpdate update)
+    {
+        Calls.Add(new Call.SessionTint(target, window, update));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetWorkspaceTint(string? target, string? window, ControlTintUpdate update)
+    {
+        Calls.Add(new Call.WorkspaceTint(target, window, update));
         return new ControlResponse { Ok = true };
     }
 

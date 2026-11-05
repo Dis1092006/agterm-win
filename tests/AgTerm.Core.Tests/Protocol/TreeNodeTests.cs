@@ -28,7 +28,7 @@ public class TreeNodeTests
         RestoreCommand = "make", SplitRestoreCommand = "",
         Status = "blocked", StatusPane = "left", StatusBlink = true,
         StatusColor = "#ff0000", StatusShape = "star", StatusChangedAt = 1_700_000_000.25,
-                LastSelectedAt = 1_700_000_100.5,
+                LastSelectedAt = 1_700_000_100.5, Tint = "red", TintOn = ["name"],
                 Background = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "wip" },
         Unseen = 2, FontSize = 13, SplitFontSize = 14, ScratchFontSize = 15,
         Surfaces = new[] { new ControlSurfaceNode { Id = "surface:x:left", Kind = "left", Active = true, Visible = true } },
@@ -85,15 +85,16 @@ public class TreeNodeTests
     }
 
     [Fact]
-    public void WorkspaceNodeFieldNamesMatchParitySurfacePlusWindowsOnlyInOrder()
+    public void WorkspaceNodeFieldNamesMatchPinPlusAdoptedPlusWindowsOnlyInOrder()
     {
         var node = new ControlWorkspaceNode
         {
-            Id = "i", Name = "n", Active = true, Focused = true, Collapsed = true,
+            Id = "i", Name = "n", Active = true, Focused = true, Collapsed = true, Tint = "red", TintOn = ["icon"],
             Sessions = new[] { FullSessionNode() }, Theme = "Nord", Icon = "MapPin",
         };
+        Assert.All(ParitySurface.Adopted("workspaceNode"), name => Assert.Contains(name, ParitySurface.Upstream("workspaceNode")));
         Assert.Equal(
-            SurfaceFieldNames("workspaceNode").Concat(ParitySurface.WindowsOnly("workspaceNode")).ToList(),
+            ParitySurface.Expected("workspaceNode", "workspaceNode").Concat(ParitySurface.WindowsOnly("workspaceNode")).ToList(),
             PropertyNames(ControlJson.Serialize(node)));
     }
 

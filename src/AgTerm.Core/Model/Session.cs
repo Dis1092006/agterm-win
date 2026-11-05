@@ -190,6 +190,10 @@ public sealed class Session
     /// the title bar. Persisted; stays until cleared. Never copied by a duplicate.</summary>
     public string? Context { get; set; }
 
+    /// <summary>The sidebar row's tint (session.tint), or null for none. Persisted; never copied
+    /// by a duplicate.</summary>
+    public SidebarTint? Tint { get; set; }
+
     /// <summary>The main pane's TRANSIENT override payload for THIS launch, copied from the persisted
     /// RestoreCommand by an app-bootstrap restore and consumed by TakePendingRestoreOverride. Never
     /// persisted — a command written over the socket during this run can never execute during this run.</summary>
@@ -545,6 +549,7 @@ public sealed class Session
         SplitRatio = SplitRatio,
         Flagged = Flagged,
         Context = Context,
+        Tint = Tint,
         ForegroundCommand = ForegroundCommand,
         SplitForegroundCommand = SplitForegroundCommand,
         InitialCommand = InitialCommand,

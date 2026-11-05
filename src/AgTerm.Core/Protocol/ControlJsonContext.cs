@@ -18,6 +18,7 @@ namespace AgTerm.Core.Protocol;
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(RecentClosedState))]
 [JsonSerializable(typeof(BackgroundWatermark))]
+[JsonSerializable(typeof(SidebarTint))]
 [JsonSerializable(typeof(AgentStatus))]
 [JsonSerializable(typeof(string))]
 internal partial class ControlJsonContext : JsonSerializerContext;

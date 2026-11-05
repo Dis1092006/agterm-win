@@ -825,6 +825,10 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - A hidden session icon hides the split divider and the flag fill the icon draws. The session row moves left by the icon column and its spacing (22 px), in the tree and in the flagged view.
   - Upstream moves the remote notice of a hidden icon into the name's tooltip. The port has no remote sessions, so there is nothing to move.
   - The Settings window lists both as checkboxes with the other interface elements, labeled as they are ("Workspace Icons", "Session Icons").
+- Sidebar row tints: `session.tint`, `workspace.tint`, the args `tint` and `tintOn`, `tint` and `tintOn` on the tree session and workspace nodes, and `tint` in the saved session and workspace (upstream `f3fea57b`, #836). The names are in `parity/adopted.json`. `agtermctl session tint`, `workspace tint` and `--tint`, `--tint-on` on `session new` and `workspace new` follow upstream's arguments and error strings.
+  - The port stores, saves and reports the tint, and a change emits `tree.changed`. The sidebar does not draw it yet, and there is no Tint submenu in the row menu and no "Tint Session" entry in the palette.
+  - A workspace's tint is separate from its Windows-only `theme` and `icon`. Setting one does not change the others.
+  - Upstream does not mirror the tint of an attached remote row. The port has no remote sessions, so that rule has nothing to apply to.
 
 ## Windows-only extensions
 
