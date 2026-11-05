@@ -359,6 +359,7 @@ public sealed partial class AppStore
         session.OverlayBackgroundColor = backgroundColor;
         session.OverlayActive = true;
         NotifySidebar();
+        ScheduleTreeChanged();
         return true;
     }
 
@@ -401,6 +402,7 @@ public sealed partial class AppStore
         session.OverlaySizePercent = null;
         session.OverlayBackgroundColor = null;
         NotifySidebar();
+        ScheduleTreeChanged();
         return true;
     }
 

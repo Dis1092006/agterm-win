@@ -291,6 +291,7 @@ public sealed class HeadlessControlActions : IControlActions
     private const int OnItemIndex = -1; // upstream SidebarDrop.onItemIndex (a drop ON a row)
 
     private readonly AppStore _store;
+    private readonly RecentClosedStore? _recentClosed;
     private readonly ControlEventRing _ring;
     private KeymapStore _keymap;
     private readonly Func<int> _configReload;
@@ -342,8 +343,10 @@ public sealed class HeadlessControlActions : IControlActions
                                   PickController? pick = null,
                                   PickRegistry? picks = null,
                                   SoundCatalog? sounds = null,
-                                  HeadlessQuickTerminal? quick = null)
+                                  HeadlessQuickTerminal? quick = null,
+                                  RecentClosedStore? recentClosed = null)
     {
+        _recentClosed = recentClosed;
         Quick = quick ?? new HeadlessQuickTerminal();
         Picks = picks ?? new PickRegistry();
         Pick = pick ?? new PickController(Picks.Asks);
@@ -2265,6 +2268,51 @@ public sealed class HeadlessControlActions : IControlActions
         Ok = true,
         Result = AppIdentity.Result(AppIdentity.Running(typeof(HeadlessControlActions).Assembly), installed: null),
     };
+
+    /// <summary>recent.list: the recently closed entries, newest first.</summary>
+    public ControlResponse ListRecentClosed() => new()
+    {
+        Ok = true,
+        Result = new ControlResult
+        {
+            Recent = (_recentClosed?.Load() ?? new List<RecentClosedItem>())
+                .Select(ControlRecentItem.From).ToArray(),
+        },
+    };
+
+    /// <summary>recent.clear: empty the list; a list that is still not empty afterwards means the file
+    /// could not be written.</summary>
+    public ControlResponse ClearRecentClosed()
+    {
+        _recentClosed?.Clear();
+        return (_recentClosed?.Load().Count ?? 0) > 0 ? Err("could not clear recent items") : Ok();
+    }
+
+    /// <summary>recent.open: reopen an entry (the newest by default) into the one window. The entry is
+    /// consumed only when the restore placed every session; otherwise it stays so a later open can finish.</summary>
+    public ControlResponse OpenRecentClosed(string? target, string? window)
+    {
+        if (ResolveWindowGate(window) is { } gate) return gate;
+        var items = _recentClosed?.Load() ?? new List<RecentClosedItem>();
+        var resolved = RecentClosedTarget.Resolve(Trimmed(target), items);
+        if (resolved.Error is { } error) return Err(error);
+        var item = items.First(i => i.Id == resolved.Id);
+        var outcome = _store.RestoreRecentClosed(item, new HashSet<Guid>());
+        if (!outcome.Restored) return Err($"could not reopen {Uuid(item.Id)}");
+        if (outcome.Complete) _recentClosed?.Remove(item.Id);
+        var stillListed = _recentClosed?.Load().Any(i => i.Id == item.Id) ?? false;
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult
+            {
+                RecentOpen = new ControlRecentOpen
+                {
+                    Item = ControlRecentItem.From(item), Window = Uuid(WindowId), Complete = !stillListed,
+                },
+            },
+        };
+    }
 
     /// <summary>sidebar.width: store the clamped width and echo what was stored.</summary>
     public ControlResponse SetSidebarWidth(double points, string? window)

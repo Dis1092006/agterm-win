@@ -12,6 +12,10 @@ public enum ControlEventKind
     SessionClosed,
     /// <summary>A coalesced signal of structural tree changes.</summary>
     TreeChanged,
+    /// <summary>The selected pane of a split session settled on another pane.</summary>
+    PaneFocused,
+    /// <summary>Once per app run, after the control pipe accepts connections.</summary>
+    AppLaunched,
 }
 
 public static class ControlEventKinds
@@ -24,6 +28,8 @@ public static class ControlEventKinds
         "session.created" => ControlEventKind.SessionCreated,
         "session.closed" => ControlEventKind.SessionClosed,
         "tree.changed" => ControlEventKind.TreeChanged,
+        "pane.focused" => ControlEventKind.PaneFocused,
+        "app.launched" => ControlEventKind.AppLaunched,
         _ => null,
     };
 }
@@ -35,7 +41,9 @@ public sealed class ControlEventKindConverter : WireEnumConverter<ControlEventKi
         (ControlEventKind.Notify, "notify"),
         (ControlEventKind.SessionCreated, "session.created"),
         (ControlEventKind.SessionClosed, "session.closed"),
-        (ControlEventKind.TreeChanged, "tree.changed"))
+        (ControlEventKind.TreeChanged, "tree.changed"),
+        (ControlEventKind.PaneFocused, "pane.focused"),
+        (ControlEventKind.AppLaunched, "app.launched"))
     {
     }
 }
@@ -71,6 +79,11 @@ public sealed record ControlEventPayload
 
     [JsonPropertyName("body")]
     public string? Body { get; init; }
+
+    /// <summary>The pane.focused pane's surface token, the value tree reports as surfaces[].paneID;
+    /// absent while that pane's surface does not exist yet.</summary>
+    [JsonPropertyName("paneID")]
+    public string? PaneId { get; init; }
 }
 
 /// <summary>One entry in the event ring.</summary>

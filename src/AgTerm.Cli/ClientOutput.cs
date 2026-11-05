@@ -57,6 +57,15 @@ internal static class ClientOutput
         {
             return string.Join("\n", icons);
         }
+        if (response.Result?.Recent is { } recent)
+        {
+            return FormatRecent(recent);
+        }
+        if (response.Result?.RecentOpen is { } open)
+        {
+            var reopened = $"reopened {open.Item.Kind} {open.Item.Title}";
+            return open.Complete ? reopened : reopened + " (incomplete: the entry stays in the list)";
+        }
         if (response.Result?.Text is { } text)
         {
             return text;
@@ -109,6 +118,19 @@ internal static class ClientOutput
             return id;
         }
         return "ok";
+    }
+
+    /// <summary>Render recent.list one entry per row with its full id, which `recent open` takes as is.</summary>
+    public static string FormatRecent(IReadOnlyList<ControlRecentItem> items)
+    {
+        if (items.Count == 0) return RecentClosedTarget.EmptyError;
+        return string.Join("\n", items.Select(item =>
+        {
+            var subtitle = item.Subtitle is { } s ? $" ({s})" : "";
+            var companions = item.Kind == "session" && item.SessionIds.Length > 1
+                ? $" +{item.SessionIds.Length - 1} companion(s)" : "";
+            return $"{item.Id}  {item.Kind}  {item.Title}{subtitle}{companions}";
+        }));
     }
 
     private static string FormatAffected(int affected) =>

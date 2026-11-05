@@ -318,19 +318,14 @@ public sealed class LiveApplicationHost : IDisposable
             return await Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                LiveWindowHost window;
                 lock (_gate)
                 {
                     ObjectDisposedException.ThrowIf(_disposed, this);
-                    if (!_openWindows.TryGetValue(targetWindowId, out window!)) return false;
+                    if (!_openWindows.ContainsKey(targetWindowId)) return false;
                 }
 
                 var item = _recentClosedStore.Load().FirstOrDefault();
-                if (item is null) return false;
-                var restored = false;
-                window.RunLocked(() => restored = window.Store.RestoreRecentClosed(item));
-                if (restored) _recentClosedStore.Remove(item.Id);
-                return restored;
+                return item is not null && ReopenRecentClosed(item, targetWindowId).Restored;
             }, cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -339,11 +334,148 @@ public sealed class LiveApplicationHost : IDisposable
         }
     }
 
+    private readonly record struct RecentReopen(bool Restored, Guid Window, bool Complete);
+
+    /// <summary>Restore an entry into the window that should own it: the one already holding its
+    /// session (live or kept by a pending close), else the one holding its workspace, else
+    /// <paramref name="requestedWindowId"/>. A window never rebuilds a session another open window
+    /// holds. The entry is consumed only when the restore placed every session. Call under
+    /// <see cref="_recentClosedGate"/>.</summary>
+    private RecentReopen ReopenRecentClosed(RecentClosedItem item, Guid requestedWindowId)
+    {
+        Dictionary<Guid, LiveWindowHost> open;
+        lock (_gate) open = new Dictionary<Guid, LiveWindowHost>(_openWindows);
+        var held = new Dictionary<Guid, HashSet<Guid>>();
+        var workspaces = new Dictionary<Guid, Guid[]>();
+        foreach (var (id, host) in open)
+        {
+            HashSet<Guid> ids = [];
+            host.RunLocked(() => ids = host.Store.HeldSessionIds());
+            held[id] = ids;
+            workspaces[id] = host.CaptureWorkspaceIds();
+        }
+
+        var entrySessionIds = item.Kind == RecentClosedKind.Session
+            ? item.Session is { } session ? new[] { session.Snapshot.Id } : Array.Empty<Guid>()
+            : item.Workspace?.Snapshot.Sessions.Select(s => s.Id).ToArray() ?? Array.Empty<Guid>();
+        Guid? entryWorkspaceId = item.Kind == RecentClosedKind.Session
+            ? item.Session?.WorkspaceId
+            : item.Workspace?.Snapshot.Id;
+
+        // open windows in a stable order, so two holders resolve the same way each time
+        var ordered = open.Keys.OrderBy(id => id == requestedWindowId ? 0 : 1).ThenBy(id => id).ToArray();
+        var destination = ordered.Where(id => entrySessionIds.Any(held[id].Contains))
+                .Select(id => (Guid?)id).FirstOrDefault()
+            ?? ordered.Where(id => entryWorkspaceId is { } w && workspaces[id].Contains(w))
+                .Select(id => (Guid?)id).FirstOrDefault()
+            ?? requestedWindowId;
+        if (!open.TryGetValue(destination, out var window))
+            return new RecentReopen(false, destination, false);
+
+        var occupiedElsewhere = held.Where(pair => pair.Key != destination)
+            .SelectMany(pair => pair.Value).ToHashSet();
+        var outcome = RecentClosedRestore.Failed;
+        window.RunLocked(() => outcome = window.Store.RestoreRecentClosed(item, occupiedElsewhere));
+        if (!outcome.Restored) return new RecentReopen(false, destination, false);
+        if (outcome.Complete) _recentClosedStore.Remove(item.Id);
+        var stillListed = _recentClosedStore.Load().Any(i => i.Id == item.Id);
+        return new RecentReopen(true, destination, !stillListed);
+    }
+
+    private async Task<ControlResponse> DispatchRecentAsync(
+        ControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Cmd != Command.RecentOpen && ControlDispatcher.RecentRefusal(request) is { } refusal)
+            return refusal;
+        await _recentClosedGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() => request.Cmd switch
+            {
+                Command.RecentList => new ControlResponse
+                {
+                    Ok = true,
+                    Result = new ControlResult
+                    {
+                        Recent = _recentClosedStore.Load().Select(ControlRecentItem.From).ToArray(),
+                    },
+                },
+                Command.RecentClear => ClearRecentClosed(),
+                _ => OpenRecentClosedCommand(request),
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _recentClosedGate.Release();
+        }
+    }
+
+    private ControlResponse ClearRecentClosed()
+    {
+        _recentClosedStore.Clear();
+        return _recentClosedStore.Load().Count > 0
+            ? new ControlResponse { Ok = false, Error = "could not clear recent items" }
+            : new ControlResponse { Ok = true };
+    }
+
+    private ControlResponse OpenRecentClosedCommand(ControlRequest request)
+    {
+        var windowTarget = request.Args?.Window?.Trim();
+        Guid requested;
+        if (string.IsNullOrEmpty(windowTarget))
+        {
+            Guid? active;
+            lock (_gate) active = ActiveWindowIdLocked();
+            if (active is not { } activeId)
+                return new ControlResponse { Ok = false, Error = "no open window" };
+            requested = activeId;
+        }
+        else
+        {
+            var (windowId, error) = ResolveOpenWindow(windowTarget);
+            if (error is not null) return error;
+            requested = windowId!.Value;
+        }
+
+        var items = _recentClosedStore.Load();
+        var target = request.Target?.Trim();
+        var resolved = RecentClosedTarget.Resolve(string.IsNullOrEmpty(target) ? null : target, items);
+        if (resolved.Error is { } resolveError)
+            return new ControlResponse { Ok = false, Error = resolveError };
+        var item = items.First(i => i.Id == resolved.Id);
+
+        var reopened = ReopenRecentClosed(item, requested);
+        if (!reopened.Restored)
+            return new ControlResponse { Ok = false, Error = $"could not reopen {item.Id.ToString("D").ToUpperInvariant()}" };
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult
+            {
+                RecentOpen = new ControlRecentOpen
+                {
+                    Item = ControlRecentItem.From(item),
+                    Window = reopened.Window.ToString("D").ToUpperInvariant(),
+                    Complete = reopened.Complete,
+                },
+            },
+        };
+    }
+
     public void Start()
     {
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
         _server.Start();
+        var announce = false;
+        lock (_gate)
+        {
+            if (!_appLaunchAnnounced && _server.IsListening) _appLaunchAnnounced = announce = true;
+        }
+        if (announce) Ring.Append(new ControlEventDraft { Kind = ControlEventKind.AppLaunched });
     }
+
+    private bool _appLaunchAnnounced;
 
     public async Task<ControlResponse> SetThemeAsync(
         ControlArgs args,
@@ -769,6 +901,8 @@ public sealed class LiveApplicationHost : IDisposable
             if (request.Args?.Sound is { Length: > 0 } sound && _soundCatalog.Resolve(sound) is null)
                 return new ControlResponse { Ok = false, Error = _soundCatalog.UnknownSoundError(sound) };
         }
+        if (request.Cmd is Command.RecentList or Command.RecentOpen or Command.RecentClear)
+            return await DispatchRecentAsync(request, cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowList)
             return await ListWindowsAsync(cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowNew && _windowController is not null)

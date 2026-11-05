@@ -123,6 +123,14 @@ public sealed record ControlResult
     [JsonPropertyName("installed")]
     public ControlAppIdentity? Installed { get; init; }
 
+    /// <summary>recent.list payload: the recently closed entries, newest first.</summary>
+    [JsonPropertyName("recent")]
+    public ControlRecentItem[]? Recent { get; init; }
+
+    /// <summary>recent.open payload: the reopened entry, its window and whether it was consumed.</summary>
+    [JsonPropertyName("recentOpen")]
+    public ControlRecentOpen? RecentOpen { get; init; }
+
     /// <summary>session.close --undoable: whether the close went into the undo grace window.</summary>
     [JsonPropertyName("undoable")]
     public bool? Undoable { get; init; }

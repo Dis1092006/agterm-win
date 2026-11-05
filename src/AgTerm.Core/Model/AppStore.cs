@@ -223,6 +223,7 @@ public sealed partial class AppStore
         RecentClosedStore = recentClosedStore;
         RecentClosedDidChange = recentClosedDidChange;
         ControlEventSink = controlEventSink;
+        ResetPaneFocusBaseline();
     }
 
     /// <summary>The state dir this store's side files (rendered .text watermarks) live under. Null
@@ -512,6 +513,7 @@ public sealed partial class AppStore
             InitialCommand = command,
             CommandWait = wait,
         };
+        WatchPaneFocus(session);
         if (at is { } index)
         {
             var destination = Math.Max(0, Math.Min(index, Workspaces[wsIndex].Sessions.Count));
@@ -1180,6 +1182,7 @@ public sealed partial class AppStore
         RecordRecency();
         // LAST, after the recency stack is re-seeded: the pick is most-recent-first, so earlier it finds an empty stack.
         ReselectIfSelectionHidden();
+        ResetPaneFocusBaseline();
     }
 
     /// <summary>Persists the current state eagerly. Called after every structural mutation and on
@@ -1316,6 +1319,7 @@ public sealed partial class AppStore
             session.ForegroundCommand = snapshot.ForegroundCommand;
             if (session.IsSplit) session.SplitForegroundCommand = snapshot.SplitForegroundCommand;
         }
+        WatchPaneFocus(session);
         return session;
     }
 

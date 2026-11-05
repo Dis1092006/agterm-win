@@ -139,9 +139,13 @@ public sealed class HeadlessHost : IDisposable
         // the store's control-event sink is the upstream WindowLibrary seam collapsed to one
         // window: stamp the window id (uppercase uuid string) and append to the app-run ring.
         _persistence = new PersistenceStore(options.StateDir);
+        // a throwaway or absent state dir keeps Open Recent off, so a test host never touches the
+        // user's real recent-closed.json
+        var recentClosed = options.StateDir is { } recentDir ? new RecentClosedStore(recentDir) : null;
         Store = new AppStore(
             persistence: _persistence,
             controlEventSink: draft => Ring.Append(draft with { Window = windowTag }),
+            recentClosedStore: recentClosed,
             stateDirectory: options.StateDir)
         {
             // installed before the bootstrap: the default first session is created SELECTED and
@@ -171,7 +175,8 @@ public sealed class HeadlessHost : IDisposable
             notificationRequested: options.NotificationRequested,
             statusNotificationRequested: options.StatusNotificationRequested,
             zoomTargetAvailable: options.ZoomTargetAvailable,
-            sounds: new SoundCatalog(options.StateDir ?? PersistenceStore.DefaultDirectory, log: options.Log));
+            sounds: new SoundCatalog(options.StateDir ?? PersistenceStore.DefaultDirectory, log: options.Log),
+            recentClosed: recentClosed);
         _dispatcher = new ControlDispatcher(Actions);
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.
@@ -205,8 +210,20 @@ public sealed class HeadlessHost : IDisposable
 
     public bool IsListening => _server.IsListening;
 
-    /// <summary>Bind the pipe and start serving. Idempotent.</summary>
-    public void Start() => _server.Start();
+    /// <summary>Bind the pipe and start serving. Idempotent. The first start of the run also records
+    /// app.launched; a repeated start or a restart never does.</summary>
+    public void Start()
+    {
+        _server.Start();
+        var announce = false;
+        lock (_gate)
+        {
+            if (!_appLaunchAnnounced && _server.IsListening) _appLaunchAnnounced = announce = true;
+        }
+        if (announce) Ring.Append(new ControlEventDraft { Kind = ControlEventKind.AppLaunched });
+    }
+
+    private bool _appLaunchAnnounced;
 
     /// <summary>Stop the listener; a connection currently being served finishes best-effort.</summary>
     public void Stop() => _server.Stop();

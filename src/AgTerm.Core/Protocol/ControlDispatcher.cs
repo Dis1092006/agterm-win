@@ -59,6 +59,12 @@ public sealed class ControlDispatcher
                 return await DispatchWindowCommand(request);
             case Command.Dashboard:
                 return DispatchDashboard(request);
+            case Command.RecentList:
+                return RecentRefusal(request) ?? _actions.ListRecentClosed();
+            case Command.RecentClear:
+                return RecentRefusal(request) ?? _actions.ClearRecentClosed();
+            case Command.RecentOpen:
+                return _actions.OpenRecentClosed(request.Target, request.Args?.Window);
             case Command.PickOpen or Command.PickResult or Command.PickCancel:
                 return DispatchPickCommand(request);
             case Command.AskOpen or Command.AskResult or Command.AskCancel:
@@ -74,6 +80,13 @@ public sealed class ControlDispatcher
     }
 
     private static ControlResponse Err(string error) => new() { Ok = false, Error = error };
+
+    /// <summary>recent.list and recent.clear take no target and no window; the refusal text for one
+    /// given, or null when the request is clean. Shared so a host that routes these itself matches.</summary>
+    public static ControlResponse? RecentRefusal(ControlRequest request) =>
+        request.Target is not null || request.Args?.Window is not null
+            ? Err($"{request.Cmd.ToWire()} takes no target or --window")
+            : null;
 
     private static ControlResponse? NulRejection(string text) =>
         text.Contains('\0') ? Err("text must not contain a NUL byte") : null;

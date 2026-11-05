@@ -20,7 +20,10 @@
     { "wire": "session.context", "upstream": "73b63b71" },
     { "wire": "session.split.close", "upstream": "79852e71" },
     { "wire": "session.swap", "upstream": "db62080d" },
-    { "wire": "surface.cursor", "upstream": "2279c722" }
+    { "wire": "surface.cursor", "upstream": "2279c722" },
+    { "wire": "recent.list", "upstream": "6b564749" },
+    { "wire": "recent.open", "upstream": "6b564749" },
+    { "wire": "recent.clear", "upstream": "6b564749" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -54,7 +57,9 @@
     { "name": "app", "upstream": "5d22904a" },
     { "name": "installed", "upstream": "18da29cb" },
     { "name": "cursor", "upstream": "2279c722" },
-    { "name": "undoable", "upstream": "0107bc95" }
+    { "name": "undoable", "upstream": "0107bc95" },
+    { "name": "recent", "upstream": "6b564749" },
+    { "name": "recentOpen", "upstream": "6b564749" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },

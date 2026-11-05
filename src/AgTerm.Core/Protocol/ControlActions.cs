@@ -90,6 +90,15 @@ public interface IControlActions
     /// <summary>version: the running app's identity and, when different, the one installed on disk.</summary>
     ControlResponse AppVersion();
 
+    /// <summary>recent.list: the recently closed entries, newest first.</summary>
+    ControlResponse ListRecentClosed();
+
+    /// <summary>recent.clear: empty the recently closed list.</summary>
+    ControlResponse ClearRecentClosed();
+
+    /// <summary>recent.open: reopen an entry (the newest when target is null) into a window.</summary>
+    ControlResponse OpenRecentClosed(string? target, string? window);
+
     /// <summary>sidebar.width: set the sidebar width in points (clamped); the result echoes the stored width.</summary>
     ControlResponse SetSidebarWidth(double points, string? window);
 

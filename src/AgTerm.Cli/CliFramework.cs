@@ -72,6 +72,18 @@ public sealed class CliEnvironment
 
     /// <summary>Sleep between polls (overlay --block, events --follow); injectable for tests.</summary>
     public Action<TimeSpan> Sleep { get; init; } = delay => Thread.Sleep(delay);
+
+    /// <summary>Monotonic seconds, so a wall-clock change cannot stretch or cut a timeout.</summary>
+    public Func<double> Now { get; init; } = () => System.Diagnostics.Stopwatch.GetTimestamp()
+        / (double)System.Diagnostics.Stopwatch.Frequency;
+
+    /// <summary>Runs the handler after the given seconds on its own thread, until the returned handle
+    /// is disposed; session wait uses it to end at its deadline while a pipe call is blocked.</summary>
+    public Func<double, Action, IDisposable> StartWatchdog { get; init; } = CliEnvironmentWatchdog.Start;
+
+    /// <summary>Puts text on the Windows clipboard (clipboard set); throws
+    /// TerminalClipboard.FailureException when it cannot.</summary>
+    public Action<string> SetClipboard { get; init; } = WindowsClipboard.SetText;
 }
 
 internal static class CliOptions

@@ -92,6 +92,15 @@ public class ControlPickTests
             Cursor = new ControlCursor { Column = 0 },
             App = new ControlAppIdentity { Version = "1.0", Commit = "abc" },
             Installed = new ControlAppIdentity { Version = "1.0" }, Undoable = true,
+            Recent = Array.Empty<ControlRecentItem>(),
+            RecentOpen = new ControlRecentOpen
+            {
+                Item = new ControlRecentItem
+                {
+                    Id = "i", Kind = "session", Title = "t", ClosedAt = 1, WorkspaceId = "w", SessionIds = ["a"],
+                },
+                Window = "w", Complete = true,
+            },
             Icons = new[] { "a" },
         };
 

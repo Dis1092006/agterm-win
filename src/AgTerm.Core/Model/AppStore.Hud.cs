@@ -32,6 +32,7 @@ public sealed partial class AppStore
         session.HudRevision++;
         ArmHudAutoHide(session);
         HudChanged?.Invoke();
+        ScheduleTreeChanged();
         return true;
     }
 
@@ -57,6 +58,7 @@ public sealed partial class AppStore
     {
         if (SessionWithId(sessionId) is not { } session || !session.HudActive) return false;
         CloseHudOf(session);
+        ScheduleTreeChanged();
         return true;
     }
 
@@ -161,6 +163,7 @@ public sealed partial class AppStore
         // revision belongs to a HUD that is gone
         if (SessionWithId(sessionId) is not { } session || session.HudRevision != revision) return;
         CloseHudOf(session);
+        ScheduleTreeChanged();
     }
 
     private IDisposable ScheduleOnHostLock(TimeSpan delay, Action action)

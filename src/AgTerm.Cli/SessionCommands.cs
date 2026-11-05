@@ -60,6 +60,7 @@ internal static class SessionCommands
         session.Subcommands.Add(BuildSelectAll(bindings));
         session.Subcommands.Add(BuildText(bindings));
         session.Subcommands.Add(BuildStatus(bindings));
+        session.Subcommands.Add(SessionWaitCommands.Build(bindings));
         session.Subcommands.Add(BuildRestore(bindings));
         session.Subcommands.Add(BuildFlag(bindings));
         session.Subcommands.Add(BuildContext(bindings));
