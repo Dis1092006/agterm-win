@@ -219,7 +219,9 @@ that status: `left` (main) | `right` (split) | `scratch`, from `session status -
 unset or idle), `statusBlink`/`statusColor`/`statusShape` (the status glyph's `--blink` flag, its `--color`
 `#rrggbb` tint and its `--shape` silhouette from `session status`, omitted when idle / not blinking / using
 the configured color or shape — the tint and the silhouette report the per-call override only), `statusChangedAt` (epoch seconds of the
-last status change: any `session status` write, `idle` included, and a clear by a key, by `session type` or by the pane going away; omitted until a status is set), `background` (the background
+last status change: any `session status` write, `idle` included, and a clear by a key, by `session type` or by the pane going away; omitted until a status is set), `lastSelectedAt` (when the session last became or
+stopped being its window's selected session, on the same clock; persisted, omitted when no selection has
+been recorded, so find sessions nobody has looked at in a while by age, not by absence), `background` (the background
 spec — image/text watermark or solid color — set via `session background`, omitted when none — the read side of set/clear),
 `unseen` (the unseen-notification badge count — raised by `notify`, cleared by `session
 seen` — omitted when zero), `commandWait` (whether a `--command` session was created with `--wait` to

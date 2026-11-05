@@ -40,6 +40,11 @@ public static class ParitySurface
         Load("docs/upstream/surface-v0.36.0.json").GetProperty("persistence").GetProperty(section)
             .EnumerateArray().Select(e => e.GetProperty("name").GetString()!).ToList();
 
+    /// <summary>Persistence fields of the newest upstream snapshot (v0.40.0), for fields adopted after v0.36.0.</summary>
+    public static IReadOnlyList<string> LatestUpstreamPersistence(string section) =>
+        Load("docs/upstream/surface-v0.40.0.json").GetProperty("persistence").GetProperty(section)
+            .EnumerateArray().Select(e => e.GetProperty("name").GetString()!).ToList();
+
     public static IReadOnlyList<string> UpstreamSettings() =>
         Load("docs/upstream/surface-v0.36.0.json").GetProperty("settings")
             .EnumerateArray().Select(e => e.GetProperty("name").GetString()!).ToList();

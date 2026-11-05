@@ -1844,6 +1844,8 @@ public class AppStoreTests
         b.BackgroundWatermark = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "PROD" };
         store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked, StatusPane: StatusPane.Right), b.Id);
         store.SelectSession(b.Id);
+        a.LastSelectedAt = DateTimeOffset.FromUnixTimeSeconds(1_600_000_000);
+        b.LastSelectedAt = DateTimeOffset.FromUnixTimeSeconds(1_700_000_100);
 
         var tree = store.ControlTree();
 
@@ -1857,6 +1859,7 @@ public class AppStoreTests
                 {
                     Id = Upper(a!.Id), Name = "alpha", Cwd = "/repo/a",
                     Active = false, Split = false, Realized = false,
+                    LastSelectedAt = 1_600_000_000,
                     Surfaces = new[]
                     {
                         new ControlSurfaceNode
@@ -1879,6 +1882,7 @@ public class AppStoreTests
                     Overlay = true, Scratch = true, Flagged = true,
                     Status = "blocked", StatusPane = "right",
                     StatusChangedAt = tree.Workspaces[1].Sessions.Single(s => s.Name == "remote:~/b").StatusChangedAt,
+                    LastSelectedAt = 1_700_000_100,
                     Background = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "PROD" },
                     Surfaces = new[]
                     {

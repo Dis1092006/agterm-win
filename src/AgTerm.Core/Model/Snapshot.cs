@@ -232,6 +232,11 @@ public sealed record SessionSnapshot
     [JsonPropertyName("splitRestoreCommand")]
     [JsonConverter(typeof(LossyStringConverter))]
     public string? SplitRestoreCommand { get; init; }
+
+    /// <summary>Session.LastSelectedAt as epoch seconds; null when no selection time was recorded.</summary>
+    [JsonPropertyName("lastSelectedAt")]
+    [JsonConverter(typeof(LossyDoubleConverter))]
+    public double? LastSelectedAt { get; init; }
 }
 
 /// <summary>Decodes a watermark LOSSILY: any invalid value becomes null instead of throwing (see

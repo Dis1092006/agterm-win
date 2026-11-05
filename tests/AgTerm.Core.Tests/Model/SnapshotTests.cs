@@ -25,7 +25,7 @@ public class SnapshotTests
         InitialCommand = "ssh host", CommandWait = true,
         SplitInitialCommand = "top", SplitCommandWait = true,
         BackgroundWatermark = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "wip" },
-        RestoreCommand = "make watch", SplitRestoreCommand = "",
+        RestoreCommand = "make watch", SplitRestoreCommand = "", LastSelectedAt = 1_700_000_000.5,
     };
 
     [Fact]
@@ -35,7 +35,7 @@ public class SnapshotTests
         // the pin plus what adopted.json takes, in upstream order (context: 73b63b71)
         var wanted = SurfaceFieldNames("sessionSnapshot").Concat(ParitySurface.Adopted("sessionSnapshot"))
             .ToHashSet(StringComparer.Ordinal);
-        Assert.Equal(ParitySurface.UpstreamPersistence("sessionSnapshot").Where(wanted.Contains).ToList(),
+        Assert.Equal(ParitySurface.LatestUpstreamPersistence("sessionSnapshot").Where(wanted.Contains).ToList(),
             doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
     }
 
@@ -49,6 +49,33 @@ public class SnapshotTests
         var session = ControlJson.Deserialize<SessionSnapshot>(json)!;
         Assert.Equal("PR #517: reap ordering", session.Context);
         Assert.Equal(json, ControlJson.Serialize(session));
+    }
+
+    [Fact]
+    public void LastSelectedAtIsOmittedWhenUnsetAndRoundTripsWhenSet()
+    {
+        Assert.DoesNotContain("lastSelectedAt", ControlJson.Serialize(new SessionSnapshot { Id = SessionId, Cwd = "/h" }));
+
+        var json = "{\"id\":\"" + SessionId.ToString().ToUpperInvariant() + "\",\"cwd\":\"/h\",\"lastSelectedAt\":1700000000.5}";
+        var session = ControlJson.Deserialize<SessionSnapshot>(json)!;
+        Assert.Equal(1_700_000_000.5, session.LastSelectedAt);
+        Assert.Equal(json, ControlJson.Serialize(session));
+    }
+
+    [Fact]
+    public void SnapshotWithoutLastSelectedAtDecodesNull()
+    {
+        var json = "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\"}";
+        Assert.Null(ControlJson.Deserialize<SessionSnapshot>(json)!.LastSelectedAt);
+    }
+
+    [Fact]
+    public void AMistypedLastSelectedAtDropsWithoutFailingTheDecode()
+    {
+        var json = "{\"id\":\"" + SessionId + "\",\"cwd\":\"/tmp\",\"lastSelectedAt\":\"yesterday\",\"customName\":\"keep\"}";
+        var session = ControlJson.Deserialize<SessionSnapshot>(json)!;
+        Assert.Null(session.LastSelectedAt);
+        Assert.Equal("keep", session.CustomName);
     }
 
     [Fact]
