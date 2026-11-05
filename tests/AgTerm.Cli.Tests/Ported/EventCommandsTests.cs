@@ -285,6 +285,17 @@ public class EventCommandsTests
                 Seq = 7, Ts = 0, Kind = ControlEventKind.Status,
                 Payload = new ControlEventPayload { Name = "api", Status = "completed", Shape = "star" },
             },
+            new ControlEvent
+            {
+                Seq = 8, Ts = 0, Kind = ControlEventKind.PaneFocused, Window = "win",
+                Payload = new ControlEventPayload { Name = "api", Pane = "right", PaneId = "tok" },
+            },
+            new ControlEvent
+            {
+                Seq = 9, Ts = 0, Kind = ControlEventKind.PaneFocused,
+                Payload = new ControlEventPayload { Name = "api", Pane = "left" },
+            },
+            new ControlEvent { Seq = 10, Ts = 0, Kind = ControlEventKind.AppLaunched },
         };
         // Swift TimeZone(secondsFromGMT: 0) → TimeZoneInfo.Utc.
         var human = events.Select(e => EventFormatter.Human(e, TimeZoneInfo.Utc)).ToArray();
@@ -295,6 +306,9 @@ public class EventCommandsTests
         Assert.Equal("00:00:00 tree.changed win", human[4]);
         Assert.Equal("00:00:00 status api active color=#ff8800 shape=triangle", human[5]);
         Assert.Equal("00:00:00 status api completed shape=star", human[6]);
+        Assert.Equal("00:00:00 pane.focused api right pane-id=tok", human[7]);
+        Assert.Equal("00:00:00 pane.focused api left pane-id=-", human[8]);
+        Assert.Equal("00:00:00 app.launched", human[9]);
 
         foreach (var @event in events)
         {

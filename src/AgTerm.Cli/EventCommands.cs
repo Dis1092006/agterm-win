@@ -75,6 +75,8 @@ internal static class EventFormatter
         ControlEventKind.SessionCreated => "session.created",
         ControlEventKind.SessionClosed => "session.closed",
         ControlEventKind.TreeChanged => "tree.changed",
+        ControlEventKind.PaneFocused => "pane.focused",
+        ControlEventKind.AppLaunched => "app.launched",
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
@@ -97,6 +99,10 @@ internal static class EventFormatter
                 return string.Join(" ", parts);
             case ControlEventKind.Notify:
                 return $"{time} {Wire(@event.Kind)} {name} {@event.Payload.Title ?? name}: {@event.Payload.Body ?? ""}";
+            case ControlEventKind.PaneFocused:
+                return $"{time} {Wire(@event.Kind)} {name} {@event.Payload.Pane ?? "-"} pane-id={@event.Payload.PaneId ?? "-"}";
+            case ControlEventKind.AppLaunched:
+                return $"{time} {Wire(@event.Kind)}";
             default: // sessionCreated, sessionClosed, treeChanged
                 return $"{time} {Wire(@event.Kind)} {name}";
         }

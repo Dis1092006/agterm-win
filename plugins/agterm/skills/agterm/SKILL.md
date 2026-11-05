@@ -17,7 +17,8 @@ when_to_use: >
   session.split, session.split.close, session.swap, session.scratch, session.focus, session.resize, surface.zoom, surface.cursor, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
   session.flag, session.context, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, window.new, window.list,
   window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
-  theme.set, theme.list, events, events.read, event subscription, select theme, edit keymap,
+  theme.set, theme.list, events, events.read, event subscription, pane.focused, app.launched, session wait, wait for session status,
+  recent.list, recent.open, recent.clear, recently closed sessions, reopen closed session, clipboard set, select theme, edit keymap,
   AGTERM_SESSION_ID, AGTERM_SOCKET, and asks to drive or script agterm. Also: troubleshoot agterm,
   keymap chord does nothing, custom action / custom command not working, agterm diagnostics, file an agterm
   bug, report an agterm issue, ask an agterm question / feature request.
@@ -200,7 +201,7 @@ focus, but the newline and shared-buffer hazards of `type`-as-launcher remain �
 rule.) After `--command`, confirm with `session text --target <new-id>` that your program is running,
 not a bare shell prompt. agterm-win does not report a pane's foreground process in `tree`.
 
-## Command summary (67 commands)
+## Command summary (70 commands)
 
 Run `agtermctl <area> <cmd> --help` for exact flags. Full detail in **reference.md**; recipes in
 **examples.md**.
@@ -240,7 +241,7 @@ applied to the cells, omitted when untouched), and `dashboardFontMode` (`auto`|`
 
 **events**: continuously print control events, subscribing from the current tail when no cursor is
 given. Use `--json` for one bare event object per line; filter with repeatable or comma-separated
-`--kind status|notify|session.created|session.closed|tree.changed`; resume with paired
+`--kind status|notify|session.created|session.closed|tree.changed|pane.focused|app.launched`; resume with paired
 `--run RUN --after SEQ`; and set page size with `--limit 1...1000`. The app retains 4,096 events for
 one process run. Cursor run changes, expiry, and ahead-of-tail errors are fatal and are never silently
 rebaselined. There is no terminal-output event stream.
@@ -287,6 +288,7 @@ omitted when expanded).
   result carries `undoable` (`true` when the close can be undone).
 - `select` · `rename <name>` · `reveal` (checks that the focused pane's cwd exists and selects the session;
   it does not open Explorer — the sidebar's **Reveal in Explorer** item does).
+- `wait --until idle|active|completed|blocked [--until ...] [--timeout SECONDS] [--target]` — block until the session's agent status is one of the given values (CLI-side loop, no wire command). It prints the status and exits 0; exits 2 with `session closed` if the session closes first, and 124 with `timed out` after `--timeout`.
 - `go --to next|prev|first|last|next-attention|prev-attention` — move the selection between sessions (attention steps stop on blocked/completed, plus active when the tree reports `attentionIncludesActive: true`).
 - `move <workspace>` (relocate) or `move --to up|down|top|bottom` (reorder within the workspace) or
   `move --after SID | --before SID` (place after/before an anchor session; the anchor carries its own
@@ -403,6 +405,10 @@ omitted when expanded).
   works on it while `--full` is refused (`a hud is always floating: pass --size-percent, not --full`),
   and `surface zoom` will not address it. `session hud update`/`session hud close` with none up answer `no hud`. Read it
   back from the tree node's `hud` object; nothing announces it as an event, so poll `tree`.
+
+**recent** — `list` (the recently closed sessions and workspaces, newest first, the last 20 kept) · `open [id] [--window W]` (reopen an entry by id or unique prefix, the newest when omitted; it goes to `--window` or the frontmost window unless another window holds its session or workspace) · `clear`. `--json` carries `result.recent` and `result.recentOpen`.
+
+**clipboard** — `set [text]` copies text (or standard input) to the Windows clipboard of the machine the CLI runs on. Local to the CLI; no wire command.
 
 **window** — `new [name]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
 `delete <id>` · `resize <id> --width W --height H` · `move <id> --x X --y Y [--display N]` ·

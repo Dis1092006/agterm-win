@@ -102,8 +102,28 @@ public sealed class Session
     /// it while both panes exist transposes the layout without replacing either surface.</summary>
     public SplitAxis SplitAxis { get; set; } = SplitAxis.LeftRight;
 
-    /// <summary>While split, whether the split (second) pane holds focus. Meaningless when not split.</summary>
-    public bool SplitFocused { get; set; }
+    /// <summary>While split, whether the split (second) pane holds focus. Meaningless when not split.
+    /// A change schedules the store's pane.focused check.</summary>
+    public bool SplitFocused
+    {
+        get => _splitFocused;
+        set
+        {
+            if (_splitFocused == value) return;
+            _splitFocused = value;
+            PaneFocusChanged?.Invoke();
+        }
+    }
+
+    private bool _splitFocused;
+
+    /// <summary>Set by the owning store: told when the focused pane flag flips.</summary>
+    internal Action? PaneFocusChanged { get; set; }
+
+    /// <summary>The identity of the pane that holds focus, which a swap leaves alone: it exchanges both
+    /// identities and flips the flag. Keyed on identity so only a real selection change reads as one.</summary>
+    internal Guid SelectedPaneIdentity =>
+        SplitFocused && SplitPaneIdentity is { } split ? split : PaneIdentity;
 
     /// <summary>The split divider's left-pane fraction (~0.05..0.95); null = even. Persisted.</summary>
     public double? SplitRatio { get; set; }

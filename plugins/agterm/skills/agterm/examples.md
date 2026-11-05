@@ -485,6 +485,25 @@ agtermctl events --json --kind status |
 The pipeline ends after the match. A transport or cursor failure makes `agtermctl events` exit
 non-zero; preserve pipeline status in automation that must distinguish a match from a failed stream.
 
+`session wait` does the same in one command, and it also returns at once when the session already has
+the status:
+
+```powershell
+agtermctl session wait --until completed --until blocked --timeout 600 --target $env:AGTERM_SESSION_ID
+if ($LASTEXITCODE -eq 124) { "timed out" } elseif ($LASTEXITCODE -eq 2) { "session closed" }
+```
+
+## Reopen a closed session
+
+```powershell
+agtermctl recent list            # newest first, with the ids
+agtermctl recent open            # the newest entry
+agtermctl recent open 3F2A       # an entry by unique id prefix
+agtermctl recent clear
+```
+
+`agtermctl clipboard set "text"` and `... | agtermctl clipboard set` copy to the Windows clipboard.
+
 ## Relay accepted notifications
 
 The notification event exists even when desktop banners are disabled. Forward each accepted event as

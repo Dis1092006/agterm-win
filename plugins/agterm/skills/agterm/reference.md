@@ -35,7 +35,7 @@ With no cursor, the first read subscribes from now: it returns an empty batch an
 tail, and the CLI prints only later events. The app keeps a non-destructive ring of the latest 4,096
 events for its current process run. Independent readers do not consume one another's events.
 
-The five event kinds and payloads are:
+The event kinds and payloads are:
 
 - `status`: `name`, normalized `status` (`idle`|`active`|`blocked`|`completed`), a `blink` boolean,
   and optional `pane`, `color` and `shape` (the last two being the per-call `--color`/`--shape`
@@ -48,7 +48,16 @@ The five event kinds and payloads are:
   visible window tree. Undo emits a new `session.created`; grace-period finalization does not emit a
   second close.
 - `tree.changed`: an empty payload and the affected window id. Name, membership, and ordering changes
-  emit it. Read `tree --json` for the current snapshot.
+  emit it. Opening or closing a session overlay and opening, closing or expiring a HUD also emit it.
+  Read `tree --json` for the current snapshot.
+- `pane.focused`: `name` (the session name), `pane` (`left` or `right`) and `paneID` (the stable
+  surface token of the focused pane, omitted when the pane has none). It fires when the focused pane of
+  a session changes, for example when focus moves between the main and the split pane, or when the
+  focused split pane closes. A change that moves and returns inside 100 ms emits nothing. A swap of the
+  two panes emits nothing, because the same surface keeps focus.
+- `app.launched`: an empty payload with no window, workspace or session. The app emits it once per
+  process run, when the control server starts accepting connections. It is the first event of a run, so
+  a client that reads from the start of the ring sees it, and a client that subscribes from now does not.
 
 Every event has `seq` (app-wide sequence), `ts` (Unix timestamp), `kind`, optional
 `window`/`workspace`/`session` ids, and `payload`. Human mode prints one compact line. `--json` emits
@@ -288,6 +297,15 @@ All thirteen are read-only projections of GUI state.
   `--undoable` the close takes the grace window when the setting allows it and the result adds `undoable`
   (`true` when it can be undone, `false` when the setting is off): `{"id":…,"undoable":true}` for one target,
   `{"affected":N,"undoable":…}` for a batch. Without `--undoable` the field is left out.
+- `session wait --until STATUS [--until STATUS ...] [--timeout SECONDS] [--target]` — block
+  until the session's agent status is one of the given values (`idle`, `active`, `completed`, `blocked`).
+  It is a CLI-side loop over `events.read` and `tree`, not a wire command, and it searches every open
+  window for the target. If the status already matches, it returns at once. On a match it prints the
+  status (with `--json`, `{"id":…,"status":…}`) and exits 0. It exits 2 with
+  `session closed` on stderr when the session closes first, and exits 124 with `timed out` on stderr when
+  `--timeout` passes. Without `--timeout` it waits for ever. Errors: `provide at least one --until status`,
+  `invalid status: <value> (expected idle, active, completed or blocked)` and
+  `--timeout must be a positive number of seconds`.
 - `session select [--target] [--window W]`. Wire: `session.select`.
 - `session rename <name> [--target] [--window W]`. Wire: `session.rename`.
 - `session reveal [--target] [--window W]` — select the target session. Wire: `session.reveal`. On
@@ -1260,6 +1278,33 @@ output prints `ok`. App-global (no `--window`). The GUI's live-preview picker (`
 "Select Theme…" in the command palette)
 previews live; committing it replaces the CURRENT appearance's side when syncing (the pair is
 kept); over the pipe `theme set` is the commit, with no preview.
+
+## recent
+
+The recently closed list is the one File > Open Recent shows. It keeps the last 20 closed sessions and
+workspaces and drops the oldest silently.
+
+- `agtermctl recent list` — one row per entry, newest first: the full `id`, kind, title, subtitle in
+  parentheses and a `+N companion(s)` count for a session entry that restores more than one session.
+  Wire: `recent.list`. With `--json` the result carries `result.recent`, an array of `id`, `kind`
+  (`session` or `workspace`), `title`, optional `subtitle`, `closedAt` (Unix seconds), `workspaceID` and
+  `sessionIDs`. An empty list prints `no recently closed items`.
+- `agtermctl recent open [id] [--window W]` — reopen an entry by its id or a unique prefix, the newest
+  when no id is given. Wire: `recent.open`. The entry comes back with its split, flag, context and
+  restore pins. It goes to `--window`, or the frontmost window, unless another window already holds its
+  session or its workspace. The window is not raised. `result.recentOpen` carries `item`, `window` (where
+  it went) and `complete`. An entry whose restore was incomplete stays in the list.
+- `agtermctl recent clear` — empty the list. Wire: `recent.clear`.
+
+## clipboard
+
+`agtermctl clipboard set [text]` — copy text to the Windows clipboard of the machine the CLI runs on.
+It does not talk to the app, so it has no wire command and ignores `--socket`. Without `text` it reads
+standard input; with a terminal on standard input and no text it fails with
+`give the text as an argument or pipe it on standard input`. Put `--` before text that starts with a
+dash. The text must be valid UTF-8: otherwise the error is
+`text is not valid UTF-8; the Windows clipboard holds Unicode text`. A clipboard failure reports
+`could not set the Windows clipboard: error N`.
 
 ## restore
 

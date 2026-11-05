@@ -16,6 +16,8 @@ public class ControlEventProtocolTests
         (ControlEventKind.SessionCreated, "session.created"),
         (ControlEventKind.SessionClosed, "session.closed"),
         (ControlEventKind.TreeChanged, "tree.changed"),
+        (ControlEventKind.PaneFocused, "pane.focused"),
+        (ControlEventKind.AppLaunched, "app.launched"),
     };
 
     private static ControlEvent[] SampleEvents(string? statusShape = null) => new[]
@@ -47,6 +49,12 @@ public class ControlEventProtocolTests
             Session = "closed", Payload = new ControlEventPayload { Name = "old" },
         },
         new ControlEvent { Seq = 5, Ts = 5.5, Kind = ControlEventKind.TreeChanged, Window = "win" },
+        new ControlEvent
+        {
+            Seq = 6, Ts = 6.5, Kind = ControlEventKind.PaneFocused, Window = "win", Workspace = "work",
+            Session = "sess", Payload = new ControlEventPayload { Name = "api", Pane = "right", PaneId = "tok" },
+        },
+        new ControlEvent { Seq = 7, Ts = 7.5, Kind = ControlEventKind.AppLaunched },
     };
 
     [Fact]
@@ -74,6 +82,8 @@ public class ControlEventProtocolTests
             "{\"kind\":\"session.created\",\"payload\":{\"name\":\"new\"},\"seq\":3,\"session\":\"created\",\"ts\":3.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"session.closed\",\"payload\":{\"name\":\"old\"},\"seq\":4,\"session\":\"closed\",\"ts\":4.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"tree.changed\",\"payload\":{},\"seq\":5,\"ts\":5.5,\"window\":\"win\"}",
+            "{\"kind\":\"pane.focused\",\"payload\":{\"name\":\"api\",\"pane\":\"right\",\"paneID\":\"tok\"},\"seq\":6,\"session\":\"sess\",\"ts\":6.5,\"window\":\"win\",\"workspace\":\"work\"}",
+            "{\"kind\":\"app.launched\",\"payload\":{},\"seq\":7,\"ts\":7.5}",
         };
 
         Assert.Equal(expected, events.Select(CanonicalJson.Of));

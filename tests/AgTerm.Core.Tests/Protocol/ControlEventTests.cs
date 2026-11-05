@@ -11,6 +11,8 @@ public class ControlEventTests
     [InlineData("session.created", ControlEventKind.SessionCreated)]
     [InlineData("session.closed", ControlEventKind.SessionClosed)]
     [InlineData("tree.changed", ControlEventKind.TreeChanged)]
+    [InlineData("pane.focused", ControlEventKind.PaneFocused)]
+    [InlineData("app.launched", ControlEventKind.AppLaunched)]
     public void EventKindWireStringsRoundTrip(string wire, ControlEventKind kind)
     {
         Assert.Equal(kind, ControlJson.Deserialize<ControlEventKind>($"\"{wire}\""));

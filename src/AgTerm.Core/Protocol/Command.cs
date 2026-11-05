@@ -97,6 +97,9 @@ public enum Command
     SidebarWidth,
     WorkspaceGo,
     WindowGo,
+    RecentList,
+    RecentOpen,
+    RecentClear,
     /// <summary>Windows-only (parity/windows-only.json): sets or clears a workspace's own theme.</summary>
     WorkspaceTheme,
     /// <summary>Windows-only (parity/windows-only.json): sets or clears a workspace's own icon.</summary>
@@ -200,6 +203,9 @@ public static class CommandWire
         (Command.SidebarWidth, "sidebar.width"),
         (Command.WorkspaceGo, "workspace.go"),
         (Command.WindowGo, "window.go"),
+        (Command.RecentList, "recent.list"),
+        (Command.RecentOpen, "recent.open"),
+        (Command.RecentClear, "recent.clear"),
         (Command.WorkspaceTheme, "workspace.theme"),
         (Command.WorkspaceIcon, "workspace.icon"),
         (Command.IconList, "icon.list"),

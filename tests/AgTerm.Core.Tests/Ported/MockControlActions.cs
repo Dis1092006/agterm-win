@@ -83,6 +83,9 @@ public sealed class MockControlActions : IControlActions
         public sealed record Expand(string? Window) : Call;
         public sealed record Collapse(string? Window) : Call;
         public sealed record AppVersion : Call;
+        public sealed record RecentList : Call;
+        public sealed record RecentClear : Call;
+        public sealed record RecentOpen(string? Target, string? Window) : Call;
         public sealed record SidebarWidth(double Points, string? Window) : Call;
         public sealed record WorkspaceGo(string? Window, WorkspaceNavigation Direction) : Call;
         public sealed record WindowGo(WorkspaceNavigation Direction) : Call;
@@ -144,6 +147,7 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextExpandResponse = new() { Ok = true };
     public ControlResponse NextCollapseResponse = new() { Ok = true };
     public ControlResponse NextAppVersionResponse = new() { Ok = true };
+    public ControlResponse NextRecentResponse = new() { Ok = true };
     public ControlResponse NextSidebarWidthResponse = new() { Ok = true };
     public ControlResponse NextWorkspaceGoResponse = new() { Ok = true };
     public ControlResponse NextWindowGoResponse = new() { Ok = true };
@@ -499,6 +503,24 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.AppVersion());
         return NextAppVersionResponse;
+    }
+
+    public ControlResponse ListRecentClosed()
+    {
+        Calls.Add(new Call.RecentList());
+        return NextRecentResponse;
+    }
+
+    public ControlResponse ClearRecentClosed()
+    {
+        Calls.Add(new Call.RecentClear());
+        return NextRecentResponse;
+    }
+
+    public ControlResponse OpenRecentClosed(string? target, string? window)
+    {
+        Calls.Add(new Call.RecentOpen(target, window));
+        return NextRecentResponse;
     }
 
     public ControlResponse SetSidebarWidth(double points, string? window)

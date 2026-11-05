@@ -104,14 +104,14 @@ These extend the first catalog, section 4. The port's `ask` has buttons only.
 
 ## 7. Open Recent from the CLI
 
-- `recent.list`, `recent.open [ID] [--window W]`, `recent.clear` #744. `recent list` prints the File ▸ Open Recent entries, newest first. `recent open` reopens one by id or prefix, or the newest without an id, through the menu's restore path. A reopened session keeps its id, split, flag, context and restore pins. It goes to `--window` or the frontmost window, unless another window already holds its session or workspace; the window is not raised. `--json` carries `closedAt`, the workspace id and the session ids. Results: `recent`, `recentOpen`. Port: not done. The port has the store behind it: `RecentClosedStore` in `recent-closed.json`, and `reopen_recent` on Ctrl+Shift+T (PLATFORM-NOTES). No name clashes.
+- `recent.list`, `recent.open [ID] [--window W]`, `recent.clear` #744. `recent list` prints the File ▸ Open Recent entries, newest first. `recent open` reopens one by id or prefix, or the newest without an id, through the menu's restore path. A reopened session keeps its id, split, flag, context and restore pins. It goes to `--window` or the frontmost window, unless another window already holds its session or workspace; the window is not raised. `--json` carries `closedAt`, the workspace id and the session ids. Results: `recent`, `recentOpen`. Port: done (B3). The port has the store behind it: `RecentClosedStore` in `recent-closed.json`, and `reopen_recent` on Ctrl+Shift+T (PLATFORM-NOTES). No name clashes.
 
 ## 8. Navigation and agent status
 
 - The setting `attentionNavigationAcrossWindows`, off by default: next and previous attention step through every open window and bring forward the window they stop in #824. `session go --to next-attention|prev-attention` stay in its window. Port: done (B1, `parity-b1-attention`).
 - The setting `attentionIncludesActive`, off by default: the attention steps and `session go --to next-attention|prev-attention` stop on active sessions too #807. Port: done (B1).
 - Mark for Attention on the session row menu gives an idle session a `completed` status that survives a visit #763. Port: done (B1).
-- `agtermctl session wait --target S --until completed --until blocked [--timeout SEC]` #765. It is a CLI command built on the event stream (`status`, `session.closed`) and `tree`, not a wire command. Exit 2 means the session left the tree, 124 the timeout. Port: not done. The port has `events` and `tree`, so this is CLI work only.
+- `agtermctl session wait --target S --until completed --until blocked [--timeout SEC]` #765. It is a CLI command built on the event stream (`status`, `session.closed`) and `tree`, not a wire command. Exit 2 means the session left the tree, 124 the timeout. Port: done (B3), with no refused-connect retry.
 - The agent status glyph in session pickers; `pick` items take `status`, `statusColor` and `statusShape` #774. Port: done in agterm-win #22 (upstream `dc1110bf`). The `zmx tree` status fields of the same change are not ported: the port has no zmx.
 - `session close --undoable` gives one session the close grace the close chord gets; it falls back to a hard close when undo after closing is off #804. Arg and result `undoable`. Port: done (B1). The batch form on the live host now follows `closeGraceUndoEnabled` (PLATFORM-NOTES).
 - With two OpenCode v1 permission prompts open, answering the first cleared `blocked` #734. Port: not done. The port has no OpenCode integration (first catalog, section 9).
@@ -132,9 +132,9 @@ All items here depend on the first catalog, sections 1 and 2.
 
 These extend the first catalog, section 8. The port has the event stream from the pin, but no `hooks.conf`.
 
-- `app.launched` fires once per app run, after `hooks.conf` is loaded and the control socket accepts connections #736. Port: not done.
-- `tree.changed` also fires when a program, page, pane overlay or HUD opens or closes #736. Port: not done. The port fires `tree.changed` on changes of the session tree only.
-- `pane.focused` fires when focus moves between the split panes of a session. It carries the session, `pane` and `paneID`. A move and back within 100 ms is not reported #785. Port: not done.
+- `app.launched` fires once per app run, after `hooks.conf` is loaded and the control socket accepts connections #736. Port: done (B3).
+- `tree.changed` also fires when a program, page, pane overlay or HUD opens or closes #736. Port: partly done (B3): session overlays and HUDs; pane, page and remote overlays wait for those features. The port fires `tree.changed` on changes of the session tree and on those.
+- `pane.focused` fires when focus moves between the split panes of a session. It carries the session, `pane` and `paneID`. A move and back within 100 ms is not reported #785. Port: done (B3).
 - `message` from the message bus (section 1) #847. Port: not done.
 
 ## 11. Settings and persistence

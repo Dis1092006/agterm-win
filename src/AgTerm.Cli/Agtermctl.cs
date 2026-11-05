@@ -7,11 +7,18 @@ namespace AgTerm.Cli;
 internal sealed class CommandBindings
 {
     private readonly Dictionary<Command, Func<ParseResult, IRequestCommand>> _binders = new();
+    private readonly Dictionary<Command, Func<ParseResult, ILocalCommand>> _localBinders = new();
 
     public void Register(Command command, Func<ParseResult, IRequestCommand> bind) =>
         _binders[command] = bind;
 
+    /// <summary>Registers a command that never touches the control pipe (clipboard set).</summary>
+    public void RegisterLocal(Command command, Func<ParseResult, ILocalCommand> bind) =>
+        _localBinders[command] = bind;
+
     public Func<ParseResult, IRequestCommand>? For(Command command) => _binders.GetValueOrDefault(command);
+
+    public Func<ParseResult, ILocalCommand>? ForLocal(Command command) => _localBinders.GetValueOrDefault(command);
 }
 
 /// <summary>The root agtermctl command. Subcommands mirror the control catalog 1:1.</summary>
@@ -20,27 +27,39 @@ public static class Agtermctl
     /// <summary>Parse argv into a bound subcommand (its Validate already run) — the port of
     /// ArgumentParser's parseAsRoot the tests build requests through. Throws CliParseException for
     /// unknown commands/options/missing arguments and CliValidationException for a validate failure.</summary>
-    internal static IRequestCommand ParseAsRoot(string[] argv)
+    internal static IRequestCommand ParseAsRoot(string[] argv) =>
+        ParseAsRootAny(argv) as IRequestCommand
+            ?? throw new CliParseException($"'{string.Join(" ", argv)}' is not a control command");
+
+    /// <summary>ParseAsRoot for every command: an IRequestCommand, or an ILocalCommand for the ones
+    /// that never use the pipe.</summary>
+    internal static object ParseAsRootAny(string[] argv)
     {
         var (root, bindings) = Build();
         return Bind(root.Parse(argv), bindings);
     }
 
-    private static IRequestCommand Bind(ParseResult result, CommandBindings bindings)
+    private static object Bind(ParseResult result, CommandBindings bindings)
     {
+        var parsed = result.CommandResult.Command;
         // a group with a DEFAULT subcommand (quick/sidebar visibility) binds on the group command
         // itself; System.CommandLine still emits "Required command was not provided." for it, so
         // that one error is ignored exactly when a binder exists for the parsed command.
-        var errors = bindings.For(result.CommandResult.Command) is null
+        var errors = bindings.For(parsed) is null
             ? result.Errors
             : result.Errors.Where(e => e.Message != "Required command was not provided.").ToList();
         if (errors.Count > 0)
         {
             throw new CliParseException(string.Join("\n", errors.Select(e => e.Message)));
         }
-        var binder = bindings.For(result.CommandResult.Command)
-            ?? throw new CliParseException(
-                $"'{result.CommandResult.Command.Name}' requires a subcommand");
+        if (bindings.ForLocal(parsed) is { } bindLocal)
+        {
+            var local = bindLocal(result);
+            local.Validate();
+            return local;
+        }
+        var binder = bindings.For(parsed)
+            ?? throw new CliParseException($"'{parsed.Name}' requires a subcommand");
         var command = binder(result);
         command.Validate();
         return command;
@@ -62,7 +81,7 @@ public static class Agtermctl
         {
             return result.Invoke();
         }
-        IRequestCommand command;
+        object command;
         try
         {
             command = Bind(result, bindings);
@@ -74,7 +93,7 @@ public static class Agtermctl
         }
         try
         {
-            return command.Execute(env);
+            return command is ILocalCommand local ? local.Execute(env) : ((IRequestCommand)command).Execute(env);
         }
         catch (Exception e) when (e is AgTerm.ControlServer.PipeClientException or CliValidationException)
         {
@@ -113,6 +132,8 @@ public static class Agtermctl
                      ThemeCommands.Build(bindings),
                      IconCommands.Build(bindings),
                      RestoreCommands.Build(bindings),
+                     ClipboardCommands.Build(bindings),
+                     RecentCommands.Build(bindings),
                  })
         {
             root.Subcommands.Add(command);
