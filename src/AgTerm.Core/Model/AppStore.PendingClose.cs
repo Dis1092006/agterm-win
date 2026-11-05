@@ -45,6 +45,7 @@ public sealed partial class AppStore
         // a subscriber told the session closed must not still see its question pending
         CancelPendingAsk(session);
         CloseTimedHud(session);
+        CloseTimedInfo(session);
         workspace.Sessions.RemoveAt(location.SessionIndex);
         EmitSessionClosed(session, workspace.Id);
         // undo reinserts THIS object, so an override payload armed at bootstrap and never consumed
@@ -106,6 +107,7 @@ public sealed partial class AppStore
             close.Session.ClearPendingRestoreOverrides(); // same undo hazard as the singular close
             CancelPendingAsk(close.Session);
             CloseTimedHud(close.Session);
+            CloseTimedInfo(close.Session);
         }
 
         var previousSelection = SelectedSessionId;
@@ -175,6 +177,7 @@ public sealed partial class AppStore
         {
             CancelPendingAsk(session);
             CloseTimedHud(session);
+            CloseTimedInfo(session);
         }
         Workspaces.RemoveAt(index);
         ForgetFreshWorkspace(workspaceId);
@@ -510,6 +513,7 @@ public sealed partial class AppStore
         // an untimed HUD rode out the undo window on this object; once the close is final nothing
         // can reach it any more
         CloseHudOf(session);
+        ClearInfoOf(session);
         if (teardownSurfaces)
         {
             session.Surface?.Teardown();

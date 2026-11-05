@@ -49,6 +49,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record WorkspaceExpansion(string? Target, string? Window, bool Expanded) : Call;
         public sealed record SessionFlag(string? Target, string? Window, string? Mode) : Call;
         public sealed record SessionContext(string? Target, string? Window, string? Context) : Call;
+        public sealed record SessionInfo(string? Target, string? Window, AgTerm.Core.Model.SessionInfo? Info) : Call;
         public sealed record SessionTint(string? Target, string? Window, ControlTintUpdate Update) : Call;
         public sealed record WorkspaceTint(string? Target, string? Window, ControlTintUpdate Update) : Call;
         public sealed record MarkSessionSeen(string? Target, string? Window) : Call;
@@ -357,6 +358,12 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse SetSessionContext(string? target, string? window, string? context)
     {
         Calls.Add(new Call.SessionContext(target, window, context));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetSessionInfo(string? target, string? window, AgTerm.Core.Model.SessionInfo? info)
+    {
+        Calls.Add(new Call.SessionInfo(target, window, info));
         return new ControlResponse { Ok = true };
     }
 

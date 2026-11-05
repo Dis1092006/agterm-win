@@ -64,6 +64,7 @@ internal static class SessionCommands
         session.Subcommands.Add(BuildRestore(bindings));
         session.Subcommands.Add(BuildFlag(bindings));
         session.Subcommands.Add(BuildContext(bindings));
+        session.Subcommands.Add(BuildInfo(bindings));
         session.Subcommands.Add(TintCommands.BuildSessionTint(bindings));
         session.Subcommands.Add(BuildSeen(bindings));
         session.Subcommands.Add(BuildSearch(bindings));
@@ -1354,6 +1355,85 @@ internal static class SessionCommands
         {
             Text = result.GetValue(text),
             Clear = result.GetValue(clear),
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    /// <summary>The info line under a session's sidebar row (upstream 80f822bf). Nested under
+    /// `session`; exactly one of TEXT or --clear.</summary>
+    internal sealed class InfoCommand : IRequestCommand
+    {
+        public string? Text { get; init; }
+        public bool Clear { get; init; }
+        public bool Markdown { get; init; }
+        public double? HideAfter { get; init; }
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        // the text goes to the wire as typed: the dispatcher parses it, so the line rules live in one place
+        public void Validate()
+        {
+            if ((Text is not null) == Clear)
+                throw new CliValidationException("provide exactly one of a TEXT or --clear");
+            if (Clear && (Markdown || HideAfter is not null))
+                throw new CliValidationException("--clear takes no --markdown or --hide-after");
+            HudCommands.ValidateHideAfter(HideAfter);
+        }
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.SessionInfo,
+            Target = Target.Target,
+            Args = Client.WithWindow(new ControlArgs
+            {
+                Mode = Clear ? "clear" : "set",
+                Text = Text,
+                Markdown = Markdown ? true : null,
+                HideAfter = HideAfter,
+            }),
+        };
+    }
+
+    private static System.CommandLine.Command BuildInfo(CommandBindings bindings)
+    {
+        // upstream's discussion also points at the Settings picker; the port adds that sentence with the picker
+        var cmd = new System.CommandLine.Command("info",
+            "Set or clear the info line drawn under a session's sidebar row.\n\n"
+            + "The line shows current activity, such as a status or a count. Each set replaces the whole line: "
+            + "omitting --markdown sends plain text and omitting --hide-after cancels an earlier expiry. It is not "
+            + "kept across a relaunch.\n"
+            + "Markdown example: '**3** agents ^[running](color: \"green\") ^[idle](dim: true)'. Colors: "
+            + $"{TintColors.ValidNamesList}; the value must be quoted.");
+        var text = new Argument<string?>("text")
+        {
+            Description = $"The line (omit with --clear); max {SessionInfo.MaxSourceBytes} UTF-8 bytes, one visible line.",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var clear = new Option<bool>("--clear") { Description = "Remove the line." };
+        var markdown = new Option<bool>("--markdown")
+        {
+            Description = "Read TEXT as inline markdown with ^[text](color: \"NAME\") and ^[text](dim: true).",
+        };
+        var hideAfter = CliOptions.LenientDouble("--hide-after",
+            $"Clear the line by itself after SECONDS, 0...{(int)HudSpec.MaxHideAfter}, 0 for never; each set restarts it. "
+            + "Use a positive value and refresh activity lines so they expire if the caller stops.");
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(text);
+        cmd.Options.Add(clear);
+        cmd.Options.Add(markdown);
+        cmd.Options.Add(hideAfter);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new InfoCommand
+        {
+            Text = result.GetValue(text),
+            Clear = result.GetValue(clear),
+            Markdown = result.GetValue(markdown),
+            HideAfter = result.GetValue(hideAfter),
             Target = target.Read(result),
             Client = options.Read(result),
         });

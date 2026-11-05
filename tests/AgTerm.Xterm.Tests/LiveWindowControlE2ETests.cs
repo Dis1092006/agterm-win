@@ -1996,6 +1996,51 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public void Dispose() => Disposed = true;
     }
 
+    // upstream 80f822bf: a closed window's info lines and their expiry timers go with it
+    [Fact]
+    public async Task Closing_the_window_drops_its_info_lines_and_cancels_their_timers()
+    {
+        var firstId = Guid.NewGuid(); var secondId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha"); WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true), new IndexEntry(secondId, "second", IsOpen: true));
+        using var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var window = application.GetOpenWindow(firstId);
+        var timer = new HudTimerSpy();
+        window.RunLocked(() => window.Store.InfoExpiryScheduler = (_, _) => timer);
+        var set = client.Send(new ControlRequest
+        {
+            Cmd = Command.SessionInfo,
+            Args = new ControlArgs { Mode = "set", Text = "deploying", HideAfter = 30, Window = firstId.ToString("D") },
+        });
+        Assert.True(set.Ok, set.Error);
+        var session = window.Store.SessionWithId(Guid.Parse(set.Result!.Id!))!;
+
+        await application.CloseWindowAsync(firstId);
+
+        Assert.Null(session.Info);
+        Assert.True(timer.Disposed);
+    }
+
+    [Fact]
+    public void Disposing_the_application_drops_every_info_line()
+    {
+        var firstId = Guid.NewGuid();
+        WriteWindowSnapshotWithSession(firstId, "alpha");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
+        var application = CreateApplication(new FakeWindowController());
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var set = client.Send(new ControlRequest { Cmd = Command.SessionInfo, Args = new ControlArgs { Mode = "set", Text = "working" } });
+        Assert.True(set.Ok, set.Error);
+        var session = application.GetOpenWindow(firstId).Store.SessionWithId(Guid.Parse(set.Result!.Id!))!;
+
+        application.Dispose();
+
+        Assert.Null(session.Info);
+    }
+
     [Fact]
     public void Ask_open_with_follow_takes_frontmost()
     {

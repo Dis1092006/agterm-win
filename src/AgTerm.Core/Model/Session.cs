@@ -194,6 +194,14 @@ public sealed class Session
     /// by a duplicate.</summary>
     public SidebarTint? Tint { get; set; }
 
+    /// <summary>The caller-set line under the sidebar row (session.info), or null for none. Runtime
+    /// only: never saved, never copied by a duplicate.</summary>
+    public SessionInfo? Info { get; internal set; }
+
+    /// <summary>Moves on every info set and discard, so a stale expiry can tell it was armed for an
+    /// earlier line.</summary>
+    internal int InfoRevision { get; set; }
+
     /// <summary>The main pane's TRANSIENT override payload for THIS launch, copied from the persisted
     /// RestoreCommand by an app-bootstrap restore and consumed by TakePendingRestoreOverride. Never
     /// persisted — a command written over the socket during this run can never execute during this run.</summary>

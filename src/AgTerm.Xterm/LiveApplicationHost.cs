@@ -883,6 +883,7 @@ public sealed partial class LiveApplicationHost : IDisposable
             await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
             window.RunLocked(window.Store.CancelAllAsks);
             window.RunLocked(window.Store.CloseAllHuds);
+            window.RunLocked(window.Store.ClearAllInfos);
             // a closed window's panes end; their mail must not reach the panes a reopen starts
             window.RunLocked(window.Store.DisposeAllMailboxes);
             EmitWindowLifecycleEvents(
@@ -923,8 +924,9 @@ public sealed partial class LiveApplicationHost : IDisposable
         foreach (var window in windows)
         {
             window.RunLocked(window.Store.CancelAllAsks);
-            // a closed window's store is never shown again; a live auto-hide must not fire into it
+            // a closed window's store is never shown again; a live auto-hide or info expiry must not fire into it
             window.RunLocked(window.Store.CloseAllHuds);
+            window.RunLocked(window.Store.ClearAllInfos);
         }
         _server.Stop();
         _quickLifetime.Cancel();
@@ -1448,6 +1450,7 @@ public sealed partial class LiveApplicationHost : IDisposable
         await window.WaitForDispatchQuiescenceAsync().ConfigureAwait(false);
         window.RunLocked(window.Store.CancelAllAsks);
         window.RunLocked(window.Store.CloseAllHuds);
+        window.RunLocked(window.Store.ClearAllInfos);
         if (attachment is not null)
             await attachment.ShutdownAsync(CancellationToken.None).ConfigureAwait(false);
         window.CancelPendingSave();
@@ -1877,6 +1880,7 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.SessionMove
         or Command.SessionFlag
         or Command.SessionContext
+        or Command.SessionInfo
         or Command.SessionSeen
         or Command.SessionStatus
         or Command.SessionRestore

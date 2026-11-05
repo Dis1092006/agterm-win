@@ -1009,6 +1009,18 @@ public sealed partial class HeadlessControlActions : IControlActions
         });
     }
 
+    public ControlResponse SetSessionInfo(string? target, string? window, SessionInfo? info)
+    {
+        return ResolveSession(target, window, (store, id) =>
+        {
+            if (store.SessionWithId(id) is null)
+                return Err($"no such session: {target ?? "active"}");
+            // re-arms the expiry even when the line is unchanged, so a caller refreshing it keeps it alive
+            store.SetInfo(info, id);
+            return OkId(id);
+        });
+    }
+
     public ControlResponse SetSessionTint(string? target, string? window, ControlTintUpdate update)
     {
         return ResolveSession(target, window, (store, id) =>

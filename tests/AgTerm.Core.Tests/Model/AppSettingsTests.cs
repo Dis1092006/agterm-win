@@ -114,6 +114,28 @@ public class AppSettingsTests : IDisposable
     public void Settings_that_differ_only_in_sidebar_theme_style_are_not_equal() =>
         Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeStyle = "label" });
 
+    // upstream 80f822bf: sessionInfoDisplayDefaultsToAlwaysResolvesTolerantlyAndIsNotAGhosttyKey
+    [Fact]
+    public void Session_info_display_defaults_to_always_and_resolves_tolerantly()
+    {
+        Assert.Null(new AppSettings().SessionInfoDisplay);
+        Assert.Equal(SessionInfoDisplay.Always, new AppSettings().EffectiveSessionInfoDisplay);
+        var store = new SettingsStore(_dir);
+        foreach (var display in SessionInfoDisplays.All)
+        {
+            store.Save(new AppSettings { SessionInfoDisplay = display.RawValue() });
+            Assert.Contains($"\"sessionInfoDisplay\":\"{display.RawValue()}\"", File.ReadAllText(FilePath));
+            Assert.Equal(display, store.Load().EffectiveSessionInfoDisplay);
+        }
+        Assert.Equal(SessionInfoDisplay.Always, new AppSettings { SessionInfoDisplay = "sometimes" }.EffectiveSessionInfoDisplay);
+        Assert.Equal(SessionInfoDisplay.Always, new AppSettings { SessionInfoDisplay = "Flagged" }.EffectiveSessionInfoDisplay);
+        File.WriteAllText(FilePath, """{ "fontSize": 16 }""");
+        Assert.Equal(SessionInfoDisplay.Always, store.Load().EffectiveSessionInfoDisplay);
+        Assert.Equal(["Always", "Flagged", "Off"], SessionInfoDisplays.All.Select(d => d.DisplayName()));
+        Assert.Equal(["always", "flagged", "off"], SessionInfoDisplays.All.Select(d => d.RawValue()));
+        Assert.NotEqual(new AppSettings(), new AppSettings { SessionInfoDisplay = "off" });
+    }
+
     [Fact]
     public void Save_writes_sidebar_theme_style_only_when_set()
     {
@@ -171,6 +193,7 @@ public class AppSettingsTests : IDisposable
             SidebarThemeStyle = "label",
             RestoreScrollback = false,
             CopyOnSelect = "off",
+            SessionInfoDisplay = "flagged",
         };
         store.Save(settings);
         Assert.Equal(settings, new SettingsStore(_dir).Load());

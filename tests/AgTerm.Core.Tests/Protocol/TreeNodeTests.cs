@@ -29,6 +29,7 @@ public class TreeNodeTests
         Status = "blocked", StatusPane = "left", StatusBlink = true,
         StatusColor = "#ff0000", StatusShape = "star", StatusChangedAt = 1_700_000_000.25,
                 LastSelectedAt = 1_700_000_100.5, Tint = "red", TintOn = ["name"],
+                Info = "3 agents", InfoMarkdown = false, InfoHideAfter = 30,
                 Background = new BackgroundWatermark { Kind = WatermarkKind.Text, Text = "wip" },
         Unseen = 2, FontSize = 13, SplitFontSize = 14, ScratchFontSize = 15,
         Surfaces = new[] { new ControlSurfaceNode { Id = "surface:x:left", Kind = "left", Active = true, Visible = true } },
