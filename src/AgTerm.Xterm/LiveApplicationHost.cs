@@ -428,13 +428,10 @@ public sealed class LiveApplicationHost : IDisposable
         }
     }
 
-    private ControlResponse ClearRecentClosed()
-    {
-        _recentClosedStore.Clear();
-        return _recentClosedStore.Load().Count > 0
-            ? new ControlResponse { Ok = false, Error = "could not clear recent items" }
-            : new ControlResponse { Ok = true };
-    }
+    private ControlResponse ClearRecentClosed() =>
+        _recentClosedStore.Clear()
+            ? new ControlResponse { Ok = true }
+            : new ControlResponse { Ok = false, Error = "could not clear recent items" };
 
     private ControlResponse OpenRecentClosedCommand(ControlRequest request)
     {
@@ -484,17 +481,21 @@ public sealed class LiveApplicationHost : IDisposable
     {
         lock (_gate) ObjectDisposedException.ThrowIf(_disposed, this);
         _server.Start();
-        var announce = false;
+        bool first, announce;
         lock (_gate)
         {
-            if (!_appLaunchAnnounced && _server.IsListening) _appLaunchAnnounced = announce = true;
+            first = !_appLaunchSettled;
+            _appLaunchSettled = true;
+            announce = first && _server.IsBound;
         }
-        // Loaded before app.launched, so a hook on that kind is already there when it fires.
-        if (announce) Hooks?.Reload();
+        // Loaded before app.launched, so a hook on that kind is already there when it fires. The
+        // first start loads them even when the pipe did not bind; app.launched waits for a bind
+        // and is settled by that first start either way (upstream emitAppLaunched(ready:)).
+        if (first) Hooks?.Reload();
         if (announce) Ring.Append(new ControlEventDraft { Kind = ControlEventKind.AppLaunched });
     }
 
-    private bool _appLaunchAnnounced;
+    private bool _appLaunchSettled;
 
     public async Task<ControlResponse> SetThemeAsync(
         ControlArgs args,
@@ -684,6 +685,7 @@ public sealed class LiveApplicationHost : IDisposable
             Guid? selected = null;
             source.RunLocked(() =>
             {
+                source.Store.NoteUserActivity();
                 across = source.Store.AttentionNavigationAcrossWindows;
                 selected = source.Store.SelectedSessionId;
             });
@@ -701,10 +703,18 @@ public sealed class LiveApplicationHost : IDisposable
             }
             return AttentionNavigator.Step(snapshot, sourceWindowId, selected, forward);
         }, cancellationToken).ConfigureAwait(false);
-        if (target is not { } landing) return null;
+        if (target is not { } landing)
+        {
+            await RevealActiveAttentionAsync(sourceWindowId, cancellationToken).ConfigureAwait(false);
+            return null;
+        }
 
         if (landing.WindowId != sourceWindowId)
         {
+            // the snapshot is a beat old: the target window may have closed or gone under a cover since,
+            // and SelectWindowAsync would reopen a closed one (upstream canSelectAttention at the pick)
+            if (_windowController is null || !await CanSelectAttentionAsync(landing, cancellationToken).ConfigureAwait(false))
+                return null;
             var response = await SelectWindowAsync(landing.WindowId.ToString("D"), cancellationToken).ConfigureAwait(false);
             if (!response.Ok) throw new InvalidOperationException(response.Error);
         }
@@ -723,6 +733,36 @@ public sealed class LiveApplicationHost : IDisposable
                 selectedTarget = LiveControlHost.SelectAttentionSession(window.Store, landing.SessionId)),
                 cancellationToken).ConfigureAwait(false);
         return selectedTarget ? landing : null;
+    }
+
+    private Task<bool> CanSelectAttentionAsync((Guid WindowId, Guid SessionId) landing, CancellationToken cancellationToken)
+    {
+        LiveWindowHost? window;
+        lock (_gate)
+            if (_disposed || !_openWindows.TryGetValue(landing.WindowId, out window)) return Task.FromResult(false);
+        return Task.Run(() =>
+        {
+            var eligible = false;
+            window.RunLocked(() => eligible = window.Actions.Zoom.Target is null && !window.Actions.Dashboard.IsOpen
+                && window.Actions.Pick.PendingId is null && window.Store.SessionWithId(landing.SessionId) is not null);
+            return eligible;
+        }, cancellationToken);
+    }
+
+    private async Task RevealActiveAttentionAsync(Guid windowId, CancellationToken cancellationToken)
+    {
+        LiveWindowHost? window;
+        LiveControlHost? attachment;
+        lock (_gate)
+        {
+            if (_disposed || !_openWindows.TryGetValue(windowId, out window)) return;
+            _attachments.TryGetValue(windowId, out attachment);
+        }
+        if (attachment is not null)
+            await attachment.RevealActiveAttentionAsync(cancellationToken).ConfigureAwait(false);
+        else
+            await Task.Run(() => window.RunLocked(() => LiveControlHost.RevealActiveAttention(window.Store)),
+                cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<bool> RevealNotificationAsync(

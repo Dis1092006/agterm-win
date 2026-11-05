@@ -46,6 +46,7 @@ public sealed class HookScheduler
     private readonly Dictionary<HookIdentity, Record> _records = new();
     private List<HookIdentity> _order = new();
     private ulong _nextRun = 1;
+    private bool _disposed;
 
     public HookScheduler(IHookLauncher launcher, Func<DateTimeOffset>? now = null)
     {
@@ -64,6 +65,7 @@ public sealed class HookScheduler
     {
         lock (_gate)
         {
+            if (_disposed) return;
             var live = hooks.Entries.Select(e => e.Identity).ToHashSet();
             foreach (var (identity, record) in _records.ToArray())
             {
@@ -214,6 +216,23 @@ public sealed class HookScheduler
         record.LastFailure = message;
         if (record.BannerShown) return;
         record.BannerShown = true;
-        OnFailure?.Invoke(record.Entry, message);
+        // a throwing subscriber must not skip the queue advance or the retired-record cleanup that follow
+        try { OnFailure?.Invoke(record.Entry, message); }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            System.Diagnostics.Trace.TraceError($"Hook failure notice failed: {e}");
+        }
+    }
+
+    /// <summary>Stops the scheduler: queued events are dropped and nothing starts again. Running
+    /// children are left alone; their exits are ignored.</summary>
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _disposed = true;
+            _records.Clear();
+            _order = new List<HookIdentity>();
+        }
     }
 }

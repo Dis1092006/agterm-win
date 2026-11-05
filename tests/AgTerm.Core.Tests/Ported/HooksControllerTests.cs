@@ -104,4 +104,73 @@ public sealed class HooksControllerTests : IDisposable
         _launcher.Launches[0].OnExit(3);
         Assert.Equal([("status", "echo hi", "exit 3")], failures);
     }
+
+    [Fact]
+    public void ThrowingFailureSubscriberDoesNotStallTheQueue()
+    {
+        File.WriteAllText(Path.Combine(_dir, "hooks.conf"), "on status echo hi\n");
+        var controller = Make();
+        controller.HookFailed += (_, _, _) => throw new InvalidOperationException("subscriber");
+        controller.Reload();
+        controller.Dispatch(Event(ControlEventKind.Status) with { Seq = 1 });
+        controller.Dispatch(Event(ControlEventKind.Status) with { Seq = 2 });
+
+        _launcher.Launches[0].OnExit(3);
+
+        Assert.Equal(2, _launcher.Launches.Count);
+        Assert.Equal(2UL, _launcher.Launches[1].Event.Seq);
+    }
+
+    [Fact]
+    public async Task EventsPostedBeforeTheFirstReloadAreDropped()
+    {
+        File.WriteAllText(Path.Combine(_dir, "hooks.conf"), "on status echo hi\n");
+        var controller = Make();
+        controller.Post(Event(ControlEventKind.Status) with { Seq = 1 });
+        controller.Reload();
+        await controller.FlushAsync();
+        Assert.Empty(_launcher.Launches);
+
+        controller.Post(Event(ControlEventKind.Status) with { Seq = 2 });
+        await controller.FlushAsync();
+        Assert.Equal(2UL, Assert.Single(_launcher.Launches).Event.Seq);
+    }
+
+    [Fact]
+    public void DisposeStopsQueuedHooksFromStarting()
+    {
+        File.WriteAllText(Path.Combine(_dir, "hooks.conf"), "on status echo hi\n");
+        var controller = Make();
+        controller.Reload();
+        controller.Dispatch(Event(ControlEventKind.Status) with { Seq = 1 });
+        controller.Dispatch(Event(ControlEventKind.Status) with { Seq = 2 });
+
+        controller.Dispose();
+        _launcher.Launches[0].OnExit(0);
+        controller.Dispatch(Event(ControlEventKind.Status) with { Seq = 3 });
+
+        Assert.Single(_launcher.Launches);
+    }
+
+    [Fact]
+    public void EveryReloadReportsItsDiagnosticCountAfterReleasingTheLock()
+    {
+        File.WriteAllText(Path.Combine(_dir, "hooks.conf"), "on bogus x\n");
+        var other = Path.Combine(_dir, "other");
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(other, "hooks.conf"), "on bogus x\non bogus y\n");
+        var controller = Make();
+        var counts = new List<int>();
+        controller.Reloaded += count =>
+        {
+            var path = Task.Run(() => controller.Path);
+            Assert.True(SpinWait.SpinUntil(() => path.IsCompleted, TimeSpan.FromSeconds(5)));
+            counts.Add(count);
+        };
+
+        controller.Reload();
+        controller.UseConfigDirectory(other);
+
+        Assert.Equal([1, 2], counts);
+    }
 }

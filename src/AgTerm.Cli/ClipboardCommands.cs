@@ -201,8 +201,12 @@ internal static class ClipboardCommands
             }
             else
             {
+                // a usage error like upstream's ValidationError from run(): exit 64, not 1
                 if (StdinIsTerminal())
-                    throw new CliValidationException("give the text as an argument or pipe it on standard input");
+                {
+                    env.Error.WriteLine("error: give the text as an argument or pipe it on standard input");
+                    return 64;
+                }
                 data = TypedStdin.ReadAll(StdinStream());
             }
             try

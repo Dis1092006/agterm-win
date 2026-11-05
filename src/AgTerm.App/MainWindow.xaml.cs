@@ -2532,18 +2532,14 @@ public sealed partial class MainWindow : Window
     private void ReportPaletteReload(string title, ControlResponse response)
     {
         if (!response.Ok)
-            ShowFailure(new LiveFailureNotice(title, response.Error ?? "reload failed"));
+            QueueFailureNotice(new LiveFailureNotice(title, response.Error ?? "reload failed"));
     }
 
-    /// <summary>Reloads hooks.conf and, like a keymap reload, tells the user about lines it skipped
-    /// (upstream notifyHooksDiagnostics).</summary>
-    private async Task ReloadHooksReportingAsync(CancellationToken cancellationToken = default)
-    {
-        var response = await _applicationHost.ReloadHooksAsync(cancellationToken);
-        ReportPaletteReload("Hooks could not be reloaded", response);
-        if (response is { Ok: true, Result.Count: > 0 and var count })
-            QueueFailureNotice(HooksNotices.Diagnostics(count));
-    }
+    /// <summary>Reloads hooks.conf; the diagnostics banner comes from HooksController.Reloaded, which
+    /// App shows for every reload path (upstream notifyHooksDiagnostics).</summary>
+    private async Task ReloadHooksReportingAsync(CancellationToken cancellationToken = default) =>
+        ReportPaletteReload("Hooks could not be reloaded",
+            await _applicationHost.ReloadHooksAsync(cancellationToken));
 
     private async Task<bool> SavePaletteThemeAsync(string? themeName, CancellationToken cancellationToken)
     {

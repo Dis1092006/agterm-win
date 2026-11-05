@@ -65,4 +65,18 @@ public sealed class HeadlessAppLaunchedTests : IDisposable
 
         Assert.Single(Launched());
     }
+
+    [Fact]
+    public void ALaunchWhosePipeCannotBindAnnouncesNothingEvenAfterALaterBind()
+    {
+        var taken = new System.IO.Pipes.NamedPipeServerStream(_host.PipeName, System.IO.Pipes.PipeDirection.InOut, 1);
+        _host.Start();
+        Assert.Empty(Launched());
+
+        taken.Dispose();
+        _host.Stop();
+        _host.Start();
+
+        Assert.Empty(Launched());
+    }
 }

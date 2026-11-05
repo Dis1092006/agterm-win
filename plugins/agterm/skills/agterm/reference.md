@@ -56,8 +56,9 @@ The event kinds and payloads are:
   focused split pane closes. A change that moves and returns inside 100 ms emits nothing. A swap of the
   two panes emits nothing, because the same surface keeps focus.
 - `app.launched`: an empty payload with no window, workspace or session. The app emits it once per
-  process run, when the control server starts accepting connections. It is the first event of a run, so
-  a client that reads from the start of the ring sees it, and a client that subscribes from now does not.
+  process run, at launch, when the control server is accepting connections. A launch whose control pipe
+  could not be created emits none, and a later restart of the server does not emit it either. A client
+  that reads from the start of the ring sees it, and a client that subscribes from now does not.
 - `session.selected`: `name` (the newly selected session) and `previous` (the session id selected before,
   omitted for the first selection). The event fires whoever made the selection, a click, a chord or a
   control command. A cleared selection carries no session.
@@ -148,9 +149,10 @@ glyph-tint override — the `--color` value; omitted when idle or using the conf
 `circle`|`square`|`triangle`|`diamond`|`capsule`|`star`; omitted when idle or using the configured shape.
 Like `statusColor` it reports the PER-CALL override only, so a shape set in settings.json
 (`activeStatusShape` and so on) reads back as absent),
-`statusChangedAt` (epoch seconds, fractional, of the last accepted `session status` write; any write stamps it,
-including `idle` and a repeat of the same value, and returning to idle keeps it, so it is the time the session
-last changed its status; omitted until a status has been written),
+`statusChangedAt` (epoch seconds, fractional, of the last status change; any change stamps it: a
+`session status` write, including `idle` and a repeat of the same value, and a clear by a key, by
+`session type` or by the pane going away. Returning to idle keeps it, so it is the time the session
+last changed its status; omitted until a status has been set),
 `foreground`/`splitForeground` (upstream reports each pane's foreground process here; agterm-win never
 reads a pane's foreground process, so the running app always omits both),
 `restoreCommand`/`splitRestoreCommand` (each pane's persisted restore-command override — the read side of
@@ -479,7 +481,7 @@ All thirteen are read-only projections of GUI state.
   `session status idle` cannot clear a block owned by the right pane or the scratch. `session go --to next-attention|prev-attention`
   only STEPS the selection to attention
   sessions; it does not move focus into the tagged pane. The GUI attention keys do show the pane that set a
-  `blocked` status. An agent that runs in a split or scratch should
+  `blocked` or `completed` status. An agent that runs in a split or scratch should
   set its own pane. The value is read back on `tree` as the session node's `statusPane`. An invalid
   value errors (`--pane must be left, right, or scratch`).
   `--pane-id` is the surface's stable spawn token (the shell's `$AGTERM_PANE_ID`) — the agent-status hook
@@ -1342,12 +1344,12 @@ workspaces and drops the oldest silently.
 ## clipboard
 
 `agtermctl clipboard set [text]` — copy text to the Windows clipboard of the machine the CLI runs on.
-It does not talk to the app, so it has no wire command and ignores `--socket`. Without `text` it reads
-standard input; with a terminal on standard input and no text it fails with
+It does not talk to the app, so it has no wire command and refuses `--socket`, `--target` and `--json`.
+Without `text` it reads standard input; with a terminal on standard input and no text it exits 64 with
 `give the text as an argument or pipe it on standard input`. Put `--` before text that starts with a
 dash. The text must be valid UTF-8: otherwise the error is
 `text is not valid UTF-8; the Windows clipboard holds Unicode text`. A clipboard failure reports
-`could not set the Windows clipboard: error N`.
+`could not set the Windows clipboard: error N`. These and the empty or too-large refusals exit 1.
 
 ## restore
 

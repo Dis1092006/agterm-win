@@ -221,24 +221,27 @@ public sealed class HeadlessHost : IDisposable
 
     public bool IsListening => _server.IsListening;
 
-    /// <summary>Bind the pipe and start serving. Idempotent. The first start of the run also records
-    /// app.launched; a repeated start or a restart never does.</summary>
+    /// <summary>Bind the pipe and start serving. Idempotent. The first start of the run loads the
+    /// hooks and settles app.launched: it is recorded only when that start bound the pipe, and a
+    /// later start never records it, bound or not (upstream emitAppLaunched(ready:)).</summary>
     public void Start()
     {
         _server.Start();
-        var announce = false;
+        bool first, announce;
         lock (_gate)
         {
-            if (!_appLaunchAnnounced && _server.IsListening) _appLaunchAnnounced = announce = true;
+            first = !_appLaunchSettled;
+            _appLaunchSettled = true;
+            announce = first && _server.IsBound;
         }
         // hooks load before app.launched so a hook can react to it
-        if (announce) _hooks?.Reload();
+        if (first) _hooks?.Reload();
         if (announce) Ring.Append(new ControlEventDraft { Kind = ControlEventKind.AppLaunched });
     }
 
     private readonly AgTerm.Core.Hooks.HooksController? _hooks;
 
-    private bool _appLaunchAnnounced;
+    private bool _appLaunchSettled;
 
     /// <summary>Stop the listener; a connection currently being served finishes best-effort.</summary>
     public void Stop() => _server.Stop();

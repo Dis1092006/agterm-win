@@ -17,6 +17,7 @@ public sealed class HooksController : IDisposable
             new System.Threading.Channels.UnboundedChannelOptions { SingleReader = true });
     private HooksStore _store;
     private IReadOnlyList<KeymapDiagnostic> _diagnostics = Array.Empty<KeymapDiagnostic>();
+    private volatile bool _armed;
 
     public HooksController(HooksStore store, IHookLauncher launcher, Func<DateTimeOffset>? now = null)
     {
@@ -45,13 +46,23 @@ public sealed class HooksController : IDisposable
     /// <summary>Re-reads the file and applies it; returns the diagnostic count.</summary>
     public int Reload()
     {
-        lock (_gate)
-        {
-            var (hooks, diagnostics) = _store.Load();
-            _diagnostics = diagnostics;
-            _scheduler.Apply(hooks);
-            return diagnostics.Count;
-        }
+        int count;
+        lock (_gate) count = ReloadLocked();
+        Reloaded?.Invoke(count);
+        return count;
+    }
+
+    /// <summary>Raised after every reload, outside the lock, with its diagnostic count (upstream
+    /// SettingsModel.reloadHooks posts the banner from there). May come from any thread.</summary>
+    public event Action<int>? Reloaded;
+
+    private int ReloadLocked()
+    {
+        var (hooks, diagnostics) = _store.Load();
+        _diagnostics = diagnostics;
+        _scheduler.Apply(hooks);
+        _armed = true;
+        return diagnostics.Count;
     }
 
     /// <summary>The last reload's diagnostics, for a banner.</summary>
@@ -63,6 +74,7 @@ public sealed class HooksController : IDisposable
     /// <summary>Moves hooks.conf to another config directory and reloads, unless it is already there.</summary>
     public void UseConfigDirectory(string configDirectory)
     {
+        int count;
         lock (_gate)
         {
             var next = new HooksStore(configDirectory);
@@ -70,15 +82,20 @@ public sealed class HooksController : IDisposable
             if (string.Equals(System.IO.Path.GetFullPath(_store.Path), System.IO.Path.GetFullPath(next.Path), comparison))
                 return;
             _store = next;
-            Reload();
+            count = ReloadLocked();
         }
+        Reloaded?.Invoke(count);
     }
 
     public void Dispatch(ControlEvent controlEvent) => _scheduler.Dispatch(controlEvent);
 
     /// <summary>Queues an event for a single consumer that calls Dispatch in order. Cheap and
-    /// non-blocking, so the ring can call it under its lock while a spawn happens elsewhere.</summary>
-    public void Post(ControlEvent controlEvent) => _pump.Writer.TryWrite(() => Dispatch(controlEvent));
+    /// non-blocking, so the ring can call it under its lock while a spawn happens elsewhere. Events
+    /// posted before the first Reload are dropped, so none fires late against hooks loaded after it.</summary>
+    public void Post(ControlEvent controlEvent)
+    {
+        if (_armed) _pump.Writer.TryWrite(() => Dispatch(controlEvent));
+    }
 
     /// <summary>Completes once every event posted before this call has been dispatched.</summary>
     public Task FlushAsync()
@@ -88,7 +105,11 @@ public sealed class HooksController : IDisposable
         return done.Task;
     }
 
-    public void Dispose() => _pump.Writer.TryComplete();
+    public void Dispose()
+    {
+        _pump.Writer.TryComplete();
+        _scheduler.Dispose();
+    }
 
     private async Task RunPumpAsync()
     {

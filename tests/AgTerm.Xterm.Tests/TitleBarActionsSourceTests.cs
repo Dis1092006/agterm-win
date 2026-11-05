@@ -107,6 +107,32 @@ public sealed class TitleBarActionsSourceTests
     }
 
     [Fact]
+    public void Hook_banners_reach_the_ui_thread_from_one_place()
+    {
+        // upstream SettingsModel.reloadHooks posts the diagnostics banner for every reload (palette, editor
+        // close, Settings, agtermctl hooks reload, a moved config directory, launch); the controller raises
+        // Reloaded and HookFailed off the UI thread, so App hops to the dispatcher before touching a window
+        var app = Source("App.xaml.cs");
+        Assert.Contains("hooks.Reloaded += count =>", app, StringComparison.Ordinal);
+        Assert.Contains("hooks.HookFailed += (kind, command, detail) =>", app, StringComparison.Ordinal);
+        var report = MethodBody(app, "private void ReportHooksNotice(");
+        Assert.Contains("_dispatcherQueue?.TryEnqueue(", report, StringComparison.Ordinal);
+        Assert.Equal(1, Count(app, "HooksNotices.Diagnostics("));
+
+        var window = Source("MainWindow.xaml.cs");
+        Assert.DoesNotContain("HooksNotices.Diagnostics(", window, StringComparison.Ordinal);
+        Assert.Contains("QueueFailureNotice(", MethodBody(window, "private void ReportPaletteReload("), StringComparison.Ordinal);
+    }
+
+    private static int Count(string source, string token)
+    {
+        var count = 0;
+        for (var at = source.IndexOf(token, StringComparison.Ordinal); at >= 0; at = source.IndexOf(token, at + 1, StringComparison.Ordinal))
+            count++;
+        return count;
+    }
+
+    [Fact]
     public void Header_content_keeps_the_title_bar_at_its_compact_height()
     {
         // TitleBar switches to TitleBarExpandedHeight (48) once it has header content; the buttons fit

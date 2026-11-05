@@ -65,6 +65,15 @@ public partial class App : Application, ILiveWindowController
     private MainWindow? ActiveMainWindow =>
         _applicationHost?.ActiveWindowId is { } id && _windows.TryGetValue(id, out var window) ? window : null;
 
+    /// <summary>Hook banners come from process threads and reloads from any thread; the window map
+    /// and the banner belong to the UI thread.</summary>
+    private void ReportHooksNotice(LiveFailureNotice notice)
+    {
+        if (_dispatcherQueue?.TryEnqueue(() =>
+                (ActiveMainWindow ?? _windows.Values.FirstOrDefault())?.ReportQuickFailure(notice)) != true)
+            System.Diagnostics.Trace.TraceError($"Hooks notice could not be shown: {notice.Title}: {notice.Message}");
+    }
+
     internal void DispatchQuickBuiltin(BuiltinAction action) => ActiveMainWindow?.ExecuteBuiltinHotkey(action);
     internal bool DispatchQuickSwitcher(SessionSwitcherKey key) => ActiveMainWindow?.HandleQuickSwitcherKey(key) ?? false;
     internal void ShowQuickKeybindings() => ActiveMainWindow?.ShowQuickKeybindings();
@@ -86,8 +95,14 @@ public partial class App : Application, ILiveWindowController
         });
         _applicationHost = applicationHost;
         if (applicationHost.Hooks is { } hooks)
+        {
             hooks.HookFailed += (kind, command, detail) =>
-                ActiveMainWindow?.ReportQuickFailure(HooksNotices.Failure(kind, command, detail));
+                ReportHooksNotice(HooksNotices.Failure(kind, command, detail));
+            hooks.Reloaded += count =>
+            {
+                if (count > 0) ReportHooksNotice(HooksNotices.Diagnostics(count));
+            };
+        }
         _notificationPresenter = new WindowsAppNotificationPresenter(
             message => System.Diagnostics.Trace.TraceWarning(message),
             target => ObserveNotificationActivation(target));
@@ -119,8 +134,6 @@ public partial class App : Application, ILiveWindowController
         if (_quickWindow.GlobalHotkeyError is { } hotkeyError)
             _windows.Values.First().ReportQuickFailure(new("Global hotkey unavailable", hotkeyError));
         applicationHost.Start();
-        if (applicationHost.Hooks is { Diagnostics.Count: > 0 and var hookIssues })
-            _windows.Values.First().ReportQuickFailure(HooksNotices.Diagnostics(hookIssues));
         _launchReady.TrySetResult();
         var activation = AppInstance.GetCurrent().GetActivatedEventArgs();
         if (activation.Kind == ExtendedActivationKind.AppNotification)

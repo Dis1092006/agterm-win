@@ -158,12 +158,14 @@ public sealed class RecentClosedStore
         lock (_gate) Save(Load().Where(item => item.Id != id).ToList());
     }
 
-    public void Clear()
+    /// <summary>Empty the list. Returns whether the empty list was written, decided under the store
+    /// lock, so a close recorded right after the clear does not read as a failed clear.</summary>
+    public bool Clear()
     {
-        lock (_gate) Save(new List<RecentClosedItem>());
+        lock (_gate) return Save(new List<RecentClosedItem>());
     }
 
-    private void Save(List<RecentClosedItem> items)
+    private bool Save(List<RecentClosedItem> items)
     {
         try
         {
@@ -171,10 +173,12 @@ public sealed class RecentClosedStore
             var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             File.WriteAllText(temp, ControlJson.Serialize(new RecentClosedState { Items = items.ToArray() }));
             AtomicFile.Replace(temp, FilePath);
+            return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // a transient disk error must not bring down the model (matches upstream's swallow+log).
+            return false;
         }
     }
 }

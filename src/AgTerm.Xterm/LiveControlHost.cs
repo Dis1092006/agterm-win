@@ -775,21 +775,40 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         return paneId;
     }
 
-    /// <summary>Shows the pane that set a blocked status: the scratch, the split, or neither. Needs a
-    /// surface reconcile by the caller when it runs on an attached window.</summary>
+    /// <summary>Shows the pane that set a status needing attention: the scratch, the split, or the
+    /// main pane (upstream revealActiveBlockedPane). A right tag reveals the split only while the split
+    /// surface exists; otherwise, like a left or untagged status, it moves focus to the main pane. Needs
+    /// a surface reconcile by the caller when it runs on an attached window.</summary>
     internal static void RevealBlockedPane(AppStore store, Session session, AgentIndicator captured)
     {
-        if (captured.Status != AgentStatus.Blocked) return;
+        if (!captured.Status.NeedsAttention()) return;
         var pane = captured.StatusPane;
         if (pane != StatusPane.Scratch && session.ScratchActive) store.ToggleScratch(session.Id);
-        if (pane == StatusPane.Scratch && !session.ScratchActive) store.ToggleScratch(session.Id);
-        if (pane == StatusPane.Right && session.SplitSurface is not null && !session.SplitFocused)
+        if (pane == StatusPane.Scratch)
         {
-            session.SplitFocused = true;
-            store.Save();
-            store.NotifySidebar();
+            if (!session.ScratchActive) store.ToggleScratch(session.Id);
+            return;
         }
+        var split = pane == StatusPane.Right && session.SplitSurface is not null;
+        if (session.SplitFocused == split) return;
+        session.SplitFocused = split;
+        store.Save();
+        store.NotifySidebar();
     }
+
+    /// <summary>An attention step that found no other stop still reveals the current session's pane
+    /// (upstream stepAttention).</summary>
+    internal static void RevealActiveAttention(AppStore store)
+    {
+        if (store.ActiveSession is { } session) RevealBlockedPane(store, session, session.AgentIndicator);
+    }
+
+    internal Task RevealActiveAttentionAsync(CancellationToken cancellationToken) =>
+        StoreCoordinator.MutateAsync(store =>
+        {
+            RevealActiveAttention(store);
+            ReconcileSurfacesLocked();
+        }, cancellationToken);
 
     /// <summary>Selects the session an attention step landed on and reveals the blocked pane
     /// (upstream selectNextAttentionSession). The indicator is read before the selection, which can
