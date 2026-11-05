@@ -64,6 +64,28 @@ public sealed class WindowPaletteProjectionTests
     }
 
     [Fact]
+    public void Commands_title_the_split_toggles_and_focus_rows_by_the_active_split_axis()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var session = store.AddSession(workspace.Id, @"C:\work")!;
+        var states = StateProvider(enabled:
+            [BuiltinAction.ToggleSplit, BuiltinAction.ToggleHorizontalSplit, BuiltinAction.FocusLeftPane, BuiltinAction.FocusRightPane]);
+
+        string[] Titles() => WindowPaletteProjection.Create(WindowPaletteMode.Commands, store, Keymap.Empty, states).Items
+            .Where(item => WindowPaletteProjection.ParseAction(item.Id) is not null)
+            .Select(item => item.Title)
+            .OrderBy(title => title, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(
+            ["Focus Left Pane", "Focus Right Pane", "Toggle Horizontal Split", "Toggle Vertical Split"], Titles());
+        session.SplitAxis = SplitAxis.TopBottom;
+        Assert.Equal(
+            ["Focus Bottom Pane", "Focus Top Pane", "Toggle Horizontal Split", "Toggle Vertical Split"], Titles());
+    }
+
+    [Fact]
     public void Commands_filters_by_router_state_and_uses_dynamic_titles_and_live_shortcuts()
     {
         var store = TestStores.Scratch();
@@ -307,7 +329,7 @@ public sealed class WindowPaletteProjectionTests
         }
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand(BuiltinAction.ToggleSplit.WireName()));
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand("app:something-else"));
-        Assert.Equal(42, BuiltinActions.All.Count);
+        Assert.Equal(43, BuiltinActions.All.Count);
     }
 
     [Fact]

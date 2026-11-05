@@ -83,7 +83,8 @@ public static class KeybindingsCatalog
         BuiltinAction.NewWindow or BuiltinAction.RenameWindow or BuiltinAction.DeleteWindow => "Windows",
         BuiltinAction.NewWorkspace or BuiltinAction.RenameWorkspace or BuiltinAction.DeleteWorkspace
             or BuiltinAction.FocusWorkspace or BuiltinAction.ToggleWorkspaceFilter => "Workspaces",
-        BuiltinAction.ToggleSplit or BuiltinAction.ToggleScratch or BuiltinAction.ToggleTerminalZoom
+        BuiltinAction.ToggleSplit or BuiltinAction.ToggleHorizontalSplit or BuiltinAction.ToggleScratch
+            or BuiltinAction.ToggleTerminalZoom
             or BuiltinAction.FocusLeftPane or BuiltinAction.FocusRightPane or BuiltinAction.QuickTerminal => "Panes",
         BuiltinAction.PreviousSession or BuiltinAction.NextSession or BuiltinAction.PreviousAttentionSession
             or BuiltinAction.NextAttentionSession or BuiltinAction.FirstSession or BuiltinAction.LastSession => "Navigation",
@@ -113,7 +114,8 @@ public static class KeybindingsCatalog
         BuiltinAction.IncreaseFontSize => "Increase Font Size",
         BuiltinAction.DecreaseFontSize => "Decrease Font Size",
         BuiltinAction.ResetFontSize => "Actual Font Size",
-        BuiltinAction.ToggleSplit => "Toggle Split",
+        BuiltinAction.ToggleSplit => "Toggle Vertical Split",
+        BuiltinAction.ToggleHorizontalSplit => "Toggle Horizontal Split",
         BuiltinAction.ToggleScratch => "Toggle Scratch",
         BuiltinAction.ToggleTerminalZoom => "Toggle Terminal Zoom",
         BuiltinAction.ToggleSearch => "Find…",

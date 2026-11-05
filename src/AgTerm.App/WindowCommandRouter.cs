@@ -41,6 +41,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.DecreaseFontSize] = true,
             [BuiltinAction.ResetFontSize] = true,
             [BuiltinAction.ToggleSplit] = true,
+            [BuiltinAction.ToggleHorizontalSplit] = true,
             [BuiltinAction.ToggleScratch] = true,
             [BuiltinAction.ToggleTerminalZoom] = true,
             [BuiltinAction.ToggleSearch] = true,

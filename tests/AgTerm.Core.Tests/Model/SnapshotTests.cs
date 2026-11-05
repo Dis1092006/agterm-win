@@ -19,7 +19,7 @@ public class SnapshotTests
 
     private static SessionSnapshot FullSessionSnapshot() => new()
     {
-        Id = SessionId, CustomName = "api", Cwd = "/home/u/proj", IsSplit = true, FontSize = 14.0,
+        Id = SessionId, CustomName = "api", Cwd = "/home/u/proj", IsSplit = true, SplitAxis = SplitAxis.TopBottom, FontSize = 14.0,
         SplitCwd = "/home/u/other", SplitRatio = 0.4, Flagged = true, Context = "PR #517",
         ForegroundCommand = new[] { "ssh", "host" }, SplitForegroundCommand = new[] { "top" },
         InitialCommand = "ssh host", CommandWait = true,

@@ -55,6 +55,7 @@ public class Phase5ActionCoverageTests
         new(BuiltinAction.DecreaseFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+-", "opt+-", "alt+-"),
         new(BuiltinAction.ResetFontSize, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+0", "opt+0", "alt+0"),
         new(BuiltinAction.ToggleSplit, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+d", "opt+d", "alt+d"),
+        new(BuiltinAction.ToggleHorizontalSplit, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+d", "cmd+shift+d", "ctrl+shift+d"),
         new(BuiltinAction.ToggleScratch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+j", "opt+j", "alt+j"),
         new(BuiltinAction.ToggleTerminalZoom, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+return", "cmd+shift+return", "ctrl+shift+return"),
         new(BuiltinAction.ToggleSearch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+f", "opt+f", "alt+f"),
@@ -78,7 +79,7 @@ public class Phase5ActionCoverageTests
         new(BuiltinAction.CommandPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+p", "ctrl+shift+p", "ctrl+shift+p"),
         new(BuiltinAction.CustomCommandPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+o", "ctrl+shift+o", "ctrl+shift+o"),
         new(BuiltinAction.ShowAttention, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+i", "ctrl+shift+i", "ctrl+shift+i"),
-        new(BuiltinAction.Dashboard, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+d", "cmd+shift+d", "ctrl+shift+d"),
+        new(BuiltinAction.Dashboard, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+g", "cmd+shift+g", "ctrl+shift+g"),
     ];
 
     public static IEnumerable<object?[]> ActionRows => Coverage.Select(row => new object?[]
@@ -94,7 +95,7 @@ public class Phase5ActionCoverageTests
     [Fact]
     public void Coverage_table_contains_each_builtin_action_once_with_an_explicit_disposition()
     {
-        Assert.Equal(42, Coverage.Length);
+        Assert.Equal(43, Coverage.Length);
         Assert.Equal(Coverage.Length, Coverage.Select(row => row.Action).Distinct().Count());
         Assert.Equal(BuiltinActions.All, Coverage.Select(row => row.Action).ToArray());
         Assert.All(Coverage, row => Assert.Equal(ActionDisposition.Implemented, row.Disposition));

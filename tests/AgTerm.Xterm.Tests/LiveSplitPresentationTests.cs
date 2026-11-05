@@ -81,6 +81,24 @@ public sealed class LiveSelectionSnapshotLayoutTests
     }
 
     [Fact]
+    public void ToTerminalLayout_carries_the_split_axis()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session", null,
+            MainPaneId: "top-token",
+            SplitPaneId: "bottom-token",
+            IsSplit: true,
+            SplitAxis: SplitAxis.TopBottom);
+        var split = Assert.IsType<TerminalLayout.Split>(snapshot.ToTerminalLayout(1));
+        Assert.Equal(SplitAxis.TopBottom, split.Axis);
+
+        var vertical = snapshot with { SplitAxis = SplitAxis.LeftRight };
+        Assert.Equal(SplitAxis.LeftRight, Assert.IsType<TerminalLayout.Split>(vertical.ToTerminalLayout(1)).Axis);
+        Assert.Equal(SplitAxis.LeftRight, Assert.IsType<TerminalLayout.Split>(
+            (snapshot with { SplitAxis = null }).ToTerminalLayout(1)).Axis);
+    }
+
+    [Fact]
     public void ToTerminalLayout_returns_Split_right_focused_when_SplitFocused_true()
     {
         var snapshot = new LiveSelectionSnapshot(

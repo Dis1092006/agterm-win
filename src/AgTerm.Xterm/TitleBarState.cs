@@ -4,7 +4,7 @@ using System.Collections.Frozen;
 namespace AgTerm.Xterm;
 
 /// <summary>The split button's glyph state (upstream's split-toggle accessibility value): no split,
-/// both panes shown, or collapsed to the left (primary) or right (split) pane.</summary>
+/// both panes shown, or collapsed to the primary (left or top) or split (right or bottom) pane.</summary>
 public enum TitleBarSplit
 {
     None,
@@ -42,6 +42,9 @@ public sealed record TitleBarState(
 {
     public string SubtitleDetail { get; init; } = string.Empty;
 
+    /// <summary>The split's axis: Left/Right read as top/bottom when it is TopBottom.</summary>
+    public SplitAxis SplitAxis { get; init; } = SplitAxis.LeftRight;
+
     /// <summary>The active session's context, shown in the title bar (null when unset).</summary>
     public string? Context { get; init; }
 
@@ -66,6 +69,7 @@ public sealed record TitleBarState(
             SwitcherOf(store))
         {
             SubtitleDetail = active?.SubtitleDetail ?? string.Empty,
+            SplitAxis = active?.SplitAxis ?? SplitAxis.LeftRight,
             Context = active?.Context,
             SessionIndicators = store.Workspaces.SelectMany(w => w.Sessions)
                 .ToFrozenDictionary(s => s.Id, s => s.AgentIndicator),

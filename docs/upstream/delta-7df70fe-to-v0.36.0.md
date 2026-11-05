@@ -86,7 +86,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 ## 5. Splits and pane addressing
 
-- Horizontal split: `axis` on `session.split`, `top` and `bottom` as aliases, `splitAxis` in `tree` and in the snapshot. A new action `toggle_horizontal_split` on Cmd+Shift+D. **Dashboard moved from Cmd+Shift+D to Cmd+Shift+G**: this changes the default chord of an action that is already implemented #427. Port: not done. `dashboard` keeps its pin chord.
+- Horizontal split: `axis` on `session.split`, `top` and `bottom` as aliases, `splitAxis` in `tree` and in the snapshot. A new action `toggle_horizontal_split` on Cmd+Shift+D. **Dashboard moved from Cmd+Shift+D to Cmd+Shift+G**: this changes the default chord of an action that is already implemented #427. Port: done (upstream `eb29d556`). The `dashboard` chord moved as upstream's did; `DashboardTarget` aliases are the next line.
 - `session.split.close`: close the whole split pane #421. `hasSplit` in `tree` tells a hidden split from a missing one. Port: done (`79852e71`, `a5856949`).
 - `session.swap`: swap the terminals of the two panes; the axis and the ratio stay #513. Port: done (`db62080d`).
 - `--pane-id` (the stable `$AGTERM_PANE_ID`) on `session type`, `session text`, `surface cursor`; `surfaces[].paneID` in `tree`; `result.pane` #698. Token `AGT_PANE_ID` #603. Port: done (`eab672be`, `cf31c5d4`, and `surface cursor` with `2279c722`).
@@ -94,7 +94,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 - A background per pane: `session background ... --pane`, `paneBackgrounds` in `tree` and in the snapshot #647. Port: not done.
 - `session.paste --pane` #529. `surface.cursor` #451 (port: `surface.cursor` done, `2279c722`). `session.overlay.copy`, `session.overlay.text` #437. Port: not done for the rest of this line.
 - Dashboard takes `id:left` and `id:right` #334. Port: not done. `dashboard` takes session ids only.
-- A double click on the divider sets the split to 50/50 #357. Port: not done.
+- A double click on the divider sets the split to 50/50 #357. Port: done (A4b).
 
 ## 6. Navigation, windows, sidebar
 
@@ -168,7 +168,7 @@ These items change what agterm-win already does at the pin. They do not depend o
 - `session.paste`, `session.selectall`, `session.copy` without a real surface answer `session not realized` #425. Port: done in `aaeec2d` (upstream `9f145925`).
 - `session type`, `quick type`: a NUL byte is refused `6bc8a0b7` (issue #455); invalid UTF-8 in `--stdin` is refused #521; the final Return goes 10 ms after the text #681. Port: done in `bc1f162`, `8e6be4a` and `99659f2` (upstream `6bc8a0b7`, `7b8f63cf`, `2cd47dca`).
 - `session.overlay.open --size-percent` outside 1..100 is refused #498. Port: done in `e76ffb8` (upstream `94c509bf`).
-- The dispatcher reports `invalid pane: X` for `session.type`, `session.text` and `font` (#530). The aliases `primary`, `split`, `top`, `bottom` came with horizontal splits (#427) and are not part of this change. Port: done in `c7582f8` (upstream `b3ef1baf`).
+- The dispatcher reports `invalid pane: X` for `session.type`, `session.text` and `font` (#530). The aliases `primary`, `split`, `top`, `bottom` came with horizontal splits (#427) and are not part of this change. Port: done in `c7582f8` (upstream `b3ef1baf`); the aliases are done in A4b.
 - `session.type` on the main pane without `--select` answers `session not realized` instead of `session not realized; use select`, and `--select` selects the session only when the surface is not ready (#351). Port: done in `ae922d8` (upstream `22d7e1c1`).
 - A new workspace becomes the target before the selected session changes; `workspace select` always retargets #329. Port: done in `7791760` (upstream `0106275a`). agterm-win #31 keeps this workspace open on `sidebar.collapse`.
 - `window new` answers after the window is attached; `window list` does not return a stale cache; a minimized window stops being frontmost; `window select` works when the app is not active #294. Port: partly. `window select` is done in `9d0ba24` (upstream `28cad2c1`). The other three are not done.

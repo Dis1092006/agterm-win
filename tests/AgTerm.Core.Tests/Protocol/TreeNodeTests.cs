@@ -20,7 +20,7 @@ public class TreeNodeTests
     private static ControlSessionNode FullSessionNode() => new()
     {
         Id = "id", Name = "n", Cwd = "/w", SplitCwd = "/s", Title = "t",         Active = true, Split = true, HasSplit = true,
-        SplitRatio = 0.4, SplitFocused = true, Overlay = true, OverlaySizePercent = 60,
+        SplitAxis = "vertical", SplitRatio = 0.4, SplitFocused = true, Overlay = true, OverlaySizePercent = 60,
         Hud = new ControlHudNode { Message = "m", Spinner = "bar", Position = "center", HideAfter = 0 },
         Ask = new ControlSessionAsk { Id = "A", Pane = "left" },
         Scratch = true, Flagged = true, Context = "PR #517", CommandWait = true, SplitCommandWait = true,

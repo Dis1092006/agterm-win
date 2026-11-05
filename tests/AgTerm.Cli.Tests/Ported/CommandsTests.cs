@@ -665,6 +665,38 @@ public class CommandsTests
     }
 
     [Fact]
+    public void SessionSplitAcceptsAnOptionalAxis()
+    {
+        var expected = new ControlRequest
+        {
+            Cmd = WireCommand.SessionSplit, Target = "active",
+            Args = new ControlArgs { Mode = "toggle", Axis = "horizontal" },
+        };
+        CanonicalJson.AssertEqual(expected, Request("session", "split", "--axis", "horizontal"));
+        CanonicalJson.AssertEqual(expected, Request("session", "split", "visibility", "--axis", "horizontal"));
+        Assert.Equal("--axis must be vertical or horizontal", ValidationMessage("session", "split", "--axis", "diagonal"));
+        Assert.Equal("--axis must be vertical or horizontal",
+            ValidationMessage("session", "split", "visibility", "on", "--axis", "diagonal"));
+    }
+
+    [Fact]
+    public void SessionResizeRoleAndAxisAliasesKeepThePrimaryFractionConvention()
+    {
+        foreach (var option in new[] { "--grow-primary", "--grow-top" })
+            Assert.Equal(0.05, Request("session", "resize", option, "0.05").Args!.RatioDelta);
+        foreach (var option in new[] { "--grow-split", "--grow-bottom" })
+            Assert.Equal(-0.05, Request("session", "resize", option, "0.05").Args!.RatioDelta);
+    }
+
+    [Fact]
+    public void SessionResizeNamesTheSevenFormsInItsUsageError()
+    {
+        Assert.Equal("provide exactly one split ratio or grow option", ValidationMessage("session", "resize"));
+        Assert.Equal("provide exactly one split ratio or grow option",
+            ValidationMessage("session", "resize", "--grow-top", "0.1", "--grow-bottom", "0.1"));
+    }
+
+    [Fact]
     public void SessionSplitClose()
     {
         var expected = new ControlRequest

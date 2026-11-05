@@ -73,7 +73,7 @@ public sealed class ThemeChromeSourceTests
         Assert.Contains("Foreground=\"{StaticResource ChromeSecondaryBrush}\"",
             Between(xaml, "<TextBlock x:Name=\"ToolbarSubtitle\"", "/>"), StringComparison.Ordinal);
         Assert.DoesNotContain("Fill=\"{ThemeResource TextFillColorPrimaryBrush}\"", xaml, StringComparison.Ordinal);
-        Assert.Equal(3, Regex.Matches(xaml, Regex.Escape("Fill=\"{StaticResource ChromeForegroundBrush}\"")).Count);
+        Assert.Equal(5, Regex.Matches(xaml, Regex.Escape("Fill=\"{StaticResource ChromeForegroundBrush}\"")).Count);
     }
 
     [Fact]

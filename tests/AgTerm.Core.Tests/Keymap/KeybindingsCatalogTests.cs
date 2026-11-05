@@ -9,7 +9,7 @@ public sealed class KeybindingsCatalogTests
     {
         var groups = KeybindingsCatalog.Create(AgTerm.Core.Keymap.Keymap.Empty);
         var rows = groups.SelectMany(group => group.Items).ToArray();
-        Assert.Equal(43, rows.Length);
+        Assert.Equal(44, rows.Length);
         foreach (var action in BuiltinActions.All)
             Assert.Single(rows, row => row.Id == action.WireName());
         var session = Assert.Single(rows, row => row.Id == "new_session");

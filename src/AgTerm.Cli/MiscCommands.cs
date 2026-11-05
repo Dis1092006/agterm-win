@@ -905,7 +905,7 @@ internal static class FontCommands
     /// copy here so this file stays self-contained): a present --pane must parse as a StatusPane.</summary>
     private static void ValidatePaneArgument(string? pane)
     {
-        if (pane is not null && StatusPanes.FromWire(pane) is null)
+        if (pane is not null && StatusPanes.FromControlName(pane) is null)
             throw new CliValidationException("--pane must be left, right, or scratch");
     }
 

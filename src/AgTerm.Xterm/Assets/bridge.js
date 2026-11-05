@@ -605,6 +605,7 @@ function validateLayeredBaseLayout(baseLayout) {
       "rightPaneId",
       "ratio",
       "focusedPaneId",
+      "axis",
     ])
   ) {
     return null;
@@ -632,6 +633,7 @@ function validateLayeredBaseLayout(baseLayout) {
         "rightPaneId",
         "ratio",
         "focusedPaneId",
+        "axis",
       ])
     ) {
       return null;
@@ -778,8 +780,15 @@ function scheduleSplitFit(leftPaneId, rightPaneId) {
   });
 }
 
-function setSplitGridColumns(ratio) {
-  container.style.gridTemplateColumns = `${ratio}fr ${SPLIT_DIVIDER_WIDTH_PX}px ${1 - ratio}fr`;
+function setSplitGrid(ratio, axis) {
+  const track = `${ratio}fr ${SPLIT_DIVIDER_WIDTH_PX}px ${1 - ratio}fr`;
+  if (axis === "horizontal") {
+    container.style.gridTemplateRows = track;
+    container.style.gridTemplateColumns = "100%";
+  } else {
+    container.style.gridTemplateColumns = track;
+    container.style.gridTemplateRows = "100%";
+  }
 }
 
 function ensureSplitDivider() {
@@ -793,8 +802,19 @@ function ensureSplitDivider() {
   divider.setAttribute("aria-valuemin", String(SPLIT_MIN_RATIO * 100));
   divider.setAttribute("aria-valuemax", String(SPLIT_MAX_RATIO * 100));
   divider.addEventListener("pointerdown", onSplitDividerPointerDown);
+  divider.addEventListener("dblclick", onSplitDividerDoubleClick);
   splitDividerEl = divider;
   return divider;
+}
+
+function updateSplitDividerAxis(axis) {
+  if (!splitDividerEl) return;
+  const horizontal = axis === "horizontal";
+  splitDividerEl.classList.toggle("horizontal", horizontal);
+  splitDividerEl.setAttribute(
+    "aria-orientation",
+    horizontal ? "horizontal" : "vertical",
+  );
 }
 
 function updateSplitDividerAriaRatio(ratio) {
@@ -807,6 +827,12 @@ function validateSplitLayout(layout) {
   if (typeof layout.rightPaneId !== "string") return null;
   if (typeof layout.focusedPaneId !== "string") return null;
   if (typeof layout.ratio !== "number" || !Number.isFinite(layout.ratio))
+    return null;
+  if (
+    layout.axis !== undefined &&
+    layout.axis !== "vertical" &&
+    layout.axis !== "horizontal"
+  )
     return null;
 
   const leftPaneId = layout.leftPaneId.trim();
@@ -824,6 +850,7 @@ function validateSplitLayout(layout) {
     rightPaneId,
     ratio: clampNumber(layout.ratio, SPLIT_MIN_RATIO, SPLIT_MAX_RATIO),
     focusedPaneId,
+    axis: layout.axis === "horizontal" ? "horizontal" : "vertical",
   };
 }
 
@@ -865,13 +892,14 @@ function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
   const divider = ensureSplitDivider();
 
   container.style.display = "grid";
-  container.style.gridTemplateRows = "100%";
-  setSplitGridColumns(splitLayout.ratio);
+  const horizontal = splitLayout.axis === "horizontal";
+  setSplitGrid(splitLayout.ratio, splitLayout.axis);
 
   if (divider.parentElement !== container) container.appendChild(divider);
   divider.style.display = "block";
-  divider.style.gridColumn = "2";
-  divider.style.gridRow = "1";
+  divider.style.gridColumn = horizontal ? "1" : "2";
+  divider.style.gridRow = horizontal ? "2" : "1";
+  updateSplitDividerAxis(splitLayout.axis);
   updateSplitDividerAriaRatio(splitLayout.ratio);
 
   for (const [id, pane] of panes) {
@@ -882,8 +910,8 @@ function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
       pane.el.style.gridColumn = "1";
       pane.el.style.gridRow = "1";
     } else if (id === splitLayout.rightPaneId) {
-      pane.el.style.gridColumn = "3";
-      pane.el.style.gridRow = "1";
+      pane.el.style.gridColumn = horizontal ? "1" : "3";
+      pane.el.style.gridRow = horizontal ? "3" : "1";
     } else {
       pane.el.style.gridColumn = "";
       pane.el.style.gridRow = "";
@@ -897,6 +925,7 @@ function applySplitPresentation(splitLayout, shouldFitAndReport, shouldFocus) {
     rightPaneId: splitLayout.rightPaneId,
     focusedPaneId: splitLayout.focusedPaneId,
     ratio: splitLayout.ratio,
+    axis: splitLayout.axis,
   });
 
   if (shouldFitAndReport)
@@ -1145,17 +1174,20 @@ function onDashboardPointerDown(ev) {
   if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
 }
 
-function ratioFromClientX(clientX) {
+function ratioFromClient(ev, axis) {
   const rect = container.getBoundingClientRect();
-  if (!Number.isFinite(rect.width) || rect.width <= 0) return null;
-  const rawRatio = (clientX - rect.left) / rect.width;
-  return clampNumber(rawRatio, SPLIT_MIN_RATIO, SPLIT_MAX_RATIO);
+  const horizontal = axis === "horizontal";
+  const size = horizontal ? rect.height : rect.width;
+  if (!Number.isFinite(size) || size <= 0) return null;
+  const offset = horizontal ? ev.clientY - rect.top : ev.clientX - rect.left;
+  return clampNumber(offset / size, SPLIT_MIN_RATIO, SPLIT_MAX_RATIO);
 }
 
 function onSplitDividerPointerDown(ev) {
   if (!visibleLayout || visibleLayout.type !== "split") return;
 
-  const ratio = ratioFromClientX(ev.clientX);
+  const axis = visibleLayout.axis;
+  const ratio = ratioFromClient(ev, axis);
   const startRatio = ratio === null ? visibleLayout.ratio : ratio;
   splitDragState = {
     active: true,
@@ -1163,6 +1195,7 @@ function onSplitDividerPointerDown(ev) {
     leftPaneId: visibleLayout.leftPaneId,
     rightPaneId: visibleLayout.rightPaneId,
     ratio: startRatio,
+    axis,
   };
 
   if (
@@ -1176,7 +1209,7 @@ function onSplitDividerPointerDown(ev) {
     }
   }
 
-  setSplitGridColumns(startRatio);
+  setSplitGrid(startRatio, axis);
   updateSplitDividerAriaRatio(startRatio);
   if (ev.preventDefault) ev.preventDefault();
 
@@ -1187,11 +1220,11 @@ function onSplitDividerPointerDown(ev) {
 
 function onSplitDragPointerMove(ev) {
   if (!splitDragState || !splitDragState.active) return;
-  const ratio = ratioFromClientX(ev.clientX);
+  const ratio = ratioFromClient(ev, splitDragState.axis);
   if (ratio === null) return;
 
   splitDragState.ratio = ratio;
-  setSplitGridColumns(ratio);
+  setSplitGrid(ratio, splitDragState.axis);
   updateSplitDividerAriaRatio(ratio);
   scheduleSplitFit(splitDragState.leftPaneId, splitDragState.rightPaneId);
 }
@@ -1200,13 +1233,14 @@ function onSplitDragPointerUp(ev) {
   if (!splitDragState || !splitDragState.active) return;
   if (splitDragState.pointerId !== ev.pointerId) return;
 
-  const ratio = ratioFromClientX(ev.clientX);
+  const ratio = ratioFromClient(ev, splitDragState.axis);
   if (ratio !== null) splitDragState.ratio = ratio;
 
   const dragState = {
     leftPaneId: splitDragState.leftPaneId,
     rightPaneId: splitDragState.rightPaneId,
     ratio: splitDragState.ratio,
+    axis: splitDragState.axis,
   };
 
   stopSplitDrag(false);
@@ -1216,6 +1250,7 @@ function onSplitDragPointerUp(ev) {
     rightPaneId: dragState.rightPaneId,
     ratio: dragState.ratio,
     focusedPaneId: visibleLayout.focusedPaneId,
+    axis: dragState.axis,
   };
 
   applySplitPresentation(nextLayout, true, false);
@@ -1224,6 +1259,27 @@ function onSplitDragPointerUp(ev) {
     leftPaneId: dragState.leftPaneId,
     rightPaneId: dragState.rightPaneId,
     ratio: dragState.ratio,
+  });
+}
+
+function onSplitDividerDoubleClick(ev) {
+  if (!visibleLayout || visibleLayout.type !== "split") return;
+  if (ev.preventDefault) ev.preventDefault();
+
+  const nextLayout = {
+    leftPaneId: visibleLayout.leftPaneId,
+    rightPaneId: visibleLayout.rightPaneId,
+    ratio: 0.5,
+    focusedPaneId: visibleLayout.focusedPaneId,
+    axis: visibleLayout.axis,
+  };
+
+  applySplitPresentation(nextLayout, true, false);
+  post({
+    type: "splitResize",
+    leftPaneId: nextLayout.leftPaneId,
+    rightPaneId: nextLayout.rightPaneId,
+    ratio: nextLayout.ratio,
   });
 }
 

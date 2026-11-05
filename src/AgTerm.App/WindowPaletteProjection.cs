@@ -231,6 +231,12 @@ public static class WindowPaletteProjection
         BuiltinAction.ToggleFlag => store.ActiveSession?.Flagged == true
             ? "Unflag Session"
             : "Flag Session",
+        BuiltinAction.FocusLeftPane => store.ActiveSession?.SplitAxis == SplitAxis.TopBottom
+            ? "Focus Top Pane"
+            : "Focus Left Pane",
+        BuiltinAction.FocusRightPane => store.ActiveSession?.SplitAxis == SplitAxis.TopBottom
+            ? "Focus Bottom Pane"
+            : "Focus Right Pane",
         _ => KeybindingsCatalog.TitleFor(action),
     };
 }

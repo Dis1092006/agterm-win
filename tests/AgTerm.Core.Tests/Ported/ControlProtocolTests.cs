@@ -380,6 +380,17 @@ public class ControlProtocolTests
     }
 
     [Fact]
+    public void SessionSplitRoundTripsWithAnAxis()
+    {
+        var decoded = RoundTrip(new ControlRequest
+        {
+            Cmd = Command.SessionSplit, Target = "active", Args = new ControlArgs { Mode = "on", Axis = "horizontal" },
+        });
+        Assert.Equal("horizontal", decoded.Args!.Axis);
+        Assert.Contains("\"axis\":\"horizontal\"", ControlJson.Serialize(decoded));
+    }
+
+    [Fact]
     public void SessionScratchRoundTripsWithCommand()
     {
         var decoded = RoundTrip(new ControlRequest { Cmd = Command.SessionScratch, Target = "active", Args = new ControlArgs { Mode = "on", Command = "htop" } });

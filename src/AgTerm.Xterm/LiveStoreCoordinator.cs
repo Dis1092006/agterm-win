@@ -34,7 +34,8 @@ public sealed record LiveSelectionSnapshot(
     TerminalAskPlacement? TerminalAsk = null,
     TerminalHudPlacement? Hud = null,
     PaneThemeTable? PaneThemes = null,
-    bool QuickHoldsKey = false)
+    bool QuickHoldsKey = false,
+    SplitAxis? SplitAxis = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -54,7 +55,8 @@ public sealed record LiveSelectionSnapshot(
                 ratio,
                 focusedPaneId,
                 DisplayName,
-                WorkspaceName);
+                WorkspaceName,
+                SplitAxis ?? Core.Model.SplitAxis.LeftRight);
         }
         else
         {
@@ -435,7 +437,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             TerminalAsk: terminalAsk,
             Hud: hud,
             PaneThemes: PaneThemeAssignment.For(_host.Store),
-            QuickHoldsKey: _host.Actions.Quick.HoldsKey);
+            QuickHoldsKey: _host.Actions.Quick.HoldsKey,
+            SplitAxis: selectedSession?.SplitAxis);
     }
 
     private bool QuickTerminalShown() =>

@@ -352,10 +352,17 @@ All thirteen are read-only projections of GUI state.
   matches) and `result.text` (the counter string: "N of M", "M matches", or "no matches"); the count
   settles asynchronously, so the command waits briefly for it. Without `--json` it prints `result.text`
   (or `ok` on close / an empty bar).
-- `session split [on|off|toggle] [--target] [--window W]` — side-by-side second shell. Wire:
-  `session.split`. `off` HIDES it
+- `session split [on|off|toggle] [--axis vertical|horizontal] [--target] [--window W]` — second shell side by
+  side (`vertical`, the default: left/right) or stacked (`horizontal`: top/bottom). Wire:
+  `session.split` with an optional `axis` arg. `off` HIDES it
   but keeps the shell alive (mirrors Alt+D); the pane's surface is torn down only when its shell exits
-  or `session split close` runs. Unknown mode errors.
+  or `session split close` runs. The axis applies only when the split is shown: `toggle --axis X` on a shown
+  split of the other axis re-axes it instead of hiding it, and `on --axis X` on a shown split of the other
+  axis re-axes it. A split created this way focuses the new pane. `--axis` also works on
+  `session split visibility`. Unknown mode errors; an unknown axis errors with
+  `invalid split axis: X (vertical|horizontal)` (the CLI refuses it first with
+  `--axis must be vertical or horizontal`). The tree carries `splitAxis` (`vertical` or `horizontal`) while a
+  split exists, shown or hidden.
 - `session split close [--target] [--window W]` — tear the split pane down: the surface dies, whatever it
   runs dies with it, and `hasSplit`/`splitRatio`/`splitFocused` drop out of `tree`. Wire:
   `session.split.close`. Reaches a HIDDEN pane too, which `session type --pane right $'exit\n'` cannot
@@ -380,15 +387,19 @@ All thirteen are read-only projections of GUI state.
   shell). A scratch is expendable, so passing `--command` while one is already open respawns it. Not
   persisted. Unknown mode errors. The tree's `scratch` flag tracks visibility.
 - `session focus [left|right|other] [--target] [--window W]` — move keyboard focus between the two
-  split panes (`other` toggles, the default). Wire: `session.focus`. Errors when the session has no split.
+  split panes (`other` toggles, the default; `top`/`primary` and `bottom`/`split` are aliases for `left`
+  and `right`, in either axis). Wire: `session.focus`. Errors when the session has no split.
   Works whether the
   split is shown side-by-side or hidden (maximized) — when hidden, focusing a pane swaps which one shows.
 - `session resize (--split-ratio R | --grow-left D | --grow-right D) [--target] [--window W]` — move the
   split DIVIDER. Wire: `session.resize`. (The divider is otherwise mouse-drag only; there is no
   GUI/menu/keymap action, so bind a
   key by mapping a `command "agtermctl session resize …"` custom action). Provide exactly one form:
-  `--split-ratio` sets the absolute left-pane fraction (`0..1`); `--grow-left D` / `--grow-right D` nudge
-  it by the fraction `D` (grow-left shrinks the right pane and vice-versa). The result is clamped to
+  `--split-ratio` sets the absolute primary-pane fraction (`0..1`; left, or top in a horizontal split);
+  `--grow-left D` / `--grow-right D` nudge
+  it by the fraction `D` (grow-left shrinks the right pane and vice-versa). `--grow-primary`/`--grow-top`
+  are aliases for `--grow-left`, and `--grow-split`/`--grow-bottom` for `--grow-right`; the usage error
+  names all seven forms. The result is clamped to
   `0.05..0.95` and persisted, and the applied (clamped) fraction is printed (and returned as `result.ratio`
   under `--json`). Errors when the session has no split. Resizing a hidden split updates the stored
   fraction; it takes effect when the split is next shown.
@@ -746,7 +757,7 @@ count is reported in the response text (`dropped N pane(s) beyond the 9-cell lim
 explicit ids and `--close`, composes with the font flags and `--window`, and errors with `no recent
 sessions` when the window has none.
 
-The most-recently-used grid also has a GUI opener — **Ctrl+Shift+D** (the `dashboard` built-in action,
+The most-recently-used grid also has a GUI opener — **Ctrl+Shift+G** (the `dashboard` built-in action,
 rebindable in `keymap.conf`), the title bar's **Dashboard** button, and the command palette's
 **Dashboard** entry all TOGGLE the
 frontmost window's dashboard: open it over the window's most-recently-used sessions auto-sized (identical to
@@ -1023,7 +1034,7 @@ later, so right after `keymap reload` the list already shows the new file. `--js
   "path": "C:\\Users\\me\\.agterm-win\\keymap.conf",
   "actions": [
     { "action": "new_window", "chord": "ctrl+alt+n" },
-    { "action": "toggle_split", "chord": "ctrl+shift+d", "overridden": true },
+    { "action": "toggle_split", "chord": "ctrl+shift+s", "overridden": true },
     { "action": "rename_session" }
   ],
   "commands": [
@@ -1058,7 +1069,7 @@ keymap: C:\Users\me\.agterm-win\keymap.conf
 
 actions:
     new_window      ctrl+alt+n
-  * toggle_split    ctrl+shift+d
+  * toggle_split    ctrl+shift+s
     rename_session  -
 
 commands:
@@ -1169,7 +1180,7 @@ environment form for any of them:
 
 Built-in action names for `map` include: `new_window`, `new_workspace`, `new_session`,
 `open_directory`, `rename_session`, `duplicate_session`, `close_session`, `reopen_recent`, `undo_close`, `clear_status`, `increase_font_size`,
-`decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_scratch`, `toggle_sidebar`, `quick_terminal`,
+`decrease_font_size`, `reset_font_size`, `toggle_split`, `toggle_horizontal_split`, `toggle_scratch`, `toggle_sidebar`, `quick_terminal`,
 `session_palette`, `command_palette`, `custom_command_palette`, `dashboard`, and the navigation actions (`previous_session`, `next_session`,
 `first_session`, `last_session`, `previous_attention_session`, `next_attention_session`,
 `focus_left_pane`, `focus_right_pane`, `select_theme`). Editing the keymap from a terminal: open

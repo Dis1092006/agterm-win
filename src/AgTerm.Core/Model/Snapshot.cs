@@ -157,6 +157,12 @@ public sealed record SessionSnapshot
     [JsonConverter(typeof(LossyBoolConverter))]
     public bool? IsSplit { get; init; }
 
+    /// <summary>The shown split's divider direction (horizontal = top/bottom); null or a value this
+    /// build does not know restores the legacy left/right arrangement.</summary>
+    [JsonPropertyName("splitAxis")]
+    [JsonConverter(typeof(LossySplitAxisConverter))]
+    public SplitAxis? SplitAxis { get; init; }
+
     [JsonPropertyName("fontSize")]
     [JsonConverter(typeof(LossyDoubleConverter))]
     public double? FontSize { get; init; }
@@ -330,6 +336,24 @@ public sealed class LossyBoolConverter : JsonConverter<bool?>
     public override void Write(Utf8JsonWriter writer, bool? value, JsonSerializerOptions options)
     {
         if (value is { } v) writer.WriteBooleanValue(v);
+        else writer.WriteNullValue();
+    }
+}
+
+/// <summary>Decodes a split axis LOSSILY: any other JSON type or an unknown name reads as null.</summary>
+public sealed class LossySplitAxisConverter : JsonConverter<SplitAxis?>
+{
+    public override SplitAxis? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var element = LossyJson.Element(ref reader);
+        return element.ValueKind == JsonValueKind.String && SplitAxes.TryParse(element.GetString(), out var axis)
+            ? axis
+            : null;
+    }
+
+    public override void Write(Utf8JsonWriter writer, SplitAxis? value, JsonSerializerOptions options)
+    {
+        if (value is { } v) writer.WriteStringValue(SplitAxes.Wire(v));
         else writer.WriteNullValue();
     }
 }

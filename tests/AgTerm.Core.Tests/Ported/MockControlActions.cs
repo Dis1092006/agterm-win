@@ -51,7 +51,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record MarkSessionSeen(string? Target, string? Window) : Call;
         public sealed record SessionStatus(string? Target, string? Window, ControlSessionStatusUpdate Update) : Call;
         public sealed record SessionRestore(string? Target, string? Window, ControlSessionRestoreUpdate Update) : Call;
-        public sealed record SessionSplit(string? Target, string? Window, string? Mode) : Call;
+        public sealed record SessionSplit(string? Target, string? Window, string? Mode, SplitAxis? Axis = null) : Call;
         public sealed record SessionSplitClose(string? Target, string? Window) : Call;
         public sealed record SessionSwap(string? Target, string? Window) : Call;
         public sealed record SessionScratch(string? Target, string? Window, string? Mode, string? Command) : Call;
@@ -367,9 +367,9 @@ public sealed class MockControlActions : IControlActions
         return NextSessionRestoreResponse;
     }
 
-    public ControlResponse SplitSession(string? target, string? window, string? mode)
+    public ControlResponse SplitSession(string? target, string? window, string? mode, SplitAxis? axis = null)
     {
-        Calls.Add(new Call.SessionSplit(target, window, mode));
+        Calls.Add(new Call.SessionSplit(target, window, mode, axis));
         return new ControlResponse { Ok = true };
     }
 

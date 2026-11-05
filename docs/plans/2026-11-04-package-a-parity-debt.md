@@ -157,6 +157,30 @@ Upstream reference (`git -C <agterm-clone> show v0.40.0:<path>`): `79852e71` (`s
 - [x] **Task 5: swap, protocol and hosts.** `Command`, `IControlActions.SwapSessionPanes`, dispatcher, headless host, live host with the 12 x 30 ms wait, zoom target revalidation, notification clear, the WinUI hosts re-mount on the new occupant. CLI `session swap`, palette row.
 - [x] **Task 6: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.29 in the three files, `<Version>` 0.1.78, `parity/adopted.json`, PLATFORM-NOTES (also the line that lists cursor-column control as not included), `Port:` lines in the first catalog (lines 90, 91, 92, 95), wire-command count 85 in `SkillTextTests`.
 
-## A4b, A6
+## A4b: horizontal split
 
-Detailed tasks are written when each PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. A4b: `--axis` on `session.split`, `splitAxis` in `tree` and the snapshot, `toggle_horizontal_split`, the top/bottom layout and the divider double click. A6: `statusChangedAt`, `statusReset`, a blocked pane is not overwritten by its neighbor; the A6 PR moves this plan to `docs/plans/completed/`.
+Upstream reference (`git -C <agterm-clone> show v0.40.0:<path>`): `eb29d556` (horizontal split, #427) and `#357` (divider double click). Files: `ControlDispatcher.swift`, `AppStore+Panes.swift` (`toggleSplit(_:axis:)`, `SplitAxis`), `Keymap.swift` (`parseKeymap` compat), `agtermctlKit/SessionCommands.swift`, `SplitContainer` layout.
+
+### Global Constraints
+
+- `session.split` takes `axis` (`vertical` | `horizontal`). `show = !isSplit || splitAxis != axis`; the axis applies only when showing; a new split focuses the second pane. Error: `invalid split axis: X (vertical|horizontal)`.
+- `splitAxis` in `tree` while a split exists (shown or hidden); in the snapshot only while shown; lossy decode.
+- Pane aliases `top|primary` = left and `bottom|split` = right in `--pane`, `session focus` and the resize forms.
+- `toggle_horizontal_split` on Ctrl+Shift+D (`cmd+shift+d`); `dashboard` moves to Ctrl+Shift+G (`cmd+shift+g`); `keymap.conf` compat as upstream's `parseKeymap`.
+- No new wire command: the count stays 85. `DashboardTarget` aliases are not ported.
+- `parity/adopted.json` carries the new arg, field, action and CLI entries with sha `eb29d556`.
+
+### Tasks
+
+- [x] **Task 1: core model.** `SplitAxis`, `Session.SplitAxis`, `AppStore.ToggleSplit`/`SetSplitVisibility` with the axis, snapshot and tree `splitAxis`.
+- [x] **Task 2: pane aliases.** `top|primary|bottom|split` in the dispatcher.
+- [x] **Task 3: wire.** `session.split` `axis`, the dispatcher error, headless and live hosts.
+- [x] **Task 4: keymap.** `ToggleHorizontalSplit`, the Dashboard chord, the compat rule in `KeymapParser`.
+- [x] **Task 5: CLI.** `--axis` on `session split` and `session split visibility`; the four `--grow-*` aliases on `session resize`.
+- [x] **Task 6: palette.** Top/bottom pane titles while horizontal.
+- [x] **Task 7: layout and UI.** `TerminalLayout.Split` axis, `bridge.js` grid and drag on Y, the divider double click, the title-bar glyphs and the click action.
+- [x] **Task 8: docs and parity.** Skill (`SKILL.md`, `reference.md`, `examples.md`), plugin version 0.1.30 in the three files, `<Version>` 0.1.79, `parity/adopted.json`, PLATFORM-NOTES, the `Port:` lines in the catalog (lines 89, 97, 171), `SkillTextTests` samples.
+
+## A6
+
+Detailed tasks are written when the PR starts, from the same sources: the catalog item, the upstream sha it names, and `git show v0.40.0:<path>`. A6: `statusChangedAt`, `statusReset`, a blocked pane is not overwritten by its neighbor; the A6 PR moves this plan to `docs/plans/completed/`.

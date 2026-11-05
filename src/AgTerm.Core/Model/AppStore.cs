@@ -299,6 +299,7 @@ public sealed partial class AppStore
                     Active = session.Id == activeId,
                     Split = session.IsSplit,
                     HasSplit = session.HasSplit ? true : null,
+                    SplitAxis = session.HasSplit ? SplitAxes.Wire(session.SplitAxis) : null,
                     SplitRatio = session.HasSplit ? session.SplitRatio : null,
                     SplitFocused = session.HasSplit ? session.SplitFocused : null,
                     Overlay = session.OverlayActive,
@@ -1286,6 +1287,7 @@ public sealed partial class AppStore
             RestoreCommand = snapshot.RestoreCommand,
         };
         session.HasSplit = session.IsSplit;
+        session.SplitAxis = session.IsSplit ? snapshot.SplitAxis ?? SplitAxis.LeftRight : SplitAxis.LeftRight;
         session.SplitRestoreCommand = session.IsSplit ? snapshot.SplitRestoreCommand : null;
         session.SplitInitialCommand = session.IsSplit ? snapshot.SplitInitialCommand : null;
         session.SplitCommandWait = session.IsSplit && (snapshot.SplitCommandWait ?? false);

@@ -88,6 +88,8 @@ agtermctl session split on --target "$sid"                    # open a split fir
 agtermctl session type $'ls\n' --target "$sid" --pane right   # then type into the split pane
 agtermctl session swap --target "$sid"                        # the two terminals trade places
 agtermctl session split close --target "$sid"                 # tear the split down (shell included)
+agtermctl session split on --axis horizontal --target "$sid"  # or stack the panes: top/bottom
+agtermctl session type $'ls\n' --target "$sid" --pane bottom  # `bottom` is the split pane of a horizontal split
 ```
 
 Typing goes to the session's main (left) pane by default; `--pane right` targets the split pane and
@@ -211,7 +213,8 @@ command "even split"      ctrl+opt+0 agtermctl session resize --split-ratio 0.5
 needs. The command line runs in PowerShell 7 when `pwsh.exe` is on PATH, else in `cmd.exe`, so `agtermctl`
 must be on the app's PATH.
 
-`--split-ratio` is absolute (0..1); `--grow-left`/`--grow-right` are relative nudges. All clamp to
+`--split-ratio` is absolute (0..1, the left or top pane); `--grow-left`/`--grow-right` are relative nudges
+(`--grow-top`/`--grow-bottom` read better in a horizontal split). All clamp to
 0.05..0.95 and print the applied fraction.
 
 ## Run a program in a blocking overlay and read its status
@@ -586,7 +589,7 @@ shows as TWO cells (its left/primary and right/split panes), capped at 9 cells t
 the keyboard navigates a highlight (arrows), Enter jumps into the highlighted session AND focuses that
 exact pane then closes, Esc closes. Open it over the socket with explicit session ids, or with `--mru` to
 pull the window's most-recently-used sessions automatically. The most-recently-used grid also has a built-in
-opener — **Ctrl+Shift+D** (the `dashboard` action), the title bar's **Dashboard** button, or the command
+opener — **Ctrl+Shift+G** (the `dashboard` action), the title bar's **Dashboard** button, or the command
 palette's **Dashboard** toggle it auto-sized (the `dashboard --mru --auto-size` equivalent), so the
 recent-sessions view needs no script for the common case.
 
@@ -611,7 +614,7 @@ agtermctl tree --json | jq '.result.tree | {dashboardMembers, dashboardHighlight
 agtermctl dashboard --close
 ```
 
-The MRU grid is already on **Ctrl+Shift+D** (the built-in `dashboard` action) — rebind that chord in
+The MRU grid is already on **Ctrl+Shift+G** (the built-in `dashboard` action) — rebind that chord in
 `keymap.conf` with `map <chord> dashboard`. To dashboard a FIXED set of explicit ids instead, bind a
 `keymap.conf` custom action (then `agtermctl keymap reload`). The command line runs in PowerShell 7 or
 `cmd.exe`, so write the session ids into it:

@@ -17,7 +17,7 @@ internal static class SessionCommands
     /// enum is named for agent status but its cases are the pane names.</summary>
     internal static void ValidatePaneArgument(string? pane)
     {
-        if (pane is { } value && StatusPanes.FromWire(value) is null)
+        if (pane is { } value && StatusPanes.FromControlName(value) is null)
             throw new CliValidationException("--pane must be left, right, or scratch");
     }
 
@@ -563,17 +563,27 @@ internal static class SessionCommands
     internal sealed class Split : IRequestCommand
     {
         public string Mode { get; init; } = "toggle";
+        public string? Axis { get; init; }
         public required TargetOptions Target { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
+
+        public void Validate()
+        {
+            if (Axis is not null && Axis is not ("vertical" or "horizontal"))
+                throw new CliValidationException("--axis must be vertical or horizontal");
+        }
 
         public ControlRequest MakeRequest() => new()
         {
             Cmd = WireCommand.SessionSplit,
             Target = Target.Target,
-            Args = Client.WithWindow(new ControlArgs { Mode = Mode }),
+            Args = Client.WithWindow(new ControlArgs { Mode = Mode, Axis = Axis }),
         };
     }
+
+    private static Option<string?> SplitAxisOption() =>
+        new("--axis") { Description = "Divider direction: vertical (left/right) or horizontal (top/bottom)." };
 
     private static System.CommandLine.Command BuildSplit(CommandBindings bindings)
     {
@@ -588,12 +598,15 @@ internal static class SessionCommands
         };
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
+        var axis = SplitAxisOption();
         cmd.Arguments.Add(mode);
+        cmd.Options.Add(axis);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Split
         {
             Mode = result.GetValue(mode) ?? "toggle",
+            Axis = result.GetValue(axis),
             Target = target.Read(result),
             Client = options.Read(result),
         });
@@ -611,12 +624,15 @@ internal static class SessionCommands
         };
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
+        var axis = SplitAxisOption();
         cmd.Arguments.Add(mode);
+        cmd.Options.Add(axis);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Split
         {
             Mode = result.GetValue(mode) ?? "toggle",
+            Axis = result.GetValue(axis),
             Target = target.Read(result),
             Client = options.Read(result),
         });
@@ -770,6 +786,10 @@ internal static class SessionCommands
         public double? SplitRatio { get; init; }
         public double? GrowLeft { get; init; }
         public double? GrowRight { get; init; }
+        public double? GrowPrimary { get; init; }
+        public double? GrowSplit { get; init; }
+        public double? GrowTop { get; init; }
+        public double? GrowBottom { get; init; }
         public required TargetOptions Target { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
@@ -778,10 +798,10 @@ internal static class SessionCommands
         // usage error, unit-testable without a socket. Prints the applied (clamped) fraction.
         public void Validate()
         {
-            var values = new[] { SplitRatio, GrowLeft, GrowRight }
+            var values = new[] { SplitRatio, GrowLeft, GrowRight, GrowPrimary, GrowSplit, GrowTop, GrowBottom }
                 .Where(v => v.HasValue).Select(v => v!.Value).ToArray();
             if (values.Length != 1)
-                throw new CliValidationException("provide exactly one of --split-ratio, --grow-left, or --grow-right");
+                throw new CliValidationException("provide exactly one split ratio or grow option");
             // nan/inf parse as Double but fail to JSON-encode (a generic error after the socket opens), so
             // reject non-finite input here with a clean usage error.
             if (!double.IsFinite(values[0]))
@@ -790,14 +810,14 @@ internal static class SessionCommands
 
         public ControlRequest MakeRequest()
         {
-            // grow-left/grow-right map to a signed wire delta (+ grows the left pane); split-ratio is absolute.
+            // the left/right and role/axis aliases map to the same signed primary-pane delta; split-ratio is absolute.
             ControlArgs args;
             if (SplitRatio is { } splitRatio)
                 args = new ControlArgs { Ratio = splitRatio };
-            else if (GrowLeft is { } growLeft)
-                args = new ControlArgs { RatioDelta = growLeft };
+            else if ((GrowLeft ?? GrowPrimary ?? GrowTop) is { } grow)
+                args = new ControlArgs { RatioDelta = grow };
             else
-                args = new ControlArgs { RatioDelta = -(GrowRight ?? 0) };
+                args = new ControlArgs { RatioDelta = -(GrowRight ?? GrowSplit ?? GrowBottom ?? 0) };
             return new ControlRequest
             {
                 Cmd = WireCommand.SessionResize,
@@ -810,18 +830,26 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildResize(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("resize",
-            "Resize a split session's divider (set or nudge the left-pane fraction).");
+            "Resize a split session's divider (set or nudge the primary-pane fraction).");
         var splitRatio = CliOptions.LenientDouble("--split-ratio",
-            "Absolute left-pane fraction 0..1 (e.g. 0.7). Clamped to 0.05..0.95.");
+            "Absolute primary-pane fraction 0..1 of the area below the titlebar (left or top; e.g. 0.7). Clamped to 0.05..0.95.");
         var growLeft = CliOptions.LenientDouble("--grow-left",
             "Grow the left pane by this fraction (e.g. 0.05); shrinks the right.");
         var growRight = CliOptions.LenientDouble("--grow-right",
             "Grow the right pane by this fraction (e.g. 0.05); shrinks the left.");
+        var growPrimary = CliOptions.LenientDouble("--grow-primary", "Grow the primary pane by this fraction.");
+        var growSplit = CliOptions.LenientDouble("--grow-split", "Grow the split pane by this fraction.");
+        var growTop = CliOptions.LenientDouble("--grow-top", "Alias for --grow-primary in a horizontal split.");
+        var growBottom = CliOptions.LenientDouble("--grow-bottom", "Alias for --grow-split in a horizontal split.");
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Options.Add(splitRatio);
         cmd.Options.Add(growLeft);
         cmd.Options.Add(growRight);
+        cmd.Options.Add(growPrimary);
+        cmd.Options.Add(growSplit);
+        cmd.Options.Add(growTop);
+        cmd.Options.Add(growBottom);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Resize
@@ -829,6 +857,10 @@ internal static class SessionCommands
             SplitRatio = result.GetValue(splitRatio),
             GrowLeft = result.GetValue(growLeft),
             GrowRight = result.GetValue(growRight),
+            GrowPrimary = result.GetValue(growPrimary),
+            GrowSplit = result.GetValue(growSplit),
+            GrowTop = result.GetValue(growTop),
+            GrowBottom = result.GetValue(growBottom),
             Target = target.Read(result),
             Client = options.Read(result),
         });

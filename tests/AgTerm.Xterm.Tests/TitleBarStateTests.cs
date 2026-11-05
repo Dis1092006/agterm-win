@@ -183,6 +183,20 @@ public sealed class TitleBarStateTests
     }
 
     [Fact]
+    public void Split_reports_the_axis_for_the_top_and_bottom_glyphs()
+    {
+        var session = Add(@"C:\a");
+        session.HasSplit = true;
+        session.IsSplit = true;
+        Assert.Equal(SplitAxis.LeftRight, TitleBarState.Project(_store).SplitAxis);
+
+        session.SplitAxis = SplitAxis.TopBottom;
+        Assert.Equal(SplitAxis.TopBottom, TitleBarState.Project(_store).SplitAxis);
+        Assert.Equal(TitleBarSplit.Both, TitleBarState.Project(_store).Split);
+        Assert.Equal(SplitAxis.LeftRight, TitleBarState.Empty.SplitAxis);
+    }
+
+    [Fact]
     public void Attention_is_blocked_when_any_session_is_blocked()
     {
         var active = Add(@"C:\a");

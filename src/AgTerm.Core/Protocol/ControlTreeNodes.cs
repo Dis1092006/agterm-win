@@ -59,6 +59,11 @@ public sealed record ControlSessionNode
     [JsonPropertyName("hasSplit")]
     public bool? HasSplit { get; init; }
 
+    /// <summary>The divider direction of a session that HAS a split: "vertical" (left/right) or
+    /// "horizontal" (top/bottom); null without one.</summary>
+    [JsonPropertyName("splitAxis")]
+    public string? SplitAxis { get; init; }
+
     /// <summary>The left-pane fraction (0.05..0.95) of a session that HAS a split; null when no split
     /// or never explicitly set (divider at the default 0.5).</summary>
     [JsonPropertyName("splitRatio")]

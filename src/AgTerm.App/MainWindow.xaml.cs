@@ -956,7 +956,8 @@ public sealed partial class MainWindow : Window
                 selectedSession?.SearchSelected,
                 host.Host.Actions.Quick.Surface?.PaneToken,
                 host.Host.Actions.Quick.Visible,
-                PaneThemes: PaneThemeAssignment.For(store));
+                PaneThemes: PaneThemeAssignment.For(store),
+                SplitAxis: selectedSession?.SplitAxis);
 
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)
@@ -1068,7 +1069,16 @@ public sealed partial class MainWindow : Window
                     if (_selection.SessionId is not { } selectedSessionId)
                         return Task.CompletedTask;
 
-                    return host.StoreCoordinator.MutateAsync(store => store.ToggleSplit(selectedSessionId));
+                    return host.StoreCoordinator.MutateAsync(store => store.ToggleSplit(selectedSessionId, SplitAxis.LeftRight));
+                }),
+            [BuiltinAction.ToggleHorizontalSplit] = Async(
+                HasSelectedSession,
+                () =>
+                {
+                    if (_selection.SessionId is not { } selectedSessionId)
+                        return Task.CompletedTask;
+
+                    return host.StoreCoordinator.MutateAsync(store => store.ToggleSplit(selectedSessionId, SplitAxis.TopBottom));
                 }),
             [BuiltinAction.ToggleScratch] = Async(
                 HasSelectedSession,
@@ -3160,8 +3170,13 @@ public sealed partial class MainWindow : Window
 
         SplitButton.Visibility = VisibleIf(showSplit);
         SplitButton.IsEnabled = state.HasActiveSession;
-        SplitLeftFill.Visibility = VisibleIf(state.Split is TitleBarSplit.Both or TitleBarSplit.Left);
-        SplitRightFill.Visibility = VisibleIf(state.Split is TitleBarSplit.Both or TitleBarSplit.Right);
+        var horizontalSplit = state.SplitAxis == SplitAxis.TopBottom;
+        SplitLeftFill.Visibility = VisibleIf(!horizontalSplit && state.Split is TitleBarSplit.Both or TitleBarSplit.Left);
+        SplitRightFill.Visibility = VisibleIf(!horizontalSplit && state.Split is TitleBarSplit.Both or TitleBarSplit.Right);
+        SplitTopFill.Visibility = VisibleIf(horizontalSplit && state.Split is TitleBarSplit.Both or TitleBarSplit.Left);
+        SplitBottomFill.Visibility = VisibleIf(horizontalSplit && state.Split is TitleBarSplit.Both or TitleBarSplit.Right);
+        SplitOutlineVertical.Visibility = VisibleIf(!horizontalSplit);
+        SplitOutlineHorizontal.Visibility = VisibleIf(horizontalSplit);
         ToolTipService.SetToolTip(SplitButton, WindowsShortcutText.Hint(
             state.Split switch
             {
@@ -3169,7 +3184,7 @@ public sealed partial class MainWindow : Window
                 TitleBarSplit.None => "Split right",
                 _ => "Show split",
             },
-            _keymap, BuiltinAction.ToggleSplit));
+            _keymap, SplitToggleAction(state)));
 
         DividerAfterB.Visibility = VisibleIf(dividers.AfterB);
 
@@ -3234,7 +3249,11 @@ public sealed partial class MainWindow : Window
 
     private void OnScratchClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.ToggleScratch);
 
-    private void OnSplitClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.ToggleSplit);
+    private void OnSplitClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(SplitToggleAction(_titleBarState));
+
+    // upstream splitButton: the click and the tooltip's shortcut follow the session's split axis
+    private static BuiltinAction SplitToggleAction(TitleBarState state) =>
+        state.SplitAxis == SplitAxis.TopBottom ? BuiltinAction.ToggleHorizontalSplit : BuiltinAction.ToggleSplit;
 
     private void OnDashboardClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.Dashboard);
 

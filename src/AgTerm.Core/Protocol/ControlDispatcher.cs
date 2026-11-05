@@ -81,7 +81,12 @@ public sealed class ControlDispatcher
     /// <summary>The --pane check of the commands that act on one terminal (session.type,
     /// session.text, font.*). It runs before the action, so a bad pane wins over target errors.</summary>
     private static ControlResponse? SurfacePaneRejection(string? raw) =>
-        raw is not null && StatusPanes.FromWire(raw) is null ? Err($"invalid pane: {raw}") : null;
+        raw is not null && StatusPanes.FromControlName(raw) is null ? Err($"invalid pane: {raw}") : null;
+
+    /// <summary>The canonical left|right|scratch name of a pane that already passed
+    /// SurfacePaneRejection, so hosts only ever see the three wire names.</summary>
+    private static string? CanonicalSurfacePane(string? raw) =>
+        raw is null ? null : StatusPanes.Wire(StatusPanes.FromControlName(raw)!.Value);
 
     private const string InvalidPickItem = "invalid request: pick item requires id and label";
 
@@ -592,7 +597,7 @@ public sealed class ControlDispatcher
         rejection = Err("--pane must be left, right, or scratch");
         pane = null;
         if (raw is null) return true;
-        var parsed = StatusPanes.FromWire(raw);
+        var parsed = StatusPanes.FromControlName(raw);
         if (parsed is null) return false;
         pane = parsed;
         return true;
@@ -675,7 +680,16 @@ public sealed class ControlDispatcher
         switch (request.Cmd)
         {
             case Command.SessionSplit:
-                return _actions.SplitSession(request.Target, request.Args?.Window, request.Args?.Mode);
+            {
+                SplitAxis? axis = null;
+                if (request.Args?.Axis is { } rawAxis)
+                {
+                    if (!SplitAxes.TryParse(rawAxis, out var parsedAxis))
+                        return Err($"invalid split axis: {rawAxis} (vertical|horizontal)");
+                    axis = parsedAxis;
+                }
+                return _actions.SplitSession(request.Target, request.Args?.Window, request.Args?.Mode, axis);
+            }
             case Command.SessionSplitClose:
                 return _actions.CloseSessionSplit(request.Target, request.Args?.Window);
             case Command.SessionSwap:
@@ -716,7 +730,7 @@ public sealed class ControlDispatcher
                 return await _actions.TypeSession(request.Target, request.Args?.Window,
                     new ControlSessionTypeOptions(text,
                         Select: request.Args?.Select ?? false,
-                        Pane: request.Args?.Pane,
+                        Pane: CanonicalSurfacePane(request.Args?.Pane),
                         PaneId: request.Args?.PaneId));
             }
             case Command.SessionCopy:
@@ -937,7 +951,7 @@ public sealed class ControlDispatcher
     {
         if (SurfacePaneRejection(request.Args?.Pane) is { } badPane)
             return badPane;
-        return _actions.Font(request.Target, request.Args?.Window, request.Args?.Pane, action);
+        return _actions.Font(request.Target, request.Args?.Window, CanonicalSurfacePane(request.Args?.Pane), action);
     }
 
     private ControlResponse DispatchSessionText(ControlRequest request)
@@ -951,7 +965,7 @@ public sealed class ControlDispatcher
         if (SurfacePaneRejection(request.Args?.Pane) is { } badPane)
             return badPane;
         return _actions.ReadSessionText(request.Target, request.Args?.Window,
-            new ControlSessionTextOptions(request.Args?.Pane, all, lines, request.Args?.PaneId));
+            new ControlSessionTextOptions(CanonicalSurfacePane(request.Args?.Pane), all, lines, request.Args?.PaneId));
     }
 
     private async Task<ControlResponse> DispatchWindowCommand(ControlRequest request)

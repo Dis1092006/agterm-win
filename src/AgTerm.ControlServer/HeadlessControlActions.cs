@@ -1046,19 +1046,28 @@ public sealed class HeadlessControlActions : IControlActions
 
     // MARK: - split / scratch / focus / resize / zoom
 
-    public ControlResponse SplitSession(string? target, string? window, string? mode)
+    public ControlResponse SplitSession(string? target, string? window, string? mode, SplitAxis? axis = null)
     {
         return ResolveSession(target, window, (store, id) =>
         {
-            if (store.SessionWithId(id) is not { } session)
+            if (store.SessionWithId(id) is null)
                 return Err($"no such session: {target ?? "active"}");
             if (ControlToggleModes.Parse(mode) is not { } parsedMode)
                 return Err($"invalid split mode: {mode ?? "toggle"}");
-            var want = parsedMode.DesiredValue(session.IsSplit);
-            if (want != session.IsSplit)
-                store.ToggleSplit(id); // keep-alive hide/show; never destroys the hidden pane
             // upstream then moves keyboard focus (AppActions.focusSplitPane) — a headless no-op;
-            // Session.SplitFocused is already maintained by ToggleSplit.
+            // Session.SplitFocused is already maintained by the store.
+            switch (parsedMode)
+            {
+                case ControlToggleMode.On:
+                    store.SetSplitVisibility(id, shown: true, axis); // keep-alive show; may transpose
+                    break;
+                case ControlToggleMode.Off:
+                    store.SetSplitVisibility(id, shown: false); // keep-alive hide; never destroys the pane
+                    break;
+                default:
+                    store.ToggleSplit(id, axis);
+                    break;
+            }
             return OkId(id);
         });
     }
@@ -1570,7 +1579,7 @@ public sealed class HeadlessControlActions : IControlActions
         StatusPane? explicitPane = null;
         if (pane is not null)
         {
-            explicitPane = StatusPanes.FromWire(pane);
+            explicitPane = StatusPanes.FromControlName(pane);
             if (explicitPane is null)
                 return Err($"invalid pane: {pane}");
         }

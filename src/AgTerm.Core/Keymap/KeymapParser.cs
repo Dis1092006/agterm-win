@@ -64,15 +64,68 @@ public static class KeymapParser
             }
         }
 
-        var builtinOverrides = ResolveBuiltinOverrides(parsedOverrides, diagnostics);
+        var vacated = VacatedDefaults(parsedOverrides, commands);
+        var builtinOverrides = ResolveBuiltinOverrides(parsedOverrides, vacated, diagnostics);
 
         // cross-section validation is a SINGLE final pass over the fully-resolved built-in set, not
         // incremental: a custom line parsed before a later map must still be validated against the
         // override that map installs.
-        var keymap = new Keymap(builtinOverrides, commands);
+        var keymap = new Keymap(builtinOverrides, commands, null, vacated);
         var validated = ValidateCommands(commands, keymap, diagnostics);
+        var unbound = RestoreStrandedDefaults(vacated, builtinOverrides, validated);
 
-        return (new Keymap(builtinOverrides, validated, globalHotkey), diagnostics);
+        return (new Keymap(builtinOverrides, validated, globalHotkey, unbound), diagnostics);
+    }
+
+    /// <summary>
+    /// Actions whose shipped default sits on a chord an older keymap.conf may already use (upstream
+    /// eb29d556): cmd+shift+d belonged to dashboard before toggle_horizontal_split took it, and
+    /// cmd+shift+g was free before dashboard took it. A file that explicitly binds that chord to
+    /// something else, by a map line or a custom command, keeps it: the action ships keyless instead
+    /// of invalidating the file, unless the file maps the action itself.
+    /// </summary>
+    private static HashSet<BuiltinAction> VacatedDefaults(List<ParsedOverride> overrides, List<CustomCommand> commands)
+    {
+        var lastWins = new Dictionary<BuiltinAction, Chord>();
+        foreach (var o in overrides) lastWins[o.Action] = o.Chord;
+
+        var vacated = new HashSet<BuiltinAction>();
+        foreach (var action in new[] { BuiltinAction.ToggleHorizontalSplit, BuiltinAction.Dashboard })
+        {
+            if (action.DefaultChord() is not { } chord || lastWins.ContainsKey(action)) continue;
+            var usedByAnotherMap = lastWins.Any(pair => pair.Key != action && pair.Value == chord);
+            var usedByACommand = commands.Any(command =>
+                command.Shortcut.Length > 0 && Keybinds.Parse(command.Shortcut) is { Length: > 0 } keybind
+                && keybind[0] == chord);
+            if (usedByAnotherMap || usedByACommand) vacated.Add(action);
+        }
+        return vacated;
+    }
+
+    /// <summary>
+    /// Hands a vacated default back when the binding that vacated it did not survive validation and
+    /// nothing else holds the chord, so an action never ends up with no shortcut for no reason.
+    /// </summary>
+    private static HashSet<BuiltinAction> RestoreStrandedDefaults(HashSet<BuiltinAction> vacated,
+        Dictionary<BuiltinAction, Chord> overrides, List<CustomCommand> commands)
+    {
+        if (vacated.Count == 0) return vacated;
+
+        var occupied = new HashSet<Chord>();
+        foreach (var command in commands)
+        {
+            if (command.Shortcut.Length > 0 && Keybinds.Parse(command.Shortcut) is { Length: > 0 } keybind)
+                occupied.Add(keybind[0]);
+        }
+        foreach (var action in BuiltinActions.All.Where(a => !vacated.Contains(a)))
+        {
+            var chord = overrides.TryGetValue(action, out var overridden) ? overridden : WindowsDefaultChords.ShippedFor(action);
+            if (chord is { } c) occupied.Add(c);
+        }
+
+        return vacated
+            .Where(action => WindowsDefaultChords.ShippedFor(action) is not { } chord || occupied.Contains(chord))
+            .ToHashSet();
     }
 
     private static void ParseGlobalHotkey(string rest, int line, ref Chord? hotkey,
@@ -106,7 +159,7 @@ public static class KeymapParser
     /// collide afresh. Re-mapping the SAME action is last-wins.
     /// </summary>
     private static Dictionary<BuiltinAction, Chord> ResolveBuiltinOverrides(
-        List<ParsedOverride> overrides, List<KeymapDiagnostic> diagnostics)
+        List<ParsedOverride> overrides, HashSet<BuiltinAction> vacated, List<KeymapDiagnostic> diagnostics)
     {
         var candidates = new Dictionary<BuiltinAction, Chord>();
         var overrideLine = new Dictionary<BuiltinAction, int>();
@@ -117,7 +170,7 @@ public static class KeymapParser
         }
 
         var pending = new List<(BuiltinAction Loser, BuiltinAction Keeper, int Line)>();
-        while (FirstBuiltinCollision(candidates, overrideLine) is { } drop)
+        while (FirstBuiltinCollision(candidates, overrideLine, vacated) is { } drop)
         {
             candidates.Remove(drop.Loser);
             pending.Add(drop);
@@ -136,7 +189,8 @@ public static class KeymapParser
     /// and return the loser/keeper/line, picking the colliding chord deterministically by its
     /// earliest-line loser. Null when the candidate set is collision-free.</summary>
     private static (BuiltinAction Loser, BuiltinAction Keeper, int Line)? FirstBuiltinCollision(
-        Dictionary<BuiltinAction, Chord> candidates, Dictionary<BuiltinAction, int> overrideLine)
+        Dictionary<BuiltinAction, Chord> candidates, Dictionary<BuiltinAction, int> overrideLine,
+        HashSet<BuiltinAction> vacated)
     {
         var ownersByChord = new Dictionary<Chord, List<BuiltinAction>>();
         foreach (var action in BuiltinActions.All)
@@ -146,7 +200,7 @@ public static class KeymapParser
             // Windows an unmoved default is the WindowsDefaultChords one.
             var chord = candidates.TryGetValue(action, out var overridden)
                 ? overridden
-                : WindowsDefaultChords.ShippedFor(action);
+                : vacated.Contains(action) ? null : WindowsDefaultChords.ShippedFor(action);
             if (chord is not { } c) continue;
             if (!ownersByChord.TryGetValue(c, out var owners))
                 ownersByChord[c] = owners = new List<BuiltinAction>();
