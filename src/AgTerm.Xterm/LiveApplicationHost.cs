@@ -25,6 +25,10 @@ public sealed record LiveApplicationHostOptions
     public string? InstalledExecutablePath { get; init; }
 
     internal TimeProvider TreeEventTimeProvider { get; init; } = TimeProvider.System;
+
+    /// <summary>Starts the hook children. Null runs no hooks: hooks.reload and hooks.list then answer
+    /// "hooks are not available".</summary>
+    public AgTerm.Core.Hooks.IHookLauncher? HookLauncher { get; init; }
 }
 
 public sealed record LiveWindowEntry(
@@ -78,6 +82,13 @@ public sealed class LiveApplicationHost : IDisposable
         _installedExecutablePath = options.InstalledExecutablePath ?? Environment.ProcessPath;
         _recentClosedStore = new RecentClosedStore(_stateDirectory);
         Ring = new ControlEventRing();
+        if (options.HookLauncher is { } hookLauncher)
+        {
+            Hooks = new AgTerm.Core.Hooks.HooksController(
+                new AgTerm.Core.Hooks.HooksStore(HooksConfigDirectory(Settings.State.Snapshot.Settings)),
+                hookLauncher);
+            Ring.Appended += Hooks.Post;
+        }
 
         var index = LoadIndex();
         if (index is not null)
@@ -128,6 +139,7 @@ public sealed class LiveApplicationHost : IDisposable
 
     private Task ApplyApplicationSettingsAsync(SettingsSnapshot snapshot, SettingsApplyKind kind) => Task.Run(() =>
     {
+        Hooks?.UseConfigDirectory(HooksConfigDirectory(snapshot.Settings));
         lock (_sidebarGate)
         {
             var enabled = snapshot.Settings.AutoHideSidebarInactiveWindows == true;
@@ -138,6 +150,11 @@ public sealed class LiveApplicationHost : IDisposable
     });
 
     public HeadlessQuickTerminal Quick { get; } = new();
+
+    /// <summary>The app-wide hooks owner, shared by every window; null when no launcher was given.</summary>
+    public AgTerm.Core.Hooks.HooksController? Hooks { get; }
+
+    private string HooksConfigDirectory(AppSettings settings) => settings.ConfigDirectory ?? _stateDirectory;
     public event Action<Keymap>? KeymapReloaded;
 
     private bool CanShowQuick()
@@ -472,6 +489,8 @@ public sealed class LiveApplicationHost : IDisposable
         {
             if (!_appLaunchAnnounced && _server.IsListening) _appLaunchAnnounced = announce = true;
         }
+        // Loaded before app.launched, so a hook on that kind is already there when it fires.
+        if (announce) Hooks?.Reload();
         if (announce) Ring.Append(new ControlEventDraft { Kind = ControlEventKind.AppLaunched });
     }
 
@@ -492,6 +511,13 @@ public sealed class LiveApplicationHost : IDisposable
     /// does, so it gets the same answer agtermctl would.</summary>
     public async Task<ControlResponse> ReloadKeymapAsync(CancellationToken cancellationToken = default) =>
         await DispatchAppGlobalAsync(new ControlRequest { Cmd = Command.KeymapReload }, cancellationToken)
+            .ConfigureAwait(false)
+        ?? new ControlResponse { Ok = false, Error = "no such window: active" };
+
+    /// <summary>Sends hooks.reload once, to the active window: the hooks are app-wide, so the
+    /// per-window loop of the keymap reload would reload them once per window.</summary>
+    public async Task<ControlResponse> ReloadHooksAsync(CancellationToken cancellationToken = default) =>
+        await DispatchActiveWindowAdapterAsync(new ControlRequest { Cmd = Command.HooksReload }, cancellationToken)
             .ConfigureAwait(false)
         ?? new ControlResponse { Ok = false, Error = "no such window: active" };
 
@@ -867,6 +893,7 @@ public sealed class LiveApplicationHost : IDisposable
         foreach (var window in windows) window.Save();
         SaveIndex();
         FlushTreeEvents();
+        Hooks?.Dispose();
     }
 
     private async Task<ControlResponse?> DispatchAsync(
@@ -901,6 +928,8 @@ public sealed class LiveApplicationHost : IDisposable
             if (request.Args?.Sound is { Length: > 0 } sound && _soundCatalog.Resolve(sound) is null)
                 return new ControlResponse { Ok = false, Error = _soundCatalog.UnknownSoundError(sound) };
         }
+        if (request.Cmd is Command.HooksReload or Command.HooksList)
+            return await DispatchActiveWindowAdapterAsync(request, cancellationToken).ConfigureAwait(false);
         if (request.Cmd is Command.RecentList or Command.RecentOpen or Command.RecentClear)
             return await DispatchRecentAsync(request, cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowList)
@@ -1907,7 +1936,8 @@ public sealed class LiveApplicationHost : IDisposable
             launchRestore,
             _picks,
             EmitTreeChanged,
-            Quick);
+            Quick,
+            Hooks);
 
     private void SetOpen(Guid windowId, bool isOpen)
     {

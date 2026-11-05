@@ -682,7 +682,7 @@ public sealed class LiveWindowRegistryTests : IDisposable
         window.Store.SetAgentIndicator(new AgentIndicator(AgentStatus.Active), session.Id);
         window.Store.RecordNotificationEvent(session.Id, "done", "ok");
         var immediate = application.Ring.Read(new ControlEventCursor(anchor.Run, anchor.Next)).Batch;
-        Assert.Equal(new[] { ControlEventKind.SessionCreated, ControlEventKind.Status, ControlEventKind.Notify },
+        Assert.Equal(new[] { ControlEventKind.SessionCreated, ControlEventKind.SessionSelected, ControlEventKind.Status, ControlEventKind.Notify },
             immediate.Items.Select(item => item.Kind));
         application.FlushTreeEvents();
         var tree = Assert.Single(application.Ring.Read(

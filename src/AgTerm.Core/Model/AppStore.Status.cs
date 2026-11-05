@@ -72,6 +72,7 @@ public sealed partial class AppStore
                 Blink = indicator.Blink,
                 Color = indicator.Color,
                 Shape = indicator.Shape is { } shape ? ShapeWire(shape) : null,
+                Previous = StatusWire(previous.Status),
             });
         RearmAutoFollowOnAttentionChange();
     }

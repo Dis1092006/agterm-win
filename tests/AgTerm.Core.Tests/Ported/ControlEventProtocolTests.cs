@@ -15,8 +15,13 @@ public class ControlEventProtocolTests
         (ControlEventKind.Notify, "notify"),
         (ControlEventKind.SessionCreated, "session.created"),
         (ControlEventKind.SessionClosed, "session.closed"),
+        (ControlEventKind.SessionSelected, "session.selected"),
         (ControlEventKind.TreeChanged, "tree.changed"),
+        (ControlEventKind.PaneSplit, "pane.split"),
+        (ControlEventKind.PaneScratch, "pane.scratch"),
         (ControlEventKind.PaneFocused, "pane.focused"),
+        (ControlEventKind.RemoteOpened, "remote.opened"),
+        (ControlEventKind.RemoteClosed, "remote.closed"),
         (ControlEventKind.AppLaunched, "app.launched"),
     };
 
@@ -29,7 +34,7 @@ public class ControlEventProtocolTests
             Payload = new ControlEventPayload
             {
                 Name = "api", Status = "blocked", Pane = "right", Blink = true, Color = "#aabbcc",
-                Shape = statusShape,
+                Shape = statusShape, Previous = "active",
             },
         },
         new ControlEvent
@@ -55,6 +60,31 @@ public class ControlEventProtocolTests
             Session = "sess", Payload = new ControlEventPayload { Name = "api", Pane = "right", PaneId = "tok" },
         },
         new ControlEvent { Seq = 7, Ts = 7.5, Kind = ControlEventKind.AppLaunched },
+        new ControlEvent
+        {
+            Seq = 8, Ts = 8.5, Kind = ControlEventKind.SessionSelected, Window = "win", Workspace = "work",
+            Session = "sess", Payload = new ControlEventPayload { Name = "api", Previous = "before" },
+        },
+        new ControlEvent
+        {
+            Seq = 9, Ts = 9.5, Kind = ControlEventKind.PaneSplit, Window = "win", Workspace = "work",
+            Session = "sess", Payload = new ControlEventPayload { Name = "api", Status = "shown" },
+        },
+        new ControlEvent
+        {
+            Seq = 10, Ts = 10.5, Kind = ControlEventKind.PaneScratch, Window = "win", Workspace = "work",
+            Session = "sess", Payload = new ControlEventPayload { Name = "api", Status = "hidden" },
+        },
+        new ControlEvent
+        {
+            Seq = 11, Ts = 11.5, Kind = ControlEventKind.RemoteOpened, Window = "win", Workspace = "work",
+            Session = "sess", Payload = new ControlEventPayload { Name = "api", Host = "box" },
+        },
+        new ControlEvent
+        {
+            Seq = 12, Ts = 12.5, Kind = ControlEventKind.RemoteClosed, Window = "win", Workspace = "work",
+            Session = "sess", Payload = new ControlEventPayload { Name = "api", Host = "box" },
+        },
     };
 
     [Fact]
@@ -77,13 +107,18 @@ public class ControlEventProtocolTests
         var expected = new[]
         {
             "{\"kind\":\"status\",\"payload\":{\"blink\":true,\"color\":\"#aabbcc\",\"name\":\"api\",\"pane\":\"right\"," +
-            "\"shape\":\"triangle\",\"status\":\"blocked\"},\"seq\":1,\"session\":\"sess\",\"ts\":1.25,\"window\":\"win\",\"workspace\":\"work\"}",
+                        "\"previous\":\"active\",\"shape\":\"triangle\",\"status\":\"blocked\"},\"seq\":1,\"session\":\"sess\",\"ts\":1.25,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"notify\",\"payload\":{\"body\":\"tests passed\",\"name\":\"api\",\"title\":\"Done\"},\"seq\":2,\"session\":\"sess\",\"ts\":2.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"session.created\",\"payload\":{\"name\":\"new\"},\"seq\":3,\"session\":\"created\",\"ts\":3.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"session.closed\",\"payload\":{\"name\":\"old\"},\"seq\":4,\"session\":\"closed\",\"ts\":4.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"tree.changed\",\"payload\":{},\"seq\":5,\"ts\":5.5,\"window\":\"win\"}",
             "{\"kind\":\"pane.focused\",\"payload\":{\"name\":\"api\",\"pane\":\"right\",\"paneID\":\"tok\"},\"seq\":6,\"session\":\"sess\",\"ts\":6.5,\"window\":\"win\",\"workspace\":\"work\"}",
             "{\"kind\":\"app.launched\",\"payload\":{},\"seq\":7,\"ts\":7.5}",
+            "{\"kind\":\"session.selected\",\"payload\":{\"name\":\"api\",\"previous\":\"before\"},\"seq\":8,\"session\":\"sess\",\"ts\":8.5,\"window\":\"win\",\"workspace\":\"work\"}",
+            "{\"kind\":\"pane.split\",\"payload\":{\"name\":\"api\",\"status\":\"shown\"},\"seq\":9,\"session\":\"sess\",\"ts\":9.5,\"window\":\"win\",\"workspace\":\"work\"}",
+            "{\"kind\":\"pane.scratch\",\"payload\":{\"name\":\"api\",\"status\":\"hidden\"},\"seq\":10,\"session\":\"sess\",\"ts\":10.5,\"window\":\"win\",\"workspace\":\"work\"}",
+            "{\"kind\":\"remote.opened\",\"payload\":{\"host\":\"box\",\"name\":\"api\"},\"seq\":11,\"session\":\"sess\",\"ts\":11.5,\"window\":\"win\",\"workspace\":\"work\"}",
+            "{\"kind\":\"remote.closed\",\"payload\":{\"host\":\"box\",\"name\":\"api\"},\"seq\":12,\"session\":\"sess\",\"ts\":12.5,\"window\":\"win\",\"workspace\":\"work\"}",
         };
 
         Assert.Equal(expected, events.Select(CanonicalJson.Of));

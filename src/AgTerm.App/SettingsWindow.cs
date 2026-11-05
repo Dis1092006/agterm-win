@@ -25,6 +25,8 @@ internal sealed class SettingsWindow : Window
     private readonly AppWindow appWindow;
     private readonly Func<Task<IReadOnlyList<KeybindingGroup>>> shortcuts;
     private readonly Func<Task> reloadKeymap;
+    private readonly Func<Task<IReadOnlyList<string>>> reloadHooks;
+    private string hooksStatus = "";
     private readonly Func<string?> globalHotkeyError;
     private readonly TabView tabs = new() { IsAddTabButtonVisible = false, CanDragTabs = false,
         CanReorderTabs = false, TabWidthMode = TabViewWidthMode.SizeToContent };
@@ -40,11 +42,12 @@ internal sealed class SettingsWindow : Window
 
     public SettingsWindow(SettingsCoordinator coordinator,
         Func<Task<IReadOnlyList<KeybindingGroup>>> shortcuts, Func<Task> reloadKeymap,
-        Func<string?> globalHotkeyError)
+        Func<string?> globalHotkeyError, Func<Task<IReadOnlyList<string>>> reloadHooks)
     {
         this.coordinator = coordinator;
         this.shortcuts = shortcuts;
         this.reloadKeymap = reloadKeymap;
+        this.reloadHooks = reloadHooks;
         this.globalHotkeyError = globalHotkeyError;
         editor = new SettingsEditor(coordinator);
         soundCatalog = new SoundCatalog(coordinator.StateDirectory);
@@ -157,6 +160,26 @@ internal sealed class SettingsWindow : Window
             var refresh = Button("Reload keymap", "settings-keymap-reload");
             refresh.Click += async (_, _) => await RunAsync(async () => { await reloadKeymap(); await LoadShortcutsAsync(); });
             panel.Children.Add(refresh);
+            panel.Children.Add(new TextBlock { Text = "Hooks", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            var hooksReload = Button("Reload hooks", "settings-hooks-reload");
+            var hooksDiagnostics = new TextBlock { Text = hooksStatus, TextWrapping = TextWrapping.Wrap,
+                IsTextSelectionEnabled = true };
+            Identify(hooksDiagnostics, "settings-hooks-diagnostics", "Hooks diagnostics");
+            hooksReload.Click += async (_, _) =>
+            {
+                try
+                {
+                    var lines = await reloadHooks();
+                    hooksStatus = lines.Count == 0 ? "No issues." : string.Join(Environment.NewLine, lines);
+                }
+                catch (Exception ex) when (ex is IOException or InvalidOperationException)
+                {
+                    hooksStatus = ex.Message;
+                }
+                hooksDiagnostics.Text = hooksStatus;
+            };
+            panel.Children.Add(hooksReload);
+            panel.Children.Add(hooksDiagnostics);
             var search = new TextBox { PlaceholderText = "Search keyboard shortcuts", Text = keybindings.Query };
             Identify(search, "settings-shortcut-search", "Search keyboard shortcuts");
             search.TextChanged += (_, _) => { keybindings.SetQuery(search.Text); RenderShortcuts(); };

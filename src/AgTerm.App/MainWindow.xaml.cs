@@ -106,6 +106,7 @@ public sealed partial class MainWindow : Window
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private KeymapEditOverlay? _keymapEditOverlay;
+    private KeymapEditOverlay? _hooksEditOverlay;
     private WindowCommandRouter? _commandRouter; // UI-thread confined
     private string? _hotkeySourcePaneId; // the page pane that received the chord being executed
     private LiveSelectionSnapshot _selection = new(null, null); // UI-thread confined
@@ -342,6 +343,7 @@ public sealed partial class MainWindow : Window
             _settingsReloadCoordinator.Dispose();
             _settingsSubscription?.Dispose();
             _keymapEditOverlay?.Dispose();
+            _hooksEditOverlay?.Dispose();
             _applicationHost.Settings.Changed -= OnSettingsChanged;
             _layoutCoordinator.Dispose();
             ObserveTaskFault(
@@ -997,6 +999,10 @@ public sealed partial class MainWindow : Window
         _keymapEditOverlay = new KeymapEditOverlay(
             host.StoreCoordinator,
             () => _applicationHost.ReloadKeymapAsync(),
+            (context, ex) => System.Diagnostics.Debug.WriteLine($"{context}: {ex}"));
+        _hooksEditOverlay = new KeymapEditOverlay(
+            host.StoreCoordinator,
+            () => ReloadHooksReportingAsync(),
             (context, ex) => System.Diagnostics.Debug.WriteLine($"{context}: {ex}"));
 
         static WindowCommandHandler Sync(Func<bool> canExecute, Action execute)
@@ -2466,6 +2472,20 @@ public sealed partial class MainWindow : Window
                 ReportPaletteReload("Keymap could not be reloaded",
                     await _applicationHost.ReloadKeymapAsync(cancellationToken));
                 break;
+            case PaletteAppCommand.EditHooks:
+                if (_hooksEditOverlay is { } hooksEditor && _applicationHost.Hooks is { } hooks)
+                {
+                    hooks.EnsureStarter();
+                    var hooksPath = hooks.Path;
+                    await hooksEditor.OpenAsync(
+                        hooksPath,
+                        ConfigEditor.Command(Path.GetFileName(hooksPath)),
+                        cancellationToken);
+                }
+                break;
+            case PaletteAppCommand.ReloadHooks:
+                await ReloadHooksReportingAsync(cancellationToken);
+                break;
             case PaletteAppCommand.ReloadConfig:
                 ReportPaletteReload("Config could not be reloaded",
                     await _applicationHost.ReloadConfigAsync(cancellationToken));
@@ -2513,6 +2533,16 @@ public sealed partial class MainWindow : Window
     {
         if (!response.Ok)
             ShowFailure(new LiveFailureNotice(title, response.Error ?? "reload failed"));
+    }
+
+    /// <summary>Reloads hooks.conf and, like a keymap reload, tells the user about lines it skipped
+    /// (upstream notifyHooksDiagnostics).</summary>
+    private async Task ReloadHooksReportingAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _applicationHost.ReloadHooksAsync(cancellationToken);
+        ReportPaletteReload("Hooks could not be reloaded", response);
+        if (response is { Ok: true, Result.Count: > 0 and var count })
+            QueueFailureNotice(HooksNotices.Diagnostics(count));
     }
 
     private async Task<bool> SavePaletteThemeAsync(string? themeName, CancellationToken cancellationToken)

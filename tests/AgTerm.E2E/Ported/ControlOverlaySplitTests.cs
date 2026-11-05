@@ -472,6 +472,25 @@ public class ControlOverlaySplitTests : ControlApiTestCase
         Assert.True(session.ScratchActive, "the scratch should be up running the command");
     }
 
+    // A respawn of an already shown scratch ends in the state it began in: no hidden/shown pair.
+    [Fact]
+    public void SessionScratchCommandRespawnEmitsNoVisibilityEvent()
+    {
+        var boot = SendOk("""{"cmd":"events.read"}""")["events"]!.AsObject();
+        var run = boot["run"]!.GetValue<string>();
+        var after = boot["next"]!.GetValue<ulong>();
+
+        SendCommand("""{"cmd":"session.scratch","target":"active","args":{"mode":"on"}}""");
+        Host.Store.SessionWithId(Host.Store.SelectedSessionId!.Value)!.ScratchSurface = new FakeSurface();
+        SendCommand("""{"cmd":"session.scratch","target":"active","args":{"mode":"on","command":"sh -c true"}}""");
+        SendCommand("""{"cmd":"session.scratch","target":"active","args":{"mode":"off"}}""");
+
+        var page = SendOk($$$"""{"cmd":"events.read","args":{"run":"{{{run}}}","after":"{{{after}}}","kinds":["pane.scratch"]}}""");
+        var statuses = page["events"]!["items"]!.AsArray()
+            .Select(item => item!["payload"]!["status"]!.GetValue<string>()).ToArray();
+        Assert.Equal(new[] { "shown", "hidden" }, statuses);
+    }
+
     // session.scratch on a NON-active target shows the scratch without switching (upstream #730);
     // the scratch is only visible when the session is selected, so --follow selects it as overlay.open does.
     [Fact]

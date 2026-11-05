@@ -296,6 +296,36 @@ public class EventCommandsTests
                 Payload = new ControlEventPayload { Name = "api", Pane = "left" },
             },
             new ControlEvent { Seq = 10, Ts = 0, Kind = ControlEventKind.AppLaunched },
+            new ControlEvent
+            {
+                Seq = 11, Ts = 0, Kind = ControlEventKind.Status,
+                Payload = new ControlEventPayload
+                {
+                    Name = "api", Status = "blocked", Previous = "active", Pane = "right", Blink = true,
+                },
+            },
+            new ControlEvent
+            {
+                Seq = 12, Ts = 0, Kind = ControlEventKind.SessionSelected,
+                Payload = new ControlEventPayload { Name = "api", Previous = "before" },
+            },
+            new ControlEvent { Seq = 13, Ts = 0, Kind = ControlEventKind.SessionSelected, Window = "win" },
+            new ControlEvent
+            {
+                Seq = 14, Ts = 0, Kind = ControlEventKind.PaneSplit,
+                Payload = new ControlEventPayload { Name = "api", Status = "shown" },
+            },
+            new ControlEvent
+            {
+                Seq = 15, Ts = 0, Kind = ControlEventKind.PaneScratch,
+                Payload = new ControlEventPayload { Name = "api", Status = "hidden" },
+            },
+            new ControlEvent
+            {
+                Seq = 16, Ts = 0, Kind = ControlEventKind.RemoteOpened,
+                Payload = new ControlEventPayload { Name = "api", Host = "box" },
+            },
+            new ControlEvent { Seq = 17, Ts = 0, Kind = ControlEventKind.RemoteClosed, Window = "win" },
         };
         // Swift TimeZone(secondsFromGMT: 0) → TimeZoneInfo.Utc.
         var human = events.Select(e => EventFormatter.Human(e, TimeZoneInfo.Utc)).ToArray();
@@ -309,6 +339,13 @@ public class EventCommandsTests
         Assert.Equal("00:00:00 pane.focused api right pane-id=tok", human[7]);
         Assert.Equal("00:00:00 pane.focused api left pane-id=-", human[8]);
         Assert.Equal("00:00:00 app.launched", human[9]);
+        Assert.Equal("00:00:00 status api blocked previous=active pane=right blink", human[10]);
+        Assert.Equal("00:00:00 session.selected api previous=before", human[11]);
+        Assert.Equal("00:00:00 session.selected win previous=-", human[12]);
+        Assert.Equal("00:00:00 pane.split api shown", human[13]);
+        Assert.Equal("00:00:00 pane.scratch api hidden", human[14]);
+        Assert.Equal("00:00:00 remote.opened api host=box", human[15]);
+        Assert.Equal("00:00:00 remote.closed win host=", human[16]);
 
         foreach (var @event in events)
         {

@@ -14,6 +14,10 @@ public sealed record HeadlessHostOptions
     /// <summary>Where keymap.conf lives for keymap.reload. Null = StateDir, then app support.</summary>
     public string? ConfigDir { get; init; }
 
+    /// <summary>Starts hook children. Null = the host runs no hooks and hooks.reload / hooks.list answer
+    /// "hooks are not available". The live app supplies a cmd.exe runner; tests supply a fake.</summary>
+    public AgTerm.Core.Hooks.IHookLauncher? HookLauncher { get; init; }
+
     /// <summary>Explicit pipe name; null derives it from the state dir like ControlPipeName.Resolve
     /// (but WITHOUT reading the environment — the host is env-free by construction).</summary>
     public string? PipeName { get; init; }
@@ -178,6 +182,13 @@ public sealed class HeadlessHost : IDisposable
             sounds: new SoundCatalog(options.StateDir ?? PersistenceStore.DefaultDirectory, log: options.Log),
             recentClosed: recentClosed);
         _dispatcher = new ControlDispatcher(Actions);
+        if (options.HookLauncher is { } hookLauncher)
+        {
+            _hooks = new AgTerm.Core.Hooks.HooksController(
+                new AgTerm.Core.Hooks.HooksStore(configDir), hookLauncher);
+            Actions.Hooks = _hooks;
+            Ring.Appended += _hooks.Post;
+        }
         // same rendezvous derivation as ControlPipeName.Resolve, without reading the environment:
         // the host's state dir IS the socket-path input, so app and CLI meet on the same name.
         PipeName = options.PipeName
@@ -220,8 +231,12 @@ public sealed class HeadlessHost : IDisposable
         {
             if (!_appLaunchAnnounced && _server.IsListening) _appLaunchAnnounced = announce = true;
         }
+        // hooks load before app.launched so a hook can react to it
+        if (announce) _hooks?.Reload();
         if (announce) Ring.Append(new ControlEventDraft { Kind = ControlEventKind.AppLaunched });
     }
+
+    private readonly AgTerm.Core.Hooks.HooksController? _hooks;
 
     private bool _appLaunchAnnounced;
 
@@ -289,7 +304,11 @@ public sealed class HeadlessHost : IDisposable
         lock (_gate) action();
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        _hooks?.Dispose();
+    }
 
     /// <summary>The pipe server's dispatch delegate: every request runs under the host gate because
     /// the AppStore/ring are confined, not thread-safe (the upstream server is @MainActor). With no

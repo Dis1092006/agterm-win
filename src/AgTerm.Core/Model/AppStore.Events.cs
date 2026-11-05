@@ -30,6 +30,27 @@ public sealed partial class AppStore
         ScheduleTreeChanged();
     }
 
+    /// <summary>pane.split / pane.scratch carry shown/hidden; callers emit only on a real transition.</summary>
+    internal void EmitPaneVisibility(ControlEventKind kind, Session session, bool shown) =>
+        EmitControlEvent(kind, WorkspaceForSession(session.Id)?.Id, session.Id,
+            new ControlEventPayload { Name = session.DisplayName, Status = shown ? "shown" : "hidden" });
+
+    /// <summary>session.selected fires on every change of this window's selection, whoever made it, a
+    /// close reselecting included. A cleared selection carries no session; window focus is not a
+    /// selection, and a Restore is a reload, not a selection.</summary>
+    private void EmitSessionSelected(Guid? previous)
+    {
+        if (_restoringSelection) return;
+        var selected = ActiveSession;
+        EmitControlEvent(ControlEventKind.SessionSelected,
+            selected is null ? null : WorkspaceForSession(selected.Id)?.Id, selected?.Id,
+            new ControlEventPayload
+            {
+                Name = selected?.DisplayName,
+                Previous = previous?.ToString("D").ToUpperInvariant(),
+            });
+    }
+
     internal void EmitSessionClosed(Session session, Guid workspace)
     {
         EmitControlEvent(ControlEventKind.SessionClosed, workspace, session.Id,

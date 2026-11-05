@@ -1283,6 +1283,51 @@ public class ControlProtocolTests
             ControlJson.Deserialize<ControlRequest>("{\"cmd\":\"keymap.reload\"}")!.Cmd);
     }
 
+    [Theory]
+    [InlineData("hooks.reload", Command.HooksReload)]
+    [InlineData("hooks.list", Command.HooksList)]
+    public void HooksCommandsMapToWireStrings(string wire, Command command)
+    {
+        Assert.Equal(command, ControlJson.Deserialize<ControlRequest>("{\"cmd\":\"" + wire + "\"}")!.Cmd);
+        Assert.Equal(wire, command.ToWire());
+        Assert.Equal(command, RoundTrip(new ControlRequest { Cmd = command }).Cmd);
+    }
+
+    [Fact]
+    public void HooksListResultRoundTripsWithOmittedOptionals()
+    {
+        var result = new ControlResult
+        {
+            Hooks = new ControlHooks
+            {
+                Path = "C:\\cfg\\hooks.conf",
+                Diagnostics = [new ControlKeymapDiagnostic { Line = 3, Message = "bad" }],
+                Hooks =
+                [
+                    new ControlHookEntry { Kind = "status", Command = "echo", Line = 1, Pending = 2, Dropped = 0 },
+                    new ControlHookEntry
+                    {
+                        Kind = "message", Command = "x", Line = 2, RunningPid = 7, ElapsedSeconds = 1.5,
+                        Pending = 0, Dropped = 4, LastFailure = "exit 1", Retired = true,
+                    },
+                ],
+            },
+        };
+        var json = ControlJson.Serialize(new ControlResponse { Ok = true, Result = result });
+        Assert.Contains("\"hooks\":{\"path\":\"C:\\\\cfg\\\\hooks.conf\"", json);
+        Assert.Contains("\"runningPid\":7", json);
+        Assert.Contains("\"elapsedSeconds\":1.5", json);
+        Assert.Contains("\"lastFailure\":\"exit 1\"", json);
+        Assert.Contains("\"retired\":true", json);
+        var first = json[json.IndexOf("\"kind\":\"status\"", StringComparison.Ordinal)..];
+        first = first[..first.IndexOf('}')];
+        Assert.DoesNotContain("runningPid", first);
+        Assert.DoesNotContain("retired", first);
+        var back = ControlJson.Deserialize<ControlResponse>(json)!.Result!.Hooks!;
+        Assert.Equal(2, back.Hooks.Length);
+        Assert.Equal(4UL, back.Hooks[1].Dropped);
+    }
+
     [Fact]
     public void ConfigReloadRequestRoundTrips()
     {

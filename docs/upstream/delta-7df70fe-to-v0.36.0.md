@@ -127,8 +127,8 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 ## 8. Events and hooks
 
-- `hooks.conf` (`on <kind> <command>`), the event JSON on stdin, `AGT_*` in the environment; `hooks.list`, `hooks.reload` #607. Port: not done.
-- New events: `pane.split`, `pane.scratch` #607, `session.selected` with `previous` #694, `remote.opened`, `remote.closed` #610. `status` got `previous`. Port: not done.
+- `hooks.conf` (`on <kind> <command>`), the event JSON on stdin, `AGT_*` in the environment; `hooks.list`, `hooks.reload` #607. Port: done (B7). The shell is cmd.exe; see PLATFORM-NOTES "Event hooks".
+- New events: `pane.split`, `pane.scratch` #607, `session.selected` with `previous` #694, `remote.opened`, `remote.closed` #610. `status` got `previous`. Port: done (B7). `remote.opened` and `remote.closed` parse but never fire: the port has no remote sessions.
 - `agtermctl events` retries after a refused connection (250 ms to 4 s) from the same cursor and exits after about 30 s #716. Socket backlog 128 instead of 8 #717. Port: not done. `agtermctl events` does not retry. The control pipe has one server instance, and a second client waits in its connect call until the current connection closes; there is no listen backlog to raise.
 
 ## 9. Agent status

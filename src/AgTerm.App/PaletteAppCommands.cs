@@ -10,6 +10,8 @@ public enum PaletteAppCommand
 {
     EditKeymap,
     ReloadKeymap,
+    EditHooks,
+    ReloadHooks,
     ReloadConfig,
     ClearFlagged,
     ClearFocus,
@@ -26,6 +28,8 @@ public static class PaletteAppCommands
     [
         PaletteAppCommand.EditKeymap,
         PaletteAppCommand.ReloadKeymap,
+        PaletteAppCommand.EditHooks,
+        PaletteAppCommand.ReloadHooks,
         PaletteAppCommand.ReloadConfig,
         PaletteAppCommand.ClearFlagged,
         PaletteAppCommand.ClearFocus,
@@ -40,6 +44,8 @@ public static class PaletteAppCommands
     {
         PaletteAppCommand.EditKeymap => "app:edit-keymap",
         PaletteAppCommand.ReloadKeymap => "app:reload-keymap",
+        PaletteAppCommand.EditHooks => "app:edit-hooks",
+        PaletteAppCommand.ReloadHooks => "app:reload-hooks",
         PaletteAppCommand.ReloadConfig => "app:reload-config",
         PaletteAppCommand.ClearFlagged => "app:clear-flagged",
         PaletteAppCommand.ClearFocus => "app:clear-focus",
@@ -55,6 +61,8 @@ public static class PaletteAppCommands
     {
         PaletteAppCommand.EditKeymap => "Edit Keymap",
         PaletteAppCommand.ReloadKeymap => "Reload Keymap",
+        PaletteAppCommand.EditHooks => "Edit Hooks",
+        PaletteAppCommand.ReloadHooks => "Reload Hooks",
         PaletteAppCommand.ReloadConfig => "Reload Config",
         PaletteAppCommand.ClearFlagged => "Clear Flagged",
         PaletteAppCommand.ClearFocus => "Clear Focus",

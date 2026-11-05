@@ -1,3 +1,5 @@
+using AgTerm.Core.Protocol;
+
 namespace AgTerm.Core.Model;
 
 /// <summary>Why a swap did not happen. Each case is one wire refusal of session.swap.</summary>
@@ -107,6 +109,7 @@ public sealed partial class AppStore
 
     private void ApplySplitVisibility(Session session, bool show, SplitAxis? axis)
     {
+        var wasShown = session.IsSplit;
         if (axis is { } chosen) session.SplitAxis = chosen;
         session.IsSplit = show;
         // opening a NEW split marks the session as having one and moves focus to the new (right)
@@ -119,6 +122,7 @@ public sealed partial class AppStore
             session.HasSplit = true;
             if (isNewSplit) session.SplitFocused = true;
         }
+        if (wasShown != show) EmitPaneVisibility(ControlEventKind.PaneSplit, session, show);
         Save();
     }
 
@@ -156,6 +160,7 @@ public sealed partial class AppStore
         if (session.HudPaneIdentity is { } hudAnchor && hudAnchor == session.SplitPaneIdentity)
             CloseHudOf(session);
         session.ForgetSplitPaneIdentity();
+        var wasShown = session.IsSplit;
         session.IsSplit = false;
         session.HasSplit = false;
         session.SplitAxis = SplitAxis.LeftRight;
@@ -178,6 +183,7 @@ public sealed partial class AppStore
         // the split (right) pane owned any Right-tagged block; with it gone the surviving main pane
         // can never keystroke-clear that tag, so clear it here (mirrors the search reset above).
         ClearIndicatorOwnedByPane(StatusPane.Right, session);
+        if (wasShown) EmitPaneVisibility(ControlEventKind.PaneSplit, session, false);
         Save();
     }
 
@@ -207,6 +213,7 @@ public sealed partial class AppStore
         if (session.AskPaneIdentity == session.PaneIdentity) CancelPendingAsk(session);
         if (session.HudPaneIdentity == session.PaneIdentity) CloseHudOf(session);
         session.PromoteSplitPaneIdentity();
+        var wasShown = session.IsSplit;
         session.IsSplit = false;
         session.HasSplit = false;
         session.SplitAxis = SplitAxis.LeftRight;
@@ -260,6 +267,7 @@ public sealed partial class AppStore
                     break;
             }
         }
+        if (wasShown) EmitPaneVisibility(ControlEventKind.PaneSplit, session, false);
         Save();
     }
 
@@ -410,21 +418,27 @@ public sealed partial class AppStore
     /// scratch surface is created lazily by the host on first show and, like the split, kept alive
     /// when hidden (this only flips ScratchActive), so a re-show reuses the same shell. Not
     /// persisted, so no Save. No-op for an unknown session.</summary>
-    public void ToggleScratch(Guid sessionId)
+    /// <remarks>emitVisibility false is for a teardown-and-respawn whose final shown state equals its
+    /// initial one, where a hidden-then-shown pair would break the real-change-only contract of
+    /// pane.scratch.</remarks>
+    public void ToggleScratch(Guid sessionId, bool emitVisibility = true)
     {
         if (SessionWithId(sessionId) is not { } session) return;
         session.ScratchActive = !session.ScratchActive;
+        if (emitVisibility) EmitPaneVisibility(ControlEventKind.PaneScratch, session, session.ScratchActive);
         NotifySidebar();
     }
 
     /// <summary>Closes the scratch terminal: hides it AND tears down its surface (so a subsequent
     /// show starts a fresh shell). Used on the scratch shell's own exit and on
     /// session/workspace/window teardown. No-op (returns false) when there is no scratch surface.</summary>
-    public bool CloseScratch(Guid sessionId)
+    public bool CloseScratch(Guid sessionId, bool emitVisibility = true)
     {
         if (SessionWithId(sessionId) is not { } session || session.ScratchSurface is not { } scratch)
             return false;
+        var wasShown = session.ScratchActive;
         session.ScratchActive = false;
+        if (wasShown && emitVisibility) EmitPaneVisibility(ControlEventKind.PaneScratch, session, false);
         // if the open search bar is pinned to the scratch being torn down, reset search rather than
         // leave a stuck, no-op bar — mirrors the CloseSplit/ClosePrimaryPane handling. Guarded on
         // identity so a search owned by the main/split pane survives the scratch teardown.

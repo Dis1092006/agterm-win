@@ -518,6 +518,31 @@ agtermctl events --json --kind notify |
 Only `agtermctl notify` produces these events. agterm-win does not turn a program's OSC notification
 escape into a notification.
 
+## Run a command when an event fires (hooks)
+
+A `hooks.conf` line runs a shell line each time an event of that kind fires, without a long-running
+`agtermctl events` process. Put these in `~\.agterm-win\hooks.conf` (the palette's Edit Hooks opens it):
+
+```text
+on session.closed echo %TIME% closed %AGT_SESSION_ID% >> "%TEMP%\agterm-sessions.log"
+on status         %USERPROFILE%\bin\on-status.cmd
+```
+
+`on-status.cmd` reads the event from standard input and calls back into the app through the pipe name in
+`AGT_SOCKET`:
+
+```bat
+@echo off
+if "%AGT_EVENT_STATUS%"=="blocked" agtermctl notify "needs you" --socket "%AGT_SOCKET%" --target "%AGT_SESSION_ID%"
+```
+
+Apply the file and check the result:
+
+```bash
+agtermctl hooks reload
+agtermctl hooks list
+```
+
 ## Clean up after sessions close
 
 Lifecycle events follow visible tree membership. A soft close emits `session.closed` immediately, and

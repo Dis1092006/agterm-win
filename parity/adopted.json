@@ -23,7 +23,9 @@
     { "wire": "surface.cursor", "upstream": "2279c722" },
     { "wire": "recent.list", "upstream": "6b564749" },
     { "wire": "recent.open", "upstream": "6b564749" },
-    { "wire": "recent.clear", "upstream": "6b564749" }
+    { "wire": "recent.clear", "upstream": "6b564749" },
+    { "wire": "hooks.reload", "upstream": "a4944436" },
+    { "wire": "hooks.list", "upstream": "a4944436" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -59,7 +61,8 @@
     { "name": "cursor", "upstream": "2279c722" },
     { "name": "undoable", "upstream": "0107bc95" },
     { "name": "recent", "upstream": "6b564749" },
-    { "name": "recentOpen", "upstream": "6b564749" }
+    { "name": "recentOpen", "upstream": "6b564749" },
+    { "name": "hooks", "upstream": "a4944436" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },

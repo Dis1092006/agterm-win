@@ -48,6 +48,11 @@ public sealed class ControlEventRing
         _now = now ?? (() => DateTimeOffset.UtcNow);
     }
 
+    /// <summary>Raised under the ring lock, in sequence order, so a subscriber sees events in the order
+    /// they were stored. It must be cheap and must not block; it may read the ring (the lock is
+    /// re-entrant on the appending thread). Hooks hang off this to see every window's events.</summary>
+    public event Action<ControlEvent>? Appended;
+
     /// <summary>Append one event, assigning the next sequence and current Unix timestamp.</summary>
     public ControlEvent Append(ControlEventDraft draft)
     {
@@ -67,6 +72,7 @@ public sealed class ControlEventRing
             _entries.Add(evt);
             if (_entries.Count > _capacity)
                 _entries.RemoveRange(0, _entries.Count - _capacity);
+            Appended?.Invoke(evt);
             return evt;
         }
     }

@@ -46,6 +46,7 @@ public sealed class ControlDispatcher
                 return DispatchWorkspaceCommand(request);
             case Command.Quick or Command.FontInc or Command.FontDec or Command.FontReset
                 or Command.KeymapReload or Command.KeymapList or Command.KeymapRun
+                or Command.HooksReload or Command.HooksList
                 or Command.ConfigReload or Command.Notify
                 or Command.ThemeSet or Command.ThemeList or Command.IconList or Command.Sidebar or Command.SidebarMode
                 or Command.SidebarExpand or Command.SidebarCollapse or Command.RestoreClear
@@ -813,6 +814,10 @@ public sealed class ControlDispatcher
                 return _actions.ReloadKeymap();
             case Command.KeymapList:
                 return _actions.ListKeymap();
+            case Command.HooksReload:
+                return RecentRefusal(request) ?? _actions.ReloadHooks();
+            case Command.HooksList:
+                return RecentRefusal(request) ?? _actions.ListHooks();
             case Command.KeymapRun:
                 return request.Args?.Name is { Length: > 0 } name
                     ? await _actions.RunCustomCommand(name, request.Target, request.Args.Window)

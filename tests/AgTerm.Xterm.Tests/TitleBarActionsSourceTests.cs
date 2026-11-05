@@ -88,6 +88,10 @@ public sealed class TitleBarActionsSourceTests
         Assert.Contains("ConfigEditor.Command(Path.GetFileName(keymapPath))", body, StringComparison.Ordinal);
         Assert.Contains("_applicationHost.ReloadKeymapAsync(", body, StringComparison.Ordinal);
         Assert.Contains("_applicationHost.ReloadConfigAsync(", body, StringComparison.Ordinal);
+        Assert.Contains("_applicationHost.ReloadHooksAsync(", window, StringComparison.Ordinal);
+        Assert.Contains("ReloadHooksReportingAsync(", body, StringComparison.Ordinal);
+        Assert.Contains("_applicationHost.Hooks", body, StringComparison.Ordinal);
+        Assert.Contains("EnsureStarter()", body, StringComparison.Ordinal);
         Assert.Contains("_sidebar?.RequestClearFlags()", body, StringComparison.Ordinal);
         Assert.Contains("_sidebar?.ClearFocus()", body, StringComparison.Ordinal);
         Assert.Contains("_sidebar?.AddActiveWorkspaceToFocus()", body, StringComparison.Ordinal);
@@ -97,6 +101,9 @@ public sealed class TitleBarActionsSourceTests
         // closing the keymap editor reloads the keymap in every window, like Reload Keymap
         Assert.Contains("() => _applicationHost.ReloadKeymapAsync()", window, StringComparison.Ordinal);
         Assert.Contains("_keymapEditOverlay?.Dispose();", window, StringComparison.Ordinal);
+        // and closing the hooks editor reloads the hooks
+        Assert.Contains("() => ReloadHooksReportingAsync()", window, StringComparison.Ordinal);
+        Assert.Contains("_hooksEditOverlay?.Dispose();", window, StringComparison.Ordinal);
     }
 
     [Fact]

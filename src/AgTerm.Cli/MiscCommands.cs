@@ -103,6 +103,60 @@ internal static class KeymapCommands
     }
 }
 
+// MARK: - hooks
+
+internal static class HooksCommands
+{
+    internal sealed class Reload : IRequestCommand
+    {
+        // app-global like the keymap commands, so no `--window` selector.
+        public required BasicOptions Basic { get; init; }
+        public IConnectionOptions Options => Basic;
+
+        public ControlRequest MakeRequest() => new() { Cmd = WireCommand.HooksReload };
+    }
+
+    internal sealed class List : IRequestCommand
+    {
+        public required BasicOptions Basic { get; init; }
+        public IConnectionOptions Options => Basic;
+
+        public ControlRequest MakeRequest() => new() { Cmd = WireCommand.HooksList };
+    }
+
+    public static System.CommandLine.Command Build(CommandBindings bindings)
+    {
+        var hooks = new System.CommandLine.Command("hooks", "Event hook commands.");
+        hooks.Subcommands.Add(BuildReload(bindings));
+        hooks.Subcommands.Add(BuildList(bindings));
+        return hooks;
+    }
+
+    private static System.CommandLine.Command BuildReload(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("reload",
+            "Re-read and apply hooks.conf (prints the diagnostic count).");
+        var options = new BasicOptions.Binder();
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Reload { Basic = options.Read(result) });
+        return cmd;
+    }
+
+    private static System.CommandLine.Command BuildList(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("list",
+            "Show every hook with its running child, queue depth, dropped count and last failure.\n\n"
+            + "One row per `on <kind> <shell...>` line in file order, then any hook removed from the file "
+            + "whose child is still running, marked retired. `running` is the child's pid and elapsed seconds "
+            + "while a hook is busy; `pending` is how many events wait behind it and `dropped` how many the "
+            + "bounded queue discarded; `last failure` stays until the hook's next clean run (a reload keeps it).");
+        var options = new BasicOptions.Binder();
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new List { Basic = options.Read(result) });
+        return cmd;
+    }
+}
+
 // MARK: - config
 
 internal static class ConfigCommands

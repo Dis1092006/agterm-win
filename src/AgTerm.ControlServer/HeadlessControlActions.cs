@@ -1,4 +1,5 @@
 using AgTerm.Core.Icons;
+using AgTerm.Core.Hooks;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
@@ -1164,18 +1165,22 @@ public sealed class HeadlessControlActions : IControlActions
             if (ControlToggleModes.Parse(mode) is not { } parsedMode)
                 return Err($"invalid scratch mode: {mode ?? "toggle"}");
             var want = parsedMode.DesiredValue(session.ScratchActive);
+            // a command on a scratch that is already up tears it down and brings it back: the shown
+            // state does not change, so neither teardown nor re-show may emit a visibility event.
+            var respawningVisible = want && session.ScratchActive && session.ScratchSurface is not null
+                && !string.IsNullOrEmpty(command);
             if (want && command is { Length: > 0 })
             {
                 // a scratch is expendable: respawn an already-alive one so the command is never
                 // silently ignored (run-once, consumed by the surface factory upstream).
-                if (session.ScratchSurface is not null) store.CloseScratch(id);
+                if (session.ScratchSurface is not null) store.CloseScratch(id, emitVisibility: !respawningVisible);
                 session.ScratchCommand = command;
             }
             // showing a scratch does not switch sessions unless asked (upstream #730), the same as overlay.open.
             if (want && follow && store.SelectedSessionId != id)
                 store.SelectSession(id);
             if (want != session.ScratchActive)
-                store.ToggleScratch(id); // keep-alive hide/show; never tears the shell down
+                store.ToggleScratch(id, emitVisibility: !respawningVisible); // keep-alive hide/show; never tears the shell down
             return OkId(id);
         });
     }
@@ -2071,6 +2076,7 @@ public sealed class HeadlessControlActions : IControlActions
         Theme.Light = settings.Theme;
         Theme.Dark = settings.FollowSystemAppearance == true ? settings.DarkTheme : null;
         var keymap = new KeymapStore(settings.ConfigDirectory ?? defaultConfigDirectory);
+        Hooks?.UseConfigDirectory(settings.ConfigDirectory ?? defaultConfigDirectory);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (!string.Equals(Path.GetFullPath(_keymap.Path), Path.GetFullPath(keymap.Path), comparison))
         {
@@ -2135,6 +2141,23 @@ public sealed class HeadlessControlActions : IControlActions
         KeymapReloaded?.Invoke(loaded.Keymap);
         return new ControlResponse { Ok = true, Result = new ControlResult { Count = loaded.Diagnostics.Count } };
     }
+
+    public ControlResponse ReloadHooks() =>
+        Hooks is { } hooks
+            ? new ControlResponse { Ok = true, Result = new ControlResult { Count = hooks.Reload() } }
+            : Err(HooksUnavailable);
+
+    public ControlResponse ListHooks() =>
+        Hooks is { } hooks
+            ? new ControlResponse { Ok = true, Result = new ControlResult { Hooks = hooks.List() } }
+            : Err(HooksUnavailable);
+
+    /// <summary>The wire error when the host runs no hooks (no launcher was supplied).</summary>
+    public const string HooksUnavailable = "hooks are not available";
+
+    /// <summary>The app-wide hooks owner behind hooks.reload and hooks.list. Null when the host runs no
+    /// hooks. The live host shares one controller across every window's actions.</summary>
+    public HooksController? Hooks { get; set; }
 
     public ControlResponse ReloadGhosttyConfig() =>
         new() { Ok = true, Result = new ControlResult { Count = _configReload() } };
