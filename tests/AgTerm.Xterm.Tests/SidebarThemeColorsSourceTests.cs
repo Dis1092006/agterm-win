@@ -18,8 +18,9 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("Margin=\"4,1,4,1\"", xaml, StringComparison.Ordinal);
         Assert.Contains("BackgroundSizing=\"OuterBorderEdge\"", xaml, StringComparison.Ordinal);
         Assert.Contains("<Grid ColumnSpacing=\"6\" Margin=\"{x:Bind ContentMargin, Mode=OneWay}\">", xaml, StringComparison.Ordinal);
-        Assert.True(Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"") >= 5,
-            "label, chevron, session icon, workspace icon and focus icon take the theme foreground");
+        Assert.True(Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"") >= 3,
+            "the chevron and the other untinted glyphs take the theme foreground");
+        Assert.Equal(3, Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind IconForeground, Mode=OneWay}\""));
         Assert.DoesNotContain("Stroke=\"{ThemeResource TextFillColorSecondaryBrush}\"", xaml, StringComparison.Ordinal);
     }
 

@@ -198,4 +198,43 @@ public class SidebarProjectionTests : IDisposable
         Assert.False(rowsBefore.SequenceEqual(SidebarProjection.Project(_store)));
         Assert.Equal(keyBefore, SidebarProjection.ShapeKey(_store));
     }
+
+    [Fact]
+    public void Each_row_carries_its_own_tint_and_a_workspace_tint_never_reaches_its_sessions()
+    {
+        var (w1, _, a, b, _) = Seed();
+        _store.SetWorkspaceTint(w1.Id, new SidebarTint(TintColor.Blue, TintParts.Name));
+        _store.SetSessionTint(a.Id, new SidebarTint(TintColor.Red));
+
+        var rows = SidebarProjection.Project(_store);
+
+        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Name), rows.Single(r => r.Id == w1.Id).Tint);
+        Assert.Equal(new SidebarTint(TintColor.Red), rows.Single(r => r.Id == a.Id).Tint);
+        Assert.Null(rows.Single(r => r.Id == b.Id).Tint);
+    }
+
+    [Fact]
+    public void A_flagged_row_carries_its_session_tint()
+    {
+        var (_, _, a, _, _) = Seed();
+        _store.SetSessionTint(a.Id, new SidebarTint(TintColor.Green, TintParts.Icon | TintParts.Name));
+        _store.SetFlag(true, a.Id);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+
+        Assert.Equal(new SidebarTint(TintColor.Green, TintParts.Icon | TintParts.Name),
+            SidebarProjection.Project(_store).Single().Tint);
+    }
+
+    [Fact]
+    public void A_tint_change_changes_the_rows_but_not_the_shape_key()
+    {
+        var (_, _, a, _, _) = Seed();
+        var rowsBefore = SidebarProjection.Project(_store);
+        var keyBefore = SidebarProjection.ShapeKey(_store);
+
+        _store.SetSessionTint(a.Id, new SidebarTint(TintColor.Gray));
+
+        Assert.False(rowsBefore.SequenceEqual(SidebarProjection.Project(_store)));
+        Assert.Equal(keyBefore, SidebarProjection.ShapeKey(_store));
+    }
 }

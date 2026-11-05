@@ -162,6 +162,29 @@ public sealed class SidebarController : IDisposable
     public void SetFlag(IReadOnlyList<Guid> sessionIds, bool on) =>
         Mutate(store => store.SetFlag(on, sessionIds));
 
+    /// <summary>The Tint submenu on session rows: a color for every target, or a placement that keeps
+    /// each target's own color.</summary>
+    public void SetTint(IReadOnlyList<Guid> sessionIds, SidebarTintChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(choice);
+        Mutate(store =>
+        {
+            if (choice.Parts is { } parts) store.SetTintParts(parts, sessionIds);
+            else store.SetTintColor(choice.Color, sessionIds);
+        });
+    }
+
+    /// <summary>The Tint submenu on a workspace row: the row's own tint, read when the choice runs.</summary>
+    public void SetWorkspaceTint(Guid workspaceId, SidebarTintChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(choice);
+        Mutate(store =>
+        {
+            if (store.Workspaces.FirstOrDefault(w => w.Id == workspaceId) is { } workspace)
+                store.SetWorkspaceTint(workspaceId, choice.AppliedTo(workspace.Tint));
+        });
+    }
+
     public void ClearFlags() => Mutate(store => store.ClearFlags());
 
     public async Task ClearFlagsAsync(CancellationToken cancellationToken = default)

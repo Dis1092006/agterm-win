@@ -103,6 +103,23 @@ public static class WindowPaletteProjection
                 : null;
     }
 
+    /// <summary>Reads a "Tint Session" row id (upstream tintItems: tint-&lt;color&gt;, tint-none). A
+    /// parsed none comes back as a null color.</summary>
+    public static bool TryParseTint(string itemId, out TintColor? color)
+    {
+        const string prefix = "tint-";
+        color = null;
+        if (!itemId.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+        var name = itemId[prefix.Length..];
+        if (name == "none")
+            return true;
+        if (!TintColors.TryParse(name, out var parsed))
+            return false;
+        color = parsed;
+        return true;
+    }
+
     public static string ThemeItemId(string? themeName) =>
         themeName is null ? "theme:__default__" : $"theme:{themeName}";
 
@@ -192,7 +209,17 @@ public static class WindowPaletteProjection
                 new PaletteItemViewModel(InstallerCommands.InstallAgentSkillId, InstallerCommands.InstallAgentSkill),
                 new PaletteItemViewModel(InstallerCommands.InstallAgentStatusHooksId, InstallerCommands.InstallAgentStatusHooks),
             ])
+            .Concat(TintItems(store))
             .ToArray();
+
+    // upstream tintItems (f3fea57b): the colors, then None, offered only with a selected session
+    private static IEnumerable<PaletteItemViewModel> TintItems(AppStore store) =>
+        store.SelectedSessionId is null
+            ? []
+            : Enum.GetValues<TintColor>()
+                .Select(color => (Name: TintColors.Wire(color), Title: color.ToString()))
+                .Append((Name: "none", Title: "None"))
+                .Select(tint => new PaletteItemViewModel($"tint-{tint.Name}", $"Tint Session: {tint.Title}"));
 
     private static IReadOnlyList<PaletteItemViewModel> CustomCommandItems(Keymap keymap) =>
         keymap.Commands.Select(command => new PaletteItemViewModel(

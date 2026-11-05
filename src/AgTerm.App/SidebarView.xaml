@@ -165,7 +165,7 @@
                         <Path Grid.Column="0"
                               Data="{x:Bind IconData, Mode=OneWay}"
                               Fill="{x:Bind IconFill, Mode=OneWay}"
-                              local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
+                              local:SidebarRowBrushes.Foreground="{x:Bind IconForeground, Mode=OneWay}"
                               StrokeThickness="1"
                               Width="16" Height="15"
                               VerticalAlignment="Center"
@@ -192,7 +192,7 @@
                                  icon. A margin, not column spacing, so a session row, or a workspace
                                  row with the workspaceIcons element hidden, leaves no gap -->
                             <Path Data="M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z"
-                                  local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
+                                  local:SidebarRowBrushes.Foreground="{x:Bind IconForeground, Mode=OneWay}"
                                   StrokeThickness="1"
                                   Fill="{x:Bind GridIconFill, Mode=OneWay}"
                                   Width="16" Height="15"
@@ -212,7 +212,7 @@
                                       Width="16"
                                       Margin="0,0,6,0"
                                       VerticalAlignment="Center"
-                                      local:SidebarRowBrushes.Foreground="{x:Bind RowForeground, Mode=OneWay}"
+                                      local:SidebarRowBrushes.Foreground="{x:Bind IconForeground, Mode=OneWay}"
                                       Visibility="{x:Bind WorkspaceGlyphVisibility, Mode=OneWay}">
                                 <FontIcon.Style>
                                     <Style TargetType="FontIcon">
@@ -220,7 +220,7 @@
                                     </Style>
                                 </FontIcon.Style>
                             </FontIcon>
-                            <!-- an image file the workspace chose keeps its own colors -->
+                            <!-- an image file the workspace chose keeps its own colors; an icon tint draws it as a silhouette -->
                             <Image Source="{x:Bind WorkspaceImage, Mode=OneWay}"
                                    Width="16" Height="16"
                                    Margin="0,0,6,0"

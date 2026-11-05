@@ -145,6 +145,37 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void Tint_menu_gestures_tint_the_sessions_and_the_workspace_row_alone()
+    {
+        Guid w2 = default, first = default, second = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2").Id;
+            first = store.AddSession(w2, _stateDir, select: false)!.Id;
+            second = store.AddSession(w2, _stateDir, select: false)!.Id;
+            store.SetSessionTint(first, new SidebarTint(TintColor.Red, TintParts.Name));
+        });
+        SidebarTint? TintOf(Guid id) => Latest.Rows.Single(r => r.Id == id).Tint;
+
+        _controller.SetTint([first, second], SidebarTintChoice.Of(TintColor.Blue));
+        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Name), TintOf(first));
+        Assert.Equal(new SidebarTint(TintColor.Blue), TintOf(second));
+
+        _controller.SetTint([first, second], SidebarTintChoice.On(TintParts.Icon | TintParts.Name));
+        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Icon | TintParts.Name), TintOf(second));
+
+        _controller.SetWorkspaceTint(w2, SidebarTintChoice.Of(TintColor.Purple));
+        _controller.SetWorkspaceTint(w2, SidebarTintChoice.On(TintParts.Name));
+        Assert.Equal(new SidebarTint(TintColor.Purple, TintParts.Name), TintOf(w2));
+        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Icon | TintParts.Name), TintOf(first));
+
+        _controller.SetTint([first], SidebarTintChoice.Of(null));
+        _controller.SetWorkspaceTint(w2, SidebarTintChoice.Of(null));
+        Assert.Null(TintOf(first));
+        Assert.Null(TintOf(w2));
+    }
+
+    [Fact]
     public void Controller_gestures_mutate_the_store_like_the_socket_would()
     {
         Guid w2 = default, background = default;
@@ -843,5 +874,23 @@ public sealed class SidebarAutomationTextTests
         Assert.Equal(
             "Session shell",
             SidebarAutomationText.Row(row, SidebarSurfaceStatus.Ready));
+    }
+
+    [Fact]
+    public void Row_names_its_tint_color_as_upstream_names_it_on_the_icon()
+    {
+        var session = new SidebarRow(SidebarRowKind.Session, Guid.NewGuid(), "shell")
+        {
+            Flagged = true,
+            Tint = new SidebarTint(TintColor.Orange, TintParts.Name),
+        };
+        var workspace = new SidebarRow(SidebarRowKind.Workspace, Guid.NewGuid(), "api")
+        {
+            Focused = true,
+            Tint = new SidebarTint(TintColor.Red),
+        };
+
+        Assert.Equal("Session shell, flagged, orange tint", SidebarAutomationText.Row(session, SidebarSurfaceStatus.Ready));
+        Assert.Equal("Workspace api, expanded, focused, red tint", SidebarAutomationText.Row(workspace, SidebarSurfaceStatus.Ready));
     }
 }

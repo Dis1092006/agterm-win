@@ -18,7 +18,8 @@ public static class WindowPaletteAcceptance
         CancellationToken cancellationToken = default,
         Func<string, CancellationToken, Task>? executeInstallerCommandAsync = null,
         Func<PaletteAppCommand, CancellationToken, Task>? executeAppCommandAsync = null,
-        bool uiActionsEnabled = true)
+        bool uiActionsEnabled = true,
+        Func<TintColor?, CancellationToken, Task>? executeTintAsync = null)
     {
         // upstream runPaletteCommand and the row actions at 7df70fe: while zoom or the dashboard is
         // modal only the zoom toggle row runs; theme rows are not gated
@@ -55,6 +56,11 @@ public static class WindowPaletteAcceptance
                 {
                     await executeAppCommandAsync(appCommand, cancellationToken);
                 }
+                else if (WindowPaletteProjection.TryParseTint(item.Id, out var tint) &&
+                         executeTintAsync is not null)
+                {
+                    await executeTintAsync(tint, cancellationToken);
+                }
                 break;
             case WindowPaletteMode.CustomCommands:
                 if (WindowPaletteProjection.ParseCustomCommandId(item.Id) is { } commandId)
@@ -82,6 +88,15 @@ public static class WindowPaletteActions
         store.NoteUserActivity();
         store.SelectSession(sessionId);
         return changed;
+    }
+
+    /// <summary>A "Tint Session" row. The target is the session selected when the row runs, not when
+    /// the palette opened (upstream tintItems reads the selection in its action).</summary>
+    public static void TintSelectedSession(AppStore store, TintColor? color)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (store.SelectedSessionId is { } sessionId)
+            store.SetTintColor(color, [sessionId]);
     }
 
     public static bool ShouldRestoreTerminalFocus(BuiltinAction action) => action is not (
