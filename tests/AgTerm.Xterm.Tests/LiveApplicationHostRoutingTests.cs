@@ -6,9 +6,11 @@ namespace AgTerm.Xterm.Tests;
 /// <summary>A workspace-targeted command without a window goes to the window that owns the workspace.</summary>
 public class LiveApplicationHostRoutingTests
 {
-    [Fact]
-    public void WorkspaceFlagRoutesByItsWorkspaceTarget()
+    [Theory]
+    [InlineData(Command.WorkspaceFlag)]
+    [InlineData(Command.WorkspaceTint)]
+    public void WorkspaceCommandsRouteByTheirWorkspaceTarget(Command command)
     {
-        Assert.True(LiveApplicationHost.UsesWorkspaceTarget(Command.WorkspaceFlag));
+        Assert.True(LiveApplicationHost.UsesWorkspaceTarget(command));
     }
 }

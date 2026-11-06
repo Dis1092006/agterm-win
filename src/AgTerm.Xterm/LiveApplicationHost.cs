@@ -1916,6 +1916,7 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.WorkspaceFocus
         or Command.WorkspaceCollapse
         or Command.WorkspaceExpand
+        or Command.WorkspaceTint
         or Command.WorkspaceTheme
         or Command.WorkspaceIcon
         or Command.WorkspaceFlag;
