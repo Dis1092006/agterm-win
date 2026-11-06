@@ -26,17 +26,19 @@ public static class AgentHooksInstaller
     public const string CopilotHooksName = "agterm-win-status.json";
 
     // permissionRequest is left out: Copilot CLI fires it for auto-approved tool calls too.
-    private static readonly (string Event, string? Matcher)[] CopilotEvents =
+    // Copilot CLI waits for postToolUse hooks before the next model step, so the tool events call the
+    // cmd wrapper directly instead of starting powershell.exe after every tool call.
+    private static readonly (string Event, string? Matcher, bool Direct)[] CopilotEvents =
     [
-        ("sessionStart", null),
-        ("userPromptSubmitted", null),
-        ("postToolUse", null),
-        ("postToolUseFailure", null),
-        ("agentStop", null),
-        ("notification", "permission_prompt"),
-        ("notification", "elicitation_dialog"),
-        ("errorOccurred", null),
-        ("sessionEnd", null),
+        ("sessionStart", null, false),
+        ("userPromptSubmitted", null, false),
+        ("postToolUse", null, true),
+        ("postToolUseFailure", null, true),
+        ("agentStop", null, false),
+        ("notification", "permission_prompt", false),
+        ("notification", "elicitation_dialog", false),
+        ("errorOccurred", null, false),
+        ("sessionEnd", null, false),
     ];
 
     private static JsonArray StatusArgs(string wrapperPath, string state, string? flag)
@@ -51,14 +53,15 @@ public static class AgentHooksInstaller
     public static string BuildCopilot(string wrapperPath)
     {
         var hooks = new JsonObject();
-        foreach (var (eventName, matcher) in CopilotEvents)
+        foreach (var (eventName, matcher, direct) in CopilotEvents)
         {
             var entry = new JsonObject
             {
                 ["type"] = "command",
-                ["exec"] = "powershell.exe",
-                ["args"] = new JsonArray("-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                    "-File", Path.Join(Path.GetDirectoryName(wrapperPath), CopilotLifecycleName), eventName, "agterm-win"),
+                ["exec"] = direct ? "cmd.exe" : "powershell.exe",
+                ["args"] = direct ? StatusArgs(wrapperPath, "active", "--blink") :
+                    new JsonArray("-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                        "-File", Path.Join(Path.GetDirectoryName(wrapperPath), CopilotLifecycleName), eventName, "agterm-win"),
                 ["timeoutSec"] = 10,
             };
             if (matcher is not null) entry["matcher"] = matcher;

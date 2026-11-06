@@ -414,13 +414,37 @@ public sealed class AgentHooksInstallerTests : IDisposable
         Assert.Equal(new[] { "permission_prompt", "elicitation_dialog" },
             hooks.GetProperty("notification").EnumerateArray().Select(entry => entry.GetProperty("matcher").GetString()));
         var wrapper = Path.Join(_home, ".config", "agterm", "agent-status", AgentHooksInstaller.WrapperName);
-        foreach (var handler in hooks.EnumerateObject().SelectMany(property => property.Value.EnumerateArray()))
-        {
-            Assert.Equal("command", handler.GetProperty("type").GetString());
-            Assert.Equal("powershell.exe", handler.GetProperty("exec").GetString());
-            Assert.Contains(Path.Join(Path.GetDirectoryName(wrapper), AgentHooksInstaller.CopilotLifecycleName),
-                handler.GetProperty("args").EnumerateArray().Select(arg => arg.GetString()));
-        }
+        foreach (var property in hooks.EnumerateObject())
+            foreach (var handler in property.Value.EnumerateArray())
+            {
+                Assert.Equal("command", handler.GetProperty("type").GetString());
+                var args = handler.GetProperty("args").EnumerateArray().Select(arg => arg.GetString()).ToArray();
+                if (property.Name is "postToolUse" or "postToolUseFailure")
+                {
+                    Assert.Equal("cmd.exe", handler.GetProperty("exec").GetString());
+                    Assert.Equal(new[] { "/d", "/v:on", "/c", "call", wrapper, "active", "--blink", "agterm-win" }, args);
+                }
+                else
+                {
+                    Assert.Equal("powershell.exe", handler.GetProperty("exec").GetString());
+                    Assert.Contains(Path.Join(Path.GetDirectoryName(wrapper), AgentHooksInstaller.CopilotLifecycleName), args);
+                }
+            }
+    }
+
+    [Fact]
+    public void CopilotToolHooksFromTheLifecycleOnlyLayoutUpgradeWithABackup()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(CopilotHooksFile)!);
+        const string previous = """
+            {"version":1,"hooks":{"postToolUse":[{"type":"command","exec":"powershell.exe","args":["-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File","C:\\old\\agterm-copilot-lifecycle.ps1","postToolUse","agterm-win"],"timeoutSec":10}]}}
+            """;
+        File.WriteAllText(CopilotHooksFile, previous);
+        var outcome = Install(_home, WrapperTemplate, PiTemplate, Path.Join(_home, "agtermctl.exe"));
+        Assert.False(outcome.IsWarning);
+        Assert.Equal(previous, File.ReadAllText(CopilotHooksFile + ".bak"));
+        using var json = JsonDocument.Parse(File.ReadAllText(CopilotHooksFile));
+        Assert.Equal("cmd.exe", json.RootElement.GetProperty("hooks").GetProperty("postToolUse")[0].GetProperty("exec").GetString());
     }
 
     [Fact]
