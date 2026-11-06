@@ -240,6 +240,53 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         Assert.Equal("invalid workspace flag mode: clear", bad["error"]!.GetValue<string>());
     }
 
+    // session.flag move reorders the flagged view's saved order (upstream 8088e146): the tree reads the
+    // order back as flaggedOrder, an unchanged order still answers ok, and both ends must be flagged.
+    [Fact]
+    public void SessionFlagMoveReordersTheSavedOrderAndReadsItBack()
+    {
+        Assert.True(SendCommand("""{"cmd":"session.new"}""")["ok"]!.GetValue<bool>());
+        Assert.True(SendCommand("""{"cmd":"session.new"}""")["ok"]!.GetValue<bool>());
+        var ids = AllSessionNodes().Select(s => s["id"]!.GetValue<string>()).ToArray();
+        Assert.Equal(3, ids.Length);
+        Assert.False(Tree()["tree"]!.AsObject().ContainsKey("flaggedOrder")); // omitted while nothing is flagged
+
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{ids[0]}}}","args":{"mode":"on"}}""")["ok"]!.GetValue<bool>());
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{ids[1]}}}","args":{"mode":"on"}}""")["ok"]!.GetValue<bool>());
+
+        var moved = SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{ids[1]}}}","args":{"mode":"move","before":"{{{ids[0]}}}"}}""");
+        Assert.True(moved["ok"]!.GetValue<bool>(), $"session.flag move should succeed: {moved.ToJsonString()}");
+        Assert.Equal(ids[1], moved["result"]!["id"]!.GetValue<string>());
+        Assert.Equal(new[] { ids[1], ids[0] }, FlaggedOrder());
+
+        var unchanged = SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{ids[1]}}}","args":{"mode":"move","before":"{{{ids[0]}}}"}}""");
+        Assert.True(unchanged["ok"]!.GetValue<bool>(), $"an unchanged move still answers ok: {unchanged.ToJsonString()}");
+        Assert.Equal(new[] { ids[1], ids[0] }, FlaggedOrder());
+
+        var unflaggedAnchor = SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{ids[0]}}}","args":{"mode":"move","after":"{{{ids[2]}}}"}}""");
+        Assert.False(unflaggedAnchor["ok"]!.GetValue<bool>());
+        Assert.Equal("session.flag move needs a flagged session and a flagged anchor",
+            unflaggedAnchor["error"]!.GetValue<string>());
+
+        var self = SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{ids[0]}}}","args":{"mode":"move","after":"{{{ids[0]}}}"}}""");
+        Assert.False(self["ok"]!.GetValue<bool>());
+        Assert.Equal("a session cannot be its own anchor", self["error"]!.GetValue<string>());
+
+        var missing = SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{ids[0]}}}","args":{"mode":"move","after":"nope"}}""");
+        Assert.False(missing["ok"]!.GetValue<bool>());
+        Assert.Equal(new[] { ids[1], ids[0] }, FlaggedOrder());
+    }
+
+    private string[] FlaggedOrder() =>
+        Tree()["tree"]!["flaggedOrder"]!.AsArray().Select(id => id!.GetValue<string>()).ToArray();
+
     // workspace.focus collapses the sidebar tree to a single workspace's subtree — the other workspaces'
     // session rows leave the AX tree; unfocusing restores them. Orthogonal to the flagged view.
     [Fact]

@@ -2172,7 +2172,67 @@ public class CommandsTests
     [Fact]
     public void SessionFlagRejectsBadMode()
     {
-        Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "session", "flag", "bogus" }));
+        var error = Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "session", "flag", "bogus" }));
+        Assert.Equal("mode must be on, off, toggle, clear, or move", error.Message);
+    }
+
+    // upstream 8088e146 flagMoveCarriesTheTargetAndBeforeAnchor
+    [Fact]
+    public void SessionFlagMoveCarriesTheTargetAndBeforeAnchor()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionFlag, Target = "aa",
+                Args = new ControlArgs { Mode = "move", Window = "w1", Before = "bb" },
+            },
+            Request("session", "flag", "move", "--target", "aa", "--before", "bb", "--window", "w1"));
+    }
+
+    // upstream 8088e146 flagMoveCarriesTheAfterAnchor
+    [Fact]
+    public void SessionFlagMoveCarriesTheAfterAnchor()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionFlag, Target = "active",
+                Args = new ControlArgs { Mode = "move", After = "cc" },
+            },
+            Request("session", "flag", "move", "--after", "cc"));
+    }
+
+    // upstream 8088e146 flagMoveNeedsExactlyOneAnchor
+    [Theory]
+    [InlineData("session flag move")]
+    [InlineData("session flag move --before b --after c")]
+    public void SessionFlagMoveNeedsExactlyOneAnchor(string argv)
+    {
+        var error = Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(argv.Split(' ')));
+        Assert.Equal("move requires exactly one of --before or --after", error.Message);
+    }
+
+    // upstream 8088e146 flagRefusesAnAnchorOutsideMove
+    [Theory]
+    [InlineData("on")]
+    [InlineData("toggle")]
+    [InlineData("clear")]
+    public void SessionFlagRefusesAnAnchorOutsideMove(string mode)
+    {
+        var error = Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "session", "flag", mode, "--after", "c" }));
+        Assert.Equal("--before and --after apply only to move", error.Message);
+    }
+
+    // upstream 8088e146 flagKeepsItsExistingModesAndTheToggleDefault
+    [Fact]
+    public void SessionFlagKeepsItsExistingModesAndTheToggleDefault()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.SessionFlag, Target = "active", Args = new ControlArgs { Mode = "toggle" } },
+            Request("session", "flag"));
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.SessionFlag, Target = "aa", Args = new ControlArgs { Mode = "off" } },
+            Request("session", "flag", "off", "--target", "aa"));
     }
 
     [Fact]

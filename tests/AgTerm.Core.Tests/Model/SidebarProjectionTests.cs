@@ -105,6 +105,38 @@ public class SidebarProjectionTests : IDisposable
         Assert.Equal(new[] { "api", "home" }, rows.Select(r => r.Label));
     }
 
+    // upstream 8088e146: the flat and plain lists follow the saved flagged order; the tree layout
+    // keeps the workspace order
+    [Theory]
+    [InlineData(FlaggedViewLayout.Flat)]
+    [InlineData(FlaggedViewLayout.Plain)]
+    public void The_flat_flagged_layouts_follow_the_saved_order(FlaggedViewLayout layout)
+    {
+        var (_, _, a, b, c) = Seed();
+        _store.SetFlag(true, a.Id);
+        _store.SetFlag(true, b.Id);
+        _store.SetFlag(true, c.Id);
+        _store.MoveFlagged([c.Id], FlaggedOrderPlacement.Before, a.Id);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+        _store.FlaggedLayout = layout;
+
+        Assert.Equal(new[] { c.Id, a.Id, b.Id }, SidebarProjection.Project(_store).Select(r => r.Id));
+    }
+
+    [Fact]
+    public void The_tree_flagged_layout_ignores_the_saved_order()
+    {
+        var (w1, w2, a, b, c) = Seed();
+        _store.SetFlag(true, a.Id);
+        _store.SetFlag(true, b.Id);
+        _store.SetFlag(true, c.Id);
+        _store.MoveFlagged([b.Id], FlaggedOrderPlacement.Before, a.Id);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+        _store.FlaggedLayout = FlaggedViewLayout.Tree;
+
+        Assert.Equal(new[] { w1.Id, a.Id, b.Id, w2.Id, c.Id }, SidebarProjection.Project(_store).Select(r => r.Id));
+    }
+
     // upstream 902cd853 workspaceProjection: every workspace with a flagged session, focus ignored,
     // its flagged sessions only, labelled by name alone
     [Fact]

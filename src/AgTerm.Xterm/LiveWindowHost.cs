@@ -37,7 +37,8 @@ public sealed class LiveWindowHost
         PickRegistry? picks = null,
         Action<Guid>? scheduleTreeChanged = null,
         HeadlessQuickTerminal? quick = null,
-        AgTerm.Core.Hooks.HooksController? hooks = null)
+        AgTerm.Core.Hooks.HooksController? hooks = null,
+        FlaggedViewLayout flaggedLayout = FlaggedViewLayout.Flat)
     {
         _hooks = hooks;
         _quick = quick ?? new HeadlessQuickTerminal();
@@ -68,6 +69,8 @@ public sealed class LiveWindowHost
         {
             PendingCloseFinalizationScheduler = action => RunLocked(action),
             Asks = Picks.Asks,
+            // set before the restore, so a reselection during it walks the flagged view the app shows
+            FlaggedLayout = flaggedLayout,
         };
 
         var snapshot = _persistence.Load();

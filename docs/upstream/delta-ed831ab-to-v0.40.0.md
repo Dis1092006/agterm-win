@@ -75,7 +75,7 @@ Remote companions are in section 9.
 
 These extend the first catalog, section 6. The flagged layouts (B5a), Flag All Sessions (B5b), the membership editors (B5c) and focus as a set of workspaces (A5) are ported.
 
-- Reorder the flagged view #833. The flat and plain layouts keep a saved order per window; a drag works across workspaces. A newly flagged session goes to the end, and next and previous session follow the displayed order. `session flag move --before|--after ID` is mode `move` on `session.flag`; `before` and `after` are existing args. `tree` reports `flaggedOrder` at the top level, and the window snapshot saves it. Port: not done.
+- Reorder the flagged view #833. The flat and plain layouts keep a saved order per window; a drag works across workspaces. A newly flagged session goes to the end, and next and previous session follow the displayed order. `session flag move --before|--after ID` is mode `move` on `session.flag`; `before` and `after` are existing args. `tree` reports `flaggedOrder` at the top level, and the window snapshot saves it. Port: partly (B5d1). The order, `session flag move`, the tree field and the snapshot field are done; the drag and spring-loaded expansion are not done (PLATFORM-NOTES).
 - Flag All Sessions on the workspace row menu #787: `workspace.flag on|off|toggle [--target W]`. It flags sessions the tree layout hides, too. Port: done (B5b).
 - Edit Flagged Sessions and Edit Focused Workspaces #803: palettes that list every session or workspace of the window with its mark; Return toggles a row and the palette stays open. The actions `edit_flagged_sessions` and `edit_focused_workspaces` have no chord. Port: done (B5c).
 
@@ -145,7 +145,7 @@ Nothing is removed or renamed.
 - `ignoreReduceTransparency` keeps the window's opacity and blur while macOS Reduce Transparency is on; palettes still follow the system #814. Port: not done. The Windows switch is Settings > Personalization > Colors > Transparency effects, and the port reads it for overlay panels only (PLATFORM-NOTES "Windows-only extensions").
 - `terminalInputSource` locks one keyboard layout while a terminal has the keyboard #727. A layout switch made in a terminal is switched back, and the previous layout returns when focus leaves. It has no control command. Port: not done.
 - New values of existing settings: `overlayToggle`, `workspaceIcons` and `sessionIcons` in `shownInterfaceElements` (sections 3 and 5); `overlay95`, `overlay75` and `overlay50` in `linkOpenMode` (section 5). Port: not done.
-- Snapshot: `flaggedOrder` #833. WorkspaceSnapshot: `tint` #836. SessionSnapshot: `tint` #836, `lastSelectedAt` #818, `parentID` and `collapsed` #840. Port: partly. `lastSelectedAt` (B2a) and both `tint` fields (B2c1) are done; the rest is not done.
+- Snapshot: `flaggedOrder` #833. WorkspaceSnapshot: `tint` #836. SessionSnapshot: `tint` #836, `lastSelectedAt` #818, `parentID` and `collapsed` #840. Port: partly. `lastSelectedAt` (B2a), both `tint` fields (B2c1) and `flaggedOrder` (B5d1) are done; the rest is not done.
 
 ## 12. Behavior changes in commands already implemented
 

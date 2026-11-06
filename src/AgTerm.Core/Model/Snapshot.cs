@@ -99,6 +99,12 @@ public sealed record Snapshot : IJsonOnDeserialized
     [JsonPropertyName("sessionRecency")]
     [JsonConverter(typeof(LossyGuidArrayConverter))]
     public Guid[]? SessionRecency { get; init; }
+
+    /// <summary>The flagged working set's saved order (AppStore.FlaggedOrder); null restores in tree
+    /// order. Decoded lossily like SessionRecency.</summary>
+    [JsonPropertyName("flaggedOrder")]
+    [JsonConverter(typeof(LossyGuidArrayConverter))]
+    public Guid[]? FlaggedOrder { get; init; }
 }
 
 /// <summary>One persisted workspace: its identity, name, and ordered sessions.</summary>

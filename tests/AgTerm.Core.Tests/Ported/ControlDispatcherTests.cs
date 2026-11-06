@@ -1028,6 +1028,86 @@ public class ControlDispatcherTests
         }, actions.Calls);
     }
 
+    // upstream 8088e146 sessionFlagMoveRoutesTheOneAnchorAndItsSide
+    [Fact]
+    public async Task SessionFlagMoveRoutesTheOneAnchorAndItsSide()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var before = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionFlag, Target = "a",
+            Args = new ControlArgs { Mode = "move", Window = "win", Before = "b" },
+        });
+        var after = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionFlag, Args = new ControlArgs { Mode = "move", After = "c" },
+        });
+
+        ExpectResponse(Ok(), before);
+        ExpectResponse(Ok(), after);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.FlaggedMove("a", "win", "b", FlaggedOrderPlacement.Before),
+            new MockControlActions.Call.FlaggedMove(null, null, "c", FlaggedOrderPlacement.After),
+        }, actions.Calls);
+    }
+
+    // upstream 8088e146 sessionFlagMoveRefusesNoAnchorOrBoth
+    [Fact]
+    public async Task SessionFlagMoveRefusesNoAnchorOrBoth()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var none = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionFlag, Args = new ControlArgs { Mode = "move" },
+        });
+        var two = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionFlag, Args = new ControlArgs { Mode = "move", Before = "b", After = "c" },
+        });
+
+        var refusal = new ControlResponse { Ok = false, Error = "session.flag move requires exactly one of --before or --after" };
+        ExpectResponse(refusal, none);
+        ExpectResponse(refusal, two);
+        Assert.Empty(actions.Calls);
+    }
+
+    // upstream 8088e146 sessionFlagRefusesAnAnchorOutsideMove
+    [Theory]
+    [InlineData("on")]
+    [InlineData("toggle")]
+    [InlineData("clear")]
+    [InlineData(null)]
+    public async Task SessionFlagRefusesAnAnchorOutsideMove(string? mode)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionFlag, Args = new ControlArgs { Mode = mode, After = "c" },
+        });
+
+        ExpectResponse(new ControlResponse { Ok = false, Error = "--before and --after apply only to session.flag move" }, response);
+        Assert.Empty(actions.Calls);
+    }
+
+    // upstream 8088e146 sessionFlagWithoutAModeStillRoutesToTheToggle
+    [Fact]
+    public async Task SessionFlagWithoutAModeStillRoutesToTheToggle()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest { Cmd = Command.SessionFlag, Target = "a" });
+
+        Assert.Equal(new MockControlActions.Call[] { new MockControlActions.Call.SessionFlag("a", null, null) }, actions.Calls);
+    }
+
     [Fact]
     public async Task SessionSeenRoutesTargetAndWindow()
     {

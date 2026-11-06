@@ -1987,7 +1987,8 @@ public sealed partial class LiveApplicationHost : IDisposable
             _picks,
             EmitTreeChanged,
             Quick,
-            Hooks);
+            Hooks,
+            Settings.State.Snapshot.Settings.EffectiveFlaggedViewLayout);
 
     private void SetOpen(Guid windowId, bool isOpen)
     {

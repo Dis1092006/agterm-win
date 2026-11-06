@@ -90,7 +90,8 @@
     { "name": "workspaceFilter", "upstream": "6722755a" },
     { "name": "attentionIncludesActive", "upstream": "6864e35a" },
     { "name": "attentionNavigationAcrossWindows", "upstream": "ffffd2b8" },
-    { "name": "sidebarFlaggedLayout", "upstream": "902cd853" }
+    { "name": "sidebarFlaggedLayout", "upstream": "902cd853" },
+    { "name": "flaggedOrder", "upstream": "8088e146" }
   ],
   "sessionNode": [
     { "name": "ask", "upstream": "1b765e69" },
@@ -112,6 +113,9 @@
   "workspaceNode": [
     { "name": "tint", "upstream": "f3fea57b" },
     { "name": "tintOn", "upstream": "f3fea57b" }
+  ],
+  "snapshot": [
+    { "name": "flaggedOrder", "upstream": "8088e146" }
   ],
   "sessionSnapshot": [
     { "name": "context", "upstream": "73b63b71" },

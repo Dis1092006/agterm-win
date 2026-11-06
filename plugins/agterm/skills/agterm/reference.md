@@ -207,7 +207,7 @@ Status; no command sets it, and `session go` stays in its window either way), `s
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
-`sidebar mode`), `sidebarFlaggedLayout` (`flat`, `plain` or `tree` — how the flagged view draws, the read side of `sidebar flagged-layout`; the same value in every window's tree), `quickVisible` (whether the app-level quick panel is currently shown — the read
+`sidebar mode`), `sidebarFlaggedLayout` (`flat`, `plain` or `tree` — how the flagged view draws, the read side of `sidebar flagged-layout`; the same value in every window's tree), `flaggedOrder` (the window's flagged session ids in the flat list's saved order — the read side of `session flag move`; omitted when nothing is flagged), `quickVisible` (whether the app-level quick panel is currently shown — the read
 side of the write-only `quick` command, so a script can make the toggle idempotent), `zoomedSurface`
 (the control id of the surface terminal zoom currently fills the window with —
 `surface:<session-id>:<kind>` or `quick`; omitted when nothing is zoomed — the read side of the
@@ -221,9 +221,9 @@ the mode is `untouched`), and `dashboardFontMode` (`auto` for `--auto-size`, `fi
 `untouched`), plus `pickPending` (the id of the window's pending `pick`, omitted when none) and
 `askPending` (the id of the window's pending gui-style `ask`, omitted when none). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible` is on
-both; `workspaceFilter`, `sidebarMode`, `sidebarFlaggedLayout`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
+both; `workspaceFilter`, `sidebarMode`, `sidebarFlaggedLayout`, `flaggedOrder`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
 (a GUI/keyboard change would leave a cached copy stale).
-All fourteen are read-only projections of GUI state.
+All are read-only projections of GUI state.
 
 ## workspace
 
@@ -513,12 +513,13 @@ All fourteen are read-only projections of GUI state.
   re-split) lands on the pane's CURRENT slot instead of the stale role; an absent/unknown token falls back
   to `--pane`. Scripts normally set `--pane` directly and leave `--pane-id` to the hook.
   An unknown state errors. Setting non-idle is for agents/hooks; `idle` clears it (also available in the GUI).
-- `session flag [on|off|toggle|clear] [--target] [--window W]` — flag/unflag a session for the flagged
+- `session flag [on|off|toggle|clear|move] [--before S|--after S] [--target] [--window W]` — flag/unflag a session for the flagged
   working-set view (a durable, persisted membership). Wire: `session.flag`. `on`/`off`/`toggle` act on
   `--target` (default
   `active`) and are idempotent; `clear` ignores the target and unflags every session in the window.
   Pair with `sidebar mode flagged` to see just the flagged sessions as a flat `session : workspace`
-  list. Unknown mode errors. The tree's `flagged` flag tracks membership.
+  list. Unknown mode errors. The tree's `flagged` flag tracks membership, and the top-level `flaggedOrder` the saved order.
+  `move` places the flagged target right before or after another flagged session of the same window in the flat list's saved order, with exactly one of `--before`/`--after` (no other mode takes them). New flags join the end of that order; the `tree` flagged layout ignores it. The order is persisted per window. Errors: `a session cannot be its own anchor`, `session.flag move needs a flagged session and a flagged anchor`; an unchanged order still answers ok.
 - `session context [TEXT] [--clear] [--target] [--window W]` — set or clear what a session is about, shown in
   the title bar. Wire: `session.context` with `args.mode` `set` (plus `args.text`) or `clear`. The text says
   what the session is FOR — a PR, an issue, a task. It persists across a relaunch and stays until `--clear`;

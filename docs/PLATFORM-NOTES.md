@@ -856,7 +856,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The command updates the store at once, then saves the setting. The save keeps each pane's font zoom, as `theme set` does. A failed save puts the previous layout back and shows a failure notice.
   - Settings > General > "Flagged view layout" picks it: "Flat list" (the default; the key is removed), "Flat list, names only" or "Workspace tree".
   - In the flagged tree a workspace row has the same collapse state as in the ordinary tree, so a collapse in one view shows in the other. Expand and collapse (the commands, the palette items and the row's chevron) work on these rows, and a workspace row can be renamed. In the flat and plain layouts expand and collapse stay no-ops.
-  - In the flagged tree a session row has no filled flag icon, because every row there is flagged, and a drag does not move a row. Both are as upstream.
+  - In the flagged tree a session row has no filled flag icon, because every row there is flagged, as upstream.
   - Upstream expands the selected session's workspace in the view, without saving it, when the sidebar switches between views, so the selected row is always visible. The port has no such view-only expansion, in the ordinary tree either: a collapsed workspace stays collapsed, and its selected session stays hidden until the workspace is expanded.
   - The `rename_workspace` action (Rename Workspace) is disabled in the `flat` and `plain` layouts, because they have no workspace row to edit. Upstream keeps it enabled there, and it does nothing.
 - Flag every session of a workspace: `workspace.flag` (upstream `14afbfd5`, #787). The name is in `parity/adopted.json`. `agtermctl workspace flag [on|off|toggle] [--target W]` follows upstream's arguments, help and error strings: the wire refuses an unknown mode with `invalid workspace flag mode: <mode>`, the CLI with `mode must be on, off, or toggle`.
@@ -870,6 +870,13 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - A row whose session or workspace was closed while the palette is open does nothing on Return. Upstream draws it disabled.
   - The command palette hides the two rows when they cannot run: Edit Flagged Sessions while no workspace has a session, Edit Focused Workspaces while there is no current workspace. Upstream disables them. Upstream also puts both in the View menu; the app has no View menu.
   - The flagged view with no flagged session shows "No flagged sessions." and an "Add Sessions…" link, 40 px below the top at 0.6 opacity, as upstream. The link runs `edit_flagged_sessions` through the router, so zoom and the dashboard block it as they block the action. It takes the sidebar's text color; upstream takes the terminal foreground.
+- Flagged view order: mode `move` on `session.flag` with the existing args `before` and `after`, `flaggedOrder` at the top level of the tree, and `flaggedOrder` in the window snapshot (upstream `8088e146`, #833). The names are in `parity/adopted.json`. `agtermctl session flag move --before S|--after S [--target] [--window W]` follows upstream's arguments, help and error strings.
+  - Each window keeps the order of its flagged sessions. The `flat` and `plain` layouts draw the rows in that order, and next and previous session follow it. The `tree` layout keeps the tree order and ignores it.
+  - A session joins the end of the order when it is flagged, and when a closed session or workspace comes back with its flags (undo of a close, reopen of a recently closed item). It leaves the order when it is unflagged or closed.
+  - When the selected session is closed in the `flat` or `plain` layout, the selection moves to its neighbour in the saved order.
+  - `move` needs both the target and the anchor flagged in the same window. The wire refuses a session as its own anchor with `a session cannot be its own anchor`, and an unflagged end with `session.flag move needs a flagged session and a flagged anchor`. An unchanged order still answers ok.
+  - A window opened at launch or later takes the app-wide layout before its saved state is restored, as upstream, so a command that reaches it before the window shows already uses that layout.
+  - Upstream also reorders the rows by drag, in all three layouts. The port does not have the drag yet. Upstream opens a collapsed workspace when a drag rests on it (spring-loaded expansion); the port does not, in either tree.
 
 ## Windows-only extensions
 

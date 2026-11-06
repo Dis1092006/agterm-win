@@ -458,7 +458,7 @@ public sealed partial class ControlDispatcher
             case Command.SessionMove:
                 return DispatchSessionMoveCommand(request);
             case Command.SessionFlag:
-                return _actions.SetSessionFlag(request.Target, request.Args?.Window, request.Args?.Mode);
+                return DispatchSessionFlag(request);
             case Command.SessionContext:
                 return DispatchSessionContext(request);
             case Command.SessionInfo:
@@ -472,6 +472,22 @@ public sealed partial class ControlDispatcher
             default:
                 throw new InvalidOperationException($"unexpected session command: {request.Cmd}");
         }
+    }
+
+    // session.flag passes on|off|toggle|clear through unchanged; move needs exactly one of
+    // --before/--after, and either anchor outside move is refused (upstream 8088e146)
+    private ControlResponse DispatchSessionFlag(ControlRequest request)
+    {
+        var args = request.Args;
+        var anchors = new[] { args?.Before, args?.After }.OfType<string>().ToList();
+        if (args?.Mode != "move")
+        {
+            if (anchors.Count > 0) return Err("--before and --after apply only to session.flag move");
+            return _actions.SetSessionFlag(request.Target, args?.Window, args?.Mode);
+        }
+        if (anchors.Count != 1) return Err("session.flag move requires exactly one of --before or --after");
+        return _actions.MoveFlaggedSession(request.Target, args.Window, anchors[0],
+            args.Before is not null ? FlaggedOrderPlacement.Before : FlaggedOrderPlacement.After);
     }
 
     private ControlResponse DispatchSessionMoveCommand(ControlRequest request)

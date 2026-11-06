@@ -62,7 +62,7 @@ public sealed partial class AppStore
             location.WorkspaceIndex, location.SessionIndex, closeId);
         if (wasActive)
         {
-            SelectedSessionId = CloseReselectionTarget(location);
+            SelectedSessionId = CloseReselectionTarget(location, sessionId);
             ReplaceSidebarSelection(SelectedSessionId);
             DisableFocusIfSelectionOutsideSet(SelectedSessionId);
             RecordRecency();
@@ -140,7 +140,8 @@ public sealed partial class AppStore
                 var removedBeforeActive = closes.Count(c =>
                     c.WorkspaceIndex == activeClose.WorkspaceIndex && c.SessionIndex < activeClose.SessionIndex);
                 SelectedSessionId = CloseReselectionTarget(
-                    (activeClose.WorkspaceIndex, activeClose.SessionIndex - removedBeforeActive));
+                    (activeClose.WorkspaceIndex, activeClose.SessionIndex - removedBeforeActive),
+                    activeClose.Session.Id);
             }
             else
             {
@@ -236,6 +237,7 @@ public sealed partial class AppStore
                 RemoveRecentClosedItem(key);
                 break;
         }
+        AppendFlaggedArrivals(); // a parked id still in the saved order returns in place; a cleared one appends
         if (PendingCloseSummary?.Id == key) PromotePendingCloseSummary();
         Save();
         return true;
@@ -524,6 +526,7 @@ public sealed partial class AppStore
         WatermarkStorage.RemoveRenderedText(session.Id, _stateDirectory);
         ScrollbackStorage.Remove(session.Id, _stateDirectory);
         RemoveFromRecency(session.Id);
+        DropFromFlaggedOrder([session.Id]);
     }
 
     private void HardFinalizePendingWorkspace(Workspace workspace, bool teardownSurfaces = true)
