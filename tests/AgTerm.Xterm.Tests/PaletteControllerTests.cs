@@ -169,6 +169,7 @@ public sealed class PaletteControllerTests
         item.SetMark(true);
         Assert.Equal("Work, focused, 2 sessions", item.AutomationName);
         Assert.Contains(nameof(PaletteItemViewModel.MarkOn), changed);
+        Assert.Contains(nameof(PaletteItemViewModel.MarkStrokeThickness), changed);
         Assert.Contains(nameof(PaletteItemViewModel.AutomationName), changed);
 
         changed.Clear();
@@ -177,18 +178,19 @@ public sealed class PaletteControllerTests
     }
 
     [Theory]
-    [InlineData(PaletteMark.Flag, false, "unflagged")]
-    [InlineData(PaletteMark.Flag, true, "flagged")]
-    [InlineData(PaletteMark.Focus, false, "unfocused")]
-    [InlineData(PaletteMark.Focus, true, "focused")]
-    public void A_marked_row_names_its_mark_state(PaletteMark mark, bool on, string value)
+    [InlineData(PaletteMark.Flag, false, "unflagged", false, 1)]
+    [InlineData(PaletteMark.Flag, true, "flagged", true, 1)]
+    [InlineData(PaletteMark.Focus, false, "unfocused", false, 1)]
+    [InlineData(PaletteMark.Focus, true, "focused", false, 2)]
+    public void A_marked_row_names_its_mark_state(PaletteMark mark, bool on, string value, bool filled, double stroke)
     {
         var item = new PaletteItemViewModel("x", "X", mark: mark, markOn: on);
 
         Assert.True(item.HasMark);
         Assert.Equal(value, item.MarkValue);
-        Assert.Equal(on, item.MarkFilled);
+        Assert.Equal(filled, item.MarkFilled);
         Assert.Equal(!on, item.MarkOutlined);
+        Assert.Equal(stroke, item.MarkStrokeThickness);
         Assert.False(string.IsNullOrEmpty(item.MarkData));
     }
 

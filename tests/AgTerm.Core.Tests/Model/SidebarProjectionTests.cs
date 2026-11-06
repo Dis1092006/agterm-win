@@ -248,6 +248,18 @@ public class SidebarProjectionTests : IDisposable
         Assert.Equal("#123456", row.Indicator.Color);
     }
 
+    [Theory]
+    [InlineData(SplitAxis.LeftRight)]
+    [InlineData(SplitAxis.TopBottom)]
+    public void Session_rows_carry_the_split_axis(SplitAxis axis)
+    {
+        var (_, _, a, _, _) = Seed();
+        a.HasSplit = true;
+        a.SplitAxis = axis;
+
+        Assert.Equal(axis, SidebarProjection.Project(_store).Single(r => r.Id == a.Id).SplitAxis);
+    }
+
     [Fact]
     public void Shape_key_tracks_identity_order_mode_and_collapse_but_not_labels()
     {

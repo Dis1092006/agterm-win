@@ -108,6 +108,36 @@ public sealed class SidebarRowNestingSourceTests
     }
 
     [Fact]
+    public void The_session_icon_shape_follows_the_split_and_its_axis()
+    {
+        Assert.Contains("SidebarSessionIcon.PathData(_row.HasSplit, _row.SplitAxis)",
+            Between(Source("SidebarRowViewModel.cs"), "public string IconData =>", ";"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_focused_workspace_grid_is_drawn_heavier_and_not_filled()
+    {
+        var model = Source("SidebarRowViewModel.cs");
+        var icon = Between(Source("SidebarView.xaml"), "<Path Data=\"" + WorkspaceIconData + "\"", "</Path>");
+
+        Assert.Contains("StrokeThickness=\"{x:Bind GridIconStrokeThickness, Mode=OneWay}\"", icon, StringComparison.Ordinal);
+        Assert.DoesNotContain("Fill=", icon, StringComparison.Ordinal);
+        Assert.DoesNotContain("GridIconFill", model, StringComparison.Ordinal);
+        Assert.Contains("SidebarWorkspaceIcon.GridStrokeThickness(IsWorkspace && _row.Focused)",
+            Between(model, "public double GridIconStrokeThickness =>", ";"), StringComparison.Ordinal);
+        Assert.Contains("nameof(GridIconStrokeThickness)",
+            Between(model, "public void Update(", "internal static SolidColorBrush BrushFrom"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_palette_mark_binds_the_heavier_stroke_of_a_focused_workspace()
+    {
+        var mark = Between(Source("PaletteView.xaml"), "AutomationProperties.AutomationId=\"palette-mark\"", "</Grid>");
+
+        Assert.Contains("StrokeThickness=\"{x:Bind MarkStrokeThickness, Mode=OneWay}\"", mark, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_rename_seeds_the_name_the_layout_shows()
     {
         Assert.Contains("SidebarRenameSeed.Of(row.Label, snapshot.Mode, snapshot.FlaggedLayout)",

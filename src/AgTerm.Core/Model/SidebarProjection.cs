@@ -23,6 +23,7 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
     public bool Selected { get; init; }
     public bool Flagged { get; init; }
     public bool HasSplit { get; init; }
+    public SplitAxis SplitAxis { get; init; }
     public AgentIndicator Indicator { get; init; }
 
     // both (session count / workspace roll-up)
@@ -130,6 +131,7 @@ public static class SidebarProjection
             Selected = store.SelectedSessionId == session.Id,
             Flagged = session.Flagged,
             HasSplit = session.HasSplit,
+            SplitAxis = session.SplitAxis,
             Indicator = session.AgentIndicator,
             Unseen = session.UnseenCount,
             Tint = session.Tint,

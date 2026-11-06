@@ -89,7 +89,8 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <!-- an editor row's membership: the sidebar's flag or grid, filled when on -->
+                                <!-- an editor row's membership: the sidebar's flag or grid, a flag
+                                     filled and a grid heavier when on -->
                                 <Grid Grid.Column="0"
                                       Width="18"
                                       VerticalAlignment="Center"
@@ -105,10 +106,14 @@
                                     <Path Data="{x:Bind MarkData, Mode=OneWay}"
                                           Width="16" Height="15"
                                           HorizontalAlignment="Left"
-                                          StrokeThickness="1"
-                                          Stroke="{ThemeResource TextFillColorPrimaryBrush}"
                                           Fill="{ThemeResource TextFillColorPrimaryBrush}"
                                           Visibility="{x:Bind MarkFilled, Mode=OneWay}" />
+                                    <Path Data="{x:Bind MarkData, Mode=OneWay}"
+                                          Width="16" Height="15"
+                                          HorizontalAlignment="Left"
+                                          StrokeThickness="{x:Bind MarkStrokeThickness, Mode=OneWay}"
+                                          Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                                          Visibility="{x:Bind MarkOn, Mode=OneWay}" />
                                 </Grid>
                                 <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}"

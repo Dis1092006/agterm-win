@@ -31,4 +31,7 @@ public static class SidebarWorkspaceIcon
             ? imageFailed ? SidebarWorkspaceIconKind.Grid : SidebarWorkspaceIconKind.Image
             : Glyph(iconName, hasGlyph) is not null ? SidebarWorkspaceIconKind.Glyph
             : SidebarWorkspaceIconKind.Grid;
+
+    // a workspace in the focus set draws its grid at a heavier weight (upstream 6d403ae7)
+    public static double GridStrokeThickness(bool focused) => focused ? 2 : 1;
 }
