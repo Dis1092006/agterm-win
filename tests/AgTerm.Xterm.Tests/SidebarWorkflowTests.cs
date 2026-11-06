@@ -746,7 +746,7 @@ public sealed class SidebarWorkflowTests : IDisposable
             StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.RenameWorkspace] = Sync", mainWindow, StringComparison.Ordinal);
         Assert.Contains(
-            "() => _latestSidebarSnapshot is { Mode: SidebarMode.Tree, CurrentWorkspaceId: not null },",
+            "() => _latestSidebarSnapshot is { RendersWorkspaceRows: true, CurrentWorkspaceId: not null },",
             mainWindow,
             StringComparison.Ordinal);
         Assert.Contains("Sidebar.BeginRenameCurrentWorkspace", mainWindow, StringComparison.Ordinal);

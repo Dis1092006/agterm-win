@@ -121,6 +121,30 @@ public static class ControlSidebarViewModes
     };
 }
 
+/// <summary>Parsed layout for sidebar.flagged-layout.</summary>
+public enum ControlFlaggedLayoutMode { Flat, Plain, Tree, Toggle }
+
+public static class ControlFlaggedLayoutModes
+{
+    public static ControlFlaggedLayoutMode? Parse(string? mode) => (mode ?? "toggle") switch
+    {
+        "flat" => ControlFlaggedLayoutMode.Flat,
+        "plain" => ControlFlaggedLayoutMode.Plain,
+        "tree" => ControlFlaggedLayoutMode.Tree,
+        "toggle" => ControlFlaggedLayoutMode.Toggle,
+        _ => null,
+    };
+
+    /// <summary>The layout the mode asks for; toggle flips between tree and flat (plain toggles to tree).</summary>
+    public static FlaggedViewLayout Resolve(this ControlFlaggedLayoutMode mode, FlaggedViewLayout current) => mode switch
+    {
+        ControlFlaggedLayoutMode.Flat => FlaggedViewLayout.Flat,
+        ControlFlaggedLayoutMode.Plain => FlaggedViewLayout.Plain,
+        ControlFlaggedLayoutMode.Tree => FlaggedViewLayout.Tree,
+        _ => current == FlaggedViewLayout.Tree ? FlaggedViewLayout.Flat : FlaggedViewLayout.Tree,
+    };
+}
+
 /// <summary>The mutually exclusive move forms accepted by session.move.</summary>
 public abstract record ControlSessionMove
 {

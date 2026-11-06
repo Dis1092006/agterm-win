@@ -259,6 +259,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             Host.Actions.Theme.Dark = initialTheme.Dark;
         }
         Host.Actions.ThemeUpdateRequested += update => ThemeUpdateRequested?.Invoke(update);
+        Host.Actions.FlaggedLayoutChangeRequested += layout => FlaggedLayoutChangeRequested?.Invoke(layout);
         Host.Actions.StatusReset = _notificationSettings.EffectiveStatusReset;
         Host.Actions.CloseGraceUndoEnabled = _notificationSettings.CloseGraceUndoEnabled ?? true;
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
@@ -709,6 +710,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     /// <summary>Runs under the host gate; subscribers may enqueue work but must not wait on it.</summary>
     public event Action<HeadlessThemeUpdate>? ThemeUpdateRequested;
 
+    /// <summary>Runs under the host gate; subscribers may enqueue the settings save but must not wait on it.</summary>
+    public event Action<FlaggedViewLayout>? FlaggedLayoutChangeRequested;
+
     public event Action<LiveBannerNotification>? NotificationRequested;
 
     public event Action<Guid>? SessionNotificationsCleared;
@@ -741,6 +745,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         Store.SetAutoFollow(settings.AutoFollowTimeout(), settings.AutoFollowStayOnActive == true);
         Store.AttentionIncludesActive = settings.EffectiveAttentionIncludesActive;
         Store.AttentionNavigationAcrossWindows = settings.EffectiveAttentionNavigationAcrossWindows;
+        Store.FlaggedLayout = settings.EffectiveFlaggedViewLayout;
     }
 
     public Task NoteUserActivityAsync(CancellationToken cancellationToken = default) =>

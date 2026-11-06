@@ -47,6 +47,9 @@ public sealed class SettingsEditor
             Hint: "Requires an app restart. Open windows keep their current restore behavior."),
         new("confirmCloseSession", "General", "Confirm before closing a session", SettingControl.Toggle, false),
         new("closeGraceUndoEnabled", "General", "Allow undo after closing sessions and workspaces", SettingControl.Toggle, true),
+        new("flaggedViewLayout", "General", "Flagged view layout", SettingControl.Choice,
+            Choices: [new(null, FlaggedViewLayout.Flat.DisplayName()), new("plain", FlaggedViewLayout.Plain.DisplayName()),
+                new("tree", FlaggedViewLayout.Tree.DisplayName())]),
         new("restoreScrollback", "General", "Restore saved pane output", SettingControl.Toggle, true),
         new("closeOnShellExit", "General", "Close a shell pane on exit", SettingControl.Choice, "graceful",
             Choices: [new(null, "Default (Successful exit only)"), new("graceful", "Successful exit only"),
@@ -132,6 +135,8 @@ public sealed class SettingsEditor
         "copyOnSelect" => Draft.CopyOnSelect is "selection" or "clipboard" or "off" ? Draft.CopyOnSelect : null,
         "sessionInfoDisplay" => Draft.EffectiveSessionInfoDisplay == SessionInfoDisplay.Always
             ? null : Draft.EffectiveSessionInfoDisplay.RawValue(),
+        "flaggedViewLayout" => Draft.EffectiveFlaggedViewLayout == FlaggedViewLayout.Flat
+            ? null : Draft.EffectiveFlaggedViewLayout.RawValue(),
         _ => Value(key)?.GetValue<string>(),
     };
 

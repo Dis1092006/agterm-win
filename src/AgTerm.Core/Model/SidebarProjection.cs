@@ -45,9 +45,11 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
 /// <summary>
 /// The host-free projection of an AppStore into ordered sidebar rows. Tree mode: the focus-filtered
 /// VisibleWorkspaces, each expanded workspace followed by its session rows (a collapsed one keeps
-/// only its roll-up row). Flagged mode: the flat flagged list labeled "name : workspace", no
-/// workspace rows (upstream WorkspaceSidebar's flagged projection). Pure reads — call under the
-/// host gate and hand the rows to the UI thread.
+/// only its roll-up row). Flagged mode follows the flagged layout: flat is the flagged list labeled
+/// "name : workspace", plain is the same list labeled by name, and tree nests the flagged sessions
+/// under rows for the workspaces that have one, ignoring the focus filter (upstream WorkspaceSidebar's
+/// flagged projection, 902cd853 + f8c3eba3). Pure reads — call under the host gate and hand the rows
+/// to the UI thread.
 /// </summary>
 public static class SidebarProjection
 {
@@ -56,27 +58,33 @@ public static class SidebarProjection
         var rows = new List<SidebarRow>();
         if (store.SidebarMode == SidebarMode.Flagged)
         {
+            if (store.FlaggedLayout == FlaggedViewLayout.Tree)
+            {
+                foreach (var workspace in store.Workspaces)
+                {
+                    var flagged = workspace.Sessions.Where(s => s.Flagged).ToList();
+                    if (flagged.Count == 0) continue;
+                    rows.Add(WorkspaceRow(store, workspace, unseen: flagged.Sum(s => s.UnseenCount)));
+                    if (!workspace.IsExpanded) continue;
+                    foreach (var session in flagged)
+                        rows.Add(SessionRow(store, workspace, session, session.DisplayName));
+                }
+                return rows;
+            }
             foreach (var session in store.FlaggedSessions)
             {
                 var workspace = store.WorkspaceForSession(session.Id);
-                rows.Add(SessionRow(store, workspace, session,
-                    label: $"{session.DisplayName} : {workspace?.Name ?? ""}"));
+                var label = store.FlaggedLayout == FlaggedViewLayout.Plain
+                    ? session.DisplayName
+                    : $"{session.DisplayName} : {workspace?.Name ?? ""}";
+                rows.Add(SessionRow(store, workspace, session, label));
             }
             return rows;
         }
 
         foreach (var workspace in store.VisibleWorkspaces)
         {
-            rows.Add(new SidebarRow(SidebarRowKind.Workspace, workspace.Id, workspace.Name)
-            {
-                Collapsed = !workspace.IsExpanded,
-                Focused = store.FocusedWorkspaceIds.Contains(workspace.Id),
-                Unseen = workspace.UnseenCount,
-                WorkspaceId = workspace.Id,
-                ThemeName = workspace.ThemeName,
-                IconName = workspace.IconName,
-                Tint = workspace.Tint,
-            });
+            rows.Add(WorkspaceRow(store, workspace, workspace.UnseenCount));
             if (!workspace.IsExpanded) continue;
             foreach (var session in workspace.Sessions)
                 rows.Add(SessionRow(store, workspace, session, session.DisplayName));
@@ -84,12 +92,15 @@ public static class SidebarProjection
         return rows;
     }
 
-    /// <summary>The list's identity/order fingerprint: ordered row ids + mode + the collapse set +
-    /// the focus filter. A changed key means rows appeared/vanished/moved — rebuild the list; an
-    /// unchanged key lets the view diff row contents in place (a rename never rebuilds).</summary>
+    /// <summary>The list's identity/order fingerprint: ordered row ids + mode (and, in flagged mode, the
+    /// layout) + the collapse set + the focus filter. A changed key means rows appeared/vanished/moved —
+    /// rebuild the list; an unchanged key lets the view diff row contents in place (a rename never
+    /// rebuilds).</summary>
     public static string ShapeKey(AppStore store)
     {
-        var key = new StringBuilder(store.SidebarMode == SidebarMode.Flagged ? "flagged:" : "tree:");
+        var key = new StringBuilder(store.SidebarMode == SidebarMode.Flagged
+            ? $"flagged-{store.FlaggedLayout.RawValue()}:"
+            : "tree:");
         foreach (var row in Project(store))
         {
             key.Append(row.Id.ToString("N"));
@@ -98,6 +109,18 @@ public static class SidebarProjection
         }
         return key.ToString();
     }
+
+    private static SidebarRow WorkspaceRow(AppStore store, Workspace workspace, int unseen) =>
+        new(SidebarRowKind.Workspace, workspace.Id, workspace.Name)
+        {
+            Collapsed = !workspace.IsExpanded,
+            Focused = store.FocusedWorkspaceIds.Contains(workspace.Id),
+            Unseen = unseen,
+            WorkspaceId = workspace.Id,
+            ThemeName = workspace.ThemeName,
+            IconName = workspace.IconName,
+            Tint = workspace.Tint,
+        };
 
     private static SidebarRow SessionRow(AppStore store, Workspace? workspace, Session session, string label) =>
         new(SidebarRowKind.Session, session.Id, label)

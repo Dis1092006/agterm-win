@@ -13,14 +13,14 @@ public sealed class SidebarRowNestingSourceTests
     }
 
     [Fact]
-    public void Row_content_is_indented_by_the_kind_of_row_and_the_sidebar_mode()
+    public void Row_content_is_indented_by_the_kind_of_row_and_whether_it_nests()
     {
         var model = Source("SidebarRowViewModel.cs");
         var view = Source("SidebarView.xaml.cs");
 
-        Assert.Contains("new(8 + SidebarRowIndent.Of(Kind, _mode, SidebarRowIcon.IsShown(Kind, _settings)), 0, 8, 0)",
+        Assert.Contains("new(8 + SidebarRowIndent.Of(Kind, _nested, SidebarRowIcon.IsShown(Kind, _settings)), 0, 8, 0)",
             Between(model, "public Thickness ContentMargin =>", ";"), StringComparison.Ordinal);
-        Assert.Contains("new SidebarRowViewModel(row, _settings, snapshot.Mode,", view, StringComparison.Ordinal);
+        Assert.Contains("new SidebarRowViewModel(row, _settings, snapshot.Mode, snapshot.RendersWorkspaceRows,", view, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -105,6 +105,14 @@ public sealed class SidebarRowNestingSourceTests
     {
         Assert.Contains("SidebarSessionIcon.IsFilled(_row.Flagged, _mode)",
             Between(Source("SidebarRowViewModel.cs"), "public Brush IconFill =>", ";"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_rename_seeds_the_name_the_layout_shows()
+    {
+        Assert.Contains("SidebarRenameSeed.Of(row.Label, snapshot.Mode, snapshot.FlaggedLayout)",
+            Between(Source("SidebarView.xaml.cs"), "private void BeginRename(SidebarRowViewModel row)", "row.IsEditing = true;"),
+            StringComparison.Ordinal);
     }
 
     private const string WorkspaceIconData =

@@ -23,7 +23,7 @@ public sealed class SidebarRowIconSourceTests
         Assert.Contains("IsSession && SidebarRowIcon.IsShown(Kind, _settings)", model, StringComparison.Ordinal);
         Assert.Contains("IsWorkspace && SidebarRowIcon.IsShown(Kind, _settings)", MethodBody(model, "private Visibility IconVisibility("),
             StringComparison.Ordinal);
-        Assert.Contains("SidebarRowIndent.Of(Kind, _mode, SidebarRowIcon.IsShown(Kind, _settings))", model, StringComparison.Ordinal);
+        Assert.Contains("SidebarRowIndent.Of(Kind, _nested, SidebarRowIcon.IsShown(Kind, _settings))", model, StringComparison.Ordinal);
     }
 
     [Fact]

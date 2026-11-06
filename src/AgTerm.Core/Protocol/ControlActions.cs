@@ -112,6 +112,9 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse ListIcons();
     ControlResponse SetSidebarVisibility(ControlToggleMode mode);
     ControlResponse SetSidebarViewMode(ControlSidebarViewMode mode);
+    /// <summary>sidebar.flagged-layout: set or toggle the app-wide flagged view layout; result.text is the
+    /// resulting layout's raw value.</summary>
+    ControlResponse SetFlaggedViewLayout(ControlFlaggedLayoutMode mode);
     ControlResponse ExpandSidebar(string? window);
     ControlResponse CollapseSidebar(string? window);
 

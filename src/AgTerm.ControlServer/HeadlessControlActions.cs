@@ -2093,6 +2093,10 @@ public sealed partial class HeadlessControlActions : IControlActions
     public event Action<Keymap>? KeymapReloaded;
     public event Action<HeadlessThemeUpdate>? ThemeUpdateRequested;
 
+    /// <summary>sidebar.flagged-layout changed the app-wide layout (fired under the dispatch gate). The live
+    /// app persists it through the shared settings, and the fan-out sets it on every window.</summary>
+    public event Action<FlaggedViewLayout>? FlaggedLayoutChangeRequested;
+
     /// <summary>The keymap.conf the actions load; ApplySettings can move it to a new config directory.</summary>
     public string KeymapPath => Volatile.Read(ref _keymap).Path;
 
@@ -2113,6 +2117,7 @@ public sealed partial class HeadlessControlActions : IControlActions
         StatusReset = settings.EffectiveStatusReset;
         _store.AttentionIncludesActive = settings.EffectiveAttentionIncludesActive;
         _store.AttentionNavigationAcrossWindows = settings.EffectiveAttentionNavigationAcrossWindows;
+        _store.FlaggedLayout = settings.EffectiveFlaggedViewLayout;
         Theme.Light = settings.Theme;
         Theme.Dark = settings.FollowSystemAppearance == true ? settings.DarkTheme : null;
         var keymap = new KeymapStore(settings.ConfigDirectory ?? defaultConfigDirectory);
@@ -2299,6 +2304,21 @@ public sealed partial class HeadlessControlActions : IControlActions
         };
         _store.SetSidebarMode(want); // no-op + no save when unchanged (idempotent)
         return Ok();
+    }
+
+    /// <summary>sidebar.flagged-layout (upstream 902cd853): set or toggle the app-wide flagged view layout and
+    /// echo the result. Toggle flips between the flat list and the tree; from plain it goes to the tree. An
+    /// unchanged layout answers ok without asking the host to save.</summary>
+    public ControlResponse SetFlaggedViewLayout(ControlFlaggedLayoutMode mode)
+    {
+        var current = _store.FlaggedLayout;
+        var want = mode.Resolve(current);
+        if (want != current)
+        {
+            _store.FlaggedLayout = want;
+            FlaggedLayoutChangeRequested?.Invoke(want);
+        }
+        return new ControlResponse { Ok = true, Result = new ControlResult { Text = want.RawValue() } };
     }
 
     /// <summary>sidebar.expand: expand every workspace. Upstream drives the live outline through a

@@ -82,8 +82,8 @@ public static class PaletteAppCommands
         // hidden where it would change nothing; offered in either sidebar mode
         PaletteAppCommand.AddWorkspaceToFocus =>
             store.CurrentWorkspaceId is not null && !store.IsCurrentWorkspaceFocusMember,
-        PaletteAppCommand.ExpandWorkspaces or PaletteAppCommand.CollapseWorkspaces =>
-            store.SidebarMode == SidebarMode.Tree,
+        // the ordinary tree and the flagged view's tree layout both draw workspace rows
+        PaletteAppCommand.ExpandWorkspaces or PaletteAppCommand.CollapseWorkspaces => store.RendersWorkspaceRows,
         // gated on hasSplit, so the hidden split a toggle leaves behind is reachable
         PaletteAppCommand.CloseSplit => store.ActiveSession?.HasSplit == true,
         // upstream gates it on hasSplit and only a picker cover (the port has none)

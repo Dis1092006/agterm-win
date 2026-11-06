@@ -1987,6 +1987,22 @@ public class AppStoreTests
         Assert.Equal("tree", store.ControlTree().SidebarMode);
     }
 
+    // upstream controlTreeReportsThePassedFlaggedLayoutInEitherSidebarMode
+    [Fact]
+    public void ControlTreeReportsTheFlaggedLayoutInEitherSidebarMode()
+    {
+        var store = MakeStore();
+        Assert.Equal("flat", store.ControlTree().SidebarFlaggedLayout);
+        foreach (var layout in FlaggedViewLayouts.All)
+        {
+            store.FlaggedLayout = layout;
+            store.SetSidebarMode(SidebarMode.Tree);
+            Assert.Equal(layout.RawValue(), store.ControlTree().SidebarFlaggedLayout);
+            store.SetSidebarMode(SidebarMode.Flagged);
+            Assert.Equal(layout.RawValue(), store.ControlTree().SidebarFlaggedLayout);
+        }
+    }
+
     [Fact]
     public void ControlTreeReportsQuickVisibleFromClosure()
     {

@@ -16,7 +16,7 @@ when_to_use: >
   Trigger on: agterm, agterm-win, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.split.close, session.swap, session.scratch, session.focus, session.resize, surface.zoom, surface.cursor, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
   session.flag, session.context, session.info, show status or activity under a session in the sidebar, session.tint, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, workspace.tint, tint a session or workspace row a color, window.new, window.list,
-  window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
+  window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.flagged-layout, flagged view layout, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, pane.focused, app.launched, session wait, wait for session status,
   recent.list, recent.open, recent.clear, recently closed sessions, reopen closed session, clipboard set, select theme, edit keymap,
   msg.send, msg.read, msg.ack, message bus, send a message to the other pane or another agent, read my messages, wait for a message,
@@ -153,7 +153,7 @@ read-only top-level fields: `workspaceFilter` (whether the sidebar focus filter 
 navigation also stops on active sessions), `attentionNavigationAcrossWindows` (whether GUI attention
 navigation walks every open window; `session go` stays in its window), `sidebarVisible` (whether the window's
 sidebar is currently shown — the read side of the write-only `sidebar` command), `sidebarMode`
-(`tree` or `flagged` — the read side of `sidebar mode`), and `quickVisible` (the same app-level panel visibility in every window's tree). List windows with
+(`tree` or `flagged` — the read side of `sidebar mode`), `sidebarFlaggedLayout` (`flat`, `plain` or `tree` — the read side of `sidebar flagged-layout`), and `quickVisible` (the same app-level panel visibility in every window's tree). List windows with
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
 read side, so record it then restore the exact frame; logical points relative to the display, `y`
@@ -493,7 +493,7 @@ frontmost-window-only (no `--target`/`--window`/`--pane`).
 
 **sidebar** — `[show|hide|toggle]` (visibility; read back from the tree's `sidebarVisible`) ·
 `mode [tree|flagged|toggle]` (flip between the workspace tree and the flat flagged working-set list; read
-back from the tree's top-level `sidebarMode`) · `expand [--window W]` (expand every workspace) ·
+back from the tree's top-level `sidebarMode`) · `flagged-layout [flat|plain|tree|toggle]` (how the flagged view draws, in every window; read back from `sidebarFlaggedLayout`) · `expand [--window W]` (expand every workspace) ·
 `collapse [--window W]` (collapse all workspaces except the current one, which stays expanded).
 Visibility/mode act on the frontmost window; `expand`/`collapse` default to the frontmost but take a
 `--window` selector to target any open window.
