@@ -109,6 +109,8 @@
                   SelectionChanged="OnSelectionChanged"
                   DragItemsStarting="OnDragItemsStarting"
                   DragOver="OnListDragOver"
+                  DragLeave="OnListDragLeave"
+                  DragItemsCompleted="OnDragItemsCompleted"
                   Drop="OnListDrop"
                   ContextRequested="OnRowContextRequested"
                   Tapped="OnRowTapped"
@@ -350,6 +352,22 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+
+        <!-- the drop indicator while a row is dragged: a line for a gap, a frame for a drop on a row -->
+        <Canvas x:Name="DropIndicator"
+                Grid.Row="0"
+                IsHitTestVisible="False"
+                Visibility="Collapsed">
+            <Rectangle x:Name="DropLine"
+                       Height="2"
+                       RadiusX="1"
+                       RadiusY="1"
+                       Fill="{ThemeResource AccentFillColorDefaultBrush}" />
+            <Border x:Name="DropFrame"
+                    BorderThickness="2"
+                    CornerRadius="4"
+                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}" />
+        </Canvas>
 
         <!-- upstream flaggedEmptyState (a2552826): the flagged view with nothing flagged, over the empty
              list so the link takes the click -->

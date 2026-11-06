@@ -778,20 +778,15 @@ public sealed partial class SidebarView : UserControl
     {
         _draggedSessions = Array.Empty<Guid>();
         _draggedWorkspace = null;
-        if (_snapshot?.Mode == SidebarMode.Flagged)
-        {
-            e.Cancel = true; // drag is a tree-only affordance (upstream)
-            return;
-        }
         var dragged = e.Items.OfType<SidebarRowViewModel>().ToList();
-        if (dragged.Count == 1 && dragged[0].IsWorkspace)
+        if (dragged.Count == 1 && dragged[0].IsWorkspace && _snapshot?.Mode == SidebarMode.Tree)
         {
             _draggedWorkspace = dragged[0].Id;
             return;
         }
         if (dragged.Any(i => i.IsWorkspace))
         {
-            e.Cancel = true; // mixed drags have no meaning
+            e.Cancel = true; // workspaces reorder only in the tree (upstream); mixed drags have no meaning
             return;
         }
         // a selected row drags the whole selection block (visual order); an unselected one just itself
@@ -816,11 +811,37 @@ public sealed partial class SidebarView : UserControl
             return;
         }
 
-        e.AcceptedOperation = DataPackageOperation.Move;
+        var position = e.GetPosition(RowsList);
+        if (_draggedWorkspace is not null && GapY(WorkspaceDrop(position).FlatIndex) is { } lineY)
+        {
+            e.AcceptedOperation = DataPackageOperation.Move;
+            ShowDropLine(lineY);
+            return;
+        }
+        // only a drop that changes the sidebar is offered, as upstream's validateDrop
+        if (_draggedSessions.Count > 0 && SessionDropAt(position) is { } target &&
+            _snapshot?.DropModel.Resolve(_draggedSessions, target.Drop) is not null &&
+            ShowDrop(target.Point))
+        {
+            e.AcceptedOperation = DataPackageOperation.Move;
+            return;
+        }
+        e.AcceptedOperation = DataPackageOperation.None;
+        HideDropIndicator();
+    }
+
+    private void OnListDragLeave(object sender, DragEventArgs e) => HideDropIndicator();
+
+    private void OnDragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
+    {
+        HideDropIndicator();
+        _draggedSessions = Array.Empty<Guid>();
+        _draggedWorkspace = null;
     }
 
     private async void OnListDrop(object sender, DragEventArgs e)
     {
+        HideDropIndicator();
         if (_snapshot is not { } snapshot || _controller is null) return;
         var position = e.GetPosition(RowsList);
 
@@ -841,33 +862,97 @@ public sealed partial class SidebarView : UserControl
 
         if (_draggedWorkspace is { } workspace)
         {
-            // slot from the workspace-row midpoints only (session rows are ignored, upstream-style)
-            var slot = 0;
-            for (var i = 0; i < _items.Count; i++)
-            {
-                if (!_items[i].IsWorkspace) continue;
-                if (RowsList.ContainerFromIndex(i) is not ListViewItem container) continue;
-                var bounds = container.TransformToVisual(RowsList)
-                    .TransformBounds(new Windows.Foundation.Rect(0, 0,
-                        container.ActualWidth, container.ActualHeight));
-                if (position.Y > bounds.Top + bounds.Height / 2) slot++;
-            }
-            _controller.DropWorkspace(workspace, slot);
+            _controller.DropWorkspace(workspace, WorkspaceDrop(position).Slot);
         }
-        else if (_draggedSessions.Count > 0)
+        else if (_draggedSessions.Count > 0 && SessionDropAt(position) is { } target)
         {
-            var flat = FlatInsertIndex(position);
-            if (SidebarFlattenedDrop.SessionSlot(snapshot.Rows, flat) is { } slot)
-            {
-                _controller.DropSessions(_draggedSessions,
-                    new SidebarDrop.SessionDropTarget.WorkspaceRow(slot.Workspace, SessionCount(slot.Workspace)),
-                    slot.ChildIndex);
-            }
+            _controller.DropSessions(_draggedSessions, target.Drop);
         }
         _draggedSessions = Array.Empty<Guid>();
         _draggedWorkspace = null;
         e.Handled = true;
     }
+
+    /// <summary>The session drop under the pointer: the row zones (SidebarFlattenedDrop.Locate) over the
+    /// realized rows, read in the projection's terms.</summary>
+    private (SidebarDropPoint Point, SidebarSessionDrop Drop)? SessionDropAt(Windows.Foundation.Point position)
+    {
+        if (_snapshot is not { } snapshot) return null;
+        var bounds = new List<SidebarRowBounds>();
+        for (var i = 0; i < _items.Count; i++)
+        {
+            if (RowRect(i) is { } rect) bounds.Add(new SidebarRowBounds(i, rect.Top, rect.Height));
+        }
+        var point = SidebarFlattenedDrop.Locate(bounds, position.Y);
+        return SidebarFlattenedDrop.SessionDrop(snapshot.Rows, snapshot.RendersWorkspaceRows, point) is { } drop
+            ? (point, drop)
+            : null;
+    }
+
+    /// <summary>A dragged workspace's slot: the workspace rows whose midpoint sits above the pointer (session
+    /// rows are ignored, upstream-style), and the flat index of the row it lands before.</summary>
+    private (int Slot, int FlatIndex) WorkspaceDrop(Windows.Foundation.Point position)
+    {
+        var slot = 0;
+        var flatIndex = _items.Count;
+        for (var i = 0; i < _items.Count; i++)
+        {
+            if (!_items[i].IsWorkspace || RowRect(i) is not { } rect) continue;
+            if (position.Y > rect.Top + rect.Height / 2) slot++;
+            else if (flatIndex == _items.Count) flatIndex = i;
+        }
+        return (slot, flatIndex);
+    }
+
+    private bool ShowDrop(SidebarDropPoint point)
+    {
+        switch (point)
+        {
+            case SidebarDropPoint.OnRow(var index) when RowRect(index) is { } rect:
+                DropLine.Visibility = Visibility.Collapsed;
+                DropFrame.Visibility = Visibility.Visible;
+                DropFrame.Width = Math.Max(0, rect.Width - 4);
+                DropFrame.Height = rect.Height;
+                Canvas.SetLeft(DropFrame, rect.Left + 2);
+                Canvas.SetTop(DropFrame, rect.Top);
+                DropIndicator.Visibility = Visibility.Visible;
+                return true;
+            case SidebarDropPoint.Gap(var index) when GapY(index) is { } y:
+                ShowDropLine(y);
+                return true;
+            default:
+                HideDropIndicator();
+                return false;
+        }
+    }
+
+    private void ShowDropLine(double y)
+    {
+        DropFrame.Visibility = Visibility.Collapsed;
+        DropLine.Visibility = Visibility.Visible;
+        DropLine.Width = Math.Max(0, RowsList.ActualWidth - 8);
+        Canvas.SetLeft(DropLine, 4);
+        Canvas.SetTop(DropLine, y - DropLine.Height / 2);
+        DropIndicator.Visibility = Visibility.Visible;
+    }
+
+    private void HideDropIndicator() => DropIndicator.Visibility = Visibility.Collapsed;
+
+    /// <summary>The y of the gap before the row at flatIndex: that row's top, or the bottom of the row above
+    /// it at the end of the list. Null when neither row is realized.</summary>
+    private double? GapY(int flatIndex)
+    {
+        if (flatIndex < _items.Count && RowRect(flatIndex) is { } below) return below.Top;
+        if (flatIndex > 0 && RowRect(flatIndex - 1) is { } above) return above.Bottom;
+        return null;
+    }
+
+    /// <summary>A realized row's bounds in the list's coordinates.</summary>
+    private Windows.Foundation.Rect? RowRect(int index) =>
+        RowsList.ContainerFromIndex(index) is ListViewItem container
+            ? container.TransformToVisual(RowsList).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, container.ActualWidth, container.ActualHeight))
+            : null;
 
     private async Task ImportDroppedDirectoriesAsync(DataPackageView dataView,
         Windows.Foundation.Point position, SidebarSnapshot snapshot, SidebarController controller)
@@ -887,42 +972,9 @@ public sealed partial class SidebarView : UserControl
         for (var i = 0; i < _items.Count; i++)
         {
             if (_items[i].IsWorkspace) workspaceId = _items[i].Id;
-            if (RowsList.ContainerFromIndex(i) is not ListViewItem container) continue;
-            var bounds = container.TransformToVisual(RowsList)
-                .TransformBounds(new Windows.Foundation.Rect(0, 0,
-                    container.ActualWidth, container.ActualHeight));
-            if (bounds.Contains(position)) return workspaceId;
+            if (RowRect(i) is { } bounds && bounds.Contains(position)) return workspaceId;
         }
         return null;
-    }
-
-    private int SessionCount(Guid workspaceId)
-    {
-        var rows = _snapshot?.Rows ?? Array.Empty<SidebarRow>();
-        var count = 0;
-        var inside = false;
-        foreach (var row in rows)
-        {
-            if (row.Kind == SidebarRowKind.Workspace) inside = row.Id == workspaceId;
-            else if (inside) count++;
-        }
-        return count;
-    }
-
-    /// <summary>The flat insertion slot for a pointer position: rows whose midpoint sits above the
-    /// pointer count as passed.</summary>
-    private int FlatInsertIndex(Windows.Foundation.Point position)
-    {
-        var index = 0;
-        for (var i = 0; i < _items.Count; i++)
-        {
-            if (RowsList.ContainerFromIndex(i) is not ListViewItem container) continue;
-            var bounds = container.TransformToVisual(RowsList)
-                .TransformBounds(new Windows.Foundation.Rect(0, 0,
-                    container.ActualWidth, container.ActualHeight));
-            if (position.Y > bounds.Top + bounds.Height / 2) index = i + 1;
-        }
-        return index;
     }
 
     // MARK: - status glyph blink
