@@ -1014,20 +1014,29 @@ public sealed partial class AppStore
 
 
     /// <summary>Sets one workspace's expand/collapse state and persists it. Clean no-op (no write)
-    /// for an unknown id or when unchanged.</summary>
+    /// for an unknown id or when unchanged. A collapse also folds a workspace the sidebar reveal
+    /// opened, which changes the rows but saves nothing.</summary>
     public void SetWorkspaceExpanded(Guid id, bool expanded)
     {
         var index = Workspaces.FindIndex(w => w.Id == id);
-        if (index < 0 || Workspaces[index].IsExpanded == expanded) return;
+        if (index < 0) return;
+        var folded = !expanded && ForgetRevealedWorkspace(id);
+        if (Workspaces[index].IsExpanded == expanded)
+        {
+            if (folded) NotifySidebar();
+            return;
+        }
         Workspaces[index].IsExpanded = expanded;
         Save();
     }
 
     /// <summary>Marks each workspace expanded iff its id is in expandedIds and persists the collapse
-    /// state. One Save for the whole diff; a clean no-op (no write) when nothing changed.</summary>
+    /// state. One Save for the whole diff; a clean no-op (no write) when nothing changed. The sidebar
+    /// reveal keeps open only the workspaces in the set.</summary>
     public void SetWorkspacesExpanded(IReadOnlySet<Guid> expandedIds)
     {
         var changed = false;
+        var folded = KeepRevealedWorkspaces(expandedIds);
         foreach (var workspace in Workspaces)
         {
             var expanded = expandedIds.Contains(workspace.Id);
@@ -1038,6 +1047,7 @@ public sealed partial class AppStore
             }
         }
         if (changed) Save();
+        else if (folded) NotifySidebar();
     }
 
     /// <summary>Expands every workspace (wire sidebar.expand, palette Expand Workspaces). A no-op while
@@ -1230,6 +1240,7 @@ public sealed partial class AppStore
     private void RestoreCore(Snapshot snapshot, bool launchRestore)
     {
         _freshWorkspaceId = null;
+        ForgetSidebarReveal();
         // fold workspaces sharing an id into the first occurrence, and keep only the first snapshot
         // of any repeated session id, wherever it sits: a file written by a build that could
         // duplicate either stays unreachable past the first match otherwise, and re-saves the corruption.

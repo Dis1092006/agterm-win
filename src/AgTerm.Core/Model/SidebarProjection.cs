@@ -45,8 +45,9 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
 
 /// <summary>
 /// The host-free projection of an AppStore into ordered sidebar rows. Tree mode: the focus-filtered
-/// VisibleWorkspaces, each expanded workspace followed by its session rows (a collapsed one keeps
-/// only its roll-up row). Flagged mode follows the flagged layout: flat is the flagged list labeled
+/// VisibleWorkspaces, each workspace open on screen followed by its session rows (a collapsed one keeps
+/// only its roll-up row; a reveal opens one without saving it, see AppStore.SyncSidebarReveal).
+/// Flagged mode follows the flagged layout: flat is the flagged list labeled
 /// "name : workspace", plain is the same list labeled by name, and tree nests the flagged sessions
 /// under rows for the workspaces that have one, ignoring the focus filter (upstream WorkspaceSidebar's
 /// flagged projection, 902cd853 + f8c3eba3). Pure reads — call under the host gate and hand the rows
@@ -66,7 +67,7 @@ public static class SidebarProjection
                     var flagged = workspace.Sessions.Where(s => s.Flagged).ToList();
                     if (flagged.Count == 0) continue;
                     rows.Add(WorkspaceRow(store, workspace, unseen: flagged.Sum(s => s.UnseenCount)));
-                    if (!workspace.IsExpanded) continue;
+                    if (!store.IsWorkspaceOpenInSidebar(workspace)) continue;
                     foreach (var session in flagged)
                         rows.Add(SessionRow(store, workspace, session, session.DisplayName));
                 }
@@ -86,7 +87,7 @@ public static class SidebarProjection
         foreach (var workspace in store.VisibleWorkspaces)
         {
             rows.Add(WorkspaceRow(store, workspace, workspace.UnseenCount));
-            if (!workspace.IsExpanded) continue;
+            if (!store.IsWorkspaceOpenInSidebar(workspace)) continue;
             foreach (var session in workspace.Sessions)
                 rows.Add(SessionRow(store, workspace, session, session.DisplayName));
         }
@@ -114,7 +115,7 @@ public static class SidebarProjection
     private static SidebarRow WorkspaceRow(AppStore store, Workspace workspace, int unseen) =>
         new(SidebarRowKind.Workspace, workspace.Id, workspace.Name)
         {
-            Collapsed = !workspace.IsExpanded,
+            Collapsed = !store.IsWorkspaceOpenInSidebar(workspace),
             Focused = store.FocusedWorkspaceIds.Contains(workspace.Id),
             Unseen = unseen,
             WorkspaceId = workspace.Id,

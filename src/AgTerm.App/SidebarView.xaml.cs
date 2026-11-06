@@ -37,6 +37,7 @@ public sealed partial class SidebarView : UserControl
     private Keymap _keymap = Keymap.Empty;
     private SidebarSnapshot? _snapshot;
     private string? _shapeKey;
+    private long _revealGeneration;
     private bool _syncingSelection;
     private SidebarRowViewModel? _editing;
     private string _editingOriginal = "";
@@ -148,6 +149,7 @@ public sealed partial class SidebarView : UserControl
 
         RefreshRealizedRowAutomationNames();
         SyncSelection(snapshot);
+        ScrollRevealedSelection(snapshot);
         var flagged = snapshot.Mode == SidebarMode.Flagged;
         FlaggedToggle.IsChecked = flagged;
         FlaggedEmptyState.Visibility = snapshot.ShowsFlaggedEmptyState ? Visibility.Visible : Visibility.Collapsed;
@@ -233,6 +235,16 @@ public sealed partial class SidebarView : UserControl
         }
 
         RefreshListSelection();
+    }
+
+    /// <summary>A new reveal (a selection change or a view switch) scrolls the selected row into view;
+    /// any other update leaves the scroll position where the user put it.</summary>
+    private void ScrollRevealedSelection(SidebarSnapshot snapshot)
+    {
+        if (_revealGeneration == snapshot.RevealGeneration) return;
+        _revealGeneration = snapshot.RevealGeneration;
+        if (_items.FirstOrDefault(i => i.IsSession && i.Id == snapshot.SelectedSessionId) is { } row)
+            RowsList.ScrollIntoView(row);
     }
 
     /// <summary>The workspace theme palette's preview, shown on that workspace's rows in this window
