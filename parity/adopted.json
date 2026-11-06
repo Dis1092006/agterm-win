@@ -126,7 +126,9 @@
   ],
   "keymapActions": [
     { "wire": "toggle_workspace_filter", "upstream": "6722755a" },
-    { "wire": "toggle_horizontal_split", "upstream": "eb29d556" }
+    { "wire": "toggle_horizontal_split", "upstream": "eb29d556" },
+    { "wire": "edit_flagged_sessions", "upstream": "a2552826" },
+    { "wire": "edit_focused_workspaces", "upstream": "a2552826" }
   ],
   "keymapChords": [
     { "wire": "dashboard", "upstream": "eb29d556" }

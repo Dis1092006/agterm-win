@@ -147,6 +147,30 @@ public sealed class SidebarFooterSourceTests
         Assert.Contains("FocusFilterToggle.Opacity = FocusFilterToggle.IsEnabled ? 1 : 0.35;", apply, StringComparison.Ordinal);
     }
 
+    // upstream a2552826 flaggedEmptyState: a note and an "Add Sessions…" link that runs edit_flagged_sessions
+    [Fact]
+    public void Empty_flagged_view_offers_the_flagged_editor()
+    {
+        var state = Named("FlaggedEmptyState");
+        Assert.Equal("0", (string?)state.Attribute("Grid.Row"));
+        Assert.Equal("Collapsed", (string?)state.Attribute("Visibility"));
+        Assert.Equal("0.6", (string?)state.Attribute("Opacity"));
+        Assert.Contains(state.Descendants(Xaml + "TextBlock"), text => (string?)text.Attribute("Text") == "No flagged sessions.");
+        var link = Named("FlaggedEmptyAddLink");
+        Assert.Equal("flagged-empty-add", (string?)link.Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal("Add Sessions…", (string?)link.Attribute("AutomationProperties.Name"));
+        Assert.Equal("OnFlaggedEmptyAddClick", (string?)link.Attribute("Click"));
+        Assert.Contains(link.Descendants(Xaml + "Underline"), _ => true);
+
+        var view = Source("SidebarView.xaml.cs");
+        var apply = MethodBody(view, "public void Apply(SidebarSnapshot snapshot)");
+        Assert.Contains("FlaggedEmptyState.Visibility = snapshot.ShowsFlaggedEmptyState ? Visibility.Visible : Visibility.Collapsed;",
+            apply, StringComparison.Ordinal);
+        Assert.Contains("EditFlaggedSessionsRequested?.Invoke()", MethodBody(view, "private void OnFlaggedEmptyAddClick"), StringComparison.Ordinal);
+        Assert.Contains("Sidebar.EditFlaggedSessionsRequested +=", Source("MainWindow.xaml.cs"), StringComparison.Ordinal);
+        Assert.Contains("router.ExecuteAsync(BuiltinAction.EditFlaggedSessions)", Source("MainWindow.xaml.cs"), StringComparison.Ordinal);
+    }
+
     private static XElement Footer() =>
         Document().Root!.Element(Xaml + "Grid")!.Elements(Xaml + "Grid")
             .Single(grid => (string?)grid.Attribute(X + "Name") == "SidebarFooter");

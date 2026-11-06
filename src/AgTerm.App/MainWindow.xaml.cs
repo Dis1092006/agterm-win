@@ -1136,6 +1136,13 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.SelectTheme] = Async(
                 () => true,
                 () => ToggleWindowPaletteAsync(WindowPaletteMode.Themes)),
+            // upstream hasSessions and hasCurrentWorkspace (a2552826)
+            [BuiltinAction.EditFlaggedSessions] = Async(
+                () => _latestSidebarSnapshot?.Workspaces.Any(workspace => workspace.SessionCount > 0) == true,
+                () => ToggleWindowPaletteAsync(WindowPaletteMode.FlaggedEditor)),
+            [BuiltinAction.EditFocusedWorkspaces] = Async(
+                () => _latestSidebarSnapshot?.CurrentWorkspaceId is not null,
+                () => ToggleWindowPaletteAsync(WindowPaletteMode.FocusEditor)),
             [BuiltinAction.ToggleFullscreen] = Sync(
                 () => true,
                 _fullscreen.Toggle),
@@ -1185,6 +1192,12 @@ public sealed partial class MainWindow : Window
             Sidebar.WorkspaceIconRequested += workspaceId => ObserveTaskFault(
                 _paletteTransitions.RunAsync(() => OpenWorkspaceIconPaletteAsync(workspaceId)),
                 "Workspace icon palette failed to open");
+            // upstream runs the link through the keymap path, so the gates apply as for the chord
+            Sidebar.EditFlaggedSessionsRequested += () =>
+            {
+                if (_commandRouter is { } router)
+                    ObserveTaskFault(router.ExecuteAsync(BuiltinAction.EditFlaggedSessions), "Edit flagged sessions failed");
+            };
             sidebar.SnapshotChanged += ApplyChrome;
             sidebar.Start();
         });
@@ -1340,6 +1353,23 @@ public sealed partial class MainWindow : Window
         ApplyPendingClose(snapshot.PendingClose);
         ApplyTitleBarState(snapshot.TitleBar);
         ApplySidebarChrome(snapshot);
+        ApplyOpenEditor(snapshot);
+    }
+
+    /// <summary>An open membership editor follows the store: a row run from it, the sidebar, a hotkey or
+    /// the socket all redraw its marks and its filter line.</summary>
+    private void ApplyOpenEditor(SidebarSnapshot snapshot)
+    {
+        if (!PaletteOverlay.IsOpen || _shownPickId is not null ||
+            _openPaletteMode is not { } mode || mode is not (WindowPaletteMode.FlaggedEditor or WindowPaletteMode.FocusEditor))
+        {
+            return;
+        }
+
+        PaletteOverlay.RefreshMarks(mode == WindowPaletteMode.FlaggedEditor
+            ? snapshot.FlaggedSessionIds
+            : snapshot.FocusMemberIds);
+        PaletteOverlay.SetHint(WindowPaletteProjection.EditorHint(mode, snapshot.FocusEnabled, snapshot.Mode));
     }
 
     private void ApplyPendingClose(PendingCloseSummary? pendingClose)
@@ -2157,6 +2187,8 @@ public sealed partial class MainWindow : Window
                     PreserveInputOrderForEmptyQuery = snapshot.PreserveInputOrderForEmptyQuery,
                     InitialSelectionId = snapshot.InitialSelectionId,
                     Dimmed = snapshot.Dimmed,
+                    KeepsOpenOnAccept = snapshot.KeepsOpenOnAccept,
+                    Hint = snapshot.Hint,
                 });
             PaletteOverlay.RefreshIndicators(_titleBarState.SessionIndicators, _settings, liveSessions: false);
         }
@@ -2393,6 +2425,18 @@ public sealed partial class MainWindow : Window
             pickHost.Host.Actions.Pick.Resolve(pickId, PickPalette.Outcome(item));
             await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
             RestoreFocusAfterPick();
+            return;
+        }
+
+        // an editor row toggles in place; the palette stays open and redraws from the next snapshot
+        if (PaletteOverlay.IsOpen && _openPaletteMode is { } editorMode &&
+            editorMode is WindowPaletteMode.FlaggedEditor or WindowPaletteMode.FocusEditor)
+        {
+            if (UiActionsEnabled() && _host is { } editorHost)
+            {
+                await editorHost.StoreCoordinator.MutateAsync(
+                    store => WindowPaletteActions.ToggleMembership(store, editorMode, item.Id));
+            }
             return;
         }
 
@@ -3173,7 +3217,8 @@ public sealed partial class MainWindow : Window
         _titleBarState = state;
         _switcher.RefreshIndicators(state.SessionIndicators);
         PaletteOverlay.RefreshIndicators(state.SessionIndicators, _settings,
-            _openPaletteMode is WindowPaletteMode.Sessions or WindowPaletteMode.Attention && _shownPickId is null);
+            _openPaletteMode is WindowPaletteMode.Sessions or WindowPaletteMode.Attention or WindowPaletteMode.FlaggedEditor
+                && _shownPickId is null);
         RefreshRecentSessionIndicators(_settings);
         RefreshTitles(_settings);
         RefreshTitleBarActions(_settings);

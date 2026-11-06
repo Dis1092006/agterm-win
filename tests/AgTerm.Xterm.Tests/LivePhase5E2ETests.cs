@@ -80,6 +80,8 @@ public class Phase5ActionCoverageTests
         new(BuiltinAction.CustomCommandPalette, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+o", "ctrl+shift+o", "ctrl+shift+o"),
         new(BuiltinAction.ShowAttention, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+shift+i", "ctrl+shift+i", "ctrl+shift+i"),
         new(BuiltinAction.Dashboard, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+g", "cmd+shift+g", "ctrl+shift+g"),
+        new(BuiltinAction.EditFlaggedSessions, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
+        new(BuiltinAction.EditFocusedWorkspaces, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
     ];
 
     public static IEnumerable<object?[]> ActionRows => Coverage.Select(row => new object?[]
@@ -95,7 +97,7 @@ public class Phase5ActionCoverageTests
     [Fact]
     public void Coverage_table_contains_each_builtin_action_once_with_an_explicit_disposition()
     {
-        Assert.Equal(43, Coverage.Length);
+        Assert.Equal(45, Coverage.Length);
         Assert.Equal(Coverage.Length, Coverage.Select(row => row.Action).Distinct().Count());
         Assert.Equal(BuiltinActions.All, Coverage.Select(row => row.Action).ToArray());
         Assert.All(Coverage, row => Assert.Equal(ActionDisposition.Implemented, row.Disposition));

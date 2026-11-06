@@ -88,7 +88,7 @@ public sealed class HeadlessKeymapTests : IDisposable
         Assert.True(response.Ok, response.Error);
         var keymap = response.Result!.Keymap!;
         Assert.Equal(KeymapPath, keymap.Path);
-        Assert.Equal(43, keymap.Actions.Length);
+        Assert.Equal(45, keymap.Actions.Length);
         var command = Assert.Single(keymap.Commands);
         Assert.Equal("Build", command.Name);
         Assert.Equal("ctrl+b", command.Shortcut);

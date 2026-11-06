@@ -35,6 +35,17 @@ public sealed partial class PaletteView : UserControl
     public void RefreshIndicators(IReadOnlyDictionary<Guid, AgentIndicator> indicators, AppSettings settings, bool liveSessions) =>
         _controller.RefreshIndicators(indicators, settings, liveSessions);
 
+    public void RefreshMarks(IReadOnlySet<Guid> on) => _controller.RefreshMarks(on);
+
+    /// <summary>The editor footer; it follows the store while the editor is open.</summary>
+    public void SetHint(string? hint)
+    {
+        HintText.Text = hint ?? string.Empty;
+        var visibility = string.IsNullOrEmpty(hint) ? Visibility.Collapsed : Visibility.Visible;
+        HintText.Visibility = visibility;
+        HintDivider.Visibility = visibility;
+    }
+
     public void SetPanelBackground(Brush? background)
     {
         if (background is null)
@@ -71,6 +82,7 @@ public sealed partial class PaletteView : UserControl
 
         QueryBox.PlaceholderText = placeholder;
         Scrim.Visibility = options.Dimmed ? Visibility.Visible : Visibility.Collapsed;
+        SetHint(options.Hint);
         Visibility = Visibility.Visible;
         ApplyAvailableHeight(ActualHeight);
         _controller.Open(items, options);
@@ -115,7 +127,11 @@ public sealed partial class PaletteView : UserControl
         if (selected is null)
             return;
 
-        Visibility = Visibility.Collapsed;
+        // an editor runs the row in place and stays open; a click took focus from the query box
+        if (_controller.IsOpen)
+            FocusQuery();
+        else
+            Visibility = Visibility.Collapsed;
         ItemAccepted?.Invoke(selected);
     }
 

@@ -13,6 +13,8 @@ public enum WindowPaletteMode
     Attention,
     Themes,
     WorkspaceTheme,
+    FlaggedEditor,
+    FocusEditor,
 }
 
 public sealed record WindowPaletteSnapshot(
@@ -20,11 +22,14 @@ public sealed record WindowPaletteSnapshot(
     string Placeholder,
     IReadOnlyList<PaletteItemViewModel> Items,
     bool PreserveInputOrderForEmptyQuery = false,
-    string? InitialSelectionId = null)
+    string? InitialSelectionId = null,
+    string? Hint = null)
 {
     // Windows-only: a theme preview shows the real window colors, so the theme palettes open
     // without the scrim the other palettes use.
     public bool Dimmed => Mode is not (WindowPaletteMode.Themes or WindowPaletteMode.WorkspaceTheme);
+
+    public bool KeepsOpenOnAccept => Mode is WindowPaletteMode.FlaggedEditor or WindowPaletteMode.FocusEditor;
 }
 
 public static class WindowPaletteProjection
@@ -73,7 +78,33 @@ public static class WindowPaletteProjection
                 "Select a theme…",
                 ThemeItems(themeCatalog ?? ThemeCatalog.Default, currentTheme, followsSystemAppearance),
                 InitialSelectionId: ThemeItemId(currentTheme)),
+            WindowPaletteMode.FlaggedEditor => new(
+                mode,
+                "Flag or unflag sessions…",
+                FlaggedEditorItems(store),
+                PreserveInputOrderForEmptyQuery: true,
+                Hint: EditorHint(mode, store.FocusEnabled, store.SidebarMode)),
+            WindowPaletteMode.FocusEditor => new(
+                mode,
+                "Add or remove focused workspaces…",
+                FocusEditorItems(store),
+                PreserveInputOrderForEmptyQuery: true,
+                Hint: EditorHint(mode, store.FocusEnabled, store.SidebarMode)),
             _ => throw new ArgumentOutOfRangeException(nameof(mode)),
+        };
+    }
+
+    /// <summary>The footer of a membership editor (upstream editorHint, a2552826). The focus editor adds
+    /// the filter state, and notes that the flagged view does not apply it.</summary>
+    public static string? EditorHint(WindowPaletteMode mode, bool focusEnabled, SidebarMode sidebarMode)
+    {
+        const string hint = "Return toggles · Esc closes · Changes apply immediately";
+        return mode switch
+        {
+            WindowPaletteMode.FlaggedEditor => hint,
+            WindowPaletteMode.FocusEditor =>
+                $"{hint}\nFilter {(focusEnabled ? "on" : "off")}{(sidebarMode == SidebarMode.Flagged ? ", applies in tree view" : "")}",
+            _ => null,
         };
     }
 
@@ -185,6 +216,30 @@ public static class WindowPaletteProjection
                 statusShape: includeStatus ? indicator.Shape : null);
         }).ToArray();
 
+    // every session, tree order; the focus filter and the flagged view hide none of them
+    private static IReadOnlyList<PaletteItemViewModel> FlaggedEditorItems(AppStore store) =>
+        store.Workspaces.SelectMany(workspace => workspace.Sessions.Select(session =>
+        {
+            var indicator = session.AgentIndicator;
+            return new PaletteItemViewModel(
+                session.Id.ToString("D"),
+                session.DisplayName,
+                workspace.Name,
+                status: indicator.Status,
+                statusColor: indicator.Color,
+                statusShape: indicator.Shape,
+                mark: PaletteMark.Flag,
+                markOn: session.Flagged);
+        })).ToArray();
+
+    private static IReadOnlyList<PaletteItemViewModel> FocusEditorItems(AppStore store) =>
+        store.Workspaces.Select(workspace => new PaletteItemViewModel(
+            workspace.Id.ToString("D"),
+            workspace.Name,
+            workspace.Sessions.Count == 1 ? "1 session" : $"{workspace.Sessions.Count} sessions",
+            mark: PaletteMark.Focus,
+            markOn: store.FocusedWorkspaceIds.Contains(workspace.Id))).ToArray();
+
     private static IReadOnlyList<PaletteItemViewModel> CommandItems(
         AppStore store,
         Keymap keymap,
@@ -193,6 +248,9 @@ public static class WindowPaletteProjection
             .Where(action => !PaletteLaunchers.Contains(action))
             // nothing marked means nothing to apply the filter to
             .Where(action => action != BuiltinAction.ToggleWorkspaceFilter || store.FocusedWorkspaceIds.Count > 0)
+            // upstream hasSessions and hasCurrentWorkspace (a2552826)
+            .Where(action => action != BuiltinAction.EditFlaggedSessions || store.Workspaces.Any(w => w.Sessions.Count > 0))
+            .Where(action => action != BuiltinAction.EditFocusedWorkspaces || store.CurrentWorkspaceId is not null)
             .Where(action => stateProvider(action) is { Implemented: true, CanExecute: true })
             .Select(action => new PaletteItemViewModel(
                 action.WireName(),

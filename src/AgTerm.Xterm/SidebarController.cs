@@ -56,6 +56,12 @@ public sealed record SidebarSnapshot
     public IReadOnlySet<Guid> FocusMemberIds { get; init; } = new HashSet<Guid>();
     public bool FocusEnabled { get; init; }
     public int FlaggedCount { get; init; }
+
+    /// <summary>Every flagged session, including those the rows hide.</summary>
+    public IReadOnlySet<Guid> FlaggedSessionIds { get; init; } = new HashSet<Guid>();
+
+    /// <summary>The flagged view with nothing flagged (upstream flaggedEmptyState, a2552826).</summary>
+    public bool ShowsFlaggedEmptyState => Mode == SidebarMode.Flagged && FlaggedCount == 0;
     public PendingCloseSummary? PendingClose { get; init; }
 
     /// <summary>The title bar buttons' state, captured with the rows: every change they draw (selection,
@@ -608,6 +614,7 @@ public sealed class SidebarController : IDisposable
             FocusMemberIds = new HashSet<Guid>(store.FocusedWorkspaceIds),
             FocusEnabled = store.FocusEnabled,
             FlaggedCount = store.FlaggedSessions.Count,
+            FlaggedSessionIds = store.FlaggedSessions.Select(s => s.Id).ToHashSet(),
             PendingClose = store.PendingCloseSummary,
             TitleBar = TitleBarState.Project(store),
         };

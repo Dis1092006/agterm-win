@@ -21,7 +21,7 @@ public class ControlKeymapTests
     {
         var list = Project("");
 
-        Assert.Equal(43, list.Actions.Length);
+        Assert.Equal(45, list.Actions.Length);
         Assert.Equal(BuiltinActions.All.Select(a => a.WireName()), list.Actions.Select(a => a.Action));
         Assert.Equal(Path, list.Path);
     }

@@ -15,4 +15,11 @@ public sealed record PaletteOpenOptions
     public bool AllowCustomAnswer { get; init; }
 
     public bool Dimmed { get; init; } = true;
+
+    /// <summary>A membership editor runs a row in place: the palette stays open with its query, order and
+    /// highlight (upstream keepsOpenOnRun, a2552826).</summary>
+    public bool KeepsOpenOnAccept { get; init; }
+
+    /// <summary>A footer line under the rows; null shows none.</summary>
+    public string? Hint { get; init; }
 }

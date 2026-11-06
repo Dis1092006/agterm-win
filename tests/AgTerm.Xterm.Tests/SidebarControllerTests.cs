@@ -267,6 +267,44 @@ public sealed class SidebarControllerTests : IDisposable
         Assert.Equal(2, Latest.FlaggedCount);
     }
 
+    // upstream a2552826: the flagged view with nothing flagged says so and offers the editor
+    [Fact]
+    public void The_flagged_view_with_nothing_flagged_shows_the_empty_state()
+    {
+        Guid session = default;
+        Mutate(store => session = store.AddSession(store.Workspaces[0].Id, _stateDir, select: false)!.Id);
+        Assert.False(Latest.ShowsFlaggedEmptyState);
+
+        _controller.ToggleFlaggedView();
+        Assert.Equal(SidebarMode.Flagged, Latest.Mode);
+        Assert.True(Latest.ShowsFlaggedEmptyState);
+
+        _controller.SetFlag(new[] { session }, on: true);
+        Assert.False(Latest.ShowsFlaggedEmptyState);
+    }
+
+    // the open Edit Flagged Sessions palette redraws its marks from this set
+    [Fact]
+    public void The_snapshot_carries_every_flagged_session_the_rows_may_hide()
+    {
+        Guid w2 = default, shown = default, hidden = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            shown = store.AddSession(w2, _stateDir, select: false)!.Id;
+            hidden = store.AddSession(w2, _stateDir, select: false)!.Id;
+            store.SetFlag(true, [shown, hidden]);
+            store.SetFocusMembership(store.Workspaces[0].Id, true);
+            store.SetFocusEnabled(true);
+        });
+        Assert.Empty(Latest.Rows.Where(r => r.Id == hidden));
+
+        Assert.Equal(new HashSet<Guid> { shown, hidden }, Latest.FlaggedSessionIds);
+
+        _controller.SetFlag(new[] { shown }, on: false);
+        Assert.Equal(new HashSet<Guid> { hidden }, Latest.FlaggedSessionIds);
+    }
+
     [Fact]
     public void Controller_gestures_mutate_the_store_like_the_socket_would()
     {

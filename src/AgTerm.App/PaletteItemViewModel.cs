@@ -5,11 +5,24 @@ using AgTerm.Xterm;
 
 namespace AgTerm.App;
 
+/// <summary>The leading mark of a membership editor row (upstream PaletteMark, a2552826).</summary>
+public enum PaletteMark
+{
+    None,
+    Flag,
+    Focus,
+}
+
 public sealed class PaletteItemViewModel : INotifyPropertyChanged
 {
+    // the sidebar's flag and grid paths (SidebarView.xaml), so the palette mark reads like the sidebar
+    private const string FlagData = "M3.5,0.5 V14.5 M3.5,1.5 H13 L10.5,5 L13,8.5 H3.5 Z";
+    private const string GridData = "M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z";
+
     private AgentIndicator _indicator;
     private AppSettings _settings = new();
     private bool _hasIndicator;
+    private bool _markOn;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -21,7 +34,9 @@ public sealed class PaletteItemViewModel : INotifyPropertyChanged
         string? badge = null,
         AgentStatus? status = null,
         string? statusColor = null,
-        StatusShape? statusShape = null)
+        StatusShape? statusShape = null,
+        PaletteMark mark = PaletteMark.None,
+        bool markOn = false)
     {
         // Pick rows come from the caller unchecked, so a blank id or title must not throw here.
         ArgumentNullException.ThrowIfNull(id);
@@ -34,6 +49,8 @@ public sealed class PaletteItemViewModel : INotifyPropertyChanged
         Badge = string.IsNullOrWhiteSpace(badge) ? null : badge;
         _hasIndicator = status is not null;
         _indicator = new AgentIndicator(status ?? AgentStatus.Idle, Color: statusColor, Shape: statusShape);
+        Mark = mark;
+        _markOn = mark != PaletteMark.None && markOn;
 
         var searchKeys = Subtitle is null ? new[] { Title } : new[] { Title, Subtitle };
         SearchKeys = new ReadOnlyCollection<string>(searchKeys);
@@ -84,11 +101,45 @@ public sealed class PaletteItemViewModel : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
+    public PaletteMark Mark { get; }
+
+    public bool HasMark => Mark != PaletteMark.None;
+
+    /// <summary>The live membership the mark shows; a toggle keeps the row, so it changes in place.</summary>
+    public bool MarkOn => _markOn;
+
+    public bool MarkFilled => HasMark && _markOn;
+
+    public bool MarkOutlined => HasMark && !_markOn;
+
+    public string? MarkData => Mark switch
+    {
+        PaletteMark.Flag => FlagData,
+        PaletteMark.Focus => GridData,
+        _ => null,
+    };
+
+    public string? MarkValue => Mark switch
+    {
+        PaletteMark.Flag => _markOn ? "flagged" : "unflagged",
+        PaletteMark.Focus => _markOn ? "focused" : "unfocused",
+        _ => null,
+    };
+
+    public void SetMark(bool on)
+    {
+        if (!HasMark || _markOn == on) return;
+        _markOn = on;
+        foreach (var name in new[] { nameof(MarkOn), nameof(MarkFilled), nameof(MarkOutlined),
+                     nameof(MarkValue), nameof(AutomationName) })
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
+
     public IReadOnlyList<string> SearchKeys { get; }
 
     public string AutomationName => string.Join(", ", new[]
     {
-        Title, Subtitle,
+        Title, MarkValue, Subtitle,
         HasStatusGlyph ? $"{Status!.Value.ToString().ToLowerInvariant()} status" : null,
         Badge, Shortcut,
     }.Where(value => value is not null));

@@ -63,6 +63,9 @@ public sealed partial class SidebarView : UserControl
 
     public event Action<Guid>? WorkspaceIconRequested;
 
+    /// <summary>The empty flagged view's "Add Sessions…" link. MainWindow runs edit_flagged_sessions.</summary>
+    public event Action? EditFlaggedSessionsRequested;
+
     public void Attach(SidebarController controller, AppSettings settings, Window ownerWindow, ThemeCatalog themeCatalog)
     {
         _controller = controller;
@@ -147,6 +150,7 @@ public sealed partial class SidebarView : UserControl
         SyncSelection(snapshot);
         var flagged = snapshot.Mode == SidebarMode.Flagged;
         FlaggedToggle.IsChecked = flagged;
+        FlaggedEmptyState.Visibility = snapshot.ShowsFlaggedEmptyState ? Visibility.Visible : Visibility.Collapsed;
         FlaggedGlyph.Fill = flagged ? FlaggedGlyph.Stroke : null;
         ApplyFlaggedHint();
         // upstream mutes the disabled toggle by hand: its glyph keeps the chrome foreground
@@ -739,6 +743,8 @@ public sealed partial class SidebarView : UserControl
     }
 
     // MARK: - bottom bar
+
+    private void OnFlaggedEmptyAddClick(object sender, RoutedEventArgs e) => EditFlaggedSessionsRequested?.Invoke();
 
     private void OnFlaggedToggleClick(object sender, RoutedEventArgs e) =>
         _controller?.ToggleFlaggedView();

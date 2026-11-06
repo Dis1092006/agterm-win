@@ -56,7 +56,7 @@ public class BuiltinActionTests
         var expected = SurfaceActions().Select(a => a.Wire).OrderBy(w => w, StringComparer.Ordinal);
         var actual = BuiltinActions.All.Select(a => a.WireName()).OrderBy(w => w, StringComparer.Ordinal);
         Assert.Equal(expected, actual);
-        Assert.Equal(43, BuiltinActions.All.Count);
+        Assert.Equal(45, BuiltinActions.All.Count);
     }
 
     [Fact]

@@ -351,6 +351,31 @@
             </ListView.ItemTemplate>
         </ListView>
 
+        <!-- upstream flaggedEmptyState (a2552826): the flagged view with nothing flagged, over the empty
+             list so the link takes the click -->
+        <StackPanel x:Name="FlaggedEmptyState"
+                    Grid.Row="0"
+                    Visibility="Collapsed"
+                    Opacity="0.6"
+                    Margin="12,40,12,0"
+                    Spacing="6"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top">
+            <TextBlock Text="No flagged sessions."
+                       Foreground="{StaticResource SidebarForegroundBrush}"
+                       TextTrimming="CharacterEllipsis"
+                       HorizontalAlignment="Center" />
+            <HyperlinkButton x:Name="FlaggedEmptyAddLink"
+                             Padding="0"
+                             HorizontalAlignment="Center"
+                             Foreground="{StaticResource SidebarForegroundBrush}"
+                             AutomationProperties.AutomationId="flagged-empty-add"
+                             AutomationProperties.Name="Add Sessions…"
+                             Click="OnFlaggedEmptyAddClick">
+                <TextBlock Foreground="{StaticResource SidebarForegroundBrush}"><Underline><Run Text="Add Sessions…" /></Underline></TextBlock>
+            </HyperlinkButton>
+        </StackPanel>
+
         <!-- upstream bottomBar: the add controls on the left; the workspace filter and the flagged-view
              toggle on the right. No line above it, as upstream -->
         <Grid x:Name="SidebarFooter" Grid.Row="1" Padding="6,4,6,4">

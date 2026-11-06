@@ -27,9 +27,9 @@ public static class ParitySurface
             .Select(e => e.TryGetProperty("wire", out var wire) ? wire.GetString()! : e.GetProperty("name").GetString()!)
             .ToList();
 
-    /// <summary>The builtin keymap actions the upstream snapshot declares, with their default chords.</summary>
+    /// <summary>The builtin keymap actions the newest upstream snapshot declares, with their default chords.</summary>
     public static IReadOnlyList<(string Wire, string? DefaultChord)> UpstreamKeymapActions() =>
-        Load("docs/upstream/surface-v0.36.0.json").GetProperty("keymap").GetProperty("actions").EnumerateArray()
+        Load("docs/upstream/surface-v0.40.0.json").GetProperty("keymap").GetProperty("actions").EnumerateArray()
             .Select(a => (a.GetProperty("wire").GetString()!,
                 a.GetProperty("defaultChord").ValueKind == JsonValueKind.Null
                     ? null
