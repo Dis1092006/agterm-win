@@ -292,11 +292,9 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public Visibility FocusPillVisibility =>
         IsWorkspace && _row.Focused ? Visibility.Visible : Visibility.Collapsed;
 
-    // session base icon: a terminal rect, split adds the divider, flagged fills it (upstream's
-    // terminal / rectangle.split.2x1 (+.fill) swap, drawn as Path so no icon-font gamble)
-    public string IconData => _row.HasSplit
-        ? "M0.5,2.5 H15.5 V12.5 H0.5 Z M8,2.5 V12.5"
-        : "M0.5,2.5 H15.5 V12.5 H0.5 Z";
+    // session base icon: upstream's terminal / rectangle.split.2x1 / rectangle.split.1x2 by the split
+    // and its axis, filled when flagged (+.fill), drawn as Path so no icon-font gamble
+    public string IconData => SidebarSessionIcon.PathData(_row.HasSplit, _row.SplitAxis);
 
     /// <summary>The fill of a flagged default row's icon. The sidebar shares one brush in the theme
     /// foreground across its rows and recolors it with the theme.</summary>
@@ -306,11 +304,10 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         ? MarkFill()
         : new SolidColorBrush(Colors.Transparent);
 
-    /// <summary>A workspace in the focus set draws the filled grid (upstream square.grid.2x2.fill),
-    /// keyed on membership alone so the marked set stays legible with the filter off.</summary>
-    public Brush GridIconFill => IsWorkspace && _row.Focused
-        ? MarkFill()
-        : new SolidColorBrush(Colors.Transparent);
+    /// <summary>A workspace in the focus set draws the grid at a heavier weight (upstream
+    /// square.grid.2x2 at .heavy, 6d403ae7), keyed on membership alone so the marked set stays
+    /// legible with the filter off.</summary>
+    public double GridIconStrokeThickness => SidebarWorkspaceIcon.GridStrokeThickness(IsWorkspace && _row.Focused);
 
     // a tinted icon fills in its tint, as upstream fills the tinted symbol
     private Brush MarkFill() => _look.Tint.Icon is { } ink ? BrushFrom(ink, alpha: 0x60)
@@ -401,7 +398,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
               nameof(WorkspaceImage), nameof(WorkspaceImageVisibility), nameof(SessionIconVisibility), nameof(ContentMargin),
               nameof(FontSize), nameof(RowHeight), nameof(TitleBandHeight),
               nameof(InfoVisibility), nameof(InfoRuns), nameof(InfoMargin), nameof(InfoFontSize), nameof(InfoLineHeight),
-              nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill), nameof(GridIconFill),
+              nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill), nameof(GridIconStrokeThickness),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),
               nameof(GlyphData), nameof(BadgeVisibility), nameof(BadgeText),
               nameof(AutomationName), nameof(ChevronAutomationName),

@@ -108,9 +108,13 @@ public sealed class PaletteItemViewModel : INotifyPropertyChanged
     /// <summary>The live membership the mark shows; a toggle keeps the row, so it changes in place.</summary>
     public bool MarkOn => _markOn;
 
-    public bool MarkFilled => HasMark && _markOn;
+    // the sidebar draws a flagged session filled and a focused workspace heavier (upstream markImage:
+    // flag.fill, and square.grid.2x2 at .black weight)
+    public bool MarkFilled => Mark == PaletteMark.Flag && _markOn;
 
     public bool MarkOutlined => HasMark && !_markOn;
+
+    public double MarkStrokeThickness => SidebarWorkspaceIcon.GridStrokeThickness(Mark == PaletteMark.Focus && _markOn);
 
     public string? MarkData => Mark switch
     {
@@ -131,7 +135,7 @@ public sealed class PaletteItemViewModel : INotifyPropertyChanged
         if (!HasMark || _markOn == on) return;
         _markOn = on;
         foreach (var name in new[] { nameof(MarkOn), nameof(MarkFilled), nameof(MarkOutlined),
-                     nameof(MarkValue), nameof(AutomationName) })
+                     nameof(MarkStrokeThickness), nameof(MarkValue), nameof(AutomationName) })
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
