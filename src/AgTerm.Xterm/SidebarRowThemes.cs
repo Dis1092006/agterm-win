@@ -15,6 +15,9 @@ public sealed record SidebarRowLook(SidebarRowColors? Row, SidebarRowColors? Lab
     /// <summary>The tint colors of the row's icon and name.</summary>
     public SidebarRowTint Tint { get; init; } = SidebarRowTint.None;
 
+    /// <summary>The colors under the row's session info line.</summary>
+    public SidebarInfoInks Info { get; init; } = SidebarInfoInks.Default;
+
     public static SidebarRowLook From(SidebarRowColors? colors, SidebarThemeStyle style) => colors is null
         ? Default
         : style switch

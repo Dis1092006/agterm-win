@@ -30,6 +30,14 @@ public static class SessionInfoDisplays
         _ => "Always",
     };
 
+    /// <summary>Whether the sidebar draws an info line in this view (upstream showsSessionInfo).</summary>
+    public static bool Shows(SessionInfoDisplay display, SidebarMode mode) => display switch
+    {
+        SessionInfoDisplay.Off => false,
+        SessionInfoDisplay.Flagged => mode == SidebarMode.Flagged,
+        _ => true,
+    };
+
     /// <summary>A known raw value matched exactly, as upstream's enum decode does; anything else is null.</summary>
     public static SessionInfoDisplay? FromRaw(string? raw) => raw switch
     {

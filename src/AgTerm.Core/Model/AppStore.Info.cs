@@ -10,8 +10,8 @@ public sealed partial class AppStore
 
     /// <summary>Sets or clears the session's info line. Every set on a known session re-arms the expiry,
     /// an identical one included, so a caller refreshing its line keeps it alive. True only when the line
-    /// changed, which is also the only case that emits tree.changed. Never saves: the line is runtime
-    /// only.</summary>
+    /// changed, which is also the only case that emits tree.changed and redraws the sidebar. Never saves:
+    /// the line is runtime only.</summary>
     public bool SetInfo(SessionInfo? info, Guid sessionId)
     {
         if (SessionWithId(sessionId) is not { } session) return false;
@@ -19,15 +19,22 @@ public sealed partial class AppStore
         {
             if (session.Info is null) return false;
             ClearInfoOf(session);
-            ScheduleTreeChanged();
+            InfoChanged();
             return true;
         }
         var changed = session.Info != info;
         session.Info = info;
         session.InfoRevision++;
         ArmInfoExpiry(session);
-        if (changed) ScheduleTreeChanged();
+        if (changed) InfoChanged();
         return changed;
+    }
+
+    // never saved, so the row refresh needs its own invalidation, as the status glyph does
+    private void InfoChanged()
+    {
+        ScheduleTreeChanged();
+        NotifySidebar();
     }
 
     /// <summary>Window close and application exit: a closed window's store must not see an expiry fire.</summary>
@@ -78,6 +85,6 @@ public sealed partial class AppStore
         // that is gone
         if (SessionWithId(sessionId) is not { } session || session.InfoRevision != revision) return;
         ClearInfoOf(session);
-        ScheduleTreeChanged();
+        InfoChanged();
     }
 }

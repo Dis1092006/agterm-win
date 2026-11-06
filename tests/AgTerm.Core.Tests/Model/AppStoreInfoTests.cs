@@ -69,6 +69,26 @@ public class AppStoreInfoTests : IDisposable
     }
 
     [Fact]
+    public void AChangedLineRefreshesTheSidebar()
+    {
+        var refreshes = 0;
+        _store.SidebarChanged += () => refreshes++;
+
+        _store.SetInfo(Info("3 agents", 30), _session.Id);
+        Assert.Equal(1, refreshes);
+
+        _store.SetInfo(Info("3 agents", 30), _session.Id);
+        Assert.Equal(1, refreshes);
+
+        _timers[^1].Fire();
+        Assert.Equal(2, refreshes);
+
+        _store.SetInfo(Info("idle"), _session.Id);
+        _store.SetInfo(null, _session.Id);
+        Assert.Equal(4, refreshes);
+    }
+
+    [Fact]
     public void SettingInfoForAnUnknownSessionChangesNothing()
     {
         var before = TreeChanges;

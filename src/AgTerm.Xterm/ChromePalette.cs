@@ -10,6 +10,9 @@ public readonly record struct ChromeColor(byte A, byte R, byte G, byte B)
     public ChromeColor WithOpacity(double opacity) =>
         this with { A = (byte)Math.Clamp(Math.Round(opacity * 255.0), 0, 255) };
 
+    /// <summary>"#rrggbb", without the alpha.</summary>
+    public string Hex => string.Create(CultureInfo.InvariantCulture, $"#{R:x2}{G:x2}{B:x2}");
+
     internal static ChromeColor? TryParse(string? hex)
     {
         if (hex is not { Length: 7 } || hex[0] != '#' ||

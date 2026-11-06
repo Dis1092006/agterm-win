@@ -67,7 +67,30 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     public double FontSize =>
         AppSettings.ClampSidebarFontSize(_settings.SidebarFontSize ?? AppSettings.DefaultSidebarFontSize);
 
-    public double RowHeight => AppSettings.SidebarRowHeight(FontSize);
+    public double RowHeight => ShowsInfo ? SidebarInfoMetrics.RowHeight(FontSize) : AppSettings.SidebarRowHeight(FontSize);
+
+    /// <summary>The band the title row centers in: the plain row height, with or without an info line.</summary>
+    public double TitleBandHeight => AppSettings.SidebarRowHeight(FontSize);
+
+    // the info line: the setting gates drawing only, so a hidden line stays in the store
+    private bool ShowsInfo =>
+        IsSession && _row.Info is not null && SessionInfoDisplays.Shows(_settings.EffectiveSessionInfoDisplay, _mode);
+
+    public Visibility InfoVisibility => ShowsInfo ? Visibility.Visible : Visibility.Collapsed;
+
+    public IReadOnlyList<SidebarInfoRun> InfoRuns => ShowsInfo && _row.Info is { } info
+        ? SidebarInfoLine.Runs(info.Spans, _look.Info, IsListSelected)
+        : [];
+
+    public double InfoFontSize => SidebarInfoMetrics.FontSize(FontSize);
+
+    public double InfoLineHeight => SidebarInfoMetrics.LineHeight(FontSize);
+
+    // the line starts where the name does, past the icon column and its spacing, and moves left with
+    // the name when the icon is hidden
+    public Thickness InfoMargin => new(ContentMargin.Left + NameOffset, SidebarInfoMetrics.Top(FontSize), 8, 0);
+
+    private const double NameOffset = 22;
 
     public Visibility WorkspaceVisibility => IsWorkspace ? Visibility.Visible : Visibility.Collapsed;
 
@@ -220,7 +243,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         {
             if (field == value) return;
             field = value;
-            Raise(nameof(IsListSelected), nameof(RowFrame), nameof(LabelWeight));
+            Raise(nameof(IsListSelected), nameof(RowFrame), nameof(LabelWeight), nameof(InfoRuns));
         }
     }
 
@@ -373,7 +396,8 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         Raise(nameof(Label), nameof(Chevron), nameof(LabelWeight),
               nameof(WorkspaceGlyph), nameof(WorkspaceGlyphVisibility), nameof(GridIconVisibility),
               nameof(WorkspaceImage), nameof(WorkspaceImageVisibility), nameof(SessionIconVisibility), nameof(ContentMargin),
-              nameof(FontSize), nameof(RowHeight),
+              nameof(FontSize), nameof(RowHeight), nameof(TitleBandHeight),
+              nameof(InfoVisibility), nameof(InfoRuns), nameof(InfoMargin), nameof(InfoFontSize), nameof(InfoLineHeight),
               nameof(FocusPillVisibility), nameof(AddSessionVisibility), nameof(IconData), nameof(IconFill), nameof(GridIconFill),
               nameof(GlyphVisibility), nameof(GlyphBlink), nameof(GlyphShape), nameof(GlyphFill),
               nameof(GlyphData), nameof(BadgeVisibility), nameof(BadgeText),

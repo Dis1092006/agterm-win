@@ -74,6 +74,9 @@ public sealed class SettingsEditor
         new("hiddenInterfaceElements", "Interface", "Visible interface elements", SettingControl.Interface),
         new("autoHideSidebarInactiveWindows", "Interface", "Show sidebar only in the active window",
             SettingControl.Toggle, false),
+        new("sessionInfoDisplay", "Interface", "Session info", SettingControl.Choice,
+            Choices: [new(null, "Always"), new("flagged", "Flagged"), new("off", "Off")],
+            Hint: "Where the sidebar draws the line a session sets with session info. Flagged draws it in the flagged view only. Off hides the line; the session keeps it."),
         new("notificationsEnabled", "Notifications", "Show notification banners", SettingControl.Toggle, true),
         new("notificationBadgeEnabled", "Notifications", "Show notification badges", SettingControl.Toggle, true),
         new("notificationSoundName", "Notifications", "Notification sound", SettingControl.Choice,
@@ -127,6 +130,8 @@ public sealed class SettingsEditor
         "dockBounce" => Draft.TaskbarFlashEnabled() ? "once" : null,
         "autoFollowAttention" => Draft.AutoFollowTimeout() is not null ? Draft.AutoFollowAttention : null,
         "copyOnSelect" => Draft.CopyOnSelect is "selection" or "clipboard" or "off" ? Draft.CopyOnSelect : null,
+        "sessionInfoDisplay" => Draft.EffectiveSessionInfoDisplay == SessionInfoDisplay.Always
+            ? null : Draft.EffectiveSessionInfoDisplay.RawValue(),
         _ => Value(key)?.GetValue<string>(),
     };
 

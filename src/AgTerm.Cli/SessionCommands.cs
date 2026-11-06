@@ -1399,12 +1399,12 @@ internal static class SessionCommands
 
     private static System.CommandLine.Command BuildInfo(CommandBindings bindings)
     {
-        // upstream's discussion also points at the Settings picker; the port adds that sentence with the picker
         var cmd = new System.CommandLine.Command("info",
             "Set or clear the info line drawn under a session's sidebar row.\n\n"
             + "The line shows current activity, such as a status or a count. Each set replaces the whole line: "
             + "omitting --markdown sends plain text and omitting --hide-after cancels an earlier expiry. It is not "
-            + "kept across a relaunch.\n"
+            + "kept across a relaunch. Settings > Interface > Session info picks where it shows: Always (default), "
+            + "Flagged (the flagged view only) or Off; that hides it, never clears it.\n"
             + "Markdown example: '**3** agents ^[running](color: \"green\") ^[idle](dim: true)'. Colors: "
             + $"{TintColors.ValidNamesList}; the value must be quoted.");
         var text = new Argument<string?>("text")
