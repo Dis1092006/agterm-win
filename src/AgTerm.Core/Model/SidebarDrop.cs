@@ -160,6 +160,77 @@ public static class SidebarDrop
         _ => throw new ArgumentOutOfRangeException(nameof(target)),
     };
 
+    // MARK: - flagged view (upstream 8088e146)
+
+    /// <summary>A flat or plain flagged-list drop resolved into the arguments of AppStore.MoveFlagged.</summary>
+    public readonly record struct FlaggedReorder(IReadOnlyList<Guid> Ids, FlaggedOrderPlacement Placement, Guid Anchor);
+
+    /// <summary>Resolves a drop on the flat or plain flagged list, whose rows are order. A drop ON a row
+    /// (onRow) lands after it. A gap drop at childIndex lands before the first undragged row at or below the
+    /// gap, else after the last undragged row above it. Null when the order would not change.</summary>
+    public static FlaggedReorder? ResolveFlaggedReorder(IReadOnlyList<Guid> order, IReadOnlyList<Guid> dragged,
+                                                        Guid? onRow, int childIndex)
+    {
+        var moving = dragged.ToHashSet();
+        var block = order.Where(moving.Contains).ToList();
+        if (block.Count == 0) return null;
+        FlaggedOrderPlacement placement;
+        Guid anchor;
+        if (onRow is { } row)
+        {
+            if (moving.Contains(row) || !order.Contains(row)) return null;
+            (placement, anchor) = (FlaggedOrderPlacement.After, row);
+        }
+        else
+        {
+            var slot = Math.Clamp(childIndex, 0, order.Count);
+            var below = order.Skip(slot).Where(id => !moving.Contains(id)).Select(id => (Guid?)id).FirstOrDefault();
+            var above = order.Take(slot).Where(id => !moving.Contains(id)).Select(id => (Guid?)id).LastOrDefault();
+            if (below is { } first) (placement, anchor) = (FlaggedOrderPlacement.Before, first);
+            else if (above is { } last) (placement, anchor) = (FlaggedOrderPlacement.After, last);
+            else return null;
+        }
+        if (ReorderedFlagged(order, moving, placement, anchor) is null) return null;
+        return new FlaggedReorder(block, placement, anchor);
+    }
+
+    /// <summary>Maps a gap among a flagged-tree workspace's visible rows to the full workspace's pre-removal
+    /// child index ResolveSessions takes. visibleIndices are the flagged rows' full indices, ascending. A gap
+    /// above a visible row lands right before it and the gap after the last one right after it, so a hidden
+    /// unflagged sibling never crosses the drop. OnItemIndex, a drop ON the workspace row, passes through and
+    /// appends after the workspace's last session, flagged or not.</summary>
+    public static int FlaggedTreeChildIndex(IReadOnlyList<int> visibleIndices, int slot)
+    {
+        if (slot == OnItemIndex) return OnItemIndex;
+        if (visibleIndices.Count == 0) return 0;
+        if (slot >= visibleIndices.Count) return visibleIndices[^1] + 1;
+        return visibleIndices[Math.Max(0, slot)];
+    }
+
+    /// <summary>The workspace tree as the flagged tree layout sees it: every session, and which are
+    /// flagged.</summary>
+    public sealed class FlaggedTree(IReadOnlyList<(Guid Id, IReadOnlyList<Guid> Sessions)> workspaces,
+                                    IReadOnlySet<Guid> flagged)
+    {
+        /// <summary>Whether moving dragged as resolution describes changes any workspace's flagged rows or
+        /// their order. A move that only shifts hidden unflagged siblings, which the full-tree no-op check in
+        /// ResolveSessions cannot see, changes nothing on screen.</summary>
+        public bool ChangesView(IReadOnlyList<Guid> dragged, SessionResolution resolution)
+        {
+            var moving = dragged.ToHashSet();
+            var after = workspaces.Select(w => (w.Id, Sessions: w.Sessions.Where(id => !moving.Contains(id)).ToList()))
+                .ToList();
+            var target = after.FindIndex(w => w.Id == resolution.Workspace);
+            if (target < 0) return false;
+            var sessions = after[target].Sessions;
+            sessions.InsertRange(Math.Clamp(resolution.Destination, 0, sessions.Count), dragged);
+            return !after.Zip(workspaces).All(pair =>
+                FlaggedRows(pair.First.Sessions).SequenceEqual(FlaggedRows(pair.Second.Sessions)));
+        }
+
+        private IEnumerable<Guid> FlaggedRows(IEnumerable<Guid> sessions) => sessions.Where(flagged.Contains);
+    }
+
     // shared with AppStore.MoveFlagged so a drop the sidebar accepts is the move the store applies
     internal static List<Guid>? ReorderedFlagged(IReadOnlyList<Guid> order, IReadOnlySet<Guid> moving,
                                                  FlaggedOrderPlacement placement, Guid anchor)

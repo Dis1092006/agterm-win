@@ -57,4 +57,77 @@ public class SidebarFlattenedDropTests
     {
         Assert.Null(SidebarFlattenedDrop.SessionSlot(Array.Empty<SidebarRow>(), 0));
     }
+
+    // MARK: - pointer zones: the top quarter of a row is the gap above it, the bottom quarter the gap
+    // below it, the middle half a drop ON the row
+
+    private static readonly SidebarRowBounds[] Bounds =
+        [new(0, 0, 20), new(1, 20, 20), new(2, 40, 20)];
+
+    [Theory]
+    [InlineData(1.0, 0)]
+    [InlineData(4.9, 0)]
+    [InlineData(21.0, 1)]
+    [InlineData(56.0, 3)]
+    [InlineData(59.9, 3)]
+    [InlineData(35.0, 2)]
+    public void The_outer_quarters_of_a_row_are_the_gaps_around_it(double y, int gap) =>
+        Assert.Equal(new SidebarDropPoint.Gap(gap), SidebarFlattenedDrop.Locate(Bounds, y));
+
+    [Theory]
+    [InlineData(5.0, 0)]
+    [InlineData(10.0, 0)]
+    [InlineData(14.9, 0)]
+    [InlineData(25.0, 1)]
+    [InlineData(50.0, 2)]
+    public void The_middle_half_of_a_row_is_a_drop_on_it(double y, int row) =>
+        Assert.Equal(new SidebarDropPoint.OnRow(row), SidebarFlattenedDrop.Locate(Bounds, y));
+
+    [Theory]
+    [InlineData(-5.0, 0)]
+    [InlineData(80.0, 3)]
+    public void A_pointer_outside_every_row_falls_back_to_the_row_midpoints(double y, int gap) =>
+        Assert.Equal(new SidebarDropPoint.Gap(gap), SidebarFlattenedDrop.Locate(Bounds, y));
+
+    [Fact]
+    public void Unrealized_rows_are_skipped_by_the_midpoint_fallback()
+    {
+        SidebarRowBounds[] realized = [new(4, 0, 20), new(5, 20, 20)];
+        Assert.Equal(new SidebarDropPoint.Gap(6), SidebarFlattenedDrop.Locate(realized, 50));
+        Assert.Equal(new SidebarDropPoint.Gap(0), SidebarFlattenedDrop.Locate([], 50));
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(3, 2)]
+    [InlineData(5, 1)]
+    public void A_gap_in_the_tree_is_a_slot_in_its_workspace(int flat, int slot)
+    {
+        var workspace = flat < 4 ? W1 : W2;
+        Assert.Equal(new SidebarSessionDrop.Gap(workspace, slot),
+                     SidebarFlattenedDrop.SessionDrop(Rows, rendersWorkspaceRows: true, new SidebarDropPoint.Gap(flat)));
+    }
+
+    [Fact]
+    public void A_drop_on_a_tree_row_names_the_row()
+    {
+        Assert.Equal(new SidebarSessionDrop.OnWorkspace(W2),
+                     SidebarFlattenedDrop.SessionDrop(Rows, true, new SidebarDropPoint.OnRow(3)));
+        Assert.Equal(new SidebarSessionDrop.OnSession(B),
+                     SidebarFlattenedDrop.SessionDrop(Rows, true, new SidebarDropPoint.OnRow(2)));
+    }
+
+    [Fact]
+    public void The_flagged_list_takes_the_flat_slot_and_the_row()
+    {
+        SidebarRow[] list = [S(A), S(B), S(C)];
+        Assert.Equal(new SidebarSessionDrop.ListGap(2),
+                     SidebarFlattenedDrop.SessionDrop(list, rendersWorkspaceRows: false, new SidebarDropPoint.Gap(2)));
+        Assert.Equal(new SidebarSessionDrop.OnSession(C),
+                     SidebarFlattenedDrop.SessionDrop(list, false, new SidebarDropPoint.OnRow(2)));
+    }
+
+    [Fact]
+    public void A_tree_without_workspace_rows_has_no_drop() =>
+        Assert.Null(SidebarFlattenedDrop.SessionDrop([], true, new SidebarDropPoint.Gap(0)));
 }

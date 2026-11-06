@@ -876,7 +876,10 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - When the selected session is closed in the `flat` or `plain` layout, the selection moves to its neighbour in the saved order.
   - `move` needs both the target and the anchor flagged in the same window. The wire refuses a session as its own anchor with `a session cannot be its own anchor`, and an unflagged end with `session.flag move needs a flagged session and a flagged anchor`. An unchanged order still answers ok.
   - A window opened at launch or later takes the app-wide layout before its saved state is restored, as upstream, so a command that reaches it before the window shows already uses that layout.
-  - Upstream also reorders the rows by drag, in all three layouts. The port does not have the drag yet. Upstream opens a collapsed workspace when a drag rests on it (spring-loaded expansion); the port does not, in either tree.
+  - A drag reorders the rows in all three layouts, as upstream. Session rows drag in every mode; workspace rows drag only in the ordinary tree. In the `flat` and `plain` layouts a drop on a row puts the dragged sessions after it, and a drop in a gap puts them before the first row below the gap that is not dragged. In the flagged tree a drop on a workspace row puts them after its last session, and a drop on a session row puts them right after it. A drop that only moves hidden unflagged sessions does nothing.
+  - The sidebar is one WinUI list, so the port splits each row into zones itself: the top and bottom quarters of a row are the gaps above and below it, and the middle half is a drop on the row. The ordinary tree uses the same zones, so a drop on a session or workspace row works there too. Before, the tree took only gaps.
+  - While a session drag moves, the sidebar draws a line for a gap and a frame for a drop on a row, in the accent color. It draws nothing, and refuses the drop, when the drop would change nothing on screen. A workspace drag always shows the line.
+  - Upstream opens a collapsed workspace when a drag rests on it (spring-loaded expansion); the port does not, in either tree.
 
 ## Windows-only extensions
 

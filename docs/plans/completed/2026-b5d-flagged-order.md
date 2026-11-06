@@ -13,7 +13,7 @@ Package B takes the remaining upstream changes after `ed831ab` in a fixed order.
 3. Wire and CLI: mode `move` on `session.flag` in the dispatcher, the headless host and `agtermctl session flag move`. Done (B5d1).
 4. Live: a window store takes the app-wide flagged layout before its restore. Done (B5d1).
 5. Skill, PLATFORM-NOTES, catalog lines, versions. Done (B5d1).
-6. Drag: reorder the rows of the flagged view by drag, in the `flat`, `plain` and `tree` layouts. B5d2.
+6. Drag: reorder the rows of the flagged view by drag, in the `flat`, `plain` and `tree` layouts. Done (B5d2).
 
 ## Decisions
 

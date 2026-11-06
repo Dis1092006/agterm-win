@@ -60,6 +60,10 @@ public sealed record SidebarSnapshot
     /// <summary>Every flagged session, including those the rows hide.</summary>
     public IReadOnlySet<Guid> FlaggedSessionIds { get; init; } = new HashSet<Guid>();
 
+    /// <summary>What a session drag reads, so the view can show only the drops that move something.</summary>
+    public SidebarDropModel DropModel { get; init; } = new(SidebarMode.Tree, FlaggedViewLayout.Flat,
+        Array.Empty<(Guid, IReadOnlyList<Guid>)>(), new HashSet<Guid>(), Array.Empty<Guid>());
+
     /// <summary>The flagged view with nothing flagged (upstream flaggedEmptyState, a2552826).</summary>
     public bool ShowsFlaggedEmptyState => Mode == SidebarMode.Flagged && FlaggedCount == 0;
     public PendingCloseSummary? PendingClose { get; init; }
@@ -399,21 +403,21 @@ public sealed class SidebarController : IDisposable
         store.Save();
     });
 
-    /// <summary>Apply a session drag-drop: raw (pre-removal) child index in, SidebarDrop math,
-    /// then the store's remove-block/insert-block move. draggedIds must be in visual order.</summary>
-    public void DropSessions(IReadOnlyList<Guid> draggedIds,
-                             SidebarDrop.SessionDropTarget target, int rawChildIndex)
+    /// <summary>Apply a session drag-drop. draggedIds must be in sidebar order. The drop resolves against
+    /// the store under the host gate with the same rules the view checks while dragging.</summary>
+    public void DropSessions(IReadOnlyList<Guid> draggedIds, SidebarSessionDrop drop)
     {
         Mutate(store =>
         {
-            var sources = new List<SidebarDrop.SessionSource>();
-            foreach (var id in draggedIds)
+            switch (SidebarDropModel.From(store).Resolve(draggedIds, drop))
             {
-                if (store.SessionLocation(id) is not { } location) return;
-                sources.Add(new SidebarDrop.SessionSource(location.Workspace, location.Index));
+                case SidebarSessionMove.Reorder(var ids, var placement, var anchor):
+                    store.MoveFlagged(ids, placement, anchor);
+                    break;
+                case SidebarSessionMove.Sessions(var workspace, var destination):
+                    store.MoveSessions(draggedIds, workspace, destination);
+                    break;
             }
-            if (SidebarDrop.ResolveSessions(sources, target, rawChildIndex) is not { } move) return;
-            store.MoveSessions(draggedIds, move.Workspace, move.Destination);
         });
     }
 
@@ -615,6 +619,7 @@ public sealed class SidebarController : IDisposable
             FocusEnabled = store.FocusEnabled,
             FlaggedCount = store.FlaggedSessions.Count,
             FlaggedSessionIds = store.FlaggedSessions.Select(s => s.Id).ToHashSet(),
+            DropModel = SidebarDropModel.From(store),
             PendingClose = store.PendingCloseSummary,
             TitleBar = TitleBarState.Project(store),
         };

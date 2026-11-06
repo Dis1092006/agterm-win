@@ -547,10 +547,14 @@ public sealed class SidebarControllerTests : IDisposable
             c = store.AddSession(w1, _stateDir, select: false)!.Id;
         });
 
-        // drag a into the slot before c (raw child index 2) → lands between b and c
-        _controller.DropSessions(new[] { a },
-            new SidebarDrop.SessionDropTarget.WorkspaceRow(w1, 3), rawChildIndex: 2);
+        // drag a into the slot before c (slot 2) → lands between b and c
+        _controller.DropSessions(new[] { a }, new SidebarSessionDrop.Gap(w1, 2));
         Assert.Equal(new[] { b, a, c },
+            Latest.Rows.Where(r => r.Kind == SidebarRowKind.Session).Select(r => r.Id));
+
+        // drop c ON b → lands right after b
+        _controller.DropSessions(new[] { c }, new SidebarSessionDrop.OnSession(b));
+        Assert.Equal(new[] { b, c, a },
             Latest.Rows.Where(r => r.Kind == SidebarRowKind.Session).Select(r => r.Id));
 
         Guid w2 = default;
@@ -562,6 +566,53 @@ public sealed class SidebarControllerTests : IDisposable
 
         _controller.DropWorkspace(w2, slot: 0);
         Assert.Equal(new[] { w2, w1 }, Latest.Workspaces.Select(w => w.Id));
+    }
+
+    [Fact]
+    public void A_flagged_list_drop_reorders_the_flagged_order()
+    {
+        Guid w1 = default, a = default, b = default, c = default;
+        Mutate(store =>
+        {
+            w1 = store.Workspaces[0].Id;
+            a = store.Workspaces[0].Sessions[0].Id;
+            b = store.AddSession(w1, _stateDir, select: false)!.Id;
+            c = store.AddSession(w1, _stateDir, select: false)!.Id;
+            store.SetFlag(true, [a, b, c]);
+            store.SetSidebarMode(SidebarMode.Flagged);
+        });
+        Assert.Equal(new[] { a, b, c }, Latest.DropModel.FlaggedOrder);
+
+        _controller.DropSessions(new[] { c }, new SidebarSessionDrop.ListGap(0));
+        Assert.Equal(new[] { c, a, b }, Latest.Rows.Select(r => r.Id));
+
+        _controller.DropSessions(new[] { c }, new SidebarSessionDrop.OnSession(b));
+        Assert.Equal(new[] { a, b, c }, Latest.Rows.Select(r => r.Id));
+        Assert.Equal(new[] { a, b, c }, Latest.DropModel.FlaggedOrder);
+    }
+
+    [Fact]
+    public void A_flagged_tree_drop_moves_the_session_past_its_visible_neighbour()
+    {
+        Guid w1 = default, a = default, h = default, b = default;
+        Mutate(store =>
+        {
+            w1 = store.Workspaces[0].Id;
+            a = store.Workspaces[0].Sessions[0].Id;
+            h = store.AddSession(w1, _stateDir, select: false)!.Id;
+            b = store.AddSession(w1, _stateDir, select: false)!.Id;
+            store.SetFlag(true, [a, b]);
+            store.SetSidebarMode(SidebarMode.Flagged);
+            store.FlaggedLayout = FlaggedViewLayout.Tree;
+        });
+
+        // the gap between a and b only crosses the hidden h: nothing changes on screen, nothing moves
+        _controller.DropSessions(new[] { a }, new SidebarSessionDrop.Gap(w1, 1));
+        Assert.Equal(new[] { a, h, b }, Latest.DropModel.Workspaces[0].Sessions);
+
+        _controller.DropSessions(new[] { b }, new SidebarSessionDrop.Gap(w1, 0));
+        Assert.Equal(new[] { b, a, h }, Latest.DropModel.Workspaces[0].Sessions);
+        Assert.Equal(new[] { b, a }, Latest.Rows.Where(r => r.Kind == SidebarRowKind.Session).Select(r => r.Id));
     }
 
     [Fact]
