@@ -2,27 +2,32 @@ using AgTerm.Core.Model;
 
 namespace AgTerm.Xterm;
 
-/// <summary>One choice of the row menu's Tint submenu: a color (null for None), or the parts that show it.</summary>
+/// <summary>One choice of the row menu's Tint submenu: a color (null for None), or one part shown or
+/// hidden.</summary>
 public sealed record SidebarTintChoice
 {
-    private SidebarTintChoice(TintColor? color, TintParts? parts)
+    private SidebarTintChoice(TintColor? color, TintParts? part, bool shown)
     {
         Color = color;
-        Parts = parts;
+        Part = part;
+        Shown = shown;
     }
 
     public TintColor? Color { get; }
 
     /// <summary>Set for a "Show On" choice, which keeps each row's color.</summary>
-    public TintParts? Parts { get; }
+    public TintParts? Part { get; }
 
-    public static SidebarTintChoice Of(TintColor? color) => new(color, null);
+    /// <summary>For a "Show On" choice, whether the part is added to each row or removed from it.</summary>
+    public bool Shown { get; }
 
-    public static SidebarTintChoice On(TintParts parts) => new(null, parts);
+    public static SidebarTintChoice Of(TintColor? color) => new(color, null, false);
+
+    public static SidebarTintChoice Show(TintParts part, bool shown) => new(null, part, shown);
 
     /// <summary>The tint one row has after this choice.</summary>
     public SidebarTint? AppliedTo(SidebarTint? current) =>
-        Parts is { } parts ? SidebarTint.Place(current, parts) : SidebarTint.Recolor(current, Color);
+        Part is { } part ? SidebarTint.WithPart(current, part, Shown) : SidebarTint.Recolor(current, Color);
 }
 
 /// <summary>One entry of the Tint submenu.</summary>
@@ -30,13 +35,14 @@ public sealed record SidebarTintMenuEntry(string Title, SidebarTintChoice Choice
 
 /// <summary>
 /// The row menu's Tint submenu (upstream WorkspaceSidebar+TintMenu.swift): None and the fixed colors, then
-/// where the color shows. A batch of rows checks an entry only when every target shares it, and the
-/// placement entries act only when every target is tinted.
+/// where the color shows. A batch of rows checks a color only when every target shares it. The placement
+/// entries are one checkbox per part (Windows-only), checked when every target shows the part; they act
+/// only when every target is tinted.
 /// </summary>
 public static class SidebarTintMenu
 {
-    private static readonly (string Title, TintParts Parts)[] PlacementOptions =
-        [("Icon", TintParts.Icon), ("Name", TintParts.Name), ("Icon and Name", TintParts.Icon | TintParts.Name)];
+    private static readonly (string Title, TintParts Part)[] PlacementOptions =
+        [("Icon", TintParts.Icon), ("Name", TintParts.Name), ("Flag", TintParts.Flag)];
 
     public static IReadOnlyList<SidebarTintMenuEntry> Colors(IReadOnlyList<SidebarTint?> current)
     {
@@ -54,13 +60,19 @@ public static class SidebarTintMenu
         return entries;
     }
 
-    public static IReadOnlyList<SidebarTintMenuEntry> Placements(IReadOnlyList<SidebarTint?> current)
+    /// <summary>A checkbox for each of <paramref name="available"/>: the parts the row kind has. A click
+    /// adds the part to every target unless every target already shows it, and then removes it.</summary>
+    public static IReadOnlyList<SidebarTintMenuEntry> Placements(IReadOnlyList<SidebarTint?> current, TintParts available)
     {
         ArgumentNullException.ThrowIfNull(current);
-        var allTinted = current.All(t => t is not null);
-        var placements = current.Select(t => t?.Parts).Distinct().ToList();
+        var allTinted = current.Count > 0 && current.All(t => t is not null);
         return PlacementOptions
-            .Select(o => new SidebarTintMenuEntry(o.Title, SidebarTintChoice.On(o.Parts), placements.SequenceEqual([o.Parts]), allTinted))
+            .Where(o => (available & o.Part) != 0)
+            .Select(o =>
+            {
+                var everyShows = allTinted && current.All(t => t!.Shows(o.Part));
+                return new SidebarTintMenuEntry(o.Title, SidebarTintChoice.Show(o.Part, !everyShows), everyShows, allTinted);
+            })
             .ToList();
     }
 }

@@ -340,8 +340,18 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(
             ["sidebarToggle", "sessionName", "windowName", "sessionContext", "recentSessions", "scratch", "split",
              "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession",
-             "workspaceIcons", "sessionIcons"],
+             "workspaceIcons", "sessionIcons", "sessionFlags"],
             Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
+    }
+
+    // Windows-only: the flag glyph on a flagged session row hides on its own.
+    [Fact]
+    public void Session_flags_hide_independently_of_the_session_icons()
+    {
+        var settings = new AppSettings { HiddenInterfaceElements = ["sessionFlags"] };
+
+        Assert.True(settings.IsInterfaceElementHidden(InterfaceElement.SessionFlags));
+        Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.SessionIcons));
     }
 
     // upstream 91332589 (#865): the row icons are shown by default and hide independently

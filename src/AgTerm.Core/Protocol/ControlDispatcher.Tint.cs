@@ -8,7 +8,7 @@ public sealed partial class ControlDispatcher
 {
     private ControlResponse DispatchTint(ControlRequest request)
     {
-        if (TintUpdate(request.Cmd.ToWire(), request.Args, out var update) is { } refusal)
+        if (TintUpdate(request.Cmd.ToWire(), request.Args, Placements(request.Cmd == Command.SessionTint), out var update) is { } refusal)
             return refusal;
         return request.Cmd == Command.SessionTint
             ? _actions.SetSessionTint(request.Target, request.Args?.Window, update!)
@@ -16,7 +16,7 @@ public sealed partial class ControlDispatcher
     }
 
     /// <summary>Mode set|clear. Set needs a color and may carry a placement; clear takes neither.</summary>
-    private static ControlResponse? TintUpdate(string cmd, ControlArgs? args, out ControlTintUpdate? update)
+    private static ControlResponse? TintUpdate(string cmd, ControlArgs? args, TintPlacements placements, out ControlTintUpdate? update)
     {
         update = null;
         switch (args?.Mode ?? "")
@@ -30,8 +30,8 @@ public sealed partial class ControlDispatcher
                 TintParts? parts = null;
                 if (args.TintOn is { } rawParts)
                 {
-                    if (ParseTintParts(rawParts) is not { } parsed)
-                        return InvalidPlacement(rawParts);
+                    if (placements.Parse(rawParts) is not { } parsed)
+                        return placements.Invalid(rawParts);
                     parts = parsed;
                 }
                 update = ControlTintUpdate.Set(color, parts);
@@ -49,7 +49,7 @@ public sealed partial class ControlDispatcher
 
     /// <summary>The tint session.new or workspace.new creates the row with: none without --tint, the
     /// icon when --tint has no --tint-on.</summary>
-    private static ControlResponse? CreationTint(ControlArgs? args, out SidebarTint? tint)
+    private static ControlResponse? CreationTint(ControlArgs? args, bool session, out SidebarTint? tint)
     {
         tint = null;
         if (args?.Tint is not { } raw)
@@ -57,10 +57,11 @@ public sealed partial class ControlDispatcher
         if (ParseTintColor(raw, out var color) is { } badColor)
             return badColor;
         var parts = TintParts.Icon;
+        var placements = Placements(session);
         if (args.TintOn is { } rawParts)
         {
-            if (ParseTintParts(rawParts) is not { } parsed)
-                return InvalidPlacement(rawParts);
+            if (placements.Parse(rawParts) is not { } parsed)
+                return placements.Invalid(rawParts);
             parts = parsed;
         }
         tint = new SidebarTint(color, parts);
@@ -72,8 +73,16 @@ public sealed partial class ControlDispatcher
             ? null
             : Err($"invalid tint: {raw} ({TintColors.ValidNamesList})");
 
-    private static TintParts? ParseTintParts(string[] raw) => SidebarTint.ParseParts(raw);
+    /// <summary>The parts a row kind takes: a session all three, a workspace no flag (Windows-only).</summary>
+    private static TintPlacements Placements(bool session) => session
+        ? new(SidebarTint.SessionParts, SidebarTint.ValidPartNamesList)
+        : new(SidebarTint.WorkspaceParts, SidebarTint.WorkspacePartNamesList);
 
-    private static ControlResponse InvalidPlacement(string[] raw) =>
-        Err($"invalid tint placement: {string.Join(",", raw)} ({SidebarTint.ValidPartNamesList})");
+    private sealed record TintPlacements(TintParts Allowed, string NamesList)
+    {
+        public TintParts? Parse(string[] raw) => SidebarTint.ParseParts(raw, Allowed);
+
+        public ControlResponse Invalid(string[] raw) =>
+            Err($"invalid tint placement: {string.Join(",", raw)} ({NamesList})");
+    }
 }

@@ -25,6 +25,8 @@ public enum InterfaceElement
     WorkspaceAddSession,
     WorkspaceIcons,
     SessionIcons,
+    // Windows-only: the flag glyph on a flagged session row
+    SessionFlags,
 }
 
 public static class InterfaceElementExtensions

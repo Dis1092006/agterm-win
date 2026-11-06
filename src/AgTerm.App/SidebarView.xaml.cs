@@ -635,7 +635,8 @@ public sealed partial class SidebarView : UserControl
         flyout.Items.Add(Item(
             allFlagged ? (plural ? "Unflag Sessions" : "Unflag") : (plural ? "Flag Sessions" : "Flag"),
             () => _controller?.SetFlag(targets, !allFlagged)));
-        flyout.Items.Add(TintMenu(targetRows.Select(r => r.Tint).ToList(), choice => _controller?.SetTint(targets, choice)));
+        flyout.Items.Add(TintMenu(targetRows.Select(r => r.Tint).ToList(), SidebarTint.SessionParts,
+            choice => _controller?.SetTint(targets, choice)));
         if (!plural)
             flyout.Items.Add(Item("Reveal in Explorer", () => _controller?.RevealSession(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -663,7 +664,7 @@ public sealed partial class SidebarView : UserControl
         flyout.Items.Add(Item("Rename", () => BeginRename(row)));
         flyout.Items.Add(Item("Theme…", () => WorkspaceThemeRequested?.Invoke(row.Id)));
         flyout.Items.Add(Item("Icon…", () => WorkspaceIconRequested?.Invoke(row.Id)));
-        flyout.Items.Add(TintMenu([row.Row.Tint], choice => _controller?.SetWorkspaceTint(row.Id, choice)));
+        flyout.Items.Add(TintMenu([row.Row.Tint], SidebarTint.WorkspaceParts, choice => _controller?.SetWorkspaceTint(row.Id, choice)));
         flyout.Items.Add(Item("New Session", () => _controller?.NewSession(row.Id)));
         flyout.Items.Add(Item("Open Directory…", () => _ = OpenDirectoryIntoAsync(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
@@ -703,8 +704,8 @@ public sealed partial class SidebarView : UserControl
     }
 
     /// <summary>The Tint submenu (upstream WorkspaceSidebar+TintMenu.swift). Each color shows a swatch in
-    /// the color the sidebar draws it.</summary>
-    private MenuFlyoutSubItem TintMenu(IReadOnlyList<SidebarTint?> current, Action<SidebarTintChoice> apply)
+    /// the color the sidebar draws it; each part the row kind has is a checkbox.</summary>
+    private MenuFlyoutSubItem TintMenu(IReadOnlyList<SidebarTint?> current, TintParts parts, Action<SidebarTintChoice> apply)
     {
         var tint = new MenuFlyoutSubItem { Text = "Tint" };
         foreach (var entry in SidebarTintMenu.Colors(current))
@@ -723,7 +724,7 @@ public sealed partial class SidebarView : UserControl
         }
         tint.Items.Add(new MenuFlyoutSeparator());
         tint.Items.Add(new MenuFlyoutItem { Text = "Show On", IsEnabled = false });
-        foreach (var entry in SidebarTintMenu.Placements(current))
+        foreach (var entry in SidebarTintMenu.Placements(current, parts))
             tint.Items.Add(TintItem(entry, apply));
         return tint;
     }

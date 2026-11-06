@@ -32,39 +32,59 @@ public sealed class SidebarTintMenuTests
     {
         IReadOnlyList<SidebarTint?> mixed = [new SidebarTint(TintColor.Red, TintParts.Name), new SidebarTint(TintColor.Green)];
         Assert.DoesNotContain(SidebarTintMenu.Colors(mixed), e => e.IsChecked);
-        Assert.DoesNotContain(SidebarTintMenu.Placements(mixed), e => e.IsChecked);
+        Assert.DoesNotContain(SidebarTintMenu.Placements(mixed, SidebarTint.SessionParts), e => e.IsChecked);
 
-        IReadOnlyList<SidebarTint?> shared = [new SidebarTint(TintColor.Blue, TintParts.Name), new SidebarTint(TintColor.Blue, TintParts.Name)];
+        IReadOnlyList<SidebarTint?> shared = [new SidebarTint(TintColor.Blue, TintParts.Name), new SidebarTint(TintColor.Blue, TintParts.Name | TintParts.Flag)];
         Assert.Equal(["Blue"], SidebarTintMenu.Colors(shared).Where(e => e.IsChecked).Select(e => e.Title));
-        Assert.Equal(["Name"], SidebarTintMenu.Placements(shared).Where(e => e.IsChecked).Select(e => e.Title));
+        Assert.Equal(["Name"], SidebarTintMenu.Placements(shared, SidebarTint.SessionParts).Where(e => e.IsChecked).Select(e => e.Title));
+    }
+
+    // Windows-only: one checkbox per part; a workspace row has no flag.
+    [Fact]
+    public void Placements_list_one_checkbox_per_part_the_row_has()
+    {
+        var tint = new SidebarTint(TintColor.Red, TintParts.Icon | TintParts.Flag);
+
+        var session = SidebarTintMenu.Placements([tint], SidebarTint.SessionParts);
+        var workspace = SidebarTintMenu.Placements([new SidebarTint(TintColor.Red)], SidebarTint.WorkspaceParts);
+
+        Assert.Equal(["Icon", "Name", "Flag"], session.Select(e => e.Title));
+        Assert.Equal([TintParts.Icon, TintParts.Name, TintParts.Flag], session.Select(e => e.Choice.Part!.Value));
+        Assert.Equal([true, false, true], session.Select(e => e.IsChecked));
+        Assert.Equal(["Icon", "Name"], workspace.Select(e => e.Title));
     }
 
     [Fact]
-    public void Placements_list_icon_name_and_both()
+    public void A_checked_part_is_removed_and_an_unchecked_one_added_to_every_target()
     {
-        var placements = SidebarTintMenu.Placements([new SidebarTint(TintColor.Red, TintParts.Icon | TintParts.Name)]);
+        IReadOnlyList<SidebarTint?> rows = [new SidebarTint(TintColor.Red), new SidebarTint(TintColor.Blue, TintParts.Name)];
 
-        Assert.Equal(["Icon", "Name", "Icon and Name"], placements.Select(e => e.Title));
-        Assert.Equal([TintParts.Icon, TintParts.Name, TintParts.Icon | TintParts.Name], placements.Select(e => e.Choice.Parts!.Value));
-        Assert.True(Entry(placements, "Icon and Name").IsChecked);
+        var placements = SidebarTintMenu.Placements(rows, SidebarTint.SessionParts);
+
+        Assert.All(placements, e => Assert.True(e.Choice.Shown));
+        var allIcon = SidebarTintMenu.Placements([new SidebarTint(TintColor.Red), new SidebarTint(TintColor.Blue)], SidebarTint.SessionParts);
+        Assert.False(Entry(allIcon, "Icon").Choice.Shown);
+        Assert.True(Entry(allIcon, "Flag").Choice.Shown);
     }
 
     [Fact]
     public void Show_on_is_disabled_unless_every_target_is_tinted()
     {
-        Assert.All(SidebarTintMenu.Placements([new SidebarTint(TintColor.Red), null]), e => Assert.False(e.IsEnabled));
-        Assert.All(SidebarTintMenu.Placements([new SidebarTint(TintColor.Red)]), e => Assert.True(e.IsEnabled));
+        Assert.All(SidebarTintMenu.Placements([new SidebarTint(TintColor.Red), null], SidebarTint.SessionParts), e => Assert.False(e.IsEnabled));
+        Assert.All(SidebarTintMenu.Placements([new SidebarTint(TintColor.Red), null], SidebarTint.SessionParts), e => Assert.False(e.IsChecked));
+        Assert.All(SidebarTintMenu.Placements([new SidebarTint(TintColor.Red)], SidebarTint.SessionParts), e => Assert.True(e.IsEnabled));
     }
 
     [Fact]
-    public void A_choice_applied_to_one_tint_recolors_or_moves_it()
+    public void A_choice_applied_to_one_tint_recolors_it_or_toggles_one_part()
     {
         var current = new SidebarTint(TintColor.Red, TintParts.Name);
 
         Assert.Equal(new SidebarTint(TintColor.Purple, TintParts.Name), SidebarTintChoice.Of(TintColor.Purple).AppliedTo(current));
         Assert.Null(SidebarTintChoice.Of(null).AppliedTo(current));
         Assert.Equal(new SidebarTint(TintColor.Purple), SidebarTintChoice.Of(TintColor.Purple).AppliedTo(null));
-        Assert.Equal(new SidebarTint(TintColor.Red, TintParts.Icon), SidebarTintChoice.On(TintParts.Icon).AppliedTo(current));
-        Assert.Null(SidebarTintChoice.On(TintParts.Icon).AppliedTo(null));
+        Assert.Equal(new SidebarTint(TintColor.Red, TintParts.Icon | TintParts.Name), SidebarTintChoice.Show(TintParts.Icon, true).AppliedTo(current));
+        Assert.Null(SidebarTintChoice.Show(TintParts.Name, false).AppliedTo(current));
+        Assert.Null(SidebarTintChoice.Show(TintParts.Icon, true).AppliedTo(null));
     }
 }

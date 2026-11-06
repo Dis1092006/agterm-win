@@ -40,8 +40,15 @@ public sealed class Workspace
     public string? IconName { get; set; }
 
     /// <summary>The workspace row's own sidebar tint (workspace.tint), or null for none. It colors
-    /// only this row; the sessions keep their own tints.</summary>
-    public SidebarTint? Tint { get; set; }
+    /// only this row; the sessions keep their own tints. A workspace row has no flag, so the flag
+    /// part is dropped however the tint arrives.</summary>
+    public SidebarTint? Tint
+    {
+        get => _tint;
+        set => _tint = SidebarTint.ForWorkspace(value);
+    }
+
+    private SidebarTint? _tint;
 
     /// <summary>Total unseen-notification count across this workspace's sessions, for the badge on a
     /// collapsed workspace row.</summary>

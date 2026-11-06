@@ -82,6 +82,20 @@ public sealed class SidebarTintInksTests
             SidebarRowTint.For(new SidebarTint(TintColor.Blue, TintParts.Icon | TintParts.Name), look, SidebarInks));
     }
 
+    // Windows-only: the flag sits beside the name, outside a label block, so it takes the icon's inks.
+    [Fact]
+    public void The_flag_takes_the_inks_under_the_icon()
+    {
+        var row = SidebarRowLook.From(new SidebarRowColors("#002b36", "#839496", ThemeInks), SidebarThemeStyle.Row);
+        var label = SidebarRowLook.From(new SidebarRowColors("#002b36", "#839496", ThemeInks), SidebarThemeStyle.Label);
+        var flag = new SidebarTint(TintColor.Blue, TintParts.Flag);
+
+        Assert.Equal(new SidebarRowTint(null, null, SidebarInks.For(TintColor.Blue)), SidebarRowTint.For(flag, SidebarRowLook.Default, SidebarInks));
+        Assert.Equal(new SidebarRowTint(null, null, "#3465a4"), SidebarRowTint.For(flag, row, SidebarInks));
+        Assert.Equal(new SidebarRowTint(null, null, SidebarInks.For(TintColor.Blue)), SidebarRowTint.For(flag, label, SidebarInks));
+        Assert.Null(SidebarRowTint.For(new SidebarTint(TintColor.Blue), row, SidebarInks).Flag);
+    }
+
     [Fact]
     public void A_label_style_row_takes_its_theme_inks_on_the_name_and_the_sidebar_inks_on_the_icon()
     {

@@ -19,6 +19,7 @@ public sealed partial class AppStore
     /// no-op rule. The workspace's sessions keep their own tints.</summary>
     public bool SetWorkspaceTint(Guid workspaceId, SidebarTint? tint)
     {
+        tint = SidebarTint.ForWorkspace(tint);
         if (Workspaces.Find(w => w.Id == workspaceId) is not { } workspace || workspace.Tint == tint) return false;
         workspace.Tint = tint;
         Save();
@@ -31,10 +32,11 @@ public sealed partial class AppStore
     public void SetTintColor(TintColor? color, IEnumerable<Guid> ids) =>
         ApplyTints(ids, current => SidebarTint.Recolor(current, color));
 
-    /// <summary>Shows each tinted session's own color on parts. An untinted session is left alone,
-    /// so no row stores a placement it does not show.</summary>
-    public void SetTintParts(TintParts parts, IEnumerable<Guid> ids) =>
-        ApplyTints(ids, current => SidebarTint.Place(current, parts));
+    /// <summary>Shows or hides each tinted session's own color on one part. An untinted session is
+    /// left alone, so no row stores a placement it does not show, and a row left with no part loses
+    /// its tint.</summary>
+    public void SetTintPart(TintParts part, bool shown, IEnumerable<Guid> ids) =>
+        ApplyTints(ids, current => SidebarTint.WithPart(current, part, shown));
 
     private void ApplyTints(IEnumerable<Guid> ids, Func<SidebarTint?, SidebarTint?> next)
     {
