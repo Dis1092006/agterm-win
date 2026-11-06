@@ -61,7 +61,7 @@ internal static class WorkspaceCommands
         {
             Description = "Create the workspace collapsed in the sidebar.",
         };
-        var tint = new TintCreateOptions.Binder();
+        var tint = new TintCreateOptions.Binder(session: false);
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(name);
         cmd.Options.Add(collapsed);

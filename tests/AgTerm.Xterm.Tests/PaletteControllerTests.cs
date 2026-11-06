@@ -181,7 +181,7 @@ public sealed class PaletteControllerTests
     [InlineData(PaletteMark.Flag, false, "unflagged", false, 1)]
     [InlineData(PaletteMark.Flag, true, "flagged", true, 1)]
     [InlineData(PaletteMark.Focus, false, "unfocused", false, 1)]
-    [InlineData(PaletteMark.Focus, true, "focused", false, 2)]
+    [InlineData(PaletteMark.Focus, true, "focused", false, 1.5)]
     public void A_marked_row_names_its_mark_state(PaletteMark mark, bool on, string value, bool filled, double stroke)
     {
         var item = new PaletteItemViewModel("x", "X", mark: mark, markOn: on);

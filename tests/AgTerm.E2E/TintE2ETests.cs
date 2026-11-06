@@ -44,6 +44,22 @@ public class TintE2ETests : ControlApiTestCase
         Assert.False(bad["ok"]!.GetValue<bool>());
     }
 
+    // Windows-only: a session tint can show on the row's flag; a workspace row has none
+    [Fact]
+    public void Only_a_session_tint_takes_the_flag_part()
+    {
+        var session = FirstSession()["id"]!.GetValue<string>();
+        var workspace = FirstWorkspace()["id"]!.GetValue<string>();
+
+        SendOk($$$"""{"cmd":"session.tint","target":"{{{session}}}","args":{"mode":"set","tint":"blue","tintOn":["name","flag"]}}""");
+        var refused = SendCommand($$$"""{"cmd":"workspace.tint","target":"{{{workspace}}}","args":{"mode":"set","tint":"blue","tintOn":["flag"]}}""");
+
+        Assert.Equal(["name", "flag"], Parts(FirstSession()["tintOn"]));
+        Assert.False(refused["ok"]!.GetValue<bool>());
+        Assert.Equal("invalid tint placement: flag (icon,name)", refused["error"]!.GetValue<string>());
+        Assert.False(FirstWorkspace().ContainsKey("tint"));
+    }
+
     [Fact]
     public void Workspace_tint_colors_only_the_workspace()
     {

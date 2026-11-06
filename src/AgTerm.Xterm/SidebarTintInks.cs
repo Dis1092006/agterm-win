@@ -56,13 +56,14 @@ public sealed record SidebarTintInks(
     }
 }
 
-/// <summary>The tint colors of one row's icon and name; null where the row shows no tint.</summary>
-public sealed record SidebarRowTint(string? Icon, string? Name)
+/// <summary>The tint colors of one row's icon, name and flag; null where the row shows no tint.</summary>
+public sealed record SidebarRowTint(string? Icon, string? Name, string? Flag = null)
 {
     public static SidebarRowTint None { get; } = new(null, null);
 
     /// <summary>Each part takes the inks of the background under it: a row-style theme paints the whole
-    /// row, a label-style theme only the block around the name, and the sidebar the rest.</summary>
+    /// row, a label-style theme only the block around the name, and the sidebar the rest. The flag sits
+    /// outside the label block, like the icon.</summary>
     public static SidebarRowTint For(SidebarTint? tint, SidebarRowLook look, SidebarTintInks sidebar)
     {
         ArgumentNullException.ThrowIfNull(look);
@@ -72,6 +73,7 @@ public sealed record SidebarRowTint(string? Icon, string? Name)
         var nameInks = (look.Row ?? look.Label)?.Inks ?? sidebar;
         return new SidebarRowTint(
             tint.Shows(TintParts.Icon) ? iconInks.For(tint.Color) : null,
-            tint.Shows(TintParts.Name) ? nameInks.For(tint.Color) : null);
+            tint.Shows(TintParts.Name) ? nameInks.For(tint.Color) : null,
+            tint.Shows(TintParts.Flag) ? iconInks.For(tint.Color) : null);
     }
 }

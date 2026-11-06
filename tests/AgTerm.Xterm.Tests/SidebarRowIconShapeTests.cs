@@ -4,7 +4,7 @@ namespace AgTerm.Xterm.Tests;
 
 // upstream WorkspaceSidebar.iconForSession (c63e5158): terminal for a session without a split,
 // rectangle.split.2x1 or rectangle.split.1x2 by the split axis, all rounded; a workspace in the focus
-// set draws the same square.grid.2x2 at a heavier weight (6d403ae7), not the filled grid
+// set draws the same square.grid.2x2 at a heavier weight (6d403ae7, 24b29701), not the filled grid
 public sealed class SidebarRowIconShapeTests
 {
     private const string RoundedFrame =
@@ -35,6 +35,6 @@ public sealed class SidebarRowIconShapeTests
     public void A_focused_workspace_draws_the_grid_heavier()
     {
         Assert.Equal(1, SidebarWorkspaceIcon.GridStrokeThickness(focused: false));
-        Assert.Equal(2, SidebarWorkspaceIcon.GridStrokeThickness(focused: true));
+        Assert.Equal(1.5, SidebarWorkspaceIcon.GridStrokeThickness(focused: true));
     }
 }

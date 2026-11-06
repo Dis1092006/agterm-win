@@ -162,7 +162,7 @@ internal static class SessionCommands
         {
             Description = "Create the session in the background without selecting or focusing it (leaves the current selection untouched).",
         };
-        var tint = new TintCreateOptions.Binder();
+        var tint = new TintCreateOptions.Binder(session: true);
         var options = new ClientOptions.Binder();
         cmd.Options.Add(cwd);
         cmd.Options.Add(workspace);

@@ -44,13 +44,15 @@ public static class TintColors
 }
 
 /// <summary>The parts of a sidebar row a tint can color (upstream TintPart). A set of them is a
-/// flags value; the wire order is icon, then name.</summary>
+/// flags value; the wire order is icon, then name, then flag. Flag is Windows-only, and only a
+/// session row has it.</summary>
 [Flags]
 public enum TintParts
 {
     None = 0,
     Icon = 1,
     Name = 2,
+    Flag = 4,
 }
 
 /// <summary>
@@ -61,12 +63,16 @@ public enum TintParts
 [JsonConverter(typeof(SidebarTintConverter))]
 public sealed record SidebarTint
 {
-    private const TintParts AllParts = TintParts.Icon | TintParts.Name;
+    /// <summary>The parts a session row has.</summary>
+    public const TintParts SessionParts = TintParts.Icon | TintParts.Name | TintParts.Flag;
+
+    /// <summary>The parts a workspace row has: no flag.</summary>
+    public const TintParts WorkspaceParts = TintParts.Icon | TintParts.Name;
 
     public SidebarTint(TintColor color, TintParts parts = TintParts.Icon)
     {
         Color = color;
-        var known = parts & AllParts;
+        var known = parts & SessionParts;
         Parts = known == TintParts.None ? TintParts.Icon : known;
     }
 
@@ -74,10 +80,13 @@ public sealed record SidebarTint
 
     public TintParts Parts { get; }
 
-    /// <summary>The accepted placement spelling for help and rejection text.</summary>
-    public const string ValidPartNamesList = "icon,name";
+    /// <summary>The accepted session placement spelling for help and rejection text.</summary>
+    public const string ValidPartNamesList = "icon,name,flag";
 
-    /// <summary>The parts as wire names, in icon, name order.</summary>
+    /// <summary>The accepted workspace placement spelling for help and rejection text.</summary>
+    public const string WorkspacePartNamesList = "icon,name";
+
+    /// <summary>The parts as wire names, in icon, name, flag order.</summary>
     public string[] PartNames => PartsToNames(Parts);
 
     public string ColorName => TintColors.Wire(Color);
@@ -90,21 +99,32 @@ public sealed record SidebarTint
     public static SidebarTint? Recolor(SidebarTint? current, TintColor? color) =>
         color is { } c ? new SidebarTint(c, current?.Parts ?? TintParts.Icon) : null;
 
-    /// <summary>Shows <paramref name="current"/>'s color on <paramref name="parts"/> instead. An untinted
-    /// row stays untinted, so no row holds a placement it does not show.</summary>
-    public static SidebarTint? Place(SidebarTint? current, TintParts parts) =>
-        current is null ? null : new SidebarTint(current.Color, parts);
+    /// <summary>Shows or hides <paramref name="current"/>'s color on one <paramref name="part"/>. An
+    /// untinted row stays untinted, so no row holds a placement it does not show, and a tint left
+    /// with no part is cleared.</summary>
+    public static SidebarTint? WithPart(SidebarTint? current, TintParts part, bool shown)
+    {
+        if (current is null) return null;
+        var parts = shown ? current.Parts | part : current.Parts & ~part;
+        return parts == TintParts.None ? null : new SidebarTint(current.Color, parts);
+    }
+
+    /// <summary>The tint a workspace row keeps: the flag dropped, the icon when nothing else is left.</summary>
+    public static SidebarTint? ForWorkspace(SidebarTint? tint) =>
+        tint is null || (tint.Parts & ~WorkspaceParts) == TintParts.None
+            ? tint
+            : new SidebarTint(tint.Color, tint.Parts & WorkspaceParts);
 
     /// <summary>Reads a wire placement list: each part trimmed of spaces and lowercased. Null when the
-    /// list is empty or names an unknown part.</summary>
-    public static TintParts? ParseParts(IEnumerable<string> raw)
+    /// list is empty or names a part outside <paramref name="allowed"/>.</summary>
+    public static TintParts? ParseParts(IEnumerable<string> raw, TintParts allowed = SessionParts)
     {
         var parts = TintParts.None;
         var any = false;
         foreach (var item in raw)
         {
             any = true;
-            var part = PartFromName(TrimSpaces(item).ToLowerInvariant());
+            var part = PartFromName(TrimSpaces(item).ToLowerInvariant()) & allowed;
             if (part == TintParts.None) return null;
             parts |= part;
         }
@@ -115,14 +135,16 @@ public sealed record SidebarTint
     {
         "icon" => TintParts.Icon,
         "name" => TintParts.Name,
+        "flag" => TintParts.Flag,
         _ => TintParts.None,
     };
 
     internal static string[] PartsToNames(TintParts parts)
     {
-        var names = new List<string>(2);
+        var names = new List<string>(3);
         if ((parts & TintParts.Icon) != 0) names.Add("icon");
         if ((parts & TintParts.Name) != 0) names.Add("name");
+        if ((parts & TintParts.Flag) != 0) names.Add("flag");
         return names.ToArray();
     }
 

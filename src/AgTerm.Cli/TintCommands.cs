@@ -13,9 +13,12 @@ namespace AgTerm.Cli;
 internal static class TintRequest
 {
     public static readonly string ColorHelp = $"A color ({TintColors.ValidNamesList}) or 'clear'.";
-    public const string OnHelp = "Where the color shows: icon, name, or icon,name. Omitted keeps the current placement, else icon.";
 
-    public static void Validate(string value, string? on)
+    public static string OnHelp(bool session) => session
+        ? "Where the color shows: a comma list of icon, name, flag (the flag of a flagged session). Omitted keeps the current placement, else icon."
+        : "Where the color shows: icon, name, or icon,name. Omitted keeps the current placement, else icon.";
+
+    public static void Validate(string value, string? on, bool session)
     {
         if (value == "clear")
         {
@@ -24,14 +27,18 @@ internal static class TintRequest
         }
         if (!TintColors.TryParse(value.ToLowerInvariant(), out _))
             throw new CliValidationException($"tint must be one of: {TintColors.ValidNamesList}, or clear");
-        ValidateParts(on, "--on");
+        ValidateParts(on, "--on", session);
     }
 
-    public static void ValidateParts(string? on, string flag)
+    /// <summary>A session tint can also show on the flag (Windows-only); a workspace row has none.</summary>
+    public static void ValidateParts(string? on, string flag, bool session)
     {
         if (on is null) return;
-        if (SidebarTint.ParseParts(Parts(on) ?? []) is null)
-            throw new CliValidationException($"{flag} must list icon and/or name, comma-separated");
+        var allowed = session ? SidebarTint.SessionParts : SidebarTint.WorkspaceParts;
+        if (SidebarTint.ParseParts(Parts(on) ?? [], allowed) is null)
+            throw new CliValidationException(session
+                ? $"{flag} must list icon, name and/or flag, comma-separated"
+                : $"{flag} must list icon and/or name, comma-separated");
     }
 
     public static ControlArgs Args(string value, string? on) =>
@@ -48,6 +55,7 @@ internal sealed class TintCreateOptions
 {
     public string? Tint { get; init; }
     public string? TintOn { get; init; }
+    public bool Session { get; init; }
 
     public void Validate()
     {
@@ -58,14 +66,14 @@ internal sealed class TintCreateOptions
         }
         if (!TintColors.TryParse(Tint.ToLowerInvariant(), out _))
             throw new CliValidationException($"--tint must be one of: {TintColors.ValidNamesList}");
-        TintRequest.ValidateParts(TintOn, "--tint-on");
+        TintRequest.ValidateParts(TintOn, "--tint-on", Session);
     }
 
     /// <summary>Copies the creation tint into a session.new / workspace.new argument bag.</summary>
     public ControlArgs Apply(ControlArgs args) =>
         args with { Tint = Tint?.ToLowerInvariant(), TintOn = TintRequest.Parts(TintOn) };
 
-    internal sealed class Binder
+    internal sealed class Binder(bool session)
     {
         private readonly Option<string?> _tint = new("--tint")
         {
@@ -73,7 +81,9 @@ internal sealed class TintCreateOptions
         };
         private readonly Option<string?> _tintOn = new("--tint-on")
         {
-            Description = "With --tint: icon, name, or icon,name (default icon).",
+            Description = session
+                ? "With --tint: a comma list of icon, name, flag (default icon)."
+                : "With --tint: icon, name, or icon,name (default icon).",
         };
 
         public void AddTo(System.CommandLine.Command command)
@@ -86,6 +96,7 @@ internal sealed class TintCreateOptions
         {
             Tint = result.GetValue(_tint),
             TintOn = result.GetValue(_tintOn),
+            Session = session,
         };
     }
 }
@@ -103,7 +114,7 @@ internal static class TintCommands
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
 
-        public void Validate() => TintRequest.Validate(Value, On);
+        public void Validate() => TintRequest.Validate(Value, On, Cmd == WireCommand.SessionTint);
 
         public ControlRequest MakeRequest() => new()
         {
@@ -119,6 +130,7 @@ internal static class TintCommands
             + "session tint red                 tint the icon red (or recolor, keeping the placement)\n"
             + "session tint green --on name     color the name instead\n"
             + "session tint blue --on icon,name color both\n"
+            + "session tint red --on flag       color the flag of a flagged session\n"
             + "session tint clear               remove the tint\n\n"
             + "Persists across a relaunch; read back as the tree's tint and tintOn.");
 
@@ -133,7 +145,7 @@ internal static class TintCommands
     {
         var cmd = new System.CommandLine.Command("tint", description);
         var value = new Argument<string>("value") { Description = TintRequest.ColorHelp };
-        var on = new Option<string?>("--on") { Description = TintRequest.OnHelp };
+        var on = new Option<string?>("--on") { Description = TintRequest.OnHelp(wire == WireCommand.SessionTint) };
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(value);

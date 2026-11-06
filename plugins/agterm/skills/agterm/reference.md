@@ -146,7 +146,7 @@ flagged working-set), `context` (what the session is about, set with `session co
 `info`/`infoMarkdown`/`infoHideAfter` (the sidebar info line from `session info`: its source, whether it is
 markdown, and its configured `--hide-after` seconds; all omitted when there is no line),
 `tint`/`tintOn` (the sidebar row's tint color and the parts it colors, e.g. `["icon"]` or
-`["icon","name"]`, the read side of `session tint`; both omitted when untinted),
+`["icon","name","flag"]`, the read side of `session tint`; both omitted when untinted),
 `status` (the agent-status — `active`|`completed`|`blocked` — omitted when
 idle), `statusPane` (which pane set that status — `left` (main) | `right` (split) | `scratch` — the
 `--pane` value from `session status`, omitted when unset or idle; gated on the same non-idle condition
@@ -253,7 +253,9 @@ All are read-only projections of GUI state.
 - `workspace filter [on|off|toggle] [--window W]` — apply or lift the filter over the marked set, keeping the set; answers `{"ok":true}`. Wire: `workspace.filter`. It acts on the whole window, so it takes no `--target`. Read the state back from the tree's top-level `workspaceFilter`; the marked set is each workspace node's `focused` flag. `on` with an empty set shows the full tree.
 - `workspace flag [on|off|toggle] [--target W] [--window W]` — flag or unflag EVERY session of one workspace as one value, including those the flagged tree layout hides; the control twin of the workspace row's Flag All Sessions. `toggle` (default) unflags only when every session is flagged and otherwise flags them all, so it is not a per-session invert. `on`/`off` are idempotent; an empty workspace changes nothing; returns the workspace id. Wire: `workspace.flag`. Read back from each session's `flagged`. Unflagging can move the selection like `session flag off`.
 - `workspace tint <COLOR|clear> [--on PARTS] [--target W] [--window W]` — tint the workspace's OWN sidebar
-  row, with the same colors, `--on` and refusals as `session tint`. It never colors the sessions inside,
+  row, with the same colors, `--on` and refusals as `session tint`, except that a workspace row has no flag:
+  `--on` is `icon`, `name` or `icon,name`, a `flag` part errors `--on must list icon and/or name, comma-separated`
+  (client side) and `invalid tint placement: <parts> (icon,name)` (wire side). It never colors the sessions inside,
   which keep their own tints. Returns the workspace id. Wire: `workspace.tint`. Read back from the
   workspace node's `tint`/`tintOn`.
 - `workspace collapse [--target] [--window W]` — collapse ONE workspace's subtree in the sidebar tree
@@ -573,12 +575,14 @@ All are read-only projections of GUI state.
   ```
 - `session tint <COLOR|clear> [--on PARTS] [--target] [--window W]` — color the session's sidebar row so it
   stands out at a glance (red for production, green for dev). COLOR is `red|orange|yellow|green|blue|purple|gray`.
-  `--on` is `icon`, `name` or `icon,name`; omitted, a recolor keeps the row's placement and an untinted row
-  starts on the icon. `clear` removes the tint and refuses `--on`. Wire: `session.tint` with `args.mode`
+  `--on` is a comma list of `icon`, `name` and `flag`; omitted, a recolor keeps the row's placement and an untinted row
+  starts on the icon. `flag` (agterm-win only) colors the flag drawn after a flagged session's name; on an
+  unflagged session it shows nothing until the session is flagged. The `sessionFlags` interface element hides
+  that flag. `clear` removes the tint and refuses `--on`. Wire: `session.tint` with `args.mode`
   `set` (plus `args.tint` and an optional `args.tintOn` array) or `clear`, which refuses either. Errors:
   `tint must be one of: red|orange|yellow|green|blue|purple|gray, or clear`, `--on does not apply to clear`,
-  `--on must list icon and/or name, comma-separated` (client side); `session.tint set requires a color`,
-  `invalid tint: <value> (red|orange|yellow|green|blue|purple|gray)`, `invalid tint placement: <parts> (icon,name)`,
+  `--on must list icon, name and/or flag, comma-separated` (client side); `session.tint set requires a color`,
+  `invalid tint: <value> (red|orange|yellow|green|blue|purple|gray)`, `invalid tint placement: <parts> (icon,name,flag)`,
   `session.tint clear takes no color or placement`, `invalid tint mode: <mode> (set|clear)` (wire side).
   Returns the session id. Persisted across a relaunch; a duplicated session starts untinted. Read back from
   the node's `tint`/`tintOn`. agterm-win draws the tint in the theme's ANSI colors, so it stays readable on a

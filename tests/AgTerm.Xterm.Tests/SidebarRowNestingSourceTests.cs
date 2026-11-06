@@ -145,6 +145,41 @@ public sealed class SidebarRowNestingSourceTests
             StringComparison.Ordinal);
     }
 
+    // Windows-only: a filled flag after the name, in the flag tint or the icon's untinted color
+    [Fact]
+    public void A_flagged_session_row_draws_a_flag_after_its_name()
+    {
+        var model = Source("SidebarRowViewModel.cs");
+        var label = Between(Source("SidebarView.xaml"), "<Grid Grid.Column=\"1\" HorizontalAlignment=\"Left\" VerticalAlignment=\"Center\">",
+            "<!-- lifecycle status");
+        var flag = Between(label, "<Path Grid.Column=\"2\"", "</Path>");
+
+        Assert.Contains("Data=\"" + FlagData + "\"", flag, StringComparison.Ordinal);
+        Assert.Contains("local:SidebarRowBrushes.Foreground=\"{x:Bind FlagForeground, Mode=OneWay}\"", flag, StringComparison.Ordinal);
+        Assert.Contains("local:SidebarRowBrushes.Fill=\"{x:Bind FlagForeground, Mode=OneWay}\"", flag, StringComparison.Ordinal);
+        Assert.Contains("Visibility=\"{x:Bind FlagVisibility, Mode=OneWay}\"", flag, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"Stroke\" Value=\"{StaticResource SidebarSecondaryBrush}\" />", flag, StringComparison.Ordinal);
+        Assert.Contains("<Setter Property=\"Fill\" Value=\"{StaticResource SidebarSecondaryBrush}\" />", flag, StringComparison.Ordinal);
+        Assert.Contains("SidebarSessionFlag.IsShown(Kind, _row.Flagged, _settings)",
+            Between(model, "public Visibility FlagVisibility =>", ";"), StringComparison.Ordinal);
+        Assert.Contains("_look.Tint.Flag is { } ink ? BrushFrom(ink) : RowForeground",
+            Between(model, "public Brush? FlagForeground =>", ";"), StringComparison.Ordinal);
+        var raised = Between(model, "public void Update(", "internal static SolidColorBrush BrushFrom");
+        Assert.Contains("nameof(FlagVisibility)", raised, StringComparison.Ordinal);
+        Assert.Contains("nameof(FlagForeground)", raised, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_row_brushes_set_and_clear_a_shape_fill()
+    {
+        var brushes = Source("SidebarRowBrushes.cs");
+
+        Assert.Contains("\"Fill\",", brushes, StringComparison.Ordinal);
+        Assert.Contains("Shape.FillProperty", brushes, StringComparison.Ordinal);
+    }
+
+    private const string FlagData = "M3.5,0.5 V14.5 M3.5,1.5 H13 L10.5,5 L13,8.5 H3.5 Z";
+
     private const string WorkspaceIconData =
         "M1.5,1.5 H6.5 V6.5 H1.5 Z M9.5,1.5 H14.5 V6.5 H9.5 Z M1.5,8.5 H6.5 V13.5 H1.5 Z M9.5,8.5 H14.5 V13.5 H9.5 Z";
 

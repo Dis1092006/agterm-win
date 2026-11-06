@@ -31,7 +31,29 @@ public static class SidebarRowBrushes
         };
         if (property is null)
             return;
-        if (args.NewValue is Brush brush)
+        Put(target, property, args.NewValue);
+    }
+
+    /// <summary>The fill of a filled glyph, cleared the same way.</summary>
+    public static readonly DependencyProperty FillProperty = DependencyProperty.RegisterAttached(
+        "Fill",
+        typeof(Brush),
+        typeof(SidebarRowBrushes),
+        new PropertyMetadata(null, OnFillChanged));
+
+    public static Brush? GetFill(DependencyObject target) => (Brush?)target.GetValue(FillProperty);
+
+    public static void SetFill(DependencyObject target, Brush? value) => target.SetValue(FillProperty, value);
+
+    private static void OnFillChanged(DependencyObject target, DependencyPropertyChangedEventArgs args)
+    {
+        if (target is Shape)
+            Put(target, Shape.FillProperty, args.NewValue);
+    }
+
+    private static void Put(DependencyObject target, DependencyProperty property, object? value)
+    {
+        if (value is Brush brush)
             target.SetValue(property, brush);
         else
             target.ClearValue(property);

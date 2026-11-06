@@ -188,14 +188,14 @@ public sealed class SidebarController : IDisposable
     public void ToggleWorkspaceFlag(Guid workspaceId) =>
         Mutate(store => store.ApplyWorkspaceFlag(ControlToggleMode.Toggle, workspaceId));
 
-    /// <summary>The Tint submenu on session rows: a color for every target, or a placement that keeps
-    /// each target's own color.</summary>
+    /// <summary>The Tint submenu on session rows: a color for every target, or one part shown or hidden
+    /// on each target with its own color.</summary>
     public void SetTint(IReadOnlyList<Guid> sessionIds, SidebarTintChoice choice)
     {
         ArgumentNullException.ThrowIfNull(choice);
         Mutate(store =>
         {
-            if (choice.Parts is { } parts) store.SetTintParts(parts, sessionIds);
+            if (choice.Part is { } part) store.SetTintPart(part, choice.Shown, sessionIds);
             else store.SetTintColor(choice.Color, sessionIds);
         });
     }

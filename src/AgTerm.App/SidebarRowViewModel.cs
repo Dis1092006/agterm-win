@@ -264,6 +264,13 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     /// <summary>The icon's color: the icon tint, else the row foreground.</summary>
     public Brush? IconForeground => _look.Tint.Icon is { } ink ? BrushFrom(ink) : RowForeground;
 
+    /// <summary>Windows-only: the flag after a flagged session's name.</summary>
+    public Visibility FlagVisibility =>
+        SidebarSessionFlag.IsShown(Kind, _row.Flagged, _settings) ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>The flag's color: the flag tint, else the row foreground.</summary>
+    public Brush? FlagForeground => _look.Tint.Flag is { } ink ? BrushFrom(ink) : RowForeground;
+
     public Brush? LabelForeground => _look.Tint.Name is { } ink ? BrushFrom(ink)
         : (_look.Row ?? _look.Label) is { } colors ? BrushFrom(colors.Foreground)
         : null;
@@ -407,6 +414,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
               nameof(IsSurfacePending), nameof(IsSurfaceFailed),
               nameof(PendingVisibility), nameof(FailedVisibility),
               nameof(RowBackground), nameof(RowFrame), nameof(RowForeground), nameof(IconForeground),
+              nameof(FlagVisibility), nameof(FlagForeground),
               nameof(LabelForeground), nameof(LabelBlockBackground), nameof(LabelBlockPadding));
     }
 

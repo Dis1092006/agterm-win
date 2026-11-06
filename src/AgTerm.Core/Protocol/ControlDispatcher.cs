@@ -408,7 +408,7 @@ public sealed partial class ControlDispatcher
                 // --wait holds the surface after the command exits, so it is meaningless without a command.
                 if (args?.Wait == true && args?.Command is null)
                     return Err("--wait requires --command");
-                if (CreationTint(args, out var tint) is { } badTint)
+                if (CreationTint(args, session: true, out var tint) is { } badTint)
                     return badTint;
                 return _actions.CreateSession(new ControlSessionCreateOptions(
                     Window: args?.Window,
@@ -685,7 +685,7 @@ public sealed partial class ControlDispatcher
         {
             case Command.WorkspaceNew:
             {
-                if (CreationTint(request.Args, out var tint) is { } badTint)
+                if (CreationTint(request.Args, session: false, out var tint) is { } badTint)
                     return badTint;
                 return _actions.CreateWorkspace(request.Args?.Window, request.Args?.Name,
                     request.Args?.Collapsed ?? false, tint);

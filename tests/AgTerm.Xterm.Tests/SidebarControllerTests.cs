@@ -193,15 +193,21 @@ public sealed class SidebarControllerTests : IDisposable
         Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Name), TintOf(first));
         Assert.Equal(new SidebarTint(TintColor.Blue), TintOf(second));
 
-        _controller.SetTint([first, second], SidebarTintChoice.On(TintParts.Icon | TintParts.Name));
-        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Icon | TintParts.Name), TintOf(second));
+        _controller.SetTint([first, second], SidebarTintChoice.Show(TintParts.Flag, true));
+        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Icon | TintParts.Flag), TintOf(second));
+        _controller.SetTint([first, second], SidebarTintChoice.Show(TintParts.Name, false));
+        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Flag), TintOf(first));
 
         _controller.SetWorkspaceTint(w2, SidebarTintChoice.Of(TintColor.Purple));
-        _controller.SetWorkspaceTint(w2, SidebarTintChoice.On(TintParts.Name));
-        Assert.Equal(new SidebarTint(TintColor.Purple, TintParts.Name), TintOf(w2));
-        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Icon | TintParts.Name), TintOf(first));
+        _controller.SetWorkspaceTint(w2, SidebarTintChoice.Show(TintParts.Name, true));
+        Assert.Equal(new SidebarTint(TintColor.Purple, TintParts.Icon | TintParts.Name), TintOf(w2));
+        Assert.Equal(new SidebarTint(TintColor.Blue, TintParts.Icon | TintParts.Flag), TintOf(second));
+        _controller.SetWorkspaceTint(w2, SidebarTintChoice.Show(TintParts.Icon, false));
+        _controller.SetWorkspaceTint(w2, SidebarTintChoice.Show(TintParts.Name, false));
+        Assert.Null(TintOf(w2));
 
         _controller.SetTint([first], SidebarTintChoice.Of(null));
+        _controller.SetWorkspaceTint(w2, SidebarTintChoice.Of(TintColor.Gray));
         _controller.SetWorkspaceTint(w2, SidebarTintChoice.Of(null));
         Assert.Null(TintOf(first));
         Assert.Null(TintOf(w2));
