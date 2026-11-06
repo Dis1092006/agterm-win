@@ -855,6 +855,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - In the flagged tree a workspace row has the same collapse state as in the ordinary tree, so a collapse in one view shows in the other. Expand and collapse (the commands, the palette items and the row's chevron) work on these rows, and a workspace row can be renamed. In the flat and plain layouts expand and collapse stay no-ops.
   - In the flagged tree a session row has no filled flag icon, because every row there is flagged, and a drag does not move a row. Both are as upstream.
   - Upstream expands the selected session's workspace in the view, without saving it, when the sidebar switches between views, so the selected row is always visible. The port has no such view-only expansion, in the ordinary tree either: a collapsed workspace stays collapsed, and its selected session stays hidden until the workspace is expanded.
+  - The `rename_workspace` action (Rename Workspace) is disabled in the `flat` and `plain` layouts, because they have no workspace row to edit. Upstream keeps it enabled there, and it does nothing.
 
 ## Windows-only extensions
 
