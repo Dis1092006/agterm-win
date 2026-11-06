@@ -113,9 +113,8 @@ Documented adaptations and divergences of the Windows port from upstream agterm 
   copy operation. Drops are accepted only in tree mode. A row drop targets that row's workspace;
   empty space falls back to the focused workspace and then the current workspace. Non-directory
   items are ignored, source order is preserved, and one session is created for each of at most 20
-  accepted directories. Spring-hover expansion of a collapsed workspace remains a Windows
-  adaptation: WinUI drag-and-drop does not expose a stable hover-expand lifecycle, and adding a
-  separate timer would conflict with ListView reorder feedback.
+  accepted directories. A folder drag that rests on a collapsed workspace opens it, as a session
+  drag does (see the flagged view order notes).
 
 - **Close and flagged confirmations.** GUI session closes honor `confirmCloseSession`; single and
   multi-session dialogs snapshot immutable targets, run outside the store and application gates,
@@ -881,7 +880,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - A drag reorders the rows in all three layouts, as upstream. Session rows drag in every mode; workspace rows drag only in the ordinary tree. In the `flat` and `plain` layouts a drop on a row puts the dragged sessions after it, and a drop in a gap puts them before the first row below the gap that is not dragged. In the flagged tree a drop on a workspace row puts them after its last session, and a drop on a session row puts them right after it. A drop that only moves hidden unflagged sessions does nothing.
   - The sidebar is one WinUI list, so the port splits each row into zones itself: the top and bottom quarters of a row are the gaps above and below it, and the middle half is a drop on the row. The ordinary tree uses the same zones, so a drop on a session or workspace row works there too. Before, the tree took only gaps.
   - While a session drag moves, the sidebar draws a line for a gap and a frame for a drop on a row, in the accent color. It draws nothing, and refuses the drop, when the drop would change nothing on screen. A workspace drag always shows the line.
-  - Upstream opens a collapsed workspace when a drag rests on it (spring-loaded expansion); the port does not, in either tree.
+  - A drag that rests 0.65 s on a collapsed workspace opens it, as upstream (spring-loaded expansion). It works in the tree and the flagged tree, for a session drag and for an Explorer folder drop. The open is view-only and is not saved. A drag that moves to another workspace folds the first one back. Leaving the list, a cancelled drag and a refused drop fold it back too; a drop that lands keeps it open. A workspace drag springs nothing, and neither do the `flat` and `plain` layouts, which have no workspace rows. WinUI raises `DragLeave` each time the pointer crosses a row, so the port folds back only when the pointer is outside the list bounds.
 
 ## Windows-only extensions
 

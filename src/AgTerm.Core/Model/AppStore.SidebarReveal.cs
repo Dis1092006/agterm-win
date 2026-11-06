@@ -19,6 +19,10 @@ public partial class AppStore
     /// row while its id stays the same, so it forgets the last reveal.</summary>
     private (SidebarMode Mode, FlaggedViewLayout Layout)? _lastRevealView;
 
+    /// <summary>The workspace the current drag opened (spring-loaded expansion). It sits in the revealed
+    /// set, and the end of the drag folds it back unless the drop succeeded.</summary>
+    private Guid? _sidebarSpringOpenedWorkspaceId;
+
     /// <summary>Moves on each reveal: the sidebar scrolls the selected row into view when it does.</summary>
     public long SidebarRevealGeneration { get; private set; }
 
@@ -69,6 +73,7 @@ public partial class AppStore
     private void ForgetSidebarReveal()
     {
         _sidebarRevealedWorkspaceIds.Clear();
+        _sidebarSpringOpenedWorkspaceId = null;
         _lastRevealedSelection = null;
         _lastRevealView = null;
     }
@@ -79,4 +84,39 @@ public partial class AppStore
         SidebarMode == SidebarMode.Flagged
             ? session.Flagged
             : VisibleWorkspaces.Any(w => w.Id == owner.Id);
+
+    /// <summary>A drag rested on a collapsed workspace (upstream scheduleSpringLoadedExpansion's work
+    /// item): opens it on screen like a reveal, without saving it, and folds the one the drag opened
+    /// before. A workspace already open, or a list without workspace rows, opens nothing.</summary>
+    public void SpringOpenSidebarWorkspace(Guid workspaceId)
+    {
+        if (!SidebarVisible || !RendersWorkspaceRows) return;
+        if (Workspaces.FirstOrDefault(w => w.Id == workspaceId) is not { } workspace) return;
+        var folded = FoldSpringOpenedWorkspace();
+        if (!IsWorkspaceOpenInSidebar(workspace))
+        {
+            _sidebarRevealedWorkspaceIds.Add(workspaceId);
+            _sidebarSpringOpenedWorkspaceId = workspaceId;
+        }
+        else if (!folded)
+        {
+            return;
+        }
+        NotifySidebar();
+    }
+
+    /// <summary>The drag ended. keepOpen (a successful drop) leaves the workspace it opened open, so the
+    /// dropped rows stay visible; otherwise it folds back to how it was before the drag.</summary>
+    public void EndSidebarSpringLoad(bool keepOpen)
+    {
+        if (keepOpen) _sidebarSpringOpenedWorkspaceId = null;
+        else if (FoldSpringOpenedWorkspace()) NotifySidebar();
+    }
+
+    private bool FoldSpringOpenedWorkspace()
+    {
+        if (_sidebarSpringOpenedWorkspaceId is not { } id) return false;
+        _sidebarSpringOpenedWorkspaceId = null;
+        return _sidebarRevealedWorkspaceIds.Remove(id);
+    }
 }

@@ -27,6 +27,28 @@ public sealed class SidebarRowNestingSourceTests
     }
 
     [Fact]
+    public void A_drag_resting_on_a_collapsed_workspace_runs_the_spring_load()
+    {
+        var view = Source("SidebarView.xaml.cs");
+        var over = Between(view, "private void OnListDragOver(object sender, DragEventArgs e)", "\n    }");
+        Assert.Contains("SpringHover(", over, StringComparison.Ordinal);
+        var hover = Between(view, "private void SpringHover(Guid? workspace)", "\n    }");
+        Assert.Contains("_springLoad.Hover(", hover, StringComparison.Ordinal);
+
+        // DragLeave bubbles up from the rows, so only a pointer outside the list ends the spring load
+        var leave = Between(view, "private void OnListDragLeave(object sender, DragEventArgs e)", "\n    }");
+        Assert.Contains("if (IsOutsideList(e.GetPosition(RowsList))) _springLoad.Cancel();", leave, StringComparison.Ordinal);
+
+        var drop = Between(view, "private async void OnListDrop(object sender, DragEventArgs e)", "\n    }");
+        Assert.Contains("_springLoad.Finish(", drop, StringComparison.Ordinal);
+
+        var completed = Between(view, "private void OnDragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)", "\n    }");
+        Assert.Contains("_springLoad.Cancel();", completed, StringComparison.Ordinal);
+
+        Assert.Contains("DispatcherQueue.CreateTimer()", view, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Row_content_is_indented_by_the_kind_of_row_and_whether_it_nests()
     {
         var model = Source("SidebarRowViewModel.cs");

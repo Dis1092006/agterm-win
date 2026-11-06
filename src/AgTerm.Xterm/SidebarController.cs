@@ -183,6 +183,12 @@ public sealed class SidebarController : IDisposable
     public void RenameSession(Guid sessionId, string name) =>
         Mutate(store => store.RenameSession(sessionId, name));
 
+    public void SpringOpenWorkspace(Guid workspaceId) =>
+        Mutate(store => store.SpringOpenSidebarWorkspace(workspaceId));
+
+    public void EndSpringLoad(bool keepOpen) =>
+        Mutate(store => store.EndSidebarSpringLoad(keepOpen));
+
     public void RenameWorkspace(Guid workspaceId, string name) =>
         Mutate(store => store.RenameWorkspace(workspaceId, name));
 
