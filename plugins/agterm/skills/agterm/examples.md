@@ -82,6 +82,10 @@ pane also ends Copilot with `user_exit`; on an app quit the window stops taking 
 its panes close, so the pin survives. `install.ps1` writes `hooks/copilot-session-resume.json` under
 `~/.copilot` or `COPILOT_HOME`.
 
+`agtermctl agent-hook resume <agent> <start|end>` does the same work for Claude Code, Copilot CLI and
+Codex from one command, with the same end reasons. A hook runs it with the hook JSON on standard input;
+see reference.md.
+
 ## Create a session and type into it
 
 `session new` returns the new id and focuses the session. Capture the id, then type. The session is

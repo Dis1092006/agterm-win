@@ -296,7 +296,7 @@ public class SkillTextTests
         }
         try
         {
-            Agtermctl.ParseAsRoot(argv);
+            Agtermctl.ParseAsRootAny(argv);
             return null;
         }
         catch (Exception e) when (e is CliParseException or CliValidationException)

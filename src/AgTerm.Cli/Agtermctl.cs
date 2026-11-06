@@ -136,6 +136,7 @@ public static class Agtermctl
                      ClipboardCommands.Build(bindings),
                      RecentCommands.Build(bindings),
                      MessageCommands.Build(bindings),
+                     AgentHookCommands.Build(bindings),
                  })
         {
             root.Subcommands.Add(command);
