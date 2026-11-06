@@ -320,6 +320,8 @@ agtermctl session flag on --target "$AGTERM_SESSION_ID"   # flag this session
 agtermctl session flag on --target a1b2                   # flag another (any workspace)
 agtermctl sidebar mode flagged                            # show only the flagged sessions
 agtermctl session go --to next                            # in flagged mode, nav steps the flagged set only
+agtermctl sidebar flagged-layout tree                     # group the flagged sessions under their workspaces
+agtermctl sidebar flagged-layout plain                    # or list them by session name only
 agtermctl sidebar mode tree                               # back to the full tree
 agtermctl session flag clear                              # unflag everything in the window
 ```

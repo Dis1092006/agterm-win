@@ -76,6 +76,9 @@ public sealed record AppSettings
     /// <summary>The raw SessionInfoDisplay for the sidebar info line; null means always. Resolved by
     /// EffectiveSessionInfoDisplay.</summary>
     [JsonPropertyName("sessionInfoDisplay")] public string? SessionInfoDisplay { get; init; }
+    /// <summary>The raw FlaggedViewLayout for the flagged sidebar view; null means flat. Resolved by
+    /// EffectiveFlaggedViewLayout.</summary>
+    [JsonPropertyName("flaggedViewLayout")] public string? FlaggedViewLayout { get; init; }
     // Windows-only (parity/windows-only.json): "row" or "label"; absent or unknown means off
     [JsonPropertyName("sidebarThemeStyle")] public string? SidebarThemeStyle { get; init; }
 
@@ -103,6 +106,10 @@ public sealed record AppSettings
     // Model. qualifies the enum: inside this record the string property of the same name hides it
     [JsonIgnore] public Model.SessionInfoDisplay EffectiveSessionInfoDisplay =>
         SessionInfoDisplays.FromRaw(SessionInfoDisplay) ?? Model.SessionInfoDisplay.Always;
+
+    /// <summary>The explicit flaggedViewLayout when it is a known raw value, else flat.</summary>
+    [JsonIgnore] public Model.FlaggedViewLayout EffectiveFlaggedViewLayout =>
+        FlaggedViewLayouts.FromRaw(FlaggedViewLayout) ?? Model.FlaggedViewLayout.Flat;
 
     /// <summary>A value is matched exactly, like upstream's enum decode of other settings.</summary>
     public CopyOnSelectMode EffectiveCopyOnSelect() => CopyOnSelect switch
@@ -177,6 +184,7 @@ public sealed record AppSettings
          other.CloseOnShellExit) &&
         CopyOnSelect == other.CopyOnSelect && StatusReset == other.StatusReset &&
         SessionInfoDisplay == other.SessionInfoDisplay &&
+        FlaggedViewLayout == other.FlaggedViewLayout &&
         AttentionIncludesActive == other.AttentionIncludesActive &&
         AttentionNavigationAcrossWindows == other.AttentionNavigationAcrossWindows &&
         (HiddenInterfaceElements is null

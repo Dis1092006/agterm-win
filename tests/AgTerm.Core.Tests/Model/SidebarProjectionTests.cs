@@ -89,6 +89,114 @@ public class SidebarProjectionTests : IDisposable
         Assert.All(rows, r => Assert.True(r.Flagged));
     }
 
+    // upstream f8c3eba3: plain is the flat list labelled by the session name alone
+    [Fact]
+    public void The_plain_flagged_layout_is_the_flat_list_without_workspace_names()
+    {
+        var (_, _, a, _, c) = Seed();
+        _store.SetFlag(true, a.Id);
+        _store.SetFlag(true, c.Id);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+        _store.FlaggedLayout = FlaggedViewLayout.Plain;
+
+        var rows = SidebarProjection.Project(_store);
+        Assert.Equal(new[] { a.Id, c.Id }, rows.Select(r => r.Id));
+        Assert.All(rows, r => Assert.Equal(SidebarRowKind.Session, r.Kind));
+        Assert.Equal(new[] { "api", "home" }, rows.Select(r => r.Label));
+    }
+
+    // upstream 902cd853 workspaceProjection: every workspace with a flagged session, focus ignored,
+    // its flagged sessions only, labelled by name alone
+    [Fact]
+    public void The_tree_flagged_layout_nests_flagged_sessions_under_their_workspace_rows()
+    {
+        var (w1, w2, a, _, c) = Seed();
+        var w3 = _store.AddWorkspace("idle", revealNewWorkspace: false);
+        _store.AddSession(w3.Id, "C:\\idle", select: false);
+        _store.SetFlag(true, a.Id);
+        _store.SetFlag(true, c.Id);
+        _store.SetFocusedWorkspace(w2.Id);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+        _store.FlaggedLayout = FlaggedViewLayout.Tree;
+
+        var rows = SidebarProjection.Project(_store);
+        Assert.Equal(new[] { w1.Id, a.Id, w2.Id, c.Id }, rows.Select(r => r.Id));
+        Assert.Equal(
+            new[] { SidebarRowKind.Workspace, SidebarRowKind.Session, SidebarRowKind.Workspace, SidebarRowKind.Session },
+            rows.Select(r => r.Kind));
+        Assert.Equal(new[] { "work", "api", "personal", "home" }, rows.Select(r => r.Label));
+        Assert.Equal(w1.Id, rows[1].WorkspaceId);
+    }
+
+    [Fact]
+    public void A_collapsed_workspace_in_the_flagged_tree_hides_its_flagged_sessions()
+    {
+        var (w1, _, a, _, c) = Seed();
+        _store.SetFlag(true, a.Id);
+        _store.SetFlag(true, c.Id);
+        _store.SetWorkspaceExpanded(w1.Id, false);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+        _store.FlaggedLayout = FlaggedViewLayout.Tree;
+
+        var rows = SidebarProjection.Project(_store);
+        Assert.DoesNotContain(rows, r => r.Id == a.Id);
+        Assert.True(rows.Single(r => r.Id == w1.Id).Collapsed);
+        Assert.Contains(rows, r => r.Id == c.Id);
+    }
+
+    // upstream displayedUnseen: a flagged-tree workspace row counts only the children it renders
+    [Fact]
+    public void A_flagged_tree_workspace_row_counts_only_its_flagged_sessions_unseen()
+    {
+        var (w1, _, a, b, _) = Seed();
+        a.UnseenCount = 2;
+        b.UnseenCount = 5;
+        _store.SetFlag(true, a.Id);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+        _store.FlaggedLayout = FlaggedViewLayout.Tree;
+        Assert.Equal(2, SidebarProjection.Project(_store).Single(r => r.Id == w1.Id).Unseen);
+
+        _store.SetWorkspaceExpanded(w1.Id, false);
+        Assert.Equal(2, SidebarProjection.Project(_store).Single(r => r.Id == w1.Id).Unseen);
+
+        _store.SetSidebarMode(SidebarMode.Tree);
+        Assert.Equal(7, SidebarProjection.Project(_store).Single(r => r.Id == w1.Id).Unseen);
+    }
+
+    // the layout is dormant under the ordinary tree
+    [Fact]
+    public void The_flagged_layout_does_not_change_the_ordinary_tree()
+    {
+        var (_, _, a, _, _) = Seed();
+        _store.SetFlag(true, a.Id);
+        var rows = SidebarProjection.Project(_store);
+        var key = SidebarProjection.ShapeKey(_store);
+
+        _store.FlaggedLayout = FlaggedViewLayout.Tree;
+
+        Assert.Equal(rows, SidebarProjection.Project(_store));
+        Assert.Equal(key, SidebarProjection.ShapeKey(_store));
+    }
+
+    [Fact]
+    public void The_shape_key_changes_with_the_flagged_layout_in_flagged_mode()
+    {
+        var (_, _, a, _, c) = Seed();
+        _store.SetFlag(true, a.Id);
+        _store.SetFlag(true, c.Id);
+        _store.SetSidebarMode(SidebarMode.Flagged);
+        var flat = SidebarProjection.ShapeKey(_store);
+
+        _store.FlaggedLayout = FlaggedViewLayout.Plain;
+        var plain = SidebarProjection.ShapeKey(_store);
+        _store.FlaggedLayout = FlaggedViewLayout.Tree;
+        var tree = SidebarProjection.ShapeKey(_store);
+
+        Assert.NotEqual(flat, plain);
+        Assert.NotEqual(flat, tree);
+        Assert.NotEqual(plain, tree);
+    }
+
     [Fact]
     public void Session_rows_carry_split_flag_indicator_and_unseen()
     {

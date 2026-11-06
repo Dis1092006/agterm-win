@@ -207,7 +207,7 @@ Status; no command sets it, and `session go` stays in its window either way), `s
 window's sidebar is currently shown — the read side of the write-only `sidebar` command, so a script
 can restore it, e.g. a tmux-style zoom that hides the sidebar and must re-show it only when it was
 visible before), `sidebarMode` (`tree` or `flagged` — the sidebar view mode, the read side of
-`sidebar mode`), `quickVisible` (whether the app-level quick panel is currently shown — the read
+`sidebar mode`), `sidebarFlaggedLayout` (`flat`, `plain` or `tree` — how the flagged view draws, the read side of `sidebar flagged-layout`; the same value in every window's tree), `quickVisible` (whether the app-level quick panel is currently shown — the read
 side of the write-only `quick` command, so a script can make the toggle idempotent), `zoomedSurface`
 (the control id of the surface terminal zoom currently fills the window with —
 `surface:<session-id>:<kind>` or `quick`; omitted when nothing is zoomed — the read side of the
@@ -221,9 +221,9 @@ the mode is `untouched`), and `dashboardFontMode` (`auto` for `--auto-size`, `fi
 `untouched`), plus `pickPending` (the id of the window's pending `pick`, omitted when none) and
 `askPending` (the id of the window's pending gui-style `ask`, omitted when none). `idleMs` is live
 and grows while the window is idle, so it is on `tree` only, never `window.list`; `sidebarVisible` is on
-both; `workspaceFilter`, `sidebarMode`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
+both; `workspaceFilter`, `sidebarMode`, `sidebarFlaggedLayout`, `quickVisible`, `zoomedSurface`, and the four `dashboard*` fields are `tree`-only
 (a GUI/keyboard change would leave a cached copy stale).
-All thirteen are read-only projections of GUI state.
+All fourteen are read-only projections of GUI state.
 
 ## workspace
 
@@ -1041,7 +1041,7 @@ Settings > Interface > Show sidebar only in the active window (`autoHideSidebarI
 
 `agtermctl sidebar mode [tree|flagged|toggle]` — flip the frontmost window's sidebar VIEW between the
 workspace tree and the flat flagged working-set list (the durable per-session `flag`; each flagged row
-is labeled `session : workspace`, even across workspaces). Wire: `sidebar.mode`. `toggle` is the
+is labeled `session : workspace`, even across workspaces; `sidebar flagged-layout` picks another layout). Wire: `sidebar.mode`. `toggle` is the
 default; idempotent
 (delta-computed); an unknown mode is an error. Persisted
 per-window. While in `flagged` mode, `session go` navigation (and the Ctrl+Tab MRU switcher) is scoped
@@ -1050,16 +1050,18 @@ or all sessions. The GUI half is the sidebar's flagged-view button and the Ctrl+
 ("Show Flagged Sessions" / "Show All Sessions"). Use with `session flag` to build and view a
 cross-workspace working set.
 
+`agtermctl sidebar flagged-layout [flat|plain|tree|toggle]` — set how the flagged view draws. Wire: `sidebar.flagged-layout`. `flat` (the default) lists the flagged sessions as `session : workspace`; `plain` lists them by session name only; `tree` groups them under their workspace rows, with the same collapse state as the ordinary tree and the focus filter ignored. `toggle` (the default) switches `tree` to `flat` and `flat` or `plain` to `tree`. The value is app-wide: it applies to every window and is saved as the `flaggedViewLayout` setting (Settings > General). The reply text is the new layout. An unknown mode is an error: `invalid flagged layout: X`. Read it back from the tree's `sidebarFlaggedLayout`. In the flagged `tree` layout, `sidebar expand` and `sidebar collapse` act on the workspace rows; in `flat` and `plain` they are no-ops.
+
 `agtermctl sidebar expand [--window W]` — expand every workspace row in a window's sidebar tree.
 Wire: `sidebar.expand`.
 Defaults to the frontmost window; `--window` (id / prefix / `active`) targets any OPEN window, so a
 script can expand a background window's tree. Idempotent (a clean no-op when all are already expanded);
-a graceful no-op in `flagged` mode (no workspace rows); a named-but-closed window errors.
+a graceful no-op in `flagged` mode with the `flat` or `plain` layout (no workspace rows); a named-but-closed window errors.
 
 `agtermctl sidebar collapse [--window W]` — collapse every workspace EXCEPT the current one (the same
 resolution as `--target active`), which stays expanded and is scrolled into view. Wire:
 `sidebar.collapse`. Same `--window`
-selector and defaults as `expand`. Idempotent; a graceful no-op in `flagged` mode; a named-but-closed
+selector and defaults as `expand`. Idempotent; a graceful no-op in `flagged` mode with the `flat` or `plain` layout; a named-but-closed
 window errors.
 
 `agtermctl sidebar width <points> [--window W]` — set a window's sidebar width, the divider a drag would

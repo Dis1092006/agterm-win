@@ -133,7 +133,7 @@ public sealed partial class SidebarView : UserControl
             CancelRename();
             _items.Clear();
             foreach (var row in snapshot.Rows)
-                _items.Add(new SidebarRowViewModel(row, _settings, snapshot.Mode, SurfaceStatusOf(snapshot, row), LookOf(row),
+                _items.Add(new SidebarRowViewModel(row, _settings, snapshot.Mode, snapshot.RendersWorkspaceRows, SurfaceStatusOf(snapshot, row), LookOf(row),
                     _rowIcons.IconNameFor(row)) { DefaultIconFill = _rowIconFill });
         }
         else
@@ -428,11 +428,8 @@ public sealed partial class SidebarView : UserControl
         CancelRename();
         _editing = row;
         RenameStateChanged?.Invoke(true);
-        // flagged mode decorates the label with " : workspace" — seed the BARE name so the tail
-        // can't get committed into the custom name (upstream pin)
-        var label = row.Label;
-        if (_snapshot?.Mode == SidebarMode.Flagged && label.LastIndexOf(" : ", StringComparison.Ordinal) is var cut and >= 0)
-            label = label[..cut];
+        var snapshot = _snapshot;
+        var label = snapshot is null ? row.Label : SidebarRenameSeed.Of(row.Label, snapshot.Mode, snapshot.FlaggedLayout);
         _editingOriginal = label;
         row.EditText = label;
         row.IsEditing = true;

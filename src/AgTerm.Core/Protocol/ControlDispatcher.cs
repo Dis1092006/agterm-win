@@ -53,6 +53,7 @@ public sealed partial class ControlDispatcher
                 or Command.HooksReload or Command.HooksList
                 or Command.ConfigReload or Command.Notify
                 or Command.ThemeSet or Command.ThemeList or Command.IconList or Command.Sidebar or Command.SidebarMode
+                or Command.SidebarFlaggedLayout
                 or Command.SidebarExpand or Command.SidebarCollapse or Command.RestoreClear
                 or Command.Version or Command.SidebarWidth:
                 return await DispatchAppCommand(request);
@@ -889,6 +890,13 @@ public sealed partial class ControlDispatcher
                 if (mode is null)
                     return Err($"invalid sidebar mode: {request.Args?.Mode ?? "toggle"}");
                 return _actions.SetSidebarViewMode(mode.Value);
+            }
+            case Command.SidebarFlaggedLayout:
+            {
+                var mode = ControlFlaggedLayoutModes.Parse(request.Args?.Mode);
+                if (mode is null)
+                    return Err($"invalid flagged layout: {request.Args?.Mode ?? "toggle"}");
+                return _actions.SetFlaggedViewLayout(mode.Value);
             }
             case Command.SidebarExpand:
                 return _actions.ExpandSidebar(request.Args?.Window);

@@ -136,6 +136,47 @@ public class ControlDispatcherTests
         Assert.Empty(actions.Calls);
     }
 
+    // upstream flaggedLayoutParsesModesAndKeepsExactResponse (902cd853 + f8c3eba3)
+    [Theory]
+    [InlineData("flat", ControlFlaggedLayoutMode.Flat)]
+    [InlineData("plain", ControlFlaggedLayoutMode.Plain)]
+    [InlineData("tree", ControlFlaggedLayoutMode.Tree)]
+    [InlineData("toggle", ControlFlaggedLayoutMode.Toggle)]
+    [InlineData(null, ControlFlaggedLayoutMode.Toggle)]
+    public async Task FlaggedLayoutParsesModesAndKeepsExactResponse(string? mode, ControlFlaggedLayoutMode expected)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+        var exact = new ControlResponse { Ok = true, Result = new ControlResult { Text = "tree" } };
+        actions.NextFlaggedLayoutResponse = exact;
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SidebarFlaggedLayout, Args = mode is null ? null : new ControlArgs { Mode = mode },
+        });
+
+        ExpectResponse(exact, response);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.FlaggedLayout(expected),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task FlaggedLayoutRejectsAnUnknownModeWithoutCallingActions()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SidebarFlaggedLayout, Args = new ControlArgs { Mode = "outline" },
+        });
+
+        ExpectResponse(Err("invalid flagged layout: outline"), response);
+        Assert.Empty(actions.Calls);
+    }
+
     [Fact]
     public async Task SidebarExpandAndCollapseRouteWithWindowArgument()
     {

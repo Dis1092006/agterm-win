@@ -122,6 +122,38 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void A_flagged_layout_change_rebroadcasts_the_layout_and_its_rows()
+    {
+        Guid w2 = default, session = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            session = store.AddSession(w2, _stateDir, select: false)!.Id;
+            store.RenameSession(session, "api");
+            store.SetFlag(true, [session]);
+            store.SetSidebarMode(SidebarMode.Flagged);
+        });
+        Assert.Equal(FlaggedViewLayout.Flat, Latest.FlaggedLayout);
+        Assert.False(Latest.RendersWorkspaceRows);
+
+        Mutate(store => store.FlaggedLayout = FlaggedViewLayout.Tree);
+
+        Assert.Equal(FlaggedViewLayout.Tree, Latest.FlaggedLayout);
+        Assert.True(Latest.RendersWorkspaceRows);
+        Assert.Equal(new[] { w2, session }, Latest.Rows.Select(r => r.Id));
+        Assert.Equal("api", Latest.Rows[1].Label);
+    }
+
+    [Fact]
+    public void The_ordinary_tree_renders_workspace_rows_whatever_the_flagged_layout()
+    {
+        Mutate(store => store.FlaggedLayout = FlaggedViewLayout.Plain);
+
+        Assert.Equal(SidebarMode.Tree, Latest.Mode);
+        Assert.True(Latest.RendersWorkspaceRows);
+    }
+
+    [Fact]
     public void Store_mutations_rebroadcast_through_the_injected_dispatcher()
     {
         var before = _snapshots.Count;
@@ -627,9 +659,9 @@ public sealed class SidebarGesturePolicyTests
 {
     public static IEnumerable<object[]> GestureCases => new[]
     {
-        // workspace Tap: tree → ToggleWorkspace, flagged → None
+        // workspace Tap: a workspace row folds wherever it renders (the tree and the flagged tree layout)
         new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarPointerGesture.Tap,       SidebarGestureAction.ToggleWorkspace },
-        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarPointerGesture.Tap,       SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarPointerGesture.Tap,       SidebarGestureAction.ToggleWorkspace },
         // session Tap: tree or flagged, selected or unselected → ActivateSession
         new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarPointerGesture.Tap,       SidebarGestureAction.ActivateSession  },
         new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarPointerGesture.Tap,       SidebarGestureAction.ActivateSession  },
@@ -656,20 +688,20 @@ public sealed class SidebarKeyboardGesturePolicyTests
         // tree workspace: Enter → ToggleWorkspace, Space → ToggleWorkspace
         new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.Enter, SidebarGestureAction.ToggleWorkspace },
         new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.Space, SidebarGestureAction.ToggleWorkspace },
-        // flagged workspace: Enter → None, Space → None
-        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.Enter, SidebarGestureAction.None            },
-        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.Space, SidebarGestureAction.None            },
+        // flagged tree layout workspace: Enter → ToggleWorkspace, Space → ToggleWorkspace
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.Enter, SidebarGestureAction.ToggleWorkspace },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.Space, SidebarGestureAction.ToggleWorkspace },
         // session Enter: tree or flagged → ActivateSession
         new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.Enter, SidebarGestureAction.ActivateSession  },
         new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.Enter, SidebarGestureAction.ActivateSession  },
         // session Space: tree or flagged → None (ListView selection; SelectionChanged owns activation)
         new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.Space, SidebarGestureAction.None            },
         new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.Space, SidebarGestureAction.None            },
-        // F2 on session or tree workspace → Rename
+        // F2 on a session or a workspace row → Rename
         new object[] { SidebarRowKind.Session,   SidebarMode.Tree,    SidebarKeyboardGesture.F2,    SidebarGestureAction.Rename           },
         new object[] { SidebarRowKind.Session,   SidebarMode.Flagged, SidebarKeyboardGesture.F2,    SidebarGestureAction.Rename           },
         new object[] { SidebarRowKind.Workspace, SidebarMode.Tree,    SidebarKeyboardGesture.F2,    SidebarGestureAction.Rename           },
-        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.F2,    SidebarGestureAction.None            },
+        new object[] { SidebarRowKind.Workspace, SidebarMode.Flagged, SidebarKeyboardGesture.F2,    SidebarGestureAction.Rename           },
         // unsupported enum values → None
         new object[] { (SidebarRowKind)99,       SidebarMode.Tree,    SidebarKeyboardGesture.Enter, SidebarGestureAction.None            },
         new object[] { SidebarRowKind.Session,   (SidebarMode)99,     SidebarKeyboardGesture.Enter, SidebarGestureAction.None            },

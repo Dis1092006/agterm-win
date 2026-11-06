@@ -85,6 +85,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record IconList : Call;
         public sealed record SidebarVisibility(ControlToggleMode Mode) : Call;
         public sealed record SidebarViewMode(ControlSidebarViewMode Mode) : Call;
+        public sealed record FlaggedLayout(ControlFlaggedLayoutMode Mode) : Call;
         public sealed record Expand(string? Window) : Call;
         public sealed record Collapse(string? Window) : Call;
         public sealed record AppVersion : Call;
@@ -149,6 +150,7 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextSessionDuplicateResponse = new() { Ok = true };
     public ControlResponse NextSidebarVisibilityResponse = new() { Ok = true };
     public ControlResponse NextSidebarViewModeResponse = new() { Ok = true };
+    public ControlResponse NextFlaggedLayoutResponse = new() { Ok = true };
     public ControlResponse NextExpandResponse = new() { Ok = true };
     public ControlResponse NextCollapseResponse = new() { Ok = true };
     public ControlResponse NextAppVersionResponse = new() { Ok = true };
@@ -522,6 +524,12 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.SidebarViewMode(mode));
         return NextSidebarViewModeResponse;
+    }
+
+    public ControlResponse SetFlaggedViewLayout(ControlFlaggedLayoutMode mode)
+    {
+        Calls.Add(new Call.FlaggedLayout(mode));
+        return NextFlaggedLayoutResponse;
     }
 
     public ControlResponse ExpandSidebar(string? window)

@@ -913,6 +913,8 @@ public sealed partial class MainWindow : Window
             ObserveTaskFault(RefreshInterceptChordsAsync(), "Refresh intercept chords failed"));
         host.ThemeUpdateRequested += change =>
             ObserveTaskFault(ApplyLiveThemeWithFailureAsync(change), "Theme apply failed");
+        host.FlaggedLayoutChangeRequested += layout =>
+            ObserveTaskFault(SaveFlaggedLayoutWithFailureAsync(layout), "Flagged layout save failed");
         host.AttentionRequested += () => ObserveTaskFault(
             ((App)Application.Current).RequestTaskbarAttentionAsync(_windowId), "Taskbar attention failed");
         host.NotificationRequested += notification => DispatcherQueue.TryEnqueue(() =>
@@ -1035,7 +1037,7 @@ public sealed partial class MainWindow : Window
                     await _applicationHost.DeleteWindowAsync(_windowId))),
             [BuiltinAction.NewWorkspace] = Sync(() => true, () => sidebar.NewWorkspace()),
             [BuiltinAction.RenameWorkspace] = Sync(
-                () => _latestSidebarSnapshot is { Mode: SidebarMode.Tree, CurrentWorkspaceId: not null },
+                () => _latestSidebarSnapshot is { RendersWorkspaceRows: true, CurrentWorkspaceId: not null },
                 Sidebar.BeginRenameCurrentWorkspace),
             [BuiltinAction.DeleteWorkspace] = Async(
                 () => _latestSidebarSnapshot is { CanRemoveWorkspace: true, CurrentWorkspaceId: not null },
@@ -3053,7 +3055,7 @@ public sealed partial class MainWindow : Window
         await _themeApplyGate.WaitAsync();
         try
         {
-            var preservePaneFontSizes = kind is SettingsApplyKind.Startup or SettingsApplyKind.Theme;
+            var preservePaneFontSizes = kind is SettingsApplyKind.Startup or SettingsApplyKind.Theme or SettingsApplyKind.Command;
             var presentation = LiveThemeSettings.Resolve(
                 settings, _themeCatalog, _systemDark, preservePaneFontSizes);
 
@@ -3090,6 +3092,22 @@ public sealed partial class MainWindow : Window
         {
             QueueFailureNotice(new LiveFailureNotice(
                 "Theme could not be applied",
+                ex.GetBaseException().Message));
+            throw;
+        }
+    }
+
+    private async Task SaveFlaggedLayoutWithFailureAsync(FlaggedViewLayout layout)
+    {
+        try
+        {
+            await _applicationHost.Settings.UpdateCurrentAsync(
+                settings => layout.WriteTo(settings), SettingsApplyKind.Command);
+        }
+        catch (Exception ex)
+        {
+            QueueFailureNotice(new LiveFailureNotice(
+                "Flagged view layout could not be saved",
                 ex.GetBaseException().Message));
             throw;
         }

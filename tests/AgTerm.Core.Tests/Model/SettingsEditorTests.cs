@@ -137,6 +137,45 @@ public sealed class SettingsEditorTests : IDisposable
     }
 
     [Fact]
+    public void Flagged_view_layout_is_a_general_choice_that_defaults_to_the_flat_list()
+    {
+        var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "flaggedViewLayout");
+        Assert.Equal("General", field.Tab);
+        Assert.Equal("Flagged view layout", field.Label);
+        Assert.Equal(SettingControl.Choice, field.Control);
+        Assert.Null(field.Default);
+        Assert.Equal([null, "plain", "tree"], field.Choices!.Select(choice => choice.Value));
+        Assert.Equal(["Flat list", "Flat list, names only", "Workspace tree"], field.Choices!.Select(choice => choice.Label));
+        var general = SettingsEditor.Fields.Where(field => field.Tab == "General").Select(field => field.Key).ToList();
+        Assert.Equal(general.IndexOf("closeGraceUndoEnabled") + 1, general.IndexOf("flaggedViewLayout"));
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("flat", null)]
+    [InlineData("plain", "plain")]
+    [InlineData("tree", "tree")]
+    [InlineData("grid", null)]
+    public void The_flagged_view_layout_picker_shows_the_effective_value(string? stored, string? shown)
+    {
+        File.WriteAllText(Store.FilePath, stored is null ? "{}" : $$"""{"flaggedViewLayout":"{{stored}}"}""");
+
+        Assert.Equal(shown, new SettingsEditor(new SettingsCoordinator(Store)).ChoiceValue("flaggedViewLayout"));
+    }
+
+    [Fact]
+    public async Task Choosing_the_tree_layout_persists_it_and_the_flat_list_removes_the_key()
+    {
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        await editor.SetAsync("flaggedViewLayout", "tree");
+        Assert.Equal("tree", JsonNode.Parse(File.ReadAllText(Store.FilePath))!["flaggedViewLayout"]?.GetValue<string>());
+
+        await editor.SetAsync("flaggedViewLayout", null);
+        Assert.False(JsonNode.Parse(File.ReadAllText(Store.FilePath))!.AsObject().ContainsKey("flaggedViewLayout"));
+    }
+
+    [Fact]
     public void Sidebar_theme_colors_are_one_choice_that_defaults_to_off()
     {
         Assert.DoesNotContain(SettingsEditor.Fields, field => field.Key == "sidebarThemeColors");

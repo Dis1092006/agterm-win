@@ -2077,6 +2077,32 @@ public class CommandsTests
     }
 
     [Fact]
+    public void SidebarFlaggedLayoutDefaultsToggle()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.SidebarFlaggedLayout, Args = new ControlArgs { Mode = "toggle" } },
+            Request("sidebar", "flagged-layout"));
+    }
+
+    [Theory]
+    [InlineData("flat")]
+    [InlineData("plain")]
+    [InlineData("tree")]
+    public void SidebarFlaggedLayoutNamesALayout(string layout)
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.SidebarFlaggedLayout, Args = new ControlArgs { Mode = layout } },
+            Request("sidebar", "flagged-layout", layout));
+    }
+
+    [Fact]
+    public void SidebarFlaggedLayoutRejectsBadLayoutAndAWindowTarget()
+    {
+        Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "sidebar", "flagged-layout", "grid" }));
+        Assert.ThrowsAny<Exception>(() => Agtermctl.ParseAsRoot(new[] { "sidebar", "flagged-layout", "tree", "--window", "w" }));
+    }
+
+    [Fact]
     public void SidebarExpand()
     {
         CanonicalJson.AssertEqual(
