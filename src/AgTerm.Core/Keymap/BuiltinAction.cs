@@ -4,7 +4,8 @@ namespace AgTerm.Core.Keymap;
 /// A rebindable built-in action. Each member has a canonical kitty-style raw name (the token the
 /// user writes after map in keymap.conf) and a default chord — the shortcut shipped out of the box.
 /// Parity pin: agterm 7df70fe, 41 actions; toggle_workspace_filter is adopted from upstream 6722755a,
-/// toggle_horizontal_split from eb29d556, which also moved dashboard from cmd+shift+d to cmd+shift+g.
+/// toggle_horizontal_split from eb29d556, which also moved dashboard from cmd+shift+d to cmd+shift+g;
+/// edit_flagged_sessions and edit_focused_workspaces (keyless) from a2552826.
 /// </summary>
 public enum BuiltinAction
 {
@@ -23,6 +24,7 @@ public enum BuiltinAction
     QuickTerminal, SessionPalette, CommandPalette,
     CustomCommandPalette, ShowAttention,
     Dashboard,
+    EditFlaggedSessions, EditFocusedWorkspaces,
 }
 
 public static class BuiltinActions
@@ -72,6 +74,8 @@ public static class BuiltinActions
         (BuiltinAction.CustomCommandPalette, "custom_command_palette"),
         (BuiltinAction.ShowAttention, "show_attention"),
         (BuiltinAction.Dashboard, "dashboard"),
+        (BuiltinAction.EditFlaggedSessions, "edit_flagged_sessions"),
+        (BuiltinAction.EditFocusedWorkspaces, "edit_focused_workspaces"),
     };
 
     private static readonly Dictionary<BuiltinAction, string> ToWire = Map.ToDictionary(p => p.Action, p => p.Wire);

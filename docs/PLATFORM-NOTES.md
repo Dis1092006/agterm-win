@@ -287,6 +287,8 @@ On Windows, `cmd` maps to Ctrl when an upstream default chord is decoded. `keyle
 | `CustomCommandPalette`     | `custom_command_palette`     | `Implemented` | `ctrl+shift+o`          | `ctrl+shift+o`         | `ctrl+shift+o`         |
 | `ShowAttention`            | `show_attention`             | `Implemented` | `ctrl+shift+i`          | `ctrl+shift+i`         | `ctrl+shift+i`         |
 | `Dashboard`                | `dashboard`                  | `Implemented` | `cmd+shift+g`           | `cmd+shift+g`          | `ctrl+shift+g`         |
+| `EditFlaggedSessions`      | `edit_flagged_sessions`      | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
+| `EditFocusedWorkspaces`    | `edit_focused_workspaces`    | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
 
 <!-- phase5-action-matrix:end -->
 
@@ -768,7 +770,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The saved state is `focusedWorkspaceIDs` and `focusEnabled` in `workspaces.json`. An old file with the single `focusedWorkspaceID` loads as a one-member set with the filter on. `recent-closed.json` gains an optional `focusMember`, so a reopened workspace rejoins the set.
   - A selection outside the visible set lifts the filter and keeps the set. A workspace added while the filter is on joins the set. Close reselection and workspace removal choose from the visible set.
   - Snapshot decoding is lossy as upstream's is: only `version`, `workspaces` and each workspace's and session's `id`, `name`, `sessions` and `cwd` are required. An unknown or malformed optional value, `sidebarMode` included, loads as absent.
-  - The footer pill is replaced by a filter toggle, as upstream. The toggle is outlined while the filter is off and filled while it applies; it is disabled while no workspace is marked. A workspace icon is filled for each member. The port also keeps a pin glyph at the end of a marked row, which upstream does not have.
+  - The footer pill is replaced by a filter toggle, as upstream. The toggle is outlined while the filter is off and filled while it applies; it is disabled while no workspace is marked. A workspace icon is filled for each member. The port also keeps a lock glyph at the end of a marked row, which upstream does not have.
   - The workspace row menu has Focus / Unfocus (the sole member) and Add to Focus / Remove from Focus. The palette has Toggle Workspace Filter, Clear Focus and Add Workspace to Focus; the last one is hidden while there is no current workspace, which upstream does not do. `toggle_workspace_filter` has no default chord. The app has no View menu.
   - Dropping a workspace while the filter applies lands it next to the row it was aimed at, not across the hidden workspaces (`SidebarDrop.WorkspaceInsertIndex`).
   - The flagged-view half of `146747da` came with B5b: switching the sidebar to the flagged view, or flagging and unflagging sessions while it shows, moves the selection to the most recent visible session when the selected one is hidden. When nothing is visible the selection stays. `sidebarWidth` and `sidebarFlaggedLayout` came later with their own entries.
@@ -861,6 +863,13 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - `on` and `off` set every session of the workspace, including the sessions a collapsed workspace or the flagged tree hides. `toggle` (the default) unflags them all when every one is flagged, and otherwise flags them all. An empty workspace changes nothing. The answer is the workspace id.
   - Unflagging can hide the selected session in the flagged view; the selection then moves as for `session flag off`.
   - The workspace row menu has Flag All Sessions, or Unflag All Sessions when every session is flagged. It is disabled on an empty workspace. It sits in its own group after Focus and Add to Focus, before Delete Workspace, as upstream. Upstream later puts Tint after it; the port keeps Tint after Icon… (see the tint entry).
+- Edit Flagged Sessions and Edit Focused Workspaces: the actions `edit_flagged_sessions` and `edit_focused_workspaces` (upstream `a2552826`, #803). The names are in `parity/adopted.json`. Neither has a default chord.
+  - Edit Flagged Sessions lists every session of the window in tree order, with its workspace name under it and a flag, filled while the session is flagged. Edit Focused Workspaces lists every workspace with its session count and the four-square grid, filled while the workspace is in the focus set. Upstream marks a focused workspace with a heavier stroke; the port fills the grid, as the sidebar does.
+  - Return toggles the row, and the palette stays open with its query, order and selection. Escape closes it. The change applies at once, and the marks redraw from the store, so a change made elsewhere shows too. Adding a workspace to the focus set does not turn the filter on.
+  - The footer under the list reads `Return toggles · Esc closes · Changes apply immediately`. The focus editor adds a line with the filter state, and `, applies in tree view` while the sidebar shows the flagged view.
+  - A row whose session or workspace was closed while the palette is open does nothing on Return. Upstream draws it disabled.
+  - The command palette hides the two rows when they cannot run: Edit Flagged Sessions while no workspace has a session, Edit Focused Workspaces while there is no current workspace. Upstream disables them. Upstream also puts both in the View menu; the app has no View menu.
+  - The flagged view with no flagged session shows "No flagged sessions." and an "Add Sessions…" link, 40 px below the top at 0.6 opacity, as upstream. The link runs `edit_flagged_sessions` through the router, so zoom and the dashboard block it as they block the action. It takes the sidebar's text color; upstream takes the terminal foreground.
 
 ## Windows-only extensions
 

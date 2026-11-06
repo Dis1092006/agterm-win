@@ -136,7 +136,7 @@ public class AgtermctlEndToEndTests : ControlApiTestCase
         var result = SendOk("""{"cmd":"keymap.list"}""");
 
         var keymap = result["keymap"]!.AsObject();
-        Assert.Equal(43, keymap["actions"]!.AsArray().Count);
+        Assert.Equal(45, keymap["actions"]!.AsArray().Count);
         Assert.Equal(Path.Combine(StateDir, "keymap.conf"), keymap["path"]!.GetValue<string>());
     }
 

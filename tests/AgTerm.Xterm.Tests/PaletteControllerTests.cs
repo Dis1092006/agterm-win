@@ -113,6 +113,96 @@ public sealed class PaletteControllerTests
         Assert.Null(controller.SelectedItem);
     }
 
+    // upstream keepsOpenOnRun (a2552826): an editor row runs in place, so query, order and highlight hold
+    [Fact]
+    public void AcceptSelected_keeps_an_editor_open_with_its_query_order_and_selection()
+    {
+        var controller = new PaletteController();
+        controller.Open(
+            [Item("z", "Zulu one"), Item("a", "Alpha one"), Item("b", "Bravo two")],
+            new PaletteOpenOptions { PreserveInputOrderForEmptyQuery = true, KeepsOpenOnAccept = true });
+        controller.SetQuery("one");
+        var rows = controller.FilteredItems;
+        controller.MoveSelection(1);
+        var changes = 0;
+        controller.Changed += () => changes++;
+
+        var accepted = controller.AcceptSelected();
+
+        Assert.Equal(rows[1].Id, accepted?.Id);
+        Assert.True(controller.IsOpen);
+        Assert.Equal("one", controller.Query);
+        Assert.Same(rows, controller.FilteredItems);
+        Assert.Equal(1, controller.SelectedIndex);
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public void RefreshMarks_sets_each_marked_row_from_the_live_set()
+    {
+        var flagged = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var controller = new PaletteController();
+        controller.Open(
+        [
+            new PaletteItemViewModel(flagged.ToString("D"), "One", mark: PaletteMark.Flag),
+            new PaletteItemViewModel(other.ToString("D"), "Two", mark: PaletteMark.Flag, markOn: true),
+            Item("plain", "Plain"),
+        ], new PaletteOpenOptions { KeepsOpenOnAccept = true });
+
+        controller.RefreshMarks(new HashSet<Guid> { flagged });
+
+        var rows = controller.FilteredItems.ToDictionary(item => item.Id);
+        Assert.True(rows[flagged.ToString("D")].MarkOn);
+        Assert.False(rows[other.ToString("D")].MarkOn);
+        Assert.False(rows["plain"].MarkOn);
+    }
+
+    [Fact]
+    public void A_mark_change_notifies_the_row_and_its_accessible_name()
+    {
+        var item = new PaletteItemViewModel("w", "Work", "2 sessions", mark: PaletteMark.Focus);
+        var changed = new List<string?>();
+        item.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        Assert.Equal("Work, unfocused, 2 sessions", item.AutomationName);
+        item.SetMark(true);
+        Assert.Equal("Work, focused, 2 sessions", item.AutomationName);
+        Assert.Contains(nameof(PaletteItemViewModel.MarkOn), changed);
+        Assert.Contains(nameof(PaletteItemViewModel.AutomationName), changed);
+
+        changed.Clear();
+        item.SetMark(true);
+        Assert.Empty(changed);
+    }
+
+    [Theory]
+    [InlineData(PaletteMark.Flag, false, "unflagged")]
+    [InlineData(PaletteMark.Flag, true, "flagged")]
+    [InlineData(PaletteMark.Focus, false, "unfocused")]
+    [InlineData(PaletteMark.Focus, true, "focused")]
+    public void A_marked_row_names_its_mark_state(PaletteMark mark, bool on, string value)
+    {
+        var item = new PaletteItemViewModel("x", "X", mark: mark, markOn: on);
+
+        Assert.True(item.HasMark);
+        Assert.Equal(value, item.MarkValue);
+        Assert.Equal(on, item.MarkFilled);
+        Assert.Equal(!on, item.MarkOutlined);
+        Assert.False(string.IsNullOrEmpty(item.MarkData));
+    }
+
+    [Fact]
+    public void An_unmarked_row_draws_no_mark()
+    {
+        var item = Item("x", "X");
+
+        Assert.False(item.HasMark);
+        Assert.Null(item.MarkValue);
+        Assert.False(item.MarkFilled);
+        Assert.False(item.MarkOutlined);
+    }
+
     [Fact]
     public void AcceptSelected_with_no_results_stays_open_and_Close_clears_transient_state()
     {

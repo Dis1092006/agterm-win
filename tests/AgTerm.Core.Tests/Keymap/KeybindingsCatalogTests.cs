@@ -9,7 +9,7 @@ public sealed class KeybindingsCatalogTests
     {
         var groups = KeybindingsCatalog.Create(AgTerm.Core.Keymap.Keymap.Empty);
         var rows = groups.SelectMany(group => group.Items).ToArray();
-        Assert.Equal(44, rows.Length);
+        Assert.Equal(46, rows.Length);
         foreach (var action in BuiltinActions.All)
             Assert.Single(rows, row => row.Id == action.WireName());
         var session = Assert.Single(rows, row => row.Id == "new_session");
@@ -18,6 +18,20 @@ public sealed class KeybindingsCatalogTests
         Assert.Equal("Unbound", Assert.Single(rows, row => row.Id == "rename_window").Status);
         Assert.Contains(groups, group => group.Name == "Sessions");
         Assert.Equal("Ctrl+Shift+F1", Assert.Single(rows, row => row.Id == "keyboard-shortcuts").Shortcut);
+    }
+
+    // upstream a2552826: the two membership editors, keyless
+    [Theory]
+    [InlineData("edit_flagged_sessions", "Edit Flagged Sessions…", "Sessions")]
+    [InlineData("edit_focused_workspaces", "Edit Focused Workspaces…", "Workspaces")]
+    public void Lists_the_membership_editors_unbound(string id, string title, string group)
+    {
+        var groups = KeybindingsCatalog.Create(AgTerm.Core.Keymap.Keymap.Empty);
+        var owner = Assert.Single(groups, g => g.Items.Any(row => row.Id == id));
+        var row = Assert.Single(owner.Items, row => row.Id == id);
+        Assert.Equal(group, owner.Name);
+        Assert.Equal(title, row.Title);
+        Assert.Equal("Unbound", row.Status);
     }
 
     [Fact]

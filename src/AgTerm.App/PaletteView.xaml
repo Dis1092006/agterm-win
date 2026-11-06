@@ -31,6 +31,8 @@
                     <RowDefinition Height="48" />
                     <RowDefinition Height="1" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0" Padding="12,6" ColumnSpacing="8">
@@ -81,12 +83,34 @@
                                   ColumnSpacing="10"
                                   AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
+                                <!-- an editor row's membership: the sidebar's flag or grid, filled when on -->
+                                <Grid Grid.Column="0"
+                                      Width="18"
+                                      VerticalAlignment="Center"
+                                      Visibility="{x:Bind HasMark, Mode=OneWay}"
+                                      AutomationProperties.AutomationId="palette-mark"
+                                      AutomationProperties.Name="{x:Bind MarkValue, Mode=OneWay}">
+                                    <Path Data="{x:Bind MarkData, Mode=OneWay}"
+                                          Width="16" Height="15"
+                                          HorizontalAlignment="Left"
+                                          StrokeThickness="1"
+                                          Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                          Visibility="{x:Bind MarkOutlined, Mode=OneWay}" />
+                                    <Path Data="{x:Bind MarkData, Mode=OneWay}"
+                                          Width="16" Height="15"
+                                          HorizontalAlignment="Left"
+                                          StrokeThickness="1"
+                                          Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                                          Fill="{ThemeResource TextFillColorPrimaryBrush}"
+                                          Visibility="{x:Bind MarkFilled, Mode=OneWay}" />
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                                     <TextBlock Text="{x:Bind Title, Mode=OneWay}"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{x:Bind Subtitle, Mode=OneWay}"
@@ -94,17 +118,17 @@
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                                TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="1"
+                                <TextBlock Grid.Column="2"
                                            Text="{x:Bind Badge, Mode=OneWay}"
                                            FontSize="11"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2"
+                                <TextBlock Grid.Column="3"
                                            Text="{x:Bind Shortcut, Mode=OneWay}"
                                            FontSize="12"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            VerticalAlignment="Center" />
-                                <local:SessionStatusGlyph Grid.Column="3"
+                                <local:SessionStatusGlyph Grid.Column="4"
                                                           ShapeData="{x:Bind GlyphData, Mode=OneWay}"
                                                           ColorHex="{x:Bind StatusColor, Mode=OneWay}"
                                                           Shown="{x:Bind HasStatusGlyph, Mode=OneWay}"
@@ -113,6 +137,20 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
+
+                <Border x:Name="HintDivider"
+                        Grid.Row="3"
+                        Height="1"
+                        Visibility="Collapsed"
+                        Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                <TextBlock x:Name="HintText"
+                           Grid.Row="4"
+                           Padding="12,6"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Visibility="Collapsed"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           AutomationProperties.AutomationId="palette-editor-hint" />
             </Grid>
         </Border>
     </Grid>

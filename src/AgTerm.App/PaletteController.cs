@@ -104,15 +104,28 @@ public sealed class PaletteController
         ReportSelectionChange(before);
     }
 
+    /// <summary>The highlighted row. An editor (KeepsOpenOnAccept) stays open as it was; any other
+    /// palette closes.</summary>
     public PaletteItemViewModel? AcceptSelected()
     {
         var selected = SelectedItem;
-        if (selected is not null)
+        if (selected is not null && !_options.KeepsOpenOnAccept)
         {
             Close();
         }
 
         return selected;
+    }
+
+    /// <summary>Sets each marked row whose id is a uuid from the live membership set.</summary>
+    public void RefreshMarks(IReadOnlySet<Guid> on)
+    {
+        ArgumentNullException.ThrowIfNull(on);
+        foreach (var row in _allItems)
+        {
+            if (row.HasMark && Guid.TryParseExact(row.Id, "D", out var id))
+                row.SetMark(on.Contains(id));
+        }
     }
 
     public void Close()

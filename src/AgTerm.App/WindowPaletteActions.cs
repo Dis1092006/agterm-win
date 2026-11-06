@@ -99,6 +99,27 @@ public static class WindowPaletteActions
             store.SetTintColor(color, [sessionId]);
     }
 
+    /// <summary>An editor row (upstream a2552826). It reads the live state when it runs, so a change made
+    /// elsewhere while the editor is open is not undone. The focus row never turns the filter on. A row
+    /// whose session or workspace is gone does nothing.</summary>
+    public static bool ToggleMembership(AppStore store, WindowPaletteMode mode, string itemId)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!Guid.TryParseExact(itemId, "D", out var id))
+            return false;
+        switch (mode)
+        {
+            case WindowPaletteMode.FlaggedEditor when store.SessionWithId(id) is { } session:
+                store.SetFlag(!session.Flagged, id);
+                return true;
+            case WindowPaletteMode.FocusEditor when store.Workspaces.Any(workspace => workspace.Id == id):
+                store.SetFocusMembership(id, !store.FocusedWorkspaceIds.Contains(id));
+                return true;
+            default:
+                return false;
+        }
+    }
+
     public static bool ShouldRestoreTerminalFocus(BuiltinAction action) => action is not (
         BuiltinAction.RenameSession or
         BuiltinAction.RenameWorkspace or
@@ -106,7 +127,9 @@ public static class WindowPaletteActions
         BuiltinAction.ShowAttention or
         BuiltinAction.SelectTheme or
         BuiltinAction.FocusLeftPane or
-        BuiltinAction.FocusRightPane);
+        BuiltinAction.FocusRightPane or
+        BuiltinAction.EditFlaggedSessions or
+        BuiltinAction.EditFocusedWorkspaces);
 
     public static string? CustomCommandPaneId(
         LiveSelectionSnapshot selection,

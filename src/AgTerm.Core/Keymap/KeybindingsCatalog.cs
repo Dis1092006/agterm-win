@@ -82,7 +82,8 @@ public static class KeybindingsCatalog
     {
         BuiltinAction.NewWindow or BuiltinAction.RenameWindow or BuiltinAction.DeleteWindow => "Windows",
         BuiltinAction.NewWorkspace or BuiltinAction.RenameWorkspace or BuiltinAction.DeleteWorkspace
-            or BuiltinAction.FocusWorkspace or BuiltinAction.ToggleWorkspaceFilter => "Workspaces",
+            or BuiltinAction.FocusWorkspace or BuiltinAction.ToggleWorkspaceFilter
+            or BuiltinAction.EditFocusedWorkspaces => "Workspaces",
         BuiltinAction.ToggleSplit or BuiltinAction.ToggleHorizontalSplit or BuiltinAction.ToggleScratch
             or BuiltinAction.ToggleTerminalZoom
             or BuiltinAction.FocusLeftPane or BuiltinAction.FocusRightPane or BuiltinAction.QuickTerminal => "Panes",
@@ -140,6 +141,8 @@ public static class KeybindingsCatalog
         BuiltinAction.SessionPalette => "Go to Session…",
         BuiltinAction.CommandPalette => "Run an Action…",
         BuiltinAction.CustomCommandPalette => "Run a Custom Command…",
+        BuiltinAction.EditFlaggedSessions => "Edit Flagged Sessions…",
+        BuiltinAction.EditFocusedWorkspaces => "Edit Focused Workspaces…",
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
 }

@@ -66,6 +66,8 @@ public sealed class WindowCommandRouter
             [BuiltinAction.CustomCommandPalette] = true,
             [BuiltinAction.ShowAttention] = true,
             [BuiltinAction.Dashboard] = true,
+            [BuiltinAction.EditFlaggedSessions] = true,
+            [BuiltinAction.EditFocusedWorkspaces] = true,
         });
 
     private static readonly HashSet<BuiltinAction> ImplementedActions = ActionImplementations

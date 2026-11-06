@@ -389,7 +389,7 @@ public sealed class WindowPaletteProjectionTests
         }
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand(BuiltinAction.ToggleSplit.WireName()));
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand("app:something-else"));
-        Assert.Equal(43, BuiltinActions.All.Count);
+        Assert.Equal(45, BuiltinActions.All.Count);
     }
 
     [Fact]
@@ -471,6 +471,8 @@ public sealed class WindowPaletteProjectionTests
     [InlineData(WindowPaletteMode.CustomCommands, "Run a custom command…")]
     [InlineData(WindowPaletteMode.Attention, "Go to a session that needs attention…")]
     [InlineData(WindowPaletteMode.Themes, "Select a theme…")]
+    [InlineData(WindowPaletteMode.FlaggedEditor, "Flag or unflag sessions…")]
+    [InlineData(WindowPaletteMode.FocusEditor, "Add or remove focused workspaces…")]
     public void Mode_defines_the_expected_placeholder(WindowPaletteMode mode, string placeholder)
     {
         var snapshot = WindowPaletteProjection.Create(mode, TestStores.Scratch(), Keymap.Empty, StateProvider());
@@ -592,6 +594,136 @@ public sealed class WindowPaletteProjectionTests
         Assert.Equal("theme:__default__", snapshot.InitialSelectionId);
         Assert.Equal("Current", snapshot.Items[0].Badge);
         Assert.DoesNotContain(snapshot.Items, item => item.Id == "theme:Gone");
+    }
+
+    // upstream a2552826 paletteFlaggedEditor: every session in tree order, the filters do not hide any
+    [Fact]
+    public void The_flagged_editor_lists_every_session_with_its_workspace_and_a_live_flag()
+    {
+        var store = TestStores.Scratch();
+        var one = store.AddWorkspace("One");
+        var two = store.AddWorkspace("Two");
+        var first = store.AddSession(one.Id, @"C:\first", select: false)!;
+        var second = store.AddSession(two.Id, @"C:\second", select: false)!;
+        first.CustomName = "First";
+        store.SetFlag(true, second.Id);
+        store.SetAgentIndicator(new AgentIndicator(AgentStatus.Blocked), first.Id);
+        store.SetFocusMembership(one.Id, true);
+        store.SetFocusEnabled(true);
+        store.SidebarMode = SidebarMode.Flagged;
+
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.FlaggedEditor, store, Keymap.Empty, StateProvider());
+
+        var expected = store.Workspaces.SelectMany(w => w.Sessions).Select(s => s.Id.ToString("D"));
+        Assert.Equal(expected, snapshot.Items.Select(item => item.Id));
+        var firstRow = snapshot.Items.Single(item => item.Id == first.Id.ToString("D"));
+        Assert.Equal("First", firstRow.Title);
+        Assert.Equal("One", firstRow.Subtitle);
+        Assert.Equal(AgentStatus.Blocked, firstRow.Status);
+        Assert.Equal(PaletteMark.Flag, firstRow.Mark);
+        Assert.False(firstRow.MarkOn);
+        Assert.True(snapshot.Items.Single(item => item.Id == second.Id.ToString("D")).MarkOn);
+        Assert.True(snapshot.PreserveInputOrderForEmptyQuery);
+        Assert.True(snapshot.KeepsOpenOnAccept);
+    }
+
+    [Fact]
+    public void The_focus_editor_lists_every_workspace_with_its_session_count_and_a_live_mark()
+    {
+        var store = TestStores.Scratch();
+        var one = store.AddWorkspace("One");
+        var two = store.AddWorkspace("Two");
+        store.AddSession(two.Id, @"C:\a", select: false);
+        store.AddSession(two.Id, @"C:\b", select: false);
+        store.AddSession(one.Id, @"C:\c", select: false);
+        store.SetFocusMembership(two.Id, true);
+
+        var snapshot = WindowPaletteProjection.Create(
+            WindowPaletteMode.FocusEditor, store, Keymap.Empty, StateProvider());
+
+        Assert.Equal(store.Workspaces.Select(w => w.Id.ToString("D")), snapshot.Items.Select(item => item.Id));
+        var oneRow = snapshot.Items.Single(item => item.Id == one.Id.ToString("D"));
+        var twoRow = snapshot.Items.Single(item => item.Id == two.Id.ToString("D"));
+        Assert.Equal("One", oneRow.Title);
+        Assert.Equal("1 session", oneRow.Subtitle);
+        Assert.Equal("2 sessions", twoRow.Subtitle);
+        Assert.Equal(PaletteMark.Focus, twoRow.Mark);
+        Assert.True(twoRow.MarkOn);
+        Assert.False(oneRow.MarkOn);
+        Assert.Null(oneRow.Status);
+        Assert.True(snapshot.PreserveInputOrderForEmptyQuery);
+        Assert.True(snapshot.KeepsOpenOnAccept);
+    }
+
+    [Theory]
+    [InlineData(WindowPaletteMode.Sessions)]
+    [InlineData(WindowPaletteMode.Commands)]
+    [InlineData(WindowPaletteMode.Attention)]
+    [InlineData(WindowPaletteMode.Themes)]
+    public void Other_palettes_close_on_accept_and_show_no_hint(WindowPaletteMode mode)
+    {
+        var snapshot = WindowPaletteProjection.Create(mode, TestStores.Scratch(), Keymap.Empty, StateProvider());
+
+        Assert.False(snapshot.KeepsOpenOnAccept);
+        Assert.Null(snapshot.Hint);
+        Assert.All(snapshot.Items, item => Assert.Equal(PaletteMark.None, item.Mark));
+    }
+
+    // upstream editorHint: the focus editor adds the filter state, and notes the flagged view ignores it
+    [Theory]
+    [InlineData(WindowPaletteMode.FlaggedEditor, false, SidebarMode.Tree, "Return toggles · Esc closes · Changes apply immediately")]
+    [InlineData(WindowPaletteMode.FlaggedEditor, true, SidebarMode.Flagged, "Return toggles · Esc closes · Changes apply immediately")]
+    [InlineData(WindowPaletteMode.FocusEditor, false, SidebarMode.Tree, "Return toggles · Esc closes · Changes apply immediately\nFilter off")]
+    [InlineData(WindowPaletteMode.FocusEditor, true, SidebarMode.Tree, "Return toggles · Esc closes · Changes apply immediately\nFilter on")]
+    [InlineData(WindowPaletteMode.FocusEditor, true, SidebarMode.Flagged, "Return toggles · Esc closes · Changes apply immediately\nFilter on, applies in tree view")]
+    [InlineData(WindowPaletteMode.FocusEditor, false, SidebarMode.Flagged, "Return toggles · Esc closes · Changes apply immediately\nFilter off, applies in tree view")]
+    public void The_editors_show_a_hint(WindowPaletteMode mode, bool focusEnabled, SidebarMode sidebarMode, string hint)
+    {
+        Assert.Equal(hint, WindowPaletteProjection.EditorHint(mode, focusEnabled, sidebarMode));
+
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("One");
+        store.AddSession(workspace.Id, @"C:\a", select: false);
+        store.SetFocusMembership(workspace.Id, true);
+        store.SetFocusEnabled(focusEnabled);
+        store.SidebarMode = sidebarMode;
+        Assert.Equal(hint, WindowPaletteProjection.Create(mode, store, Keymap.Empty, StateProvider()).Hint);
+    }
+
+    // upstream hasSessions and hasCurrentWorkspace; the port hides a row it cannot run
+    [Fact]
+    public void Commands_offer_the_flagged_editor_once_any_session_exists_selected_or_not()
+    {
+        var store = TestStores.Scratch();
+        var states = StateProvider(enabled: [BuiltinAction.EditFlaggedSessions]);
+
+        bool Offered() => WindowPaletteProjection.Create(WindowPaletteMode.Commands, store, Keymap.Empty, states)
+            .Items.Any(item => item.Id == "edit_flagged_sessions" && item.Title == "Edit Flagged Sessions…");
+
+        var workspace = store.AddWorkspace("Work");
+        Assert.False(Offered());
+
+        store.AddSession(workspace.Id, @"C:\a", select: false);
+        store.SelectSession(null);
+        Assert.Null(store.SelectedSessionId);
+        Assert.True(Offered());
+    }
+
+    [Fact]
+    public void Commands_offer_the_focus_editor_with_a_current_workspace()
+    {
+        var store = TestStores.Scratch();
+        var states = StateProvider(enabled: [BuiltinAction.EditFocusedWorkspaces]);
+
+        bool Offered() => WindowPaletteProjection.Create(WindowPaletteMode.Commands, store, Keymap.Empty, states)
+            .Items.Any(item => item.Id == "edit_focused_workspaces" && item.Title == "Edit Focused Workspaces…");
+
+        Assert.Null(store.CurrentWorkspaceId);
+        Assert.False(Offered());
+
+        store.AddWorkspace("Work");
+        Assert.True(Offered());
     }
 
     [Fact]
@@ -1101,6 +1233,62 @@ public sealed class WindowPaletteActionsTests
         Assert.Null(second.Tint);
     }
 
+    // upstream a2552826: the row reads the live flag when it runs, so a toggle made elsewhere is not undone
+    [Fact]
+    public void ToggleMembership_flips_the_live_flag_of_the_row_session()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var session = store.AddSession(workspace.Id, @"C:\a", select: false)!;
+        var id = session.Id.ToString("D");
+
+        Assert.True(WindowPaletteActions.ToggleMembership(store, WindowPaletteMode.FlaggedEditor, id));
+        Assert.True(session.Flagged);
+        Assert.True(WindowPaletteActions.ToggleMembership(store, WindowPaletteMode.FlaggedEditor, id));
+        Assert.False(session.Flagged);
+        Assert.Null(store.SelectedSessionId);
+    }
+
+    [Fact]
+    public void ToggleMembership_flips_focus_membership_without_turning_the_filter_on()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var id = workspace.Id.ToString("D");
+
+        Assert.True(WindowPaletteActions.ToggleMembership(store, WindowPaletteMode.FocusEditor, id));
+        Assert.Contains(workspace.Id, store.FocusedWorkspaceIds);
+        Assert.False(store.FocusEnabled);
+        Assert.True(WindowPaletteActions.ToggleMembership(store, WindowPaletteMode.FocusEditor, id));
+        Assert.DoesNotContain(workspace.Id, store.FocusedWorkspaceIds);
+    }
+
+    // a row outlives the session or workspace it names; it then does nothing
+    [Theory]
+    [InlineData(WindowPaletteMode.FlaggedEditor)]
+    [InlineData(WindowPaletteMode.FocusEditor)]
+    public void ToggleMembership_does_nothing_for_a_row_whose_target_is_gone(WindowPaletteMode mode)
+    {
+        var store = TestStores.Scratch();
+        store.AddWorkspace("Work");
+
+        Assert.False(WindowPaletteActions.ToggleMembership(store, mode, Guid.NewGuid().ToString("D")));
+        Assert.False(WindowPaletteActions.ToggleMembership(store, mode, "not-a-guid"));
+        Assert.Empty(store.FocusedWorkspaceIds);
+        Assert.Empty(store.FlaggedSessions);
+    }
+
+    [Fact]
+    public void ToggleMembership_does_nothing_in_other_modes()
+    {
+        var store = TestStores.Scratch();
+        var workspace = store.AddWorkspace("Work");
+        var session = store.AddSession(workspace.Id, @"C:\a", select: false)!;
+
+        Assert.False(WindowPaletteActions.ToggleMembership(store, WindowPaletteMode.Sessions, session.Id.ToString("D")));
+        Assert.False(session.Flagged);
+    }
+
     [Fact]
     public void TintSelectedSession_does_nothing_without_a_selected_session()
     {
@@ -1121,6 +1309,8 @@ public sealed class WindowPaletteActionsTests
     [InlineData(BuiltinAction.SelectTheme, false)]
     [InlineData(BuiltinAction.FocusLeftPane, false)]
     [InlineData(BuiltinAction.FocusRightPane, false)]
+    [InlineData(BuiltinAction.EditFlaggedSessions, false)]
+    [InlineData(BuiltinAction.EditFocusedWorkspaces, false)]
     public void Command_focus_policy_preserves_follow_on_UI_owners(
         BuiltinAction action,
         bool expected)
@@ -1242,6 +1432,23 @@ public sealed class MainWindowPaletteWiringTests
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(
             source,
             "private async Task OpenPaletteAsync").Cast<object>());
+    }
+
+    // upstream a2552826: the editors open from the keymap, run a row in place, and redraw from the store
+    [Fact]
+    public void Main_window_wires_the_membership_editors()
+    {
+        var source = File.ReadAllText(Path.Combine(FindRepoRoot(), "src", "AgTerm.App", "MainWindow.xaml.cs"));
+
+        Assert.Contains("[BuiltinAction.EditFlaggedSessions]", source, StringComparison.Ordinal);
+        Assert.Contains("[BuiltinAction.EditFocusedWorkspaces]", source, StringComparison.Ordinal);
+        Assert.Contains("ToggleWindowPaletteAsync(WindowPaletteMode.FlaggedEditor)", source, StringComparison.Ordinal);
+        Assert.Contains("ToggleWindowPaletteAsync(WindowPaletteMode.FocusEditor)", source, StringComparison.Ordinal);
+        Assert.Contains("KeepsOpenOnAccept = snapshot.KeepsOpenOnAccept", source, StringComparison.Ordinal);
+        Assert.Contains("Hint = snapshot.Hint", source, StringComparison.Ordinal);
+        Assert.Contains("WindowPaletteActions.ToggleMembership(store, editorMode, item.Id)", source, StringComparison.Ordinal);
+        Assert.Contains("PaletteOverlay.RefreshMarks(", source, StringComparison.Ordinal);
+        Assert.Contains("PaletteOverlay.SetHint(WindowPaletteProjection.EditorHint(", source, StringComparison.Ordinal);
     }
 
     [Fact]
