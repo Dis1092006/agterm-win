@@ -75,6 +75,13 @@ also clears the pin from a `SessionEnd` hook when the user leaves Claude (`reaso
 or `logout`), so that pane restarts as a plain shell. A pane closed by an app quit ends Claude with
 `reason` `other`, which keeps the pin. `install.ps1` registers both hooks in `~/.claude/settings.json`.
 
+`cookbook/copilot-session-resume` does the same for GitHub Copilot CLI. Its `sessionStart` hook pins
+`copilot --resume=<id>`; Copilot fires it at the first prompt of a session. Its `sessionEnd` hook clears
+the pin on reason `user_exit` or `complete`, but only when the pin names the ending session. Closing a
+pane also ends Copilot with `user_exit`; on an app quit the window stops taking control commands before
+its panes close, so the pin survives. `install.ps1` writes `hooks/copilot-session-resume.json` under
+`~/.copilot` or `COPILOT_HOME`.
+
 ## Create a session and type into it
 
 `session new` returns the new id and focuses the session. Capture the id, then type. The session is
