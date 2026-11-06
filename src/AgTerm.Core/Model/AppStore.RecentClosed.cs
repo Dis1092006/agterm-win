@@ -54,6 +54,7 @@ public sealed partial class AppStore
                 var insertAt = Math.Max(0, Math.Min(recent.SessionIndex, Workspaces[index].Sessions.Count));
                 Workspaces[index].Sessions.Insert(insertAt, session);
                 EmitSessionCreated(session, Workspaces[index].Id);
+                AppendFlaggedArrivals();
                 SelectSession(session.Id);
                 Save();
                 return new(true, true);
@@ -75,6 +76,7 @@ public sealed partial class AppStore
                 // brings the workspace back without reshuffling current workspaces.
                 Workspaces.Add(workspace);
                 foreach (var session in workspace.Sessions) EmitSessionCreated(session, workspace.Id);
+                AppendFlaggedArrivals();
                 if (workspace.Sessions.Count == 0) ScheduleTreeChanged();
                 // re-mark BEFORE the reselect, so a restored member is inside the set when the disable runs;
                 // the workspace is already in the tree, so the unguarded insert cannot leave a phantom member.
@@ -140,6 +142,7 @@ public sealed partial class AppStore
                 .ToList();
             Workspaces[index].Sessions.AddRange(missing);
             foreach (var session in missing) EmitSessionCreated(session, Workspaces[index].Id);
+            AppendFlaggedArrivals();
             if (recent.FocusMember == true) MarkFocusMember(Workspaces[index].Id); // before the reselect, as above
             var target = (recent.SelectedSessionId is { } selected
                     && Workspaces[index].Sessions.Any(s => s.Id == selected) ? selected : (Guid?)null)

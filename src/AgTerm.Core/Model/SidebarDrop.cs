@@ -159,4 +159,16 @@ public static class SidebarDrop
             (owner, count, childIndex == OnItemIndex ? index + 1 : childIndex),
         _ => throw new ArgumentOutOfRangeException(nameof(target)),
     };
+
+    // shared with AppStore.MoveFlagged so a drop the sidebar accepts is the move the store applies
+    internal static List<Guid>? ReorderedFlagged(IReadOnlyList<Guid> order, IReadOnlySet<Guid> moving,
+                                                 FlaggedOrderPlacement placement, Guid anchor)
+    {
+        var reordered = order.Where(id => !moving.Contains(id)).ToList();
+        var anchorIndex = reordered.IndexOf(anchor);
+        if (anchorIndex < 0) return null;
+        reordered.InsertRange(placement == FlaggedOrderPlacement.Before ? anchorIndex : anchorIndex + 1,
+                              order.Where(moving.Contains));
+        return reordered.SequenceEqual(order) ? null : reordered;
+    }
 }

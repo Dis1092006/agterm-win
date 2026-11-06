@@ -283,6 +283,11 @@ public sealed record ControlTree
     [JsonPropertyName("sidebarFlaggedLayout")]
     public string? SidebarFlaggedLayout { get; init; }
 
+    /// <summary>The window's saved flagged order as session ids, the flat and plain rows' order and
+    /// the read side of session.flag move; omitted when nothing is flagged.</summary>
+    [JsonPropertyName("flaggedOrder")]
+    public string[]? FlaggedOrder { get; init; }
+
     /// <summary>Whether the sidebar focus filter is applied (live). Reported even when false; the
     /// marked set itself is each workspace node's focused flag. Read side of workspace.filter.</summary>
     [JsonPropertyName("workspaceFilter")]

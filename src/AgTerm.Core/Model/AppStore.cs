@@ -414,6 +414,7 @@ public sealed partial class AppStore
             SidebarVisible = SidebarVisible,
             SidebarMode = SidebarMode == SidebarMode.Flagged ? "flagged" : "tree",
             SidebarFlaggedLayout = FlaggedLayout.RawValue(),
+            FlaggedOrder = FlaggedOrderReadback,
             WorkspaceFilter = FocusEnabled,
             QuickVisible = quickVisible?.Invoke(),
             ZoomedSurface = zoomedSurface?.Invoke(),
@@ -678,7 +679,7 @@ public sealed partial class AppStore
         SessionRecency.Remove(sessionId);
         if (wasActive)
         {
-            SelectedSessionId = CloseReselectionTarget(location);
+            SelectedSessionId = CloseReselectionTarget(location, sessionId);
             ReplaceSidebarSelection(SelectedSessionId);
             DisableFocusIfSelectionOutsideSet(SelectedSessionId); // the reselected session may live outside the marked set
             RecordRecency();
@@ -687,6 +688,7 @@ public sealed partial class AppStore
         {
             PruneSidebarSelection();
         }
+        DropFromFlaggedOrder([sessionId]);
         Save();
     }
 
@@ -741,6 +743,7 @@ public sealed partial class AppStore
         {
             PruneSidebarSelection();
         }
+        DropFromFlaggedOrder(workspace.Sessions.Select(s => s.Id));
         Save();
     }
 
@@ -1065,6 +1068,8 @@ public sealed partial class AppStore
     {
         if (SessionWithId(forSession) is not { } session || session.Flagged == on) return;
         session.Flagged = on;
+        if (on) AppendFlaggedArrivals();
+        else DropFromFlaggedOrder([forSession]);
         PruneSidebarSelection();
         ReselectIfSelectionHidden();
         Save();
@@ -1087,6 +1092,8 @@ public sealed partial class AppStore
         }
         if (changed)
         {
+            if (on) AppendFlaggedArrivals();
+            else DropFromFlaggedOrder(targetIds);
             PruneSidebarSelection();
             ReselectIfSelectionHidden(); // the batch can unflag the active session too
             Save();
@@ -1133,6 +1140,8 @@ public sealed partial class AppStore
     /// nothing is flagged. Backs the Clear Flagged action and the session.flag clear control mode.</summary>
     public void ClearFlags()
     {
+        // parked pending-close ids go too, so an undo after the clear appends
+        _flaggedOrder.Clear();
         var changed = false;
         foreach (var workspace in Workspaces)
         {
@@ -1149,18 +1158,13 @@ public sealed partial class AppStore
         }
     }
 
-    /// <summary>The flagged sessions across all workspaces in tree order. A pure derived
-    /// projection — the flat sidebar view renders this directly.</summary>
-    public List<Session> FlaggedSessions =>
-        Workspaces.SelectMany(w => w.Sessions).Where(s => s.Flagged).ToList();
-
     /// <summary>The session set navigation operates over — the VISIBLE/FILTERED set, not the whole
-    /// tree: the flagged sessions in flagged sidebar mode, the marked workspaces' sessions while the
-    /// focus filter is on, else all sessions.</summary>
+    /// tree: the flagged sessions in flagged sidebar mode, in the order the layout shows them, the
+    /// marked workspaces' sessions while the focus filter is on, else all sessions.</summary>
     public List<Session> NavigableSessions =>
-        SidebarMode == SidebarMode.Flagged
-            ? FlaggedSessions
-            : VisibleWorkspaces.SelectMany(w => w.Sessions).ToList();
+        SidebarMode != SidebarMode.Flagged
+            ? VisibleWorkspaces.SelectMany(w => w.Sessions).ToList()
+            : FlaggedLayout == FlaggedViewLayout.Tree ? FlaggedSessions : OrderedFlaggedSessions;
 
     // MARK: - Persistence
 
@@ -1192,7 +1196,14 @@ public sealed partial class AppStore
                 : Workspaces.Where(w => FocusedWorkspaceIds.Contains(w.Id)).Select(w => w.Id).ToArray(),
             FocusEnabled = FocusEnabled ? true : null,
             SessionRecency = SessionRecency.Items.ToArray(),
+            FlaggedOrder = FlaggedOrderReadbackIds(),
         };
+    }
+
+    private Guid[]? FlaggedOrderReadbackIds()
+    {
+        var ids = OrderedFlaggedSessions.Select(s => s.Id).ToArray();
+        return ids.Length == 0 ? null : ids;
     }
 
     /// <summary>
@@ -1252,6 +1263,7 @@ public sealed partial class AppStore
             Math.Max(SidebarWidthMin, snapshot.SidebarWidth ?? SidebarWidthDefault));
         SidebarVisible = snapshot.SidebarVisible ?? true;
         SidebarMode = snapshot.SidebarMode ?? SidebarMode.Tree;
+        RestoreFlaggedOrder(snapshot.FlaggedOrder);
         RestoreFocus(snapshot);
         if (snapshot.SelectedSessionId is { } id && SessionWithId(id) is null)
         {

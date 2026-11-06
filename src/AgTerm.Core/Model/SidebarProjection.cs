@@ -71,7 +71,7 @@ public static class SidebarProjection
                 }
                 return rows;
             }
-            foreach (var session in store.FlaggedSessions)
+            foreach (var session in store.OrderedFlaggedSessions)
             {
                 var workspace = store.WorkspaceForSession(session.Id);
                 var label = store.FlaggedLayout == FlaggedViewLayout.Plain

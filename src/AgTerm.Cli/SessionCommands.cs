@@ -1261,42 +1261,65 @@ internal static class SessionCommands
     internal sealed class FlagCommand : IRequestCommand
     {
         public string Mode { get; init; } = "toggle";
+        public string? Before { get; init; }
+        public string? After { get; init; }
         public required TargetOptions Target { get; init; }
         public required ClientOptions Client { get; init; }
         public IConnectionOptions Options => Client;
 
         public void Validate()
         {
-            if (Mode is not ("on" or "off" or "toggle" or "clear"))
-                throw new CliValidationException("mode must be on, off, toggle, or clear");
+            if (Mode is not ("on" or "off" or "toggle" or "clear" or "move"))
+                throw new CliValidationException("mode must be on, off, toggle, clear, or move");
+            if (Mode != "move")
+            {
+                if (Before is not null || After is not null)
+                    throw new CliValidationException("--before and --after apply only to move");
+            }
+            else if ((Before is null) == (After is null))
+            {
+                throw new CliValidationException("move requires exactly one of --before or --after");
+            }
         }
 
         public ControlRequest MakeRequest() => new()
         {
             Cmd = WireCommand.SessionFlag,
             Target = Target.Target,
-            Args = Client.WithWindow(new ControlArgs { Mode = Mode }),
+            Args = Client.WithWindow(new ControlArgs { Mode = Mode, Before = Before, After = After }),
         };
     }
 
     private static System.CommandLine.Command BuildFlag(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("flag",
-            "Flag a session for the flagged working-set view (on|off|toggle|clear).");
+            "Flag a session for the flagged working-set view (on|off|toggle|clear|move).");
         var mode = new Argument<string>("mode")
         {
-            Description = "Mode: on, off, toggle (default), or clear (unflag all; ignores --target).",
+            Description = "Mode: on, off, toggle (default), clear (unflag all; ignores --target), or move (reorder the flagged target with --before or --after).",
             Arity = ArgumentArity.ZeroOrOne,
             DefaultValueFactory = _ => "toggle",
+        };
+        var before = new Option<string?>("--before")
+        {
+            Description = "With move: the flagged session to place the target right before.",
+        };
+        var after = new Option<string?>("--after")
+        {
+            Description = "With move: the flagged session to place the target right after.",
         };
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(mode);
+        cmd.Options.Add(before);
+        cmd.Options.Add(after);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new FlagCommand
         {
             Mode = result.GetValue(mode) ?? "toggle",
+            Before = result.GetValue(before),
+            After = result.GetValue(after),
             Target = target.Read(result),
             Client = options.Read(result),
         });

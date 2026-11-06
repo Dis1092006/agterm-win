@@ -1009,6 +1009,22 @@ public sealed partial class HeadlessControlActions : IControlActions
         });
     }
 
+    /// <summary>Port of the upstream moveFlaggedSession: moves the target within its window's saved
+    /// flagged order, just before or after anchor, resolved in the same window. Both must be flagged;
+    /// an unchanged order still answers ok.</summary>
+    public ControlResponse MoveFlaggedSession(string? target, string? window, string anchor, FlaggedOrderPlacement placement)
+    {
+        return ResolveSession(target, window, (store, id) =>
+            Resolve(anchor, AllSessionIds(store), store.SelectedSessionId, "session", anchorId =>
+            {
+                if (anchorId == id) return Err("a session cannot be its own anchor");
+                if (store.SessionWithId(id)?.Flagged != true || store.SessionWithId(anchorId)?.Flagged != true)
+                    return Err("session.flag move needs a flagged session and a flagged anchor");
+                store.MoveFlagged([id], placement, anchorId);
+                return OkId(id);
+            }));
+    }
+
     public ControlResponse SetSessionContext(string? target, string? window, string? context)
     {
         return ResolveSession(target, window, (store, id) =>

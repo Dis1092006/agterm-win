@@ -58,6 +58,10 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse SetWorkspaceIcon(string? target, string? window, string? iconName);
     ControlResponse SetSessionFlag(string? target, string? window, string? mode);
 
+    /// <summary>session.flag move: moves the flagged target just before or after the flagged anchor
+    /// in its window's saved flagged order.</summary>
+    ControlResponse MoveFlaggedSession(string? target, string? window, string anchor, FlaggedOrderPlacement placement);
+
     /// <summary>Sets (trimmed, validated text) or clears (null) what a session is about.</summary>
     ControlResponse SetSessionContext(string? target, string? window, string? context);
 

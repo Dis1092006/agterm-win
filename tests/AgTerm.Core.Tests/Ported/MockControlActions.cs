@@ -49,6 +49,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record WorkspaceExpansion(string? Target, string? Window, bool Expanded) : Call;
         public sealed record WorkspaceFlag(string? Target, string? Window, ControlToggleMode Mode) : Call;
         public sealed record SessionFlag(string? Target, string? Window, string? Mode) : Call;
+        public sealed record FlaggedMove(string? Target, string? Window, string Anchor, FlaggedOrderPlacement Placement) : Call;
         public sealed record SessionContext(string? Target, string? Window, string? Context) : Call;
         public sealed record SessionInfo(string? Target, string? Window, AgTerm.Core.Model.SessionInfo? Info) : Call;
         public sealed record SessionTint(string? Target, string? Window, ControlTintUpdate Update) : Call;
@@ -361,6 +362,12 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse SetSessionFlag(string? target, string? window, string? mode)
     {
         Calls.Add(new Call.SessionFlag(target, window, mode));
+        return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse MoveFlaggedSession(string? target, string? window, string anchor, FlaggedOrderPlacement placement)
+    {
+        Calls.Add(new Call.FlaggedMove(target, window, anchor, placement));
         return new ControlResponse { Ok = true };
     }
 

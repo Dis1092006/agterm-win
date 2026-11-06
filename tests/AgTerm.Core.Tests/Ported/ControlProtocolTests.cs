@@ -962,11 +962,15 @@ public class ControlProtocolTests
             ControlJson.Serialize(new ControlTree { Workspaces = Array.Empty<ControlWorkspaceNode>() }));
         var ordered = ControlJson.Serialize(new ControlTree
         {
-            Workspaces = Array.Empty<ControlWorkspaceNode>(), SidebarMode = "flagged", SidebarFlaggedLayout = "plain", WorkspaceFilter = false,
+            Workspaces = Array.Empty<ControlWorkspaceNode>(), SidebarMode = "flagged", SidebarFlaggedLayout = "plain",
+            FlaggedOrder = ["A"], WorkspaceFilter = false,
         });
         Assert.True(ordered.IndexOf("\"sidebarMode\"", StringComparison.Ordinal)
             < ordered.IndexOf("\"sidebarFlaggedLayout\"", StringComparison.Ordinal));
+        // upstream encodes flaggedOrder right after sidebarFlaggedLayout (8088e146)
         Assert.True(ordered.IndexOf("\"sidebarFlaggedLayout\"", StringComparison.Ordinal)
+            < ordered.IndexOf("\"flaggedOrder\"", StringComparison.Ordinal));
+        Assert.True(ordered.IndexOf("\"flaggedOrder\"", StringComparison.Ordinal)
             < ordered.IndexOf("\"workspaceFilter\"", StringComparison.Ordinal));
     }
 

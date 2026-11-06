@@ -165,16 +165,20 @@ public class SnapshotTests
             Workspaces = Array.Empty<WorkspaceSnapshot>(), SidebarWidth = 240.0,
             SidebarVisible = true, SidebarMode = SidebarMode.Tree,
             FocusedWorkspaceIds = new[] { WorkspaceId }, FocusEnabled = true, SessionRecency = new[] { SessionId },
+            FlaggedOrder = new[] { SessionId },
         };
         using var doc = JsonDocument.Parse(ControlJson.Serialize(snapshot));
         // the pin's single focusedWorkspaceID became a set plus a filter flag (upstream 6722755a).
-        var expected = SurfaceFieldNames("snapshot")
+        var pin = SurfaceFieldNames("snapshot")
             .SelectMany(name => name == "focusedWorkspaceID"
                 ? new[] { "focusedWorkspaceIDs", "focusEnabled" }
                 : new[] { name })
             .ToList();
-        Assert.Equal(expected, doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
-        Assert.Equal(ParitySurface.UpstreamPersistence("snapshot"), expected);
+        Assert.Equal(ParitySurface.UpstreamPersistence("snapshot"), pin);
+        // the pin plus what adopted.json takes, in upstream order (flaggedOrder: 8088e146)
+        var wanted = pin.Concat(ParitySurface.Adopted("snapshot")).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(ParitySurface.LatestUpstreamPersistence("snapshot").Where(wanted.Contains).ToList(),
+            doc.RootElement.EnumerateObject().Select(p => p.Name).ToList());
     }
 
     [Fact]
