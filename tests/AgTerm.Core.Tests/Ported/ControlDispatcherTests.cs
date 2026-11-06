@@ -918,6 +918,72 @@ public class ControlDispatcherTests
         }, actions.Calls);
     }
 
+    [Theory]
+    [InlineData("on", ControlToggleMode.On)]
+    [InlineData("off", ControlToggleMode.Off)]
+    [InlineData("toggle", ControlToggleMode.Toggle)]
+    public async Task WorkspaceFlagRoutesEveryModeWithTargetAndWindow(string raw, ControlToggleMode expected)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WorkspaceFlag, Target = "work", Args = new ControlArgs { Mode = raw, Window = "win" },
+        });
+
+        ExpectResponse(Ok(new ControlResult { Id = "work" }), response);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.WorkspaceFlag("work", "win", expected),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task WorkspaceFlagDecodesFromItsWireNameAndDispatches()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+        var request = ControlJson.Deserialize<ControlRequest>(
+            "{\"cmd\":\"workspace.flag\",\"target\":\"work\",\"args\":{\"mode\":\"off\"}}")!;
+
+        await dispatcher.Dispatch(request);
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.WorkspaceFlag("work", null, ControlToggleMode.Off),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task WorkspaceFlagDefaultsToToggle()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest { Cmd = Command.WorkspaceFlag, Target = "work" });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.WorkspaceFlag("work", null, ControlToggleMode.Toggle),
+        }, actions.Calls);
+    }
+
+    [Fact]
+    public async Task WorkspaceFlagRejectsUnknownModeWithoutCallingActions()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WorkspaceFlag, Target = "work", Args = new ControlArgs { Mode = "clear" },
+        });
+
+        ExpectResponse(Err("invalid workspace flag mode: clear"), response);
+        Assert.Empty(actions.Calls);
+    }
+
     [Fact]
     public async Task WorkspaceNewRoutesCollapsedFlag()
     {

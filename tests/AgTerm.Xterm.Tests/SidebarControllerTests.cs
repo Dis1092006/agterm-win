@@ -208,6 +208,66 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void Flag_all_on_a_mixed_workspace_flags_every_session_then_unflags_them()
+    {
+        Guid w2 = default, first = default, second = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            first = store.AddSession(w2, _stateDir, select: false)!.Id;
+            second = store.AddSession(w2, _stateDir, select: false)!.Id;
+            store.SetFlag(true, [first]);
+        });
+        SidebarWorkspaceInfo Info() => Latest.Workspaces.Single(w => w.Id == w2);
+        Assert.Equal("Flag All Sessions", Info().FlagAllTitle);
+        Assert.True(Info().CanFlagAll);
+
+        _controller.ToggleWorkspaceFlag(w2);
+
+        Assert.True(Latest.Rows.Single(r => r.Id == first).Flagged);
+        Assert.True(Latest.Rows.Single(r => r.Id == second).Flagged);
+        Assert.Equal("Unflag All Sessions", Info().FlagAllTitle);
+
+        _controller.ToggleWorkspaceFlag(w2);
+
+        Assert.Equal(0, Latest.FlaggedCount);
+        Assert.Equal("Flag All Sessions", Info().FlagAllTitle);
+    }
+
+    [Fact]
+    public void Flag_all_is_disabled_on_an_empty_workspace()
+    {
+        Guid w2 = default;
+        Mutate(store => w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id);
+
+        var info = Latest.Workspaces.Single(w => w.Id == w2);
+        Assert.False(info.CanFlagAll);
+        Assert.Equal("Flag All Sessions", info.FlagAllTitle);
+    }
+
+    [Fact]
+    public void Flag_all_in_the_flagged_tree_flags_the_sessions_it_hides()
+    {
+        Guid w2 = default, shown = default, hidden = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            shown = store.AddSession(w2, _stateDir, select: false)!.Id;
+            hidden = store.AddSession(w2, _stateDir, select: false)!.Id;
+            store.SetFlag(true, [shown]);
+            store.FlaggedLayout = FlaggedViewLayout.Tree;
+            store.SetSidebarMode(SidebarMode.Flagged);
+        });
+        Assert.DoesNotContain(Latest.Rows, r => r.Id == hidden);
+        Assert.Equal("Flag All Sessions", Latest.Workspaces.Single(w => w.Id == w2).FlagAllTitle);
+
+        _controller.ToggleWorkspaceFlag(w2);
+
+        Assert.True(Latest.Rows.Single(r => r.Id == hidden).Flagged);
+        Assert.Equal(2, Latest.FlaggedCount);
+    }
+
+    [Fact]
     public void Controller_gestures_mutate_the_store_like_the_socket_would()
     {
         Guid w2 = default, background = default;

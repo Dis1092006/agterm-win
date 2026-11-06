@@ -47,6 +47,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record WorkspaceFocus(string? Target, string? Window, ControlWorkspaceFocusMode Mode) : Call;
         public sealed record WorkspaceFilter(string? Window, ControlToggleMode Mode) : Call;
         public sealed record WorkspaceExpansion(string? Target, string? Window, bool Expanded) : Call;
+        public sealed record WorkspaceFlag(string? Target, string? Window, ControlToggleMode Mode) : Call;
         public sealed record SessionFlag(string? Target, string? Window, string? Mode) : Call;
         public sealed record SessionContext(string? Target, string? Window, string? Context) : Call;
         public sealed record SessionInfo(string? Target, string? Window, AgTerm.Core.Model.SessionInfo? Info) : Call;
@@ -349,6 +350,12 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.WorkspaceExpansion(target, window, expanded));
         return new ControlResponse { Ok = true };
+    }
+
+    public ControlResponse SetWorkspaceFlag(string? target, string? window, ControlToggleMode mode)
+    {
+        Calls.Add(new Call.WorkspaceFlag(target, window, mode));
+        return new ControlResponse { Ok = true, Result = new ControlResult { Id = target } };
     }
 
     public ControlResponse SetSessionFlag(string? target, string? window, string? mode)

@@ -1005,6 +1005,7 @@ public sealed partial class AppStore
         if (SidebarMode == mode) return;
         SidebarMode = mode;
         PruneSidebarSelection();
+        ReselectIfSelectionHidden();
         Save();
     }
 
@@ -1065,6 +1066,7 @@ public sealed partial class AppStore
         if (SessionWithId(forSession) is not { } session || session.Flagged == on) return;
         session.Flagged = on;
         PruneSidebarSelection();
+        ReselectIfSelectionHidden();
         Save();
     }
 
@@ -1086,8 +1088,25 @@ public sealed partial class AppStore
         if (changed)
         {
             PruneSidebarSelection();
+            ReselectIfSelectionHidden(); // the batch can unflag the active session too
             Save();
         }
+    }
+
+    /// <summary>Whether every session of the workspace is flagged; false for an empty or unknown
+    /// workspace. The one predicate behind the row menu's Flag All/Unflag All label and
+    /// workspace.flag toggle.</summary>
+    public bool AllSessionsFlagged(Guid workspaceId) =>
+        Workspaces.FirstOrDefault(w => w.Id == workspaceId) is { Sessions.Count: > 0 } workspace
+        && workspace.Sessions.All(s => s.Flagged);
+
+    /// <summary>Applies one workspace.flag mode to EVERY session of the workspace, including ones the
+    /// flagged view hides. Toggle unflags all only when all are flagged, otherwise flags all, so a
+    /// mixed workspace converges instead of inverting per session.</summary>
+    public void ApplyWorkspaceFlag(ControlToggleMode mode, Guid workspaceId)
+    {
+        if (Workspaces.FirstOrDefault(w => w.Id == workspaceId) is not { } workspace) return;
+        SetFlag(mode.DesiredValue(AllSessionsFlagged(workspaceId)), workspace.Sessions.Select(s => s.Id).ToList());
     }
 
     /// <summary>Sets (or clears) a session's background watermark and persists it. Clean no-op (no

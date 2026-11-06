@@ -76,7 +76,7 @@ Remote companions are in section 9.
 These extend the first catalog, section 6. The flagged layouts (B5a) and focus as a set of workspaces (A5) are ported.
 
 - Reorder the flagged view #833. The flat and plain layouts keep a saved order per window; a drag works across workspaces. A newly flagged session goes to the end, and next and previous session follow the displayed order. `session flag move --before|--after ID` is mode `move` on `session.flag`; `before` and `after` are existing args. `tree` reports `flaggedOrder` at the top level, and the window snapshot saves it. Port: not done.
-- Flag All Sessions on the workspace row menu #787: `workspace.flag on|off|toggle [--target W]`. It flags sessions the tree layout hides, too. Port: not done.
+- Flag All Sessions on the workspace row menu #787: `workspace.flag on|off|toggle [--target W]`. It flags sessions the tree layout hides, too. Port: done (B5b).
 - Edit Flagged Sessions and Edit Focused Workspaces #803: palettes that list every session or workspace of the window with its mark; Return toggles a row and the palette stays open. The actions `edit_flagged_sessions` and `edit_focused_workspaces` have no chord. Port: not done.
 
 ## 5. Overlays and pages
