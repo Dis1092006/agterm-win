@@ -379,6 +379,26 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void A_drag_opens_a_collapsed_workspace_and_its_end_folds_it_back()
+    {
+        Guid w2 = default, background = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            background = store.AddSession(w2, _stateDir, select: false)!.Id;
+            store.SetWorkspaceExpanded(w2, false);
+        });
+
+        _controller.SpringOpenWorkspace(w2);
+        Assert.False(Latest.Rows.Single(r => r.Id == w2).Collapsed);
+        Assert.Contains(Latest.Rows, r => r.Id == background);
+
+        _controller.EndSpringLoad(keepOpen: false);
+        Assert.True(Latest.Rows.Single(r => r.Id == w2).Collapsed);
+        Assert.False(_host.Store.Workspaces.Single(w => w.Id == w2).IsExpanded);
+    }
+
+    [Fact]
     public void Mark_for_attention_completes_idle_sessions_and_leaves_statused_ones()
     {
         var w1 = Latest.Workspaces.Single().Id;

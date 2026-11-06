@@ -43,11 +43,16 @@ public sealed partial class SidebarView : UserControl
     private string _editingOriginal = "";
     private IReadOnlyList<Guid> _draggedSessions = Array.Empty<Guid>();
     private Guid? _draggedWorkspace;
+    private readonly SidebarSpringLoad _springLoad;
 
     public SidebarView()
     {
         InitializeComponent();
         RowsList.ItemsSource = _items;
+        _springLoad = new SidebarSpringLoad(
+            ScheduleOnUi,
+            workspace => _controller?.SpringOpenWorkspace(workspace),
+            keepOpen => _controller?.EndSpringLoad(keepOpen));
     }
 
     /// <summary>The session the user activated by clicking a row — MainWindow refocuses the
@@ -815,39 +820,79 @@ public sealed partial class SidebarView : UserControl
 
     private void OnListDragOver(object sender, DragEventArgs e)
     {
+        var position = e.GetPosition(RowsList);
         if (e.DataView.Contains(StandardDataFormats.StorageItems))
         {
-            e.AcceptedOperation = _snapshot?.Mode == SidebarMode.Tree
-                ? DataPackageOperation.Copy
-                : DataPackageOperation.None;
+            var accepted = _snapshot?.Mode == SidebarMode.Tree;
+            e.AcceptedOperation = accepted ? DataPackageOperation.Copy : DataPackageOperation.None;
             e.Handled = true;
+            SpringHover(accepted && _snapshot is { } snapshot
+                ? SidebarDrop.ResolveDirectoryWorkspace(snapshot.Mode, WorkspaceAt(position),
+                    snapshot.FocusedWorkspaceId, snapshot.CurrentWorkspaceId)
+                : null);
             return;
         }
 
-        var position = e.GetPosition(RowsList);
         if (_draggedWorkspace is not null && GapY(WorkspaceDrop(position).FlatIndex) is { } lineY)
         {
+            SpringHover(null);
             e.AcceptedOperation = DataPackageOperation.Move;
             ShowDropLine(lineY);
             return;
         }
         // only a drop that changes the sidebar is offered, as upstream's validateDrop
         if (_draggedSessions.Count > 0 && SessionDropAt(position) is { } target &&
-            _snapshot?.DropModel.Resolve(_draggedSessions, target.Drop) is not null &&
+            _snapshot?.DropModel.Resolve(_draggedSessions, target.Drop) is { } move &&
             ShowDrop(target.Point))
         {
+            SpringHover((move as SidebarSessionMove.Sessions)?.Workspace);
             e.AcceptedOperation = DataPackageOperation.Move;
             return;
         }
+        SpringHover(null);
         e.AcceptedOperation = DataPackageOperation.None;
         HideDropIndicator();
     }
 
-    private void OnListDragLeave(object sender, DragEventArgs e) => HideDropIndicator();
+    /// <summary>Feeds the spring load the workspace a drop here would land in, with whether its row is
+    /// open. A workspace without a row has no spring load.</summary>
+    private void SpringHover(Guid? workspace)
+    {
+        var row = workspace is { } id
+            ? _snapshot?.Rows.FirstOrDefault(r => r.Kind == SidebarRowKind.Workspace && r.Id == id)
+            : null;
+        _springLoad.Hover(row?.Id, row is { Collapsed: false });
+    }
+
+    private Action ScheduleOnUi(TimeSpan delay, Action fire)
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = delay;
+        timer.IsRepeating = false;
+        timer.Tick += (sender, _) =>
+        {
+            sender.Stop();
+            fire();
+        };
+        timer.Start();
+        return timer.Stop;
+    }
+
+    private void OnListDragLeave(object sender, DragEventArgs e)
+    {
+        HideDropIndicator();
+        if (IsOutsideList(e.GetPosition(RowsList))) _springLoad.Cancel();
+    }
+
+    /// <summary>DragLeave also bubbles up when the pointer crosses from one row to the next; only a
+    /// point outside the list means the drag left it.</summary>
+    private bool IsOutsideList(Windows.Foundation.Point position) =>
+        position.X < 0 || position.Y < 0 || position.X >= RowsList.ActualWidth || position.Y >= RowsList.ActualHeight;
 
     private void OnDragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
     {
         HideDropIndicator();
+        _springLoad.Cancel(); // a drop already finished it; a cancelled drag folds it back
         _draggedSessions = Array.Empty<Guid>();
         _draggedWorkspace = null;
     }
@@ -864,7 +909,7 @@ public sealed partial class SidebarView : UserControl
             var deferral = e.GetDeferral();
             try
             {
-                await ImportDroppedDirectoriesAsync(e.DataView, position, snapshot, _controller);
+                _springLoad.Finish(await ImportDroppedDirectoriesAsync(e.DataView, position, snapshot, _controller));
             }
             finally
             {
@@ -873,14 +918,19 @@ public sealed partial class SidebarView : UserControl
             return;
         }
 
+        // a successful drop keeps the workspace the drag opened open, so the moved rows stay visible
+        var dropped = false;
         if (_draggedWorkspace is { } workspace)
         {
             _controller.DropWorkspace(workspace, WorkspaceDrop(position).Slot);
+            dropped = true;
         }
         else if (_draggedSessions.Count > 0 && SessionDropAt(position) is { } target)
         {
+            dropped = snapshot.DropModel.Resolve(_draggedSessions, target.Drop) is not null;
             _controller.DropSessions(_draggedSessions, target.Drop);
         }
+        _springLoad.Finish(dropped);
         _draggedSessions = Array.Empty<Guid>();
         _draggedWorkspace = null;
         e.Handled = true;
@@ -967,16 +1017,19 @@ public sealed partial class SidebarView : UserControl
                 new Windows.Foundation.Rect(0, 0, container.ActualWidth, container.ActualHeight))
             : null;
 
-    private async Task ImportDroppedDirectoriesAsync(DataPackageView dataView,
+    /// <summary>Creates a session for each dropped folder. True when there was one to create.</summary>
+    private async Task<bool> ImportDroppedDirectoriesAsync(DataPackageView dataView,
         Windows.Foundation.Point position, SidebarSnapshot snapshot, SidebarController controller)
     {
         var workspaceId = SidebarDrop.ResolveDirectoryWorkspace(snapshot.Mode,
             WorkspaceAt(position), snapshot.FocusedWorkspaceId, snapshot.CurrentWorkspaceId);
-        if (workspaceId is null) return;
+        if (workspaceId is null) return false;
 
         var storageItems = await dataView.GetStorageItemsAsync();
         var paths = storageItems.OfType<StorageFolder>().Select(folder => folder.Path);
-        controller.ImportDirectories(DirectoryImportPolicy.CreateRequests(workspaceId, paths));
+        var requests = DirectoryImportPolicy.CreateRequests(workspaceId, paths);
+        controller.ImportDirectories(requests);
+        return requests.Count > 0;
     }
 
     private Guid? WorkspaceAt(Windows.Foundation.Point position)
