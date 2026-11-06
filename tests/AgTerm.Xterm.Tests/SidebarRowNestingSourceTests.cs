@@ -13,6 +13,20 @@ public sealed class SidebarRowNestingSourceTests
     }
 
     [Fact]
+    public void A_new_reveal_scrolls_the_selected_row_into_view_after_the_selection_sync()
+    {
+        var apply = Between(Source("SidebarView.xaml.cs"), "public void Apply(SidebarSnapshot snapshot)", "private void RefreshRealizedRowAutomationNames()");
+        var sync = apply.IndexOf("SyncSelection(snapshot);", StringComparison.Ordinal);
+        var reveal = apply.IndexOf("ScrollRevealedSelection(snapshot);", StringComparison.Ordinal);
+        Assert.True(sync >= 0 && reveal > sync, "the reveal scroll follows the selection sync");
+
+        var scroll = Between(Source("SidebarView.xaml.cs"), "private void ScrollRevealedSelection(SidebarSnapshot snapshot)", "\n    }");
+        Assert.Contains("if (_revealGeneration == snapshot.RevealGeneration) return;", scroll, StringComparison.Ordinal);
+        Assert.Contains("_revealGeneration = snapshot.RevealGeneration;", scroll, StringComparison.Ordinal);
+        Assert.Contains("RowsList.ScrollIntoView(", scroll, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Row_content_is_indented_by_the_kind_of_row_and_whether_it_nests()
     {
         var model = Source("SidebarRowViewModel.cs");

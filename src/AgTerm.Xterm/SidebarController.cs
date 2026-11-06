@@ -76,6 +76,10 @@ public sealed record SidebarSnapshot
     /// ones.</summary>
     public long Generation { get; init; }
 
+    /// <summary>The store's SidebarRevealGeneration: a change means the selection changed or the
+    /// sidebar switched views, so the view scrolls the selected row into view.</summary>
+    public long RevealGeneration { get; init; }
+
     /// <summary>The session rows the list shows as selected: the extended selection, or the selected
     /// session alone, as upstream re-selects them after each update.</summary>
     public IReadOnlyList<Guid> ListSelection() =>
@@ -171,8 +175,9 @@ public sealed class SidebarController : IDisposable
 
     public void ToggleWorkspaceCollapse(Guid workspaceId) => Mutate(store =>
     {
+        // the row shows what is open on screen, which a reveal can open without saving it
         if (store.Workspaces.FirstOrDefault(w => w.Id == workspaceId) is { } workspace)
-            store.SetWorkspaceExpanded(workspaceId, !workspace.IsExpanded);
+            store.SetWorkspaceExpanded(workspaceId, !store.IsWorkspaceOpenInSidebar(workspace));
     });
 
     public void RenameSession(Guid sessionId, string name) =>
@@ -580,9 +585,11 @@ public sealed class SidebarController : IDisposable
         Process.Start(WindowsExplorer.StartInfo($"\"{path}\""));
     }
 
-    /// <summary>Projects AppStore into immutable/materialized sidebar view state.</summary>
+    /// <summary>Projects AppStore into immutable/materialized sidebar view state. The reveal runs
+    /// first, as upstream's selection sync runs on each outline update.</summary>
     private static SidebarSnapshot Capture(AppStore store, long generation)
     {
+        store.SyncSidebarReveal();
         var surfaceStatuses = new Dictionary<Guid, SidebarSurfaceStatus>();
         foreach (var workspace in store.Workspaces)
         {
@@ -600,6 +607,7 @@ public sealed class SidebarController : IDisposable
         return new SidebarSnapshot
         {
             Generation = generation,
+            RevealGeneration = store.SidebarRevealGeneration,
             Rows = SidebarProjection.Project(store),
             ShapeKey = SidebarProjection.ShapeKey(store),
             Workspaces = store.Workspaces

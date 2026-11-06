@@ -353,6 +353,32 @@ public sealed class SidebarControllerTests : IDisposable
     }
 
     [Fact]
+    public void The_row_toggle_folds_a_workspace_the_reveal_opened()
+    {
+        Guid w2 = default, background = default;
+        Mutate(store =>
+        {
+            w2 = store.AddWorkspace("w2", revealNewWorkspace: false).Id;
+            background = store.AddSession(w2, _stateDir, select: false)!.Id;
+            store.SetWorkspaceExpanded(w2, false);
+        });
+        var generation = Latest.RevealGeneration;
+
+        _controller.Select(background);
+        Assert.False(Latest.Rows.Single(r => r.Id == w2).Collapsed);
+        Assert.Contains(Latest.Rows, r => r.Id == background);
+        Assert.True(Latest.RevealGeneration > generation);
+
+        _controller.ToggleWorkspaceCollapse(w2);
+        Assert.True(Latest.Rows.Single(r => r.Id == w2).Collapsed);
+        Assert.DoesNotContain(Latest.Rows, r => r.Id == background);
+
+        _controller.ToggleWorkspaceCollapse(w2);
+        Assert.False(Latest.Rows.Single(r => r.Id == w2).Collapsed);
+        Assert.True(_host.Store.Workspaces.Single(w => w.Id == w2).IsExpanded);
+    }
+
+    [Fact]
     public void Mark_for_attention_completes_idle_sessions_and_leaves_statused_ones()
     {
         var w1 = Latest.Workspaces.Single().Id;
