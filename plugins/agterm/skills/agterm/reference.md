@@ -1477,6 +1477,30 @@ dash. The text must be valid UTF-8: otherwise the error is
 `text is not valid UTF-8; the Windows clipboard holds Unicode text`. A clipboard failure reports
 `could not set the Windows clipboard: error N`. These and the empty or too-large refusals exit 1.
 
+## agent-hook
+
+`agtermctl agent-hook resume <agent> <start|end>` — Windows-only. The command that an agent's session
+start and session end hooks run. `<agent>` is `claude`, `copilot` or `codex`. The hook JSON comes on
+standard input. The pane comes from `$AGTERM_SESSION_ID`, `$AGTERM_PANE` and `$AGTERM_PANE_ID`, and the
+pipe from `$AGTERM_SOCKET`. It has no wire command of its own: it sends `session.restore` and `tree`.
+
+- `start` reads the agent session id from the JSON and pins the agent's resume command on the pane:
+  `claude --resume <id>`, `copilot --resume=<id>` or `codex resume <id>`. A missing id, an id that is not
+  a UUID, or a Copilot subagent payload (`agentId` or `parentAgentId`) pins nothing.
+- `end` clears the pin, but only when the pane's pin is the resume command of the session that ends. A pin
+  set by someone else, or by a newer agent session after `/clear`, stays. Claude clears on `reason`
+  `prompt_input_exit` or `logout`, Copilot on `user_exit` or `complete`, Codex on any reason. A Claude
+  pane closed by an app quit ends with `other` and keeps the pin, so the session comes back.
+
+```bash
+agtermctl agent-hook resume claude start < payload.json   # what a Claude Code SessionStart hook runs
+agtermctl agent-hook resume copilot end < payload.json    # what a Copilot CLI sessionEnd hook runs
+```
+
+It always exits 0, so a hook never blocks the agent. Outside agterm (no `$AGTERM_SESSION_ID`) it does
+nothing. A refused request or an unreachable pipe prints `error: <message>` to standard error. The pin is
+typed at launch only while `restoreRunningCommand` is `true`.
+
 ## restore
 
 `agtermctl restore clear` — clear every session's saved CAPTURED foreground command and persist.
