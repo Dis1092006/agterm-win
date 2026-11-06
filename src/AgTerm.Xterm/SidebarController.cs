@@ -37,6 +37,11 @@ public sealed record SidebarSnapshot
     public bool CanRemoveWorkspace { get; init; }
     public bool SidebarVisible { get; init; }
     public SidebarMode Mode { get; init; }
+    public FlaggedViewLayout FlaggedLayout { get; init; }
+
+    /// <summary>Whether the rows include workspace rows: the ordinary tree, and the flagged view in its
+    /// tree layout. Session rows nest under them and they fold.</summary>
+    public bool RendersWorkspaceRows => Mode == SidebarMode.Tree || FlaggedLayout == FlaggedViewLayout.Tree;
     public double SidebarWidth { get; init; }
     public Guid? CurrentWorkspaceId { get; init; }
     /// <summary>The marked workspace when the filter is on and it is the only one marked.</summary>
@@ -585,6 +590,7 @@ public sealed class SidebarController : IDisposable
             CanRemoveWorkspace = store.CanRemoveWorkspace,
             SidebarVisible = store.SidebarVisible,
             Mode = store.SidebarMode,
+            FlaggedLayout = store.FlaggedLayout,
             SidebarWidth = store.SidebarWidth,
             CurrentWorkspaceId = store.CurrentWorkspaceId,
             FocusedWorkspaceId = store.SoleFocusedWorkspaceId,

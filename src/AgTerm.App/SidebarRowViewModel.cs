@@ -25,6 +25,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
     private SidebarRow _row;
     private AppSettings _settings;
     private readonly SidebarMode _mode;
+    private readonly bool _nested;
     private SidebarSurfaceStatus _surfaceStatus;
     private SidebarRowLook _look;
     private string? _iconName;
@@ -37,6 +38,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         SidebarRow row,
         AppSettings settings,
         SidebarMode mode,
+        bool nested,
         SidebarSurfaceStatus surfaceStatus = SidebarSurfaceStatus.Ready,
         SidebarRowLook? look = null,
         string? iconName = null)
@@ -44,6 +46,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
         _row = row;
         _settings = settings;
         _mode = mode;
+        _nested = nested;
         _surfaceStatus = surfaceStatus;
         _look = look ?? SidebarRowLook.Default;
         _iconName = iconName;
@@ -227,7 +230,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     // a mode change rebuilds the rows, so the mode is fixed for a row's lifetime
     public Thickness ContentMargin =>
-        new(8 + SidebarRowIndent.Of(Kind, _mode, SidebarRowIcon.IsShown(Kind, _settings)), 0, 8, 0);
+        new(8 + SidebarRowIndent.Of(Kind, _nested, SidebarRowIcon.IsShown(Kind, _settings)), 0, 8, 0);
 
     public FontWeight LabelWeight =>
         IsWorkspace ? Microsoft.UI.Text.FontWeights.SemiBold

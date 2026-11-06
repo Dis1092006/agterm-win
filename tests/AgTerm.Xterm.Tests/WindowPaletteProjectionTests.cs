@@ -280,6 +280,24 @@ public sealed class WindowPaletteProjectionTests
         Assert.Contains("app:reload-config", ids);
     }
 
+    // upstream 902cd853: the flagged view's tree layout has workspace rows, so the folds are offered there too
+    [Theory]
+    [InlineData(FlaggedViewLayout.Flat, false)]
+    [InlineData(FlaggedViewLayout.Plain, false)]
+    [InlineData(FlaggedViewLayout.Tree, true)]
+    public void Commands_offer_expand_and_collapse_in_the_flagged_tree_layout(FlaggedViewLayout layout, bool offered)
+    {
+        var store = TestStores.Scratch();
+        store.SidebarMode = SidebarMode.Flagged;
+        store.FlaggedLayout = layout;
+
+        var ids = WindowPaletteProjection.Create(
+            WindowPaletteMode.Commands, store, Keymap.Empty, StateProvider()).Items.Select(item => item.Id).ToList();
+
+        Assert.Equal(offered, ids.Contains("app:expand-workspaces"));
+        Assert.Equal(offered, ids.Contains("app:collapse-workspaces"));
+    }
+
     [Fact]
     public void Commands_offer_close_split_only_for_a_session_with_a_split_even_when_hidden()
     {

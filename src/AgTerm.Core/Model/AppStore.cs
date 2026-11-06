@@ -61,6 +61,26 @@ public sealed partial class AppStore
     /// of the flagged working-set. Persisted.</summary>
     public SidebarMode SidebarMode { get; set; } = SidebarMode.Tree;
 
+    /// <summary>How the flagged view lays out its sessions. App-wide and not persisted here: the host
+    /// sets it on every window's store from AppSettings.flaggedViewLayout. A change redraws the sidebar.</summary>
+    public FlaggedViewLayout FlaggedLayout
+    {
+        get => _flaggedLayout;
+        set
+        {
+            if (_flaggedLayout == value) return;
+            _flaggedLayout = value;
+            NotifySidebar();
+        }
+    }
+
+    private FlaggedViewLayout _flaggedLayout = FlaggedViewLayout.Flat;
+
+    /// <summary>Whether the sidebar shows workspace rows: always in the ordinary tree, and in the
+    /// flagged view only in its tree layout. Gates the workspace folds.</summary>
+    public bool RendersWorkspaceRows =>
+        SidebarMode == SidebarMode.Tree || FlaggedLayout == FlaggedViewLayout.Tree;
+
     /// <summary>The workspaces marked in the sidebar focus set. Persisted. A member leaves when its
     /// workspace is removed. The set is kept when the filter is switched off.</summary>
     public HashSet<Guid> FocusedWorkspaceIds { get; set; } = new();
@@ -393,6 +413,7 @@ public sealed partial class AppStore
             AttentionNavigationAcrossWindows = AttentionNavigationAcrossWindows,
             SidebarVisible = SidebarVisible,
             SidebarMode = SidebarMode == SidebarMode.Flagged ? "flagged" : "tree",
+            SidebarFlaggedLayout = FlaggedLayout.RawValue(),
             WorkspaceFilter = FocusEnabled,
             QuickVisible = quickVisible?.Invoke(),
             ZoomedSurface = zoomedSurface?.Invoke(),
@@ -1015,19 +1036,20 @@ public sealed partial class AppStore
         if (changed) Save();
     }
 
-    /// <summary>Expands every workspace (wire sidebar.expand, palette Expand Workspaces). A no-op in
-    /// flagged mode, which has no workspace rows.</summary>
+    /// <summary>Expands every workspace (wire sidebar.expand, palette Expand Workspaces). A no-op while
+    /// the sidebar shows no workspace rows (the flat flagged layouts).</summary>
     public void ExpandAllWorkspaces()
     {
-        if (SidebarMode == SidebarMode.Flagged) return;
+        if (!RendersWorkspaceRows) return;
         SetWorkspacesExpanded(Workspaces.Select(w => w.Id).ToHashSet());
     }
 
     /// <summary>Collapses every workspace except the current one (wire sidebar.collapse, palette
-    /// Collapse Workspaces), the same resolution as --target active. A no-op in flagged mode.</summary>
+    /// Collapse Workspaces), the same resolution as --target active. A no-op while the sidebar shows
+    /// no workspace rows.</summary>
     public void CollapseOtherWorkspaces()
     {
-        if (SidebarMode == SidebarMode.Flagged) return;
+        if (!RendersWorkspaceRows) return;
         var keep = new HashSet<Guid>();
         if (CurrentWorkspaceId is { } current)
             keep.Add(current);

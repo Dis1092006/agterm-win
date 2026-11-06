@@ -724,6 +724,27 @@ internal static class SidebarCommands
         };
     }
 
+    /// <summary>`agtermctl sidebar flagged-layout [flat|plain|tree|toggle]` — sets how every window's flagged
+    /// sidebar view arranges its sessions. App-wide, so it carries no `--window` selector.</summary>
+    internal sealed class FlaggedLayout : IRequestCommand
+    {
+        public string Layout { get; init; } = "toggle";
+        public required BasicOptions Basic { get; init; }
+        public IConnectionOptions Options => Basic;
+
+        public void Validate()
+        {
+            if (Layout is not ("flat" or "plain" or "tree" or "toggle"))
+                throw new CliValidationException("layout must be flat, plain, tree, or toggle");
+        }
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.SidebarFlaggedLayout,
+            Args = new ControlArgs { Mode = Layout },
+        };
+    }
+
     /// <summary>`agtermctl sidebar expand [--window W]` — expand every workspace in a window's
     /// sidebar tree (defaults to the frontmost). Unlike `visibility`/`mode`, this carries the
     /// `--window` selector so a script can expand a background window's tree.</summary>
@@ -783,6 +804,7 @@ internal static class SidebarCommands
         BindVisibility(bindings, visibility);
         sidebar.Subcommands.Add(visibility);
         sidebar.Subcommands.Add(BuildMode(bindings));
+        sidebar.Subcommands.Add(BuildFlaggedLayout(bindings));
         sidebar.Subcommands.Add(BuildExpand(bindings));
         sidebar.Subcommands.Add(BuildCollapse(bindings));
         sidebar.Subcommands.Add(BuildWidth(bindings));
@@ -825,6 +847,26 @@ internal static class SidebarCommands
         bindings.Register(cmd, result => new Mode
         {
             ViewMode = result.GetValue(mode) ?? "toggle",
+            Basic = options.Read(result),
+        });
+        return cmd;
+    }
+
+    private static System.CommandLine.Command BuildFlaggedLayout(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("flagged-layout", "Flagged view layout (flat|plain|tree|toggle).");
+        var layout = new Argument<string>("layout")
+        {
+            Description = "Layout: flat, plain (flat without workspace names), tree, or toggle (default).",
+            Arity = ArgumentArity.ZeroOrOne,
+            DefaultValueFactory = _ => "toggle",
+        };
+        var options = new BasicOptions.Binder();
+        cmd.Arguments.Add(layout);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new FlaggedLayout
+        {
+            Layout = result.GetValue(layout) ?? "toggle",
             Basic = options.Read(result),
         });
         return cmd;

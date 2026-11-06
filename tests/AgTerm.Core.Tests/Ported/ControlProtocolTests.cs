@@ -948,6 +948,39 @@ public class ControlProtocolTests
         Assert.Equal("flagged", RoundTrip(response).Result!.Tree!.SidebarMode);
     }
 
+    // upstream treeRoundTripsWithSidebarFlaggedLayoutAndOmitsWhenNil
+    [Fact]
+    public void TreeRoundTripsWithSidebarFlaggedLayoutAndOmitsWhenNil()
+    {
+        var response = new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult { Tree = new ControlTree { Workspaces = Array.Empty<ControlWorkspaceNode>(), SidebarFlaggedLayout = "tree" } },
+        };
+        Assert.Equal("tree", RoundTrip(response).Result!.Tree!.SidebarFlaggedLayout);
+        Assert.DoesNotContain("sidebarFlaggedLayout",
+            ControlJson.Serialize(new ControlTree { Workspaces = Array.Empty<ControlWorkspaceNode>() }));
+        var ordered = ControlJson.Serialize(new ControlTree
+        {
+            Workspaces = Array.Empty<ControlWorkspaceNode>(), SidebarMode = "flagged", SidebarFlaggedLayout = "plain", WorkspaceFilter = false,
+        });
+        Assert.True(ordered.IndexOf("\"sidebarMode\"", StringComparison.Ordinal)
+            < ordered.IndexOf("\"sidebarFlaggedLayout\"", StringComparison.Ordinal));
+        Assert.True(ordered.IndexOf("\"sidebarFlaggedLayout\"", StringComparison.Ordinal)
+            < ordered.IndexOf("\"workspaceFilter\"", StringComparison.Ordinal));
+    }
+
+    // upstream flaggedLayoutRequestRoundTrips
+    [Fact]
+    public void FlaggedLayoutRequestRoundTrips()
+    {
+        RoundTrip(new ControlRequest { Cmd = Command.SidebarFlaggedLayout, Args = new ControlArgs { Mode = "tree" } });
+        RoundTrip(new ControlRequest { Cmd = Command.SidebarFlaggedLayout });
+        var request = ControlJson.Deserialize<ControlRequest>("{\"cmd\":\"sidebar.flagged-layout\",\"args\":{\"mode\":\"plain\"}}")!;
+        Assert.Equal(Command.SidebarFlaggedLayout, request.Cmd);
+        Assert.Equal("plain", request.Args!.Mode);
+    }
+
     [Fact]
     public void TreeRoundTripsWithQuickVisible()
     {

@@ -277,6 +277,12 @@ public sealed record ControlTree
     [JsonPropertyName("sidebarMode")]
     public string? SidebarMode { get; init; }
 
+    /// <summary>How the flagged view arranges its sessions (flat | plain | tree). App-wide, so every
+    /// window's tree reports the same value, and reported under the ordinary tree too, where it is
+    /// dormant. The read side of sidebar.flagged-layout.</summary>
+    [JsonPropertyName("sidebarFlaggedLayout")]
+    public string? SidebarFlaggedLayout { get; init; }
+
     /// <summary>Whether the sidebar focus filter is applied (live). Reported even when false; the
     /// marked set itself is each workspace node's focused flag. Read side of workspace.filter.</summary>
     [JsonPropertyName("workspaceFilter")]

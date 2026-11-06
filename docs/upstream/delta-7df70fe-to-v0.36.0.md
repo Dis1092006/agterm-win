@@ -102,7 +102,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 - `window.minimize on|off|toggle`, `window new --minimized`, `minimized` in `window list` #294. `window resize` returns the size it applied #566. Port: not done.
 - `workspace.go --to next|prev`, actions `previous_workspace`, `next_workspace`, `toggle_workspace_collapse` (no chord) #436. Port: the command `workspace.go` is done (`workspace go`); the actions are not.
 - Focus as a set of workspaces: `workspace.filter`, `workspace focus add`, the action `toggle_workspace_filter` #297. Port: done in agterm-win A5.
-- Flagged view layout: `sidebar.flagged-layout flat|tree|plain|toggle`, the setting `flaggedViewLayout` #621, #718. Port: not done.
+- Flagged view layout: `sidebar.flagged-layout flat|tree|plain|toggle`, the setting `flaggedViewLayout` #621, #718. Port: done (B5a).
 - `sidebar.width` #512. Port: done.
 - The attention list (Ctrl+Shift+I) over all windows #596. Port: not done. The port lists the sessions of the current window.
 - Where a new session goes: at the end or after the current one, the setting `newSessionPlacement` #665. Port: not done.
@@ -156,7 +156,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 - `Snapshot`: `focusedWorkspaceID` is replaced by `focusedWorkspaceIDs` and `focusEnabled`. Old `workspaces.json` files have to be migrated on read. Port: done in agterm-win A5.
 - `SessionSnapshot`, new fields: `paneIdentity`, `splitPaneIdentity`, `hasSplit`, `splitAxis`, `context`, `splitInitialCommand`, `splitCommandWait`, `paneBackgrounds`. Port: `context` done in agterm-win A3; the others not done.
 - An unknown value of an optional field in `workspaces.json` becomes nil instead of failing the whole snapshot #363. Port: not done.
-- `AppSettings`, new fields: `cursorBlink`, `cursorStyle`, `flaggedViewLayout`, `htmlOverlayZoom`, `interfaceFontSize`, `linkOpenMode`, `newSessionPlacement`, `quickTerminalSizePercent`, `restoreMode`, `shownInterfaceElements`, `statusReset`, `welcomeShown`, `workspaceRowClickExpands`. Port: not done.
+- `AppSettings`, new fields: `cursorBlink`, `cursorStyle`, `flaggedViewLayout`, `htmlOverlayZoom`, `interfaceFontSize`, `linkOpenMode`, `newSessionPlacement`, `quickTerminalSizePercent`, `restoreMode`, `shownInterfaceElements`, `statusReset`, `welcomeShown`, `workspaceRowClickExpands`. Port: partly: `flaggedViewLayout` (B5a) and `statusReset` are done.
 
 ## 12. Behavior changes in commands already implemented
 
