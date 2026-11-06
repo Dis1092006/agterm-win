@@ -15,8 +15,7 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        // sessionInfoDisplay: the picker comes with the info line drawing (B2d2)
-        var deferred = new[] { "compactToolbar", "sessionInfoDisplay" };
+        var deferred = new[] { "compactToolbar" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
                 .OfType<System.Text.Json.Serialization.JsonPropertyNameAttribute>().SingleOrDefault()?.Name)
@@ -98,6 +97,43 @@ public sealed class SettingsEditorTests : IDisposable
         Assert.Null(saved[field.Key]);
         Assert.Equal("hidden", saved["toolbarMode"]!.GetValue<string>());
         Assert.Equal(42, saved["future"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void Session_info_is_an_interface_choice_that_defaults_to_always()
+    {
+        var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "sessionInfoDisplay");
+        Assert.Equal("Interface", field.Tab);
+        Assert.Equal("Session info", field.Label);
+        Assert.Equal(SettingControl.Choice, field.Control);
+        Assert.Null(field.Default);
+        Assert.Equal([null, "flagged", "off"], field.Choices!.Select(choice => choice.Value));
+        Assert.Equal(["Always", "Flagged", "Off"], field.Choices!.Select(choice => choice.Label));
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("always", null)]
+    [InlineData("flagged", "flagged")]
+    [InlineData("off", "off")]
+    [InlineData("sometimes", null)]
+    public void The_session_info_picker_shows_the_effective_value(string? stored, string? shown)
+    {
+        File.WriteAllText(Store.FilePath, stored is null ? "{}" : $$"""{"sessionInfoDisplay":"{{stored}}"}""");
+
+        Assert.Equal(shown, new SettingsEditor(new SettingsCoordinator(Store)).ChoiceValue("sessionInfoDisplay"));
+    }
+
+    [Fact]
+    public async Task Choosing_flagged_persists_it_and_always_removes_the_key()
+    {
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        await editor.SetAsync("sessionInfoDisplay", "flagged");
+        Assert.Equal("flagged", JsonNode.Parse(File.ReadAllText(Store.FilePath))!["sessionInfoDisplay"]?.GetValue<string>());
+
+        await editor.SetAsync("sessionInfoDisplay", null);
+        Assert.False(JsonNode.Parse(File.ReadAllText(Store.FilePath))!.AsObject().ContainsKey("sessionInfoDisplay"));
     }
 
     [Fact]

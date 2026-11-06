@@ -37,6 +37,9 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
 
     // workspace rows
     public string? IconName { get; init; }
+
+    // session rows: the caller-set info line, drawn under the name when the display setting allows it
+    public SessionInfo? Info { get; init; }
 }
 
 /// <summary>
@@ -107,6 +110,7 @@ public static class SidebarProjection
             Indicator = session.AgentIndicator,
             Unseen = session.UnseenCount,
             Tint = session.Tint,
+            Info = session.Info,
         };
 
     // stage 3 (a theme per session) changes only this: the session's own theme first

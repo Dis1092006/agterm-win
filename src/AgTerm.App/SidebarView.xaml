@@ -140,7 +140,9 @@
                             BorderThickness="1"
                             CornerRadius="2"
                             Margin="4,1,4,1" />
-                    <Grid ColumnSpacing="6" Margin="{x:Bind ContentMargin, Mode=OneWay}">
+                    <!-- the title row centers in a band of the plain row height, so an info line
+                         under it leaves the title where it was -->
+                    <Grid ColumnSpacing="6" Margin="{x:Bind ContentMargin, Mode=OneWay}" Height="{x:Bind TitleBandHeight, Mode=OneWay}" VerticalAlignment="Top">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
@@ -331,6 +333,19 @@
                                        VerticalAlignment="Center" />
                         </Border>
                     </Grid>
+
+                    <!-- the session info line (upstream session-info): one line under the name,
+                         inside a colored row and its selection frame -->
+                    <TextBlock local:SidebarInfoText.Runs="{x:Bind InfoRuns, Mode=OneWay}"
+                               Visibility="{x:Bind InfoVisibility, Mode=OneWay}"
+                               Margin="{x:Bind InfoMargin, Mode=OneWay}"
+                               FontSize="{x:Bind InfoFontSize, Mode=OneWay}"
+                               LineHeight="{x:Bind InfoLineHeight, Mode=OneWay}"
+                               LineStackingStrategy="BlockLineHeight"
+                               VerticalAlignment="Top"
+                               TextWrapping="NoWrap"
+                               TextTrimming="CharacterEllipsis"
+                               AutomationProperties.AutomationId="session-info" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>

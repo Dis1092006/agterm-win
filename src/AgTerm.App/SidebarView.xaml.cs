@@ -31,6 +31,7 @@ public sealed partial class SidebarView : UserControl
     private readonly SidebarRowIcons _rowIcons = new();
     private readonly SolidColorBrush _rowIconFill = new(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
     private SidebarTintInks _sidebarInks = SidebarTintInks.Dark;
+    private string _sidebarForeground = SidebarInfoInks.Default.Foreground;
     private Window? _ownerWindow;
     private AppSettings _settings = new();
     private Keymap _keymap = Keymap.Empty;
@@ -182,8 +183,10 @@ public sealed partial class SidebarView : UserControl
         SetBrush("SidebarPillBrush", palette.PillFill);
         SetBrush("SidebarWashBrush", palette.SidebarWash);
         _rowIconFill.Color = ToColor(palette.Foreground with { A = 0x60 });
-        if (_sidebarInks == palette.SidebarInks) return;
+        var foreground = palette.Foreground.Hex;
+        if (_sidebarInks == palette.SidebarInks && _sidebarForeground == foreground) return;
         _sidebarInks = palette.SidebarInks;
+        _sidebarForeground = foreground;
         RecolorRows();
     }
 
@@ -274,7 +277,11 @@ public sealed partial class SidebarView : UserControl
     {
         var style = _settings.EffectiveSidebarThemeStyle();
         var look = SidebarRowLook.From(_rowThemes?.ColorsFor(row, style != SidebarThemeStyle.Off), style);
-        return look with { Tint = SidebarRowTint.For(row.Tint, look, _sidebarInks) };
+        return look with
+        {
+            Tint = SidebarRowTint.For(row.Tint, look, _sidebarInks),
+            Info = SidebarInfoInks.For(look, _sidebarForeground, _sidebarInks),
+        };
     }
 
     private void RecolorRows()

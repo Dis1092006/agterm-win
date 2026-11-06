@@ -237,4 +237,46 @@ public class SidebarProjectionTests : IDisposable
         Assert.False(rowsBefore.SequenceEqual(SidebarProjection.Project(_store)));
         Assert.Equal(keyBefore, SidebarProjection.ShapeKey(_store));
     }
+
+    [Fact]
+    public void A_session_row_carries_its_info_line_and_a_workspace_row_carries_none()
+    {
+        var (w1, _, a, b, _) = Seed();
+        var info = SessionInfo.Make("**3** agents", true, 0, out _)!;
+        _store.SetInfo(info, a.Id);
+
+        var rows = SidebarProjection.Project(_store);
+
+        Assert.Equal(info, rows.Single(r => r.Id == a.Id).Info);
+        Assert.Null(rows.Single(r => r.Id == b.Id).Info);
+        Assert.Null(rows.Single(r => r.Id == w1.Id).Info);
+    }
+
+    [Fact]
+    public void An_info_change_changes_the_rows_but_not_the_shape_key()
+    {
+        var (_, _, a, _, _) = Seed();
+        _store.SetInfo(SessionInfo.Make("idle", false, 0, out _)!, a.Id);
+        var rowsBefore = SidebarProjection.Project(_store);
+        var keyBefore = SidebarProjection.ShapeKey(_store);
+
+        _store.SetInfo(SessionInfo.Make("busy", false, 0, out _)!, a.Id);
+
+        Assert.False(rowsBefore.SequenceEqual(SidebarProjection.Project(_store)));
+        Assert.Equal(keyBefore, SidebarProjection.ShapeKey(_store));
+        _store.SetInfo(SessionInfo.Make("busy", false, 0, out _)!, a.Id);
+        Assert.True(SidebarProjection.Project(_store).SequenceEqual(SidebarProjection.Project(_store)));
+    }
+
+    [Theory]
+    [InlineData(SessionInfoDisplay.Always, SidebarMode.Tree, true)]
+    [InlineData(SessionInfoDisplay.Always, SidebarMode.Flagged, true)]
+    [InlineData(SessionInfoDisplay.Flagged, SidebarMode.Tree, false)]
+    [InlineData(SessionInfoDisplay.Flagged, SidebarMode.Flagged, true)]
+    [InlineData(SessionInfoDisplay.Off, SidebarMode.Tree, false)]
+    [InlineData(SessionInfoDisplay.Off, SidebarMode.Flagged, false)]
+    public void The_display_setting_gates_the_line_by_sidebar_mode(SessionInfoDisplay display, SidebarMode mode, bool shows)
+    {
+        Assert.Equal(shows, SessionInfoDisplays.Shows(display, mode));
+    }
 }

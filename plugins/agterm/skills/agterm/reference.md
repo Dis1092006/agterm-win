@@ -560,7 +560,10 @@ All thirteen are read-only projections of GUI state.
   - The tree reads back `info` (the source as sent), `infoMarkdown` and `infoHideAfter` (the configured
     seconds, not the time left), all omitted when there is no line. A set or clear that changes the line
     shown emits `tree.changed`.
-  - agterm-win keeps the line and reports it in the tree; the sidebar row does not draw it yet.
+  - The sidebar draws the line under the session's row, cut to one line with an ellipsis; hover shows the
+    whole text. Settings > Interface > Session info (`sessionInfoDisplay`) picks where it shows: Always
+    (default), Flagged (the flagged view only) or Off. Off hides the line; the session keeps it and the tree
+    still reports it.
 
   ```powershell
   agtermctl session info --markdown --hide-after 30 --target $env:AGTERM_SESSION_ID '**3** agents ^[running](color: "green") ^[1 idle](dim: true)'
