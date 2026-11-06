@@ -114,6 +114,39 @@ public class AppSettingsTests : IDisposable
     public void Settings_that_differ_only_in_sidebar_theme_style_are_not_equal() =>
         Assert.NotEqual(new AppSettings(), new AppSettings { SidebarThemeStyle = "label" });
 
+    // upstream 902cd853 + f8c3eba3: flaggedViewLayoutDefaultsToFlatResolvesTolerantlyAndIsNotAGhosttyKey
+    [Fact]
+    public void Flagged_view_layout_defaults_to_flat_and_resolves_tolerantly()
+    {
+        Assert.Null(new AppSettings().FlaggedViewLayout);
+        Assert.Equal(FlaggedViewLayout.Flat, new AppSettings().EffectiveFlaggedViewLayout);
+        var store = new SettingsStore(_dir);
+        foreach (var layout in FlaggedViewLayouts.All)
+        {
+            store.Save(new AppSettings { FlaggedViewLayout = layout.RawValue() });
+            Assert.Contains($"\"flaggedViewLayout\":\"{layout.RawValue()}\"", File.ReadAllText(FilePath));
+            Assert.Equal(layout, store.Load().EffectiveFlaggedViewLayout);
+        }
+        Assert.Equal(FlaggedViewLayout.Flat, new AppSettings { FlaggedViewLayout = "outline" }.EffectiveFlaggedViewLayout);
+        Assert.Equal(FlaggedViewLayout.Flat, new AppSettings { FlaggedViewLayout = "Tree" }.EffectiveFlaggedViewLayout);
+        File.WriteAllText(FilePath, """{ "fontSize": 16 }""");
+        Assert.Equal(FlaggedViewLayout.Flat, store.Load().EffectiveFlaggedViewLayout);
+        Assert.Equal(["Flat list", "Flat list, names only", "Workspace tree"], FlaggedViewLayouts.All.Select(l => l.DisplayName()));
+        Assert.Equal(["flat", "plain", "tree"], FlaggedViewLayouts.All.Select(l => l.RawValue()));
+        Assert.NotEqual(new AppSettings(), new AppSettings { FlaggedViewLayout = "tree" });
+    }
+
+    // upstream SettingsModel.setFlaggedViewLayout: flat is stored as absent, every other layout as its raw value
+    [Fact]
+    public void Writing_a_flagged_view_layout_stores_flat_as_absent()
+    {
+        var keep = new AppSettings { FontSize = 15, FlaggedViewLayout = "plain" };
+        Assert.Null(FlaggedViewLayout.Flat.WriteTo(keep).FlaggedViewLayout);
+        Assert.Equal("tree", FlaggedViewLayout.Tree.WriteTo(keep).FlaggedViewLayout);
+        Assert.Equal("plain", FlaggedViewLayout.Plain.WriteTo(new AppSettings()).FlaggedViewLayout);
+        Assert.Equal(15, FlaggedViewLayout.Tree.WriteTo(keep).FontSize);
+    }
+
     // upstream 80f822bf: sessionInfoDisplayDefaultsToAlwaysResolvesTolerantlyAndIsNotAGhosttyKey
     [Fact]
     public void Session_info_display_defaults_to_always_and_resolves_tolerantly()
@@ -194,6 +227,7 @@ public class AppSettingsTests : IDisposable
             RestoreScrollback = false,
             CopyOnSelect = "off",
             SessionInfoDisplay = "flagged",
+            FlaggedViewLayout = "tree",
         };
         store.Save(settings);
         Assert.Equal(settings, new SettingsStore(_dir).Load());

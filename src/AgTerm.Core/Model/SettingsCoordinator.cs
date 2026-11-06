@@ -2,7 +2,9 @@ using System.Diagnostics;
 
 namespace AgTerm.Core.Model;
 
-public enum SettingsApplyKind { Startup, Reload, Edit, Theme }
+/// <summary>Theme and Command come from a control command that updated its readback before the save:
+/// windows keep per-pane zoom, and a failed save restores the readback.</summary>
+public enum SettingsApplyKind { Startup, Reload, Edit, Theme, Command }
 
 public sealed record SettingsApplicationState(SettingsSnapshot Snapshot, bool IsApplying, Exception? Error);
 
@@ -91,16 +93,19 @@ public sealed class SettingsCoordinator
             }
             catch (Exception ex)
             {
-                if (kind == SettingsApplyKind.Theme)
+                if (kind is SettingsApplyKind.Theme or SettingsApplyKind.Command)
                 {
-                    // theme.set updates command readback before its asynchronous save. Restore it
+                    // theme.set and sidebar.flagged-layout update command readback before the asynchronous save. Restore it
                     // under this operation's gate so a failed save cannot overwrite a later success.
                     var rollbackErrors = await ApplyToSubscribersAsync(State.Snapshot, kind).ConfigureAwait(false);
                     if (rollbackErrors.Count > 0)
                     {
                         rollbackErrors.Insert(0, ex);
                         var rollbackFailure = new AggregateException(
-                            "Theme was not saved and the previous settings could not be applied to every window.", rollbackErrors);
+                            kind == SettingsApplyKind.Theme
+                                ? "Theme was not saved and the previous settings could not be applied to every window."
+                                : "Settings were not saved and the previous settings could not be applied to every window.",
+                            rollbackErrors);
                         Publish(State with { IsApplying = false, Error = rollbackFailure });
                         throw rollbackFailure;
                     }

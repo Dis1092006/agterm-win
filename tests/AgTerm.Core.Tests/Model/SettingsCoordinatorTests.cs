@@ -130,6 +130,28 @@ public sealed class SettingsCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failed_command_save_reapplies_the_last_committed_snapshot_to_every_window()
+    {
+        var coordinator = new SettingsCoordinator(Store);
+        var applied = new List<(AppSettings Settings, SettingsApplyKind Kind)>();
+        using var subscription = await coordinator.SubscribeAsync((snapshot, kind) =>
+        {
+            applied.Add((snapshot.Settings, kind));
+            return Task.CompletedTask;
+        });
+        File.WriteAllText(Store.FilePath, "{broken");
+
+        await Assert.ThrowsAnyAsync<JsonException>(() => coordinator.UpdateCurrentAsync(
+            settings => settings with { FlaggedViewLayout = "tree" }, SettingsApplyKind.Command));
+
+        Assert.Equal(2, applied.Count);
+        Assert.Equal(SettingsApplyKind.Command, applied[1].Kind);
+        Assert.Null(applied[1].Settings.FlaggedViewLayout);
+        Assert.NotNull(coordinator.State.Error);
+        Assert.Equal("{broken", File.ReadAllText(Store.FilePath));
+    }
+
+    [Fact]
     public async Task A_corrupt_reload_keeps_the_previous_applied_state_and_does_not_invoke_windows()
     {
         var coordinator = new SettingsCoordinator(Store);

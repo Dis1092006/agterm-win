@@ -31,7 +31,8 @@
     { "wire": "msg.ack", "upstream": "b0839692" },
     { "wire": "session.tint", "upstream": "f3fea57b" },
     { "wire": "workspace.tint", "upstream": "f3fea57b" },
-    { "wire": "session.info", "upstream": "80f822bf" }
+    { "wire": "session.info", "upstream": "80f822bf" },
+    { "wire": "sidebar.flagged-layout", "upstream": "902cd853" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -87,7 +88,8 @@
     { "name": "askPending", "upstream": "32ec288d" },
     { "name": "workspaceFilter", "upstream": "6722755a" },
     { "name": "attentionIncludesActive", "upstream": "6864e35a" },
-    { "name": "attentionNavigationAcrossWindows", "upstream": "ffffd2b8" }
+    { "name": "attentionNavigationAcrossWindows", "upstream": "ffffd2b8" },
+    { "name": "sidebarFlaggedLayout", "upstream": "902cd853" }
   ],
   "sessionNode": [
     { "name": "ask", "upstream": "1b765e69" },

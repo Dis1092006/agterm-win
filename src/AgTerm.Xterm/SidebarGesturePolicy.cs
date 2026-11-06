@@ -24,6 +24,10 @@ public enum SidebarGestureAction
     Rename,
 }
 
+/// <summary>
+/// Maps a row gesture to its action. A workspace row folds and renames in every view that shows one:
+/// the ordinary tree and the flagged tree layout. The flat flagged lists have no workspace rows.
+/// </summary>
 public static class SidebarGesturePolicy
 {
     public static SidebarGestureAction Decide(
@@ -46,7 +50,7 @@ public static class SidebarGesturePolicy
             return SidebarGestureAction.ActivateSession;
         }
 
-        if (kind == SidebarRowKind.Workspace && mode == SidebarMode.Tree)
+        if (kind == SidebarRowKind.Workspace)
         {
             return SidebarGestureAction.ToggleWorkspace;
         }
@@ -71,7 +75,7 @@ public static class SidebarGesturePolicy
                 return SidebarGestureAction.Rename;
             }
 
-            if (kind == SidebarRowKind.Workspace && mode == SidebarMode.Tree)
+            if (kind == SidebarRowKind.Workspace)
             {
                 return SidebarGestureAction.Rename;
             }
@@ -81,7 +85,7 @@ public static class SidebarGesturePolicy
 
         if (gesture == SidebarKeyboardGesture.Space)
         {
-            if (kind == SidebarRowKind.Workspace && mode == SidebarMode.Tree)
+            if (kind == SidebarRowKind.Workspace)
             {
                 return SidebarGestureAction.ToggleWorkspace;
             }

@@ -77,6 +77,63 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         Assert.False(bad["ok"]!.GetValue<bool>(), "an invalid sidebar mode should error");
     }
 
+    // upstream testFlaggedLayoutCommandSwitchesTheRenderedRowsAndReadsBack (902cd853 + f8c3eba3). The
+    // rendered rows map to the projection the sidebar draws from (SidebarProjection over the host store).
+    [Fact]
+    public void FlaggedLayoutCommandSwitchesTheProjectedRowsAndReadsBack()
+    {
+        var seeded = Tree()["tree"]!;
+        Assert.Equal("flat", seeded["sidebarFlaggedLayout"]!.GetValue<string>());
+        var workspaceName = seeded["workspaces"]![0]!["name"]!.GetValue<string>();
+        var seededID = seeded["workspaces"]![0]!["sessions"]![0]!["id"]!.GetValue<string>();
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"session.rename","target":"{{{seededID}}}","args":{"name":"flagme"}}""")["ok"]!.GetValue<bool>());
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{seededID}}}","args":{"mode":"on"}}""")["ok"]!.GetValue<bool>());
+        Assert.True(SendCommand("""{"cmd":"sidebar.mode","args":{"mode":"flagged"}}""")["ok"]!.GetValue<bool>());
+        Assert.Equal([$"flagme : {workspaceName}"], RowLabels());
+
+        var toTree = SendCommand("""{"cmd":"sidebar.flagged-layout","args":{"mode":"tree"}}""");
+        Assert.True(toTree["ok"]!.GetValue<bool>(), $"sidebar.flagged-layout tree should succeed: {toTree.ToJsonString()}");
+        Assert.Equal("tree", toTree["result"]!["text"]!.GetValue<string>());
+        Assert.Equal([workspaceName, "flagme"], RowLabels());
+        Assert.Equal("tree", Tree()["tree"]!["sidebarFlaggedLayout"]!.GetValue<string>());
+
+        var toggled = SendCommand("""{"cmd":"sidebar.flagged-layout"}""");
+        Assert.Equal("flat", toggled["result"]!["text"]!.GetValue<string>());
+        Assert.Equal([$"flagme : {workspaceName}"], RowLabels());
+
+        var plain = SendCommand("""{"cmd":"sidebar.flagged-layout","args":{"mode":"plain"}}""");
+        Assert.Equal("plain", plain["result"]!["text"]!.GetValue<string>());
+        Assert.Equal(["flagme"], RowLabels());
+
+        var bad = SendCommand("""{"cmd":"sidebar.flagged-layout","args":{"mode":"grid"}}""");
+        Assert.False(bad["ok"]!.GetValue<bool>(), $"an invalid layout should error: {bad.ToJsonString()}");
+        Assert.Equal("invalid flagged layout: grid", bad["error"]!.GetValue<string>());
+    }
+
+    // upstream testAnUnchangedLayoutAnswersOkWithoutABroadcast: only a change asks the host to persist
+    [Fact]
+    public void FlaggedLayoutAsksTheHostToPersistOnlyAChange()
+    {
+        var requested = new List<FlaggedViewLayout>();
+        Host.Actions.FlaggedLayoutChangeRequested += requested.Add;
+
+        Assert.Equal("flat", SendCommand("""{"cmd":"sidebar.flagged-layout","args":{"mode":"flat"}}""")["result"]!["text"]!.GetValue<string>());
+        Assert.Empty(requested);
+        SendCommand("""{"cmd":"sidebar.flagged-layout","args":{"mode":"tree"}}""");
+        SendCommand("""{"cmd":"sidebar.flagged-layout","args":{"mode":"tree"}}""");
+        SendCommand("""{"cmd":"sidebar.flagged-layout","args":{"mode":"plain"}}""");
+        Assert.Equal([FlaggedViewLayout.Tree, FlaggedViewLayout.Plain], requested);
+    }
+
+    private string[] RowLabels()
+    {
+        string[] labels = [];
+        Host.RunLocked(() => labels = SidebarProjection.Project(Host.Store).Select(r => r.Label).ToArray());
+        return labels;
+    }
+
     // session.flag flags a session for the flagged working-set view; sidebar.mode flagged switches the
     // sidebar to the flat list of just the flagged sessions (each labeled "session : workspace"), so an
     // unflagged session's row is absent in flagged mode and returns when switched back to tree.
