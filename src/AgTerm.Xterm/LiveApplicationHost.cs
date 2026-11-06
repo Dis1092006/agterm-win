@@ -1908,7 +1908,7 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.FontReset
         or Command.Notify;
 
-    private static bool UsesWorkspaceTarget(Command command) => command is
+    internal static bool UsesWorkspaceTarget(Command command) => command is
         Command.WorkspaceSelect
         or Command.WorkspaceRename
         or Command.WorkspaceDelete
@@ -1916,8 +1916,10 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.WorkspaceFocus
         or Command.WorkspaceCollapse
         or Command.WorkspaceExpand
+        or Command.WorkspaceTint
         or Command.WorkspaceTheme
-        or Command.WorkspaceIcon;
+        or Command.WorkspaceIcon
+        or Command.WorkspaceFlag;
 
     private void ResetSessionFontSizes(CancellationToken cancellationToken)
     {

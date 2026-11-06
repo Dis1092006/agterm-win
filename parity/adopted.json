@@ -32,7 +32,8 @@
     { "wire": "session.tint", "upstream": "f3fea57b" },
     { "wire": "workspace.tint", "upstream": "f3fea57b" },
     { "wire": "session.info", "upstream": "80f822bf" },
-    { "wire": "sidebar.flagged-layout", "upstream": "902cd853" }
+    { "wire": "sidebar.flagged-layout", "upstream": "902cd853" },
+    { "wire": "workspace.flag", "upstream": "14afbfd5" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },

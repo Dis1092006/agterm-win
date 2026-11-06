@@ -143,7 +143,7 @@ public class SkillTextTests
             .Select(c => (string)c!["wire"]!)
             .Where(w => !OutOfParity.Contains(w))
             .ToList();
-        Assert.Equal(97, wire.Count);
+        Assert.Equal(98, wire.Count);
 
         var reference = ReadSkill("reference.md");
         var missing = wire.Where(w => !reference.Contains($"`{w}`", StringComparison.Ordinal)).ToList();

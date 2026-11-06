@@ -201,6 +201,45 @@ public class ControlSidebarStatusTests : ControlApiTestCase
         Assert.Contains("invalid sidebar mode", bad["error"]!.GetValue<string>());
     }
 
+    // workspace.flag sets every session of the workspace to one value: toggle on a mixed workspace
+    // flags all, toggle on an all-flagged one unflags all and empties the flagged view.
+    [Fact]
+    public void WorkspaceFlagFlagsEverySessionAndReadsBackPerSession()
+    {
+        Assert.True(SendCommand("""{"cmd":"session.new"}""")["ok"]!.GetValue<bool>());
+        Assert.Equal(2, AllSessionNodes().Count);
+        (string Id, string[] SessionIds, bool[] Flags) WorkspaceFlags()
+        {
+            var ws = Tree()["tree"]!["workspaces"]![0]!;
+            var sessions = ws["sessions"]!.AsArray();
+            return (ws["id"]!.GetValue<string>(),
+                sessions.Select(s => s!["id"]!.GetValue<string>()).ToArray(),
+                sessions.Select(s => s!["flagged"]?.GetValue<bool>() ?? false).ToArray());
+        }
+        var (wsId, sessionIds, initial) = WorkspaceFlags();
+        Assert.Equal(new[] { false, false }, initial);
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"session.flag","target":"{{{sessionIds[0]}}}","args":{"mode":"on"}}""")["ok"]!
+            .GetValue<bool>());
+
+        var toggled = SendCommand($$$"""{"cmd":"workspace.flag","target":"{{{wsId}}}","args":{"mode":"toggle"}}""");
+        Assert.True(toggled["ok"]!.GetValue<bool>(), $"workspace.flag toggle should succeed: {toggled.ToJsonString()}");
+        Assert.Equal(wsId, toggled["result"]!["id"]!.GetValue<string>());
+        Assert.Equal(new[] { true, true }, WorkspaceFlags().Flags); // toggle on a mixed workspace flags every session
+
+        Assert.True(SendCommand("""{"cmd":"sidebar.mode","args":{"mode":"flagged"}}""")["ok"]!.GetValue<bool>());
+        Assert.Equal(2, FlaggedSessionCount());
+        Assert.True(SendCommand(
+            $$$"""{"cmd":"workspace.flag","target":"{{{wsId}}}","args":{"mode":"toggle"}}""")["ok"]!
+            .GetValue<bool>());
+        Assert.Equal(new[] { false, false }, WorkspaceFlags().Flags); // toggle on an all-flagged workspace unflags every session
+        Assert.Equal(0, FlaggedSessionCount());
+
+        var bad = SendCommand($$$"""{"cmd":"workspace.flag","target":"{{{wsId}}}","args":{"mode":"clear"}}""");
+        Assert.False(bad["ok"]!.GetValue<bool>(), $"workspace.flag has no clear mode: {bad.ToJsonString()}");
+        Assert.Equal("invalid workspace flag mode: clear", bad["error"]!.GetValue<string>());
+    }
+
     // workspace.focus collapses the sidebar tree to a single workspace's subtree — the other workspaces'
     // session rows leave the AX tree; unfocusing restores them. Orthogonal to the flagged view.
     [Fact]

@@ -670,6 +670,11 @@ public sealed partial class SidebarView : UserControl
         flyout.Items.Add(Item(member ? "Remove from Focus" : "Add to Focus",
             () => _controller?.ToggleFocusMembership(row.Id)));
         flyout.Items.Add(new MenuFlyoutSeparator());
+        var info = _snapshot?.Workspaces.FirstOrDefault(w => w.Id == row.Id);
+        var flagAll = Item(info?.FlagAllTitle ?? "Flag All Sessions", () => _controller?.ToggleWorkspaceFlag(row.Id));
+        flagAll.IsEnabled = info?.CanFlagAll == true;
+        flyout.Items.Add(flagAll);
+        flyout.Items.Add(new MenuFlyoutSeparator());
         var delete = Item("Delete Workspace", () =>
             _controller?.RequestDeleteWorkspace(row.Id, CurrentCloseOptions().GraceUndo));
         delete.IsEnabled = _snapshot?.CanRemoveWorkspace == true;

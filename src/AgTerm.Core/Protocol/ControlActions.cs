@@ -45,6 +45,9 @@ public interface IControlActions : IMessagePaneHost
     /// target; the answer is always ok.</summary>
     ControlResponse SetWorkspaceFilter(string? window, ControlToggleMode mode);
     ControlResponse SetWorkspaceExpansion(string? target, string? window, bool expanded);
+    /// <summary>workspace.flag: flag or unflag every session of the target workspace as one value;
+    /// toggle unflags only when all are flagged.</summary>
+    ControlResponse SetWorkspaceFlag(string? target, string? window, ControlToggleMode mode);
     /// <summary>Set or clear a workspace's own terminal theme (the Windows-only workspace.theme); a
     /// null name clears it. The host resolves the target like RenameWorkspace and checks the name
     /// against its theme list.</summary>

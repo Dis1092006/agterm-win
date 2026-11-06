@@ -251,6 +251,7 @@ All fourteen are read-only projections of GUI state.
   `workspace.focus`. `on` marks the target alone and applies the filter. `off` unmarks it (the filter switches off when the set empties). `toggle` (default) replaces the set with the target and applies the filter, or clears when the target is the only marked one and the filter is applied. `add` marks the target alongside the others and leaves the filter flag alone, so a set is built one workspace at a time with the whole tree on screen. Per-window and persisted; orthogonal to `sidebar mode` (the flagged flat list ignores the filter).
   While the filter is applied, `session go` and `workspace go` are scoped to the marked workspaces (and to the flagged set in flagged mode), a new workspace joins the set, and closing the current session reselects inside the visible set. An explicit `session select` or `workspace select` outside the set turns the filter off and keeps the set. An unknown mode errors.
 - `workspace filter [on|off|toggle] [--window W]` — apply or lift the filter over the marked set, keeping the set; answers `{"ok":true}`. Wire: `workspace.filter`. It acts on the whole window, so it takes no `--target`. Read the state back from the tree's top-level `workspaceFilter`; the marked set is each workspace node's `focused` flag. `on` with an empty set shows the full tree.
+- `workspace flag [on|off|toggle] [--target W] [--window W]` — flag or unflag EVERY session of one workspace as one value, including those the flagged tree layout hides; the control twin of the workspace row's Flag All Sessions. `toggle` (default) unflags only when every session is flagged and otherwise flags them all, so it is not a per-session invert. `on`/`off` are idempotent; an empty workspace changes nothing; returns the workspace id. Wire: `workspace.flag`. Read back from each session's `flagged`. Unflagging can move the selection like `session flag off`.
 - `workspace tint <COLOR|clear> [--on PARTS] [--target W] [--window W]` — tint the workspace's OWN sidebar
   row, with the same colors, `--on` and refusals as `session tint`. It never colors the sessions inside,
   which keep their own tints. Returns the workspace id. Wire: `workspace.tint`. Read back from the
@@ -1492,7 +1493,7 @@ Many of these are the start of the message; the full error adds the rejected val
 
 `no such <noun>: <target>` / `ambiguous <noun> prefix …` (target resolution), `no such session`, `invalid split mode` /
 `invalid scratch mode`, `session has no split` (focus), `no selection` (copy), `overlay already open` /
-`no overlay` / `overlay still running` / `no overlay result` (overlay), `invalid flag mode` (session flag),
+`no overlay` / `overlay still running` / `no overlay result` (overlay), `invalid flag mode` (session flag), `invalid workspace flag mode: <value>` (workspace flag over the raw socket; the CLI rejects it locally with `mode must be on, off, or toggle`),
 `invalid fit` / `invalid position` / `invalid opacity` / `invalid color` / `text too long` /
 `unsupported image (PNG or JPEG only)` / `no such image file` / `image path must not contain control characters` / `invalid background mode` (session background),
 `invalid sidebar mode` (sidebar), `invalid focus mode` (workspace focus),

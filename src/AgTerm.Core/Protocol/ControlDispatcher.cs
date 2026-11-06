@@ -46,7 +46,7 @@ public sealed partial class ControlDispatcher
             case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
                 or Command.WorkspaceDelete or Command.WorkspaceMove or Command.WorkspaceFocus or Command.WorkspaceFilter
                 or Command.WorkspaceCollapse or Command.WorkspaceExpand or Command.WorkspaceTheme or Command.WorkspaceIcon
-                or Command.WorkspaceGo:
+                or Command.WorkspaceGo or Command.WorkspaceFlag:
                 return DispatchWorkspaceCommand(request);
             case Command.Quick or Command.FontInc or Command.FontDec or Command.FontReset
                 or Command.KeymapReload or Command.KeymapList or Command.KeymapRun
@@ -718,6 +718,12 @@ public sealed partial class ControlDispatcher
                 return _actions.SetWorkspaceExpansion(request.Target, request.Args?.Window, expanded: false);
             case Command.WorkspaceExpand:
                 return _actions.SetWorkspaceExpansion(request.Target, request.Args?.Window, expanded: true);
+            case Command.WorkspaceFlag:
+            {
+                if (ControlToggleModes.Parse(request.Args?.Mode) is not { } mode)
+                    return Err($"invalid workspace flag mode: {request.Args?.Mode ?? "toggle"}");
+                return _actions.SetWorkspaceFlag(request.Target, request.Args?.Window, mode);
+            }
             case Command.WorkspaceGo:
             {
                 if (WorkspaceNavigations.FromWire(request.Args?.To) is not { } direction)

@@ -22,6 +22,7 @@ internal static class WorkspaceCommands
         workspace.Subcommands.Add(BuildMove(bindings));
         workspace.Subcommands.Add(BuildFocus(bindings));
         workspace.Subcommands.Add(BuildFilter(bindings));
+        workspace.Subcommands.Add(BuildFlag(bindings));
         workspace.Subcommands.Add(BuildCollapse(bindings));
         workspace.Subcommands.Add(BuildExpand(bindings));
         workspace.Subcommands.Add(TintCommands.BuildWorkspaceTint(bindings));
@@ -311,6 +312,54 @@ internal static class WorkspaceCommands
         bindings.Register(cmd, result => new Filter
         {
             Mode = result.GetValue(mode) ?? "toggle",
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    /// <summary>`agtermctl workspace flag [on|off|toggle] [--target W]` — flags or unflags EVERY session of
+    /// one workspace as one value. Toggle unflags only when all are flagged, otherwise flags all, so it is
+    /// not a per-session invert; the read-back is each session's `flagged` in `tree`.</summary>
+    internal sealed class Flag : IRequestCommand
+    {
+        public string Mode { get; init; } = "toggle";
+        public required TargetOptions Target { get; init; }
+        public required ClientOptions Client { get; init; }
+        public IConnectionOptions Options => Client;
+
+        public void Validate()
+        {
+            if (Mode is not ("on" or "off" or "toggle"))
+                throw new CliValidationException("mode must be on, off, or toggle");
+        }
+
+        public ControlRequest MakeRequest() => new()
+        {
+            Cmd = WireCommand.WorkspaceFlag,
+            Target = Target.Target,
+            Args = Client.WithWindow(new ControlArgs { Mode = Mode }),
+        };
+    }
+
+    private static System.CommandLine.Command BuildFlag(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("flag",
+            "Flag or unflag every session in a workspace (on|off|toggle).");
+        var mode = new Argument<string>("mode")
+        {
+            Description = "Mode: on, off, or toggle (default; unflags only when every session is flagged).",
+            Arity = ArgumentArity.ZeroOrOne,
+            DefaultValueFactory = _ => "toggle",
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(mode);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Flag
+        {
+            Mode = result.GetValue(mode) ?? "toggle",
+            Target = target.Read(result),
             Client = options.Read(result),
         });
         return cmd;

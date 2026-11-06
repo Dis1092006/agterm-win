@@ -2,11 +2,18 @@ using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Collections.ObjectModel;
 using AgTerm.Core.Model;
+using AgTerm.Core.Protocol;
 
 namespace AgTerm.Xterm;
 
-/// <summary>One workspace entry for the sidebar's menus (Move to ▸, delete gating).</summary>
-public sealed record SidebarWorkspaceInfo(Guid Id, string Name);
+/// <summary>One workspace entry for the sidebar's menus (Move to ▸, delete gating, Flag All).
+/// The session counts include the sessions the sidebar hides (a collapsed workspace, the flagged
+/// tree layout).</summary>
+public sealed record SidebarWorkspaceInfo(Guid Id, string Name, int SessionCount = 0, bool AllSessionsFlagged = false)
+{
+    public string FlagAllTitle => AllSessionsFlagged ? "Unflag All Sessions" : "Flag All Sessions";
+    public bool CanFlagAll => SessionCount > 0;
+}
 
 public enum SidebarSurfaceStatus
 {
@@ -166,6 +173,10 @@ public sealed class SidebarController : IDisposable
 
     public void SetFlag(IReadOnlyList<Guid> sessionIds, bool on) =>
         Mutate(store => store.SetFlag(on, sessionIds));
+
+    /// <summary>The workspace row's Flag All / Unflag All: every session of the workspace, hidden ones too.</summary>
+    public void ToggleWorkspaceFlag(Guid workspaceId) =>
+        Mutate(store => store.ApplyWorkspaceFlag(ControlToggleMode.Toggle, workspaceId));
 
     /// <summary>The Tint submenu on session rows: a color for every target, or a placement that keeps
     /// each target's own color.</summary>
@@ -582,7 +593,7 @@ public sealed class SidebarController : IDisposable
             Rows = SidebarProjection.Project(store),
             ShapeKey = SidebarProjection.ShapeKey(store),
             Workspaces = store.Workspaces
-                .Select(w => new SidebarWorkspaceInfo(w.Id, w.Name))
+                .Select(w => new SidebarWorkspaceInfo(w.Id, w.Name, w.Sessions.Count, store.AllSessionsFlagged(w.Id)))
                 .ToList(),
             SurfaceStatuses = new ReadOnlyDictionary<Guid, SidebarSurfaceStatus>(surfaceStatuses),
             SelectedSessionId = store.SelectedSessionId,

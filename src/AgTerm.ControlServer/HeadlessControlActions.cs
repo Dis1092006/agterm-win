@@ -839,6 +839,15 @@ public sealed partial class HeadlessControlActions : IControlActions
         });
     }
 
+    public ControlResponse SetWorkspaceFlag(string? target, string? window, ControlToggleMode mode)
+    {
+        return ResolveWorkspace(target, window, (store, id) =>
+        {
+            store.ApplyWorkspaceFlag(mode, id);
+            return OkId(id);
+        });
+    }
+
     // MARK: - session.move
 
     public ControlResponse MoveSession(string? target, string? window, ControlSessionMove move)
