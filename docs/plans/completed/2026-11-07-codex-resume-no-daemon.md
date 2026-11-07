@@ -26,7 +26,7 @@
 ## Global Constraints
 
 - TDD: a failing test before each piece of production code (CLAUDE.md).
-- App version `0.1.107` → `0.1.108` in `Directory.Build.props`. The skill changes, so the plugin version `0.1.52` → `0.1.53` in `plugins/agterm/.claude-plugin/plugin.json`, `plugins/agterm/.codex-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
+- App version `0.1.108` → `0.1.109` (main took 0.1.108 in #75) in `Directory.Build.props`. The skill changes, so the plugin version `0.1.52` → `0.1.53` in `plugins/agterm/.claude-plugin/plugin.json`, `plugins/agterm/.codex-plugin/plugin.json` and `.claude-plugin/marketplace.json`.
 - No wire command or field changes. `agent-hook resume` stays the Windows-only CLI listed in `parity/windows-only.json`. The setting name `resumeAgentSessions` stays.
 - The config line agterm-win owns is exactly `daemon_auto_start = false # agterm-win`.
 - New pin prefix for Codex: `codex --no-daemon resume `. The pin from 0.1.107, `codex resume <id>`, still clears on end.
@@ -198,7 +198,7 @@ Same command, then the whole Core suite: `dotnet test tests/AgTerm.Core.Tests -m
 - reference.md: the new Codex pin, the guard, and pinning on the first message.
 - troubleshooting.md, the "agent session did not come back" list: add "**Codex's background server is running.**", with `codex app-server daemon stop` and the `daemon_auto_start = true` case. Add "**No message was sent.**" (Codex pins on the first message). Replace the old Codex trust bullet text only if it conflicts.
 - README and examples.md: one sentence each on the background server.
-- Versions: `0.1.108`; plugin `0.1.53` in all three files.
+- Versions: `0.1.109`; plugin `0.1.53` in all three files.
 - `git mv` this plan to `docs/plans/completed/`.
 
 - [ ] **Step 2: Verify**
@@ -212,4 +212,4 @@ Publish, turn the setting off and on, run `codex app-server daemon stop`, run `c
 
 - [ ] **Step 4: Commit**
 
-`git commit -m "Document Codex resume without the shared app-server; bump to 0.1.108, plugin 0.1.53"`
+`git commit -m "Document Codex resume without the shared app-server; bump to 0.1.109, plugin 0.1.53"`

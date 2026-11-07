@@ -165,7 +165,7 @@ Use one of them, not both. With both, the agent loads two copies of the skill.
 
 ## Agent sessions after a restart
 
-Turn on Settings > General > "Restore running commands on restart" and, under it, "Resume agent sessions after restart". A pane that ran Claude Code, Copilot CLI or Codex then comes back with the same agent session after agterm-win restarts. The second setting adds hooks to each agent it finds, and the hint under it shows the result. Codex asks to trust the new hooks the next time it starts.
+Turn on Settings > General > "Restore running commands on restart" and, under it, "Resume agent sessions after restart". A pane that ran Claude Code, Copilot CLI or Codex then comes back with the same agent session after agterm-win restarts. The second setting adds hooks to each agent it finds, and the hint under it shows the result. Codex asks to trust the new hooks the next time it starts. For Codex the setting also turns off its shared background server in `~\.codex\config.toml`, because hooks run there would pin the wrong pane; if one is already running, stop it once with `codex app-server daemon stop`.
 
 ## Hotkeys on Windows
 

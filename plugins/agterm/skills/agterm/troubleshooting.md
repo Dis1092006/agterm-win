@@ -71,6 +71,11 @@ The pane ran Claude Code, Copilot CLI or Codex, and after a restart it is a plai
   the second toggle in Settings > General shows, per agent, whether its hooks are on, off or not found.
 - **Codex skipped the hooks.** Codex runs a new hook only after the user trusts it; it asks the next time it
   starts. Codex hooks also do not install when the user profile path has a space.
+- **Codex's background server is running.** A server started before the setting was on keeps Codex
+  sessions, and their hooks, outside the pane. Run `codex app-server daemon stop` once. If the hint says
+  `daemon_auto_start = true` is set in `~\.codex\config.toml`, that line keeps the server on; remove it.
+- **No message was sent to Codex.** Codex pins its session on the first message, so a Codex pane with no
+  message comes back as a shell.
 - **The hook failed.** Read `~\.config\agterm\agent-resume\agent-resume.log`. Run
   `agtermctl tree --json` and check that the pane has `restoreCommand`.
 - **The user left the agent.** `/exit` or Ctrl+D clears the pin on purpose, so the pane comes back as a
