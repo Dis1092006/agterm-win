@@ -95,6 +95,11 @@ public sealed record AppSettings
     /// Absent or unknown means selection; see docs/PLATFORM-NOTES.md.</summary>
     [JsonPropertyName("copyOnSelect"), JsonConverter(typeof(CopyOnSelectConverter))]
     public string? CopyOnSelect { get; init; }
+    /// <summary>Windows-only: install hooks in Claude Code, Copilot CLI and Codex that pin each agent
+    /// session's resume command on its pane. Absent means off; see docs/PLATFORM-NOTES.md.</summary>
+    [JsonPropertyName("resumeAgentSessions")] public bool? ResumeAgentSessions { get; init; }
+
+    [JsonIgnore] public bool EffectiveResumeAgentSessions => ResumeAgentSessions == true;
 
     [JsonIgnore] public bool EffectiveRestoreScrollback => RestoreScrollback ?? true;
 
@@ -187,6 +192,7 @@ public sealed record AppSettings
         FlaggedViewLayout == other.FlaggedViewLayout &&
         AttentionIncludesActive == other.AttentionIncludesActive &&
         AttentionNavigationAcrossWindows == other.AttentionNavigationAcrossWindows &&
+        ResumeAgentSessions == other.ResumeAgentSessions &&
         (HiddenInterfaceElements is null
             ? other.HiddenInterfaceElements is null
             : other.HiddenInterfaceElements is not null &&

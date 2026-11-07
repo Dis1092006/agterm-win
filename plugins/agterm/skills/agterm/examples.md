@@ -70,21 +70,13 @@ a pin is sticky and persisted, so `claude --resume ` with an empty argument woul
 launch until cleared. The id is UUID-shaped and safe to interpolate; never build the pinned line from
 untrusted or secret values.
 
-On Windows, `cookbook/claude-session-resume` in the agterm-win repository does this in PowerShell. It
-also clears the pin from a `SessionEnd` hook when the user leaves Claude (`reason` `prompt_input_exit`
-or `logout`), so that pane restarts as a plain shell. A pane closed by an app quit ends Claude with
-`reason` `other`, which keeps the pin. `install.ps1` registers both hooks in `~/.claude/settings.json`.
-
-`cookbook/copilot-session-resume` does the same for GitHub Copilot CLI. Its `sessionStart` hook pins
-`copilot --resume=<id>`; Copilot fires it at the first prompt of a session. Its `sessionEnd` hook clears
-the pin on reason `user_exit` or `complete`, but only when the pin names the ending session. Closing a
-pane also ends Copilot with `user_exit`; on an app quit the window stops taking control commands before
-its panes close, so the pin survives. `install.ps1` writes `hooks/copilot-session-resume.json` under
-`~/.copilot` or `COPILOT_HOME`.
-
-`agtermctl agent-hook resume <agent> <start|end>` does the same work for Claude Code, Copilot CLI and
-Codex from one command, with the same end reasons. A hook runs it with the hook JSON on standard input;
-see reference.md.
+On Windows, you do not write this hook yourself for Claude Code, GitHub Copilot CLI or Codex. Turn on
+Settings > General > "Resume agent sessions after restart" (`"resumeAgentSessions": true` in
+`~\.agterm-win\settings.json`, together with `restoreRunningCommand`). The app then adds session start and
+session end hooks to each agent it finds. They run `agtermctl agent-hook resume <agent> <start|end>`
+(see reference.md), which pins the resume command at start and clears the pin when the user leaves the
+agent. A pane closed by an app quit keeps its pin, so the agent session comes back. Codex asks to trust the
+new hooks the next time it starts. Write your own hook, as above, only for another agent.
 
 ## Create a session and type into it
 

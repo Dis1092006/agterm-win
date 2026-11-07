@@ -44,7 +44,7 @@ public partial class App : Application, ILiveWindowController
                 if (!response.Ok) throw new IOException(response.Error);
                 return (IReadOnlyList<string>)(applicationHost.Hooks?.Diagnostics
                     .Select(d => d.Line > 0 ? $"line {d.Line}: {d.Message}" : d.Message).ToArray() ?? []);
-            });
+            }, () => applicationHost.LastAgentResumeReport);
         _settingsWindow.Closed -= OnSettingsClosed;
         _settingsWindow.Closed += OnSettingsClosed;
         _settingsWindow.Activated -= OnAttentionWindowActivated;

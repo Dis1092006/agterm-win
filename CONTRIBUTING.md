@@ -109,4 +109,4 @@ If a PR does not say what problem it solves, I ask for that before I review the 
 
 ## Cookbook recipes
 
-`cookbook/` collects installable `agtermctl` workflows. A recipe is a folder with PowerShell scripts and a README, not C#. Look at `cookbook/claude-session-resume/` for the layout.
+`cookbook/` collects installable `agtermctl` workflows. A recipe is a folder `cookbook/<name>/` with PowerShell scripts and a README, not C#. The README says what the recipe does, what it needs, how to set it up and how to check it. `install.ps1` sets the recipe up, `install.ps1 -Uninstall` removes it, and a second run changes nothing.

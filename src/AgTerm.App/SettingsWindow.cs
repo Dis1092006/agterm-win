@@ -1,3 +1,4 @@
+using AgTerm.Core.Install;
 using AgTerm.Core.Keymap;
 using AgTerm.Core.Model;
 using AgTerm.Xterm;
@@ -28,6 +29,7 @@ internal sealed class SettingsWindow : Window
     private readonly Func<Task<IReadOnlyList<string>>> reloadHooks;
     private string hooksStatus = "";
     private readonly Func<string?> globalHotkeyError;
+    private readonly Func<AgentResumeReport?> agentResume;
     private readonly TabView tabs = new() { IsAddTabButtonVisible = false, CanDragTabs = false,
         CanReorderTabs = false, TabWidthMode = TabViewWidthMode.SizeToContent };
     private readonly InfoBar error = new() { IsClosable = false, Severity = InfoBarSeverity.Error };
@@ -42,13 +44,15 @@ internal sealed class SettingsWindow : Window
 
     public SettingsWindow(SettingsCoordinator coordinator,
         Func<Task<IReadOnlyList<KeybindingGroup>>> shortcuts, Func<Task> reloadKeymap,
-        Func<string?> globalHotkeyError, Func<Task<IReadOnlyList<string>>> reloadHooks)
+        Func<string?> globalHotkeyError, Func<Task<IReadOnlyList<string>>> reloadHooks,
+        Func<AgentResumeReport?> agentResume)
     {
         this.coordinator = coordinator;
         this.shortcuts = shortcuts;
         this.reloadKeymap = reloadKeymap;
         this.reloadHooks = reloadHooks;
         this.globalHotkeyError = globalHotkeyError;
+        this.agentResume = agentResume;
         editor = new SettingsEditor(coordinator);
         soundCatalog = new SoundCatalog(coordinator.StateDirectory);
         notificationSounds = new WindowsNotificationSound(soundCatalog);
@@ -198,7 +202,7 @@ internal sealed class SettingsWindow : Window
 
     private FrameworkElement CreateField(SettingField field)
     {
-        var panel = new StackPanel { Spacing = 5 };
+        var panel = new StackPanel { Spacing = 5, Margin = new Thickness(field.Parent is null ? 0 : 24, 0, 0, 0) };
         panel.Children.Add(new TextBlock { Text = field.Label, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         var row = new Grid { ColumnSpacing = 12 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -384,7 +388,7 @@ internal sealed class SettingsWindow : Window
             Grid.SetColumn(reset, 1);
             row.Children.Add(reset);
         }
-        if (field.Hint is { } hint)
+        if (editor.HintFor(field, agentResume()) is { } hint)
             panel.Children.Add(new TextBlock { Text = hint, TextWrapping = TextWrapping.Wrap, Opacity = 0.75 });
         return panel;
     }

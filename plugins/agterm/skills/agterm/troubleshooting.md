@@ -62,6 +62,20 @@ Ctrl+C or when `settings.json` sets `"copyOnSelect": "clipboard"`; `"off"` keeps
 `agtermctl session select-all` also fills the selection buffer, and the Windows clipboard too in
 `"clipboard"` mode.
 
+### "The agent session did not come back after a restart"
+
+The pane ran Claude Code, Copilot CLI or Codex, and after a restart it is a plain shell. Check, in order:
+
+- **"Restore running commands on restart" or "Resume agent sessions after restart" is off.** Both must be
+  on (`restoreRunningCommand` and `resumeAgentSessions` in `~\.agterm-win\settings.json`). The hint under
+  the second toggle in Settings > General shows, per agent, whether its hooks are on, off or not found.
+- **Codex skipped the hooks.** Codex runs a new hook only after the user trusts it; it asks the next time it
+  starts. Codex hooks also do not install when the user profile path has a space.
+- **The hook failed.** Read `~\.config\agterm\agent-resume\agent-resume.log`. Run
+  `agtermctl tree --json` and check that the pane has `restoreCommand`.
+- **The user left the agent.** `/exit` or Ctrl+D clears the pin on purpose, so the pane comes back as a
+  shell.
+
 ### "My session restore override didn't fire"
 
 You set `session restore` but the pane came back as a plain shell (or re-ran the old captured command).

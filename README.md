@@ -163,6 +163,10 @@ Install it in one of two ways:
 
 Use one of them, not both. With both, the agent loads two copies of the skill.
 
+## Agent sessions after a restart
+
+Turn on Settings > General > "Restore running commands on restart" and, under it, "Resume agent sessions after restart". A pane that ran Claude Code, Copilot CLI or Codex then comes back with the same agent session after agterm-win restarts. The second setting adds hooks to each agent it finds, and the hint under it shows the result. Codex asks to trust the new hooks the next time it starts.
+
 ## Hotkeys on Windows
 
 Keymap modifiers map as `cmd`→**Ctrl**, `ctrl`→Ctrl, `opt`→Alt, `shift`→Shift (spec §9 leaves the

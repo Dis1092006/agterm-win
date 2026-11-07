@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AgTerm.Core.Install;
 using AgTerm.Core.Protocol;
 
 namespace AgTerm.Core.Model;
@@ -9,7 +10,8 @@ public enum SettingControl { Toggle, Number, Choice, Font, Theme, Color, Directo
 public sealed record SettingChoice(string? Value, string Label);
 
 public sealed record SettingField(string Key, string Tab, string Label, SettingControl Control,
-    object? Default = null, double Minimum = 0, double Maximum = 0, SettingChoice[]? Choices = null, string? Hint = null)
+    object? Default = null, double Minimum = 0, double Maximum = 0, SettingChoice[]? Choices = null, string? Hint = null,
+    string? Parent = null)
 {
     public bool Editable => Control != SettingControl.Unavailable;
 }
@@ -45,6 +47,9 @@ public sealed class SettingsEditor
         new("newSessionCustomDirectory", "General", "Custom directory", SettingControl.Directory),
         new("restoreRunningCommand", "General", "Restore running commands on restart", SettingControl.Toggle, false,
             Hint: "Requires an app restart. Open windows keep their current restore behavior."),
+        new("resumeAgentSessions", "General", "Resume agent sessions after restart", SettingControl.Toggle, false,
+            Hint: "Adds hooks to Claude Code, Copilot CLI and Codex, so each agent pane comes back with its session.",
+            Parent: "restoreRunningCommand"),
         new("confirmCloseSession", "General", "Confirm before closing a session", SettingControl.Toggle, false),
         new("closeGraceUndoEnabled", "General", "Allow undo after closing sessions and workspaces", SettingControl.Toggle, true),
         new("flaggedViewLayout", "General", "Flagged view layout", SettingControl.Choice,
@@ -144,8 +149,18 @@ public sealed class SettingsEditor
         ? Draft.AutoFollowStayOnActive != true
         : Value(key)?.GetValue<bool>() ?? Fields.Single(field => field.Key == key).Default is true;
 
-    public bool IsEnabled(string key) =>
-        key != "autoFollowStayOnActive" || Draft.AutoFollowTimeout() is not null;
+    public bool IsEnabled(string key) => key == "autoFollowStayOnActive"
+        ? Draft.AutoFollowTimeout() is not null
+        : Fields.SingleOrDefault(field => field.Key == key)?.Parent is not { } parent || ToggleValue(parent);
+
+    /// <summary>The hint under a field. Resume agent sessions says when its parent is off, and otherwise shows what
+    /// the hooks did last time, once there is a report and the setting is on.</summary>
+    public string? HintFor(SettingField field, AgentResumeReport? resume)
+    {
+        if (field.Key != "resumeAgentSessions") return field.Hint;
+        if (!IsEnabled(field.Key)) return "Turn on Restore running commands on restart first.";
+        return resume is not null && ToggleValue(field.Key) ? resume.Describe() : field.Hint;
+    }
 
     public Task SetToggleAsync(string key, bool value) =>
         SetAsync(key, key == "autoFollowStayOnActive" ? !value : value);

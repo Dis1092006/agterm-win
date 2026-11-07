@@ -1375,7 +1375,7 @@ Fields this reference names: `fontFamily`, `fontSize`, `theme`,
 `darkTheme`, `followSystemAppearance`, `backgroundOpacity`, `backgroundBlur`, `notificationsEnabled`,
 `notificationBadgeEnabled`, `notificationSoundName`, `blockedStatusSoundName`, `dockBounce`, the
 `active`/`blocked`/`completed` `StatusColorHex` and `StatusShape` fields, `configDirectory`,
-`restoreRunningCommand`, `newSessionDirectory`, `closeGraceUndoEnabled` and `statusReset`. An omitted field keeps its
+`restoreRunningCommand`, `resumeAgentSessions`, `newSessionDirectory`, `closeGraceUndoEnabled` and `statusReset`. An omitted field keeps its
 default.
 
 `statusReset` (`firstKey` | `enter` | `never`, default `firstKey`; absent or unknown reads as `firstKey`) decides when a key typed in the pane that owns a `blocked` or `completed` status clears it: on the first key, on Enter only (a `blocked` status also clears on an interrupt), or never. `session type` follows it too. An `active` status clears only on an interrupt in every mode. Settings > Agent Status has the same choice, and `config reload` applies it.
@@ -1500,6 +1500,11 @@ agtermctl agent-hook resume copilot end < payload.json    # what a Copilot CLI s
 It always exits 0, so a hook never blocks the agent. Outside agterm (no `$AGTERM_SESSION_ID`) it does
 nothing. A refused request or an unreachable pipe prints `error: <message>` to standard error. The pin is
 typed at launch only while `restoreRunningCommand` is `true`.
+
+The setting `resumeAgentSessions` (Settings > General, "Resume agent sessions after restart") installs
+these hooks for Claude Code, Copilot CLI and Codex, and turning it off removes them. The hooks run the
+script `~\.config\agterm\agent-resume\agterm-agent-resume.cmd`, which logs what `agtermctl` prints to
+standard error into `agent-resume.log` in the same folder.
 
 ## restore
 

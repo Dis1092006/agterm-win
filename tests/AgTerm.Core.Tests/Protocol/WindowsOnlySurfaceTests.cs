@@ -15,7 +15,7 @@ public class WindowsOnlySurfaceTests
         Assert.Equal(["theme", "icon"], ParitySurface.WindowsOnly("workspaceNode"));
         Assert.Equal(["icons"], ParitySurface.WindowsOnly("result"));
         Assert.Equal(["theme", "icon"], ParitySurface.WindowsOnly("workspaceSnapshot"));
-        Assert.Equal(["sidebarThemeStyle", "restoreScrollback", "overlayOpacity", "closeOnShellExit", "copyOnSelect"], ParitySurface.WindowsOnly("settings"));
+        Assert.Equal(["sidebarThemeStyle", "restoreScrollback", "overlayOpacity", "closeOnShellExit", "copyOnSelect", "resumeAgentSessions"], ParitySurface.WindowsOnly("settings"));
         Assert.Equal(["agent-hook resume"], ParitySurface.WindowsOnly("cli"));
     }
 

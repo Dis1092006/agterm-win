@@ -427,7 +427,7 @@ omitted when expanded).
 
 **clipboard** — `set [text]` copies text (or standard input) to the Windows clipboard of the machine the CLI runs on. Local to the CLI; no wire command.
 
-**agent-hook** — `resume <claude|copilot|codex> <start|end>`: Windows-only. The command an agent's session start and session end hooks run, with the hook JSON on standard input. It pins the agent's resume command on the hook's pane, so the agent session comes back after a relaunch, and clears it when the user leaves the agent. Always exits 0. See reference.md.
+**agent-hook** — `resume <claude|copilot|codex> <start|end>`: Windows-only. The command an agent's session start and session end hooks run, with the hook JSON on standard input. It pins the agent's resume command on the hook's pane, so the agent session comes back after a relaunch, and clears it when the user leaves the agent. Always exits 0. The `resumeAgentSessions` setting installs these hooks. See reference.md.
 
 **window** — `new [name]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
 `delete <id>` · `resize <id> --width W --height H` · `move <id> --x X --y Y [--display N]` ·
