@@ -116,11 +116,16 @@ public sealed class PaletteItemViewModel : INotifyPropertyChanged
 
     public double MarkStrokeThickness => SidebarWorkspaceIcon.GridStrokeThickness(Mark == PaletteMark.Focus && _markOn);
 
-    public string? MarkData => Mark switch
+    // x:Bind parses this string into the Path's Geometry even while the mark is collapsed, and a null
+    // there fails XAML with E_INVALIDARG when the rows are torn down, which ends the process (a pick
+    // cancelled by agtermctl did it)
+    private const string NoMarkData = "M0,0";
+
+    public string MarkData => Mark switch
     {
         PaletteMark.Flag => FlagData,
         PaletteMark.Focus => GridData,
-        _ => null,
+        _ => NoMarkData,
     };
 
     public string? MarkValue => Mark switch
