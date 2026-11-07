@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AgTerm.Core.Install;
 using AgTerm.Core.Model;
 
 namespace AgTerm.Core.Tests.Model;
@@ -148,6 +149,45 @@ public sealed class SettingsEditorTests : IDisposable
         Assert.Equal(["Flat list", "Flat list, names only", "Workspace tree"], field.Choices!.Select(choice => choice.Label));
         var general = SettingsEditor.Fields.Where(field => field.Tab == "General").Select(field => field.Key).ToList();
         Assert.Equal(general.IndexOf("closeGraceUndoEnabled") + 1, general.IndexOf("flaggedViewLayout"));
+    }
+
+    [Fact]
+    public async Task Resume_agent_sessions_sits_under_restore_running_commands_and_needs_it()
+    {
+        var field = Assert.Single(SettingsEditor.Fields, field => field.Key == "resumeAgentSessions");
+        Assert.Equal("General", field.Tab);
+        Assert.Equal("Resume agent sessions after restart", field.Label);
+        Assert.Equal(SettingControl.Toggle, field.Control);
+        Assert.Equal(false, field.Default);
+        Assert.Equal("restoreRunningCommand", field.Parent);
+        var general = SettingsEditor.Fields.Where(field => field.Tab == "General").Select(field => field.Key).ToList();
+        Assert.Equal(general.IndexOf("restoreRunningCommand") + 1, general.IndexOf("resumeAgentSessions"));
+
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+        Assert.False(editor.IsEnabled("resumeAgentSessions"));
+        await editor.SetToggleAsync("restoreRunningCommand", true);
+        Assert.True(editor.IsEnabled("resumeAgentSessions"));
+        await editor.SetToggleAsync("resumeAgentSessions", true);
+        Assert.True(editor.ToggleValue("resumeAgentSessions"));
+        Assert.Contains("\"resumeAgentSessions\":true", File.ReadAllText(Store.FilePath));
+    }
+
+    [Fact]
+    public async Task Resume_agent_sessions_hint_says_what_is_missing_or_what_the_hooks_did()
+    {
+        var field = SettingsEditor.Fields.Single(field => field.Key == "resumeAgentSessions");
+        var report = new AgentResumeReport([new("Claude Code", AgentResumeState.On), new("Codex", AgentResumeState.NotFound)]);
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        Assert.Equal("Turn on Restore running commands on restart first.", editor.HintFor(field, report));
+        await editor.SetToggleAsync("restoreRunningCommand", true);
+        Assert.Equal(field.Hint, editor.HintFor(field, report));
+        await editor.SetToggleAsync("resumeAgentSessions", true);
+        Assert.Equal(field.Hint, editor.HintFor(field, null));
+        Assert.Equal(report.Describe(), editor.HintFor(field, report));
+
+        var other = SettingsEditor.Fields.Single(field => field.Key == "restoreRunningCommand");
+        Assert.Equal(other.Hint, editor.HintFor(other, report));
     }
 
     [Theory]

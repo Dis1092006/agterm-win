@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using AgTerm.Core.Keymap;
+using AgTerm.Core.Install;
 using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
@@ -25,6 +26,9 @@ public sealed record LiveApplicationHostOptions
     public string? InstalledExecutablePath { get; init; }
 
     internal TimeProvider TreeEventTimeProvider { get; init; } = TimeProvider.System;
+
+    /// <summary>Reads CLAUDE_CONFIG_DIR, COPILOT_HOME and CODEX_HOME for the agent resume hooks.</summary>
+    internal Func<string, string?> AgentEnvironment { get; init; } = Environment.GetEnvironmentVariable;
 
     /// <summary>Starts the hook children. Null runs no hooks: hooks.reload and hooks.list then answer
     /// "hooks are not available".</summary>
@@ -80,6 +84,7 @@ public sealed partial class LiveApplicationHost : IDisposable
             ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         _windowController = options.WindowController;
         _installedExecutablePath = options.InstalledExecutablePath ?? Environment.ProcessPath;
+        _agentEnvironment = options.AgentEnvironment;
         _recentClosedStore = new RecentClosedStore(_stateDirectory);
         Ring = new ControlEventRing();
         if (options.HookLauncher is { } hookLauncher)
@@ -135,10 +140,58 @@ public sealed partial class LiveApplicationHost : IDisposable
         _autoHideInactiveSidebars = Settings.State.Snapshot.Settings.AutoHideSidebarInactiveWindows == true;
         lock (_sidebarGate)
             ReconcileInactiveSidebarsLocked();
+        // Startup reinstalls the hooks when the setting is on, so an updated app points them at its own agtermctl.
+        if (Settings.State.Snapshot.Settings.EffectiveResumeAgentSessions)
+        {
+            AgentResumeStartup = Task.Run(() =>
+            {
+                if (ApplyAgentResume(enabled: true) is { HasFailure: true } report)
+                    System.Diagnostics.Trace.TraceWarning($"Agent resume hooks: {report.Describe()}");
+            });
+        }
+        else
+        {
+            _appliedAgentResume = false;
+        }
+    }
+
+    /// <summary>Completes when the startup refresh of the agent resume hooks is done.</summary>
+    public Task AgentResumeStartup { get; } = Task.CompletedTask;
+
+    /// <summary>The outcome of the last install or removal of the agent resume hooks; null before the first one.</summary>
+    public AgentResumeReport? LastAgentResumeReport { get; private set; }
+
+    // The state the hooks were last applied with; null after a failure, so the next apply retries.
+    private bool? _appliedAgentResume;
+    private readonly Lock _agentResumeGate = new();
+    private readonly Func<string, string?> _agentEnvironment;
+
+    private AgentResumeReport? ApplyAgentResume(bool enabled)
+    {
+        lock (_agentResumeGate)
+        {
+            if (_appliedAgentResume == enabled) return null;
+            AgentResumeReport report;
+            try
+            {
+                var toolPath = Path.Join(Path.GetDirectoryName(_installedExecutablePath), CliInstall.ToolFileName);
+                report = AgentResumeInstaller.Apply(
+                    AgentResumePaths.FromEnvironment(_homeDirectory, _agentEnvironment), enabled, toolPath,
+                    AgentStatusBundle.Read(AgentResumeInstaller.WrapperName));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                report = new AgentResumeReport([], ex.Message);
+            }
+            LastAgentResumeReport = report;
+            _appliedAgentResume = report.HasFailure ? null : enabled;
+            return report;
+        }
     }
 
     private Task ApplyApplicationSettingsAsync(SettingsSnapshot snapshot, SettingsApplyKind kind) => Task.Run(() =>
     {
+        var resume = ApplyAgentResume(snapshot.Settings.EffectiveResumeAgentSessions);
         Hooks?.UseConfigDirectory(HooksConfigDirectory(snapshot.Settings));
         lock (_sidebarGate)
         {
@@ -147,6 +200,7 @@ public sealed partial class LiveApplicationHost : IDisposable
             _autoHideInactiveSidebars = enabled;
             if (reconcile) ReconcileInactiveSidebarsLocked();
         }
+        if (resume is { HasFailure: true }) throw new InvalidOperationException(resume.Describe());
     });
 
     public HeadlessQuickTerminal Quick { get; } = new();

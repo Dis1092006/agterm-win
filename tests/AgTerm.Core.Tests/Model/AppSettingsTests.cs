@@ -228,9 +228,22 @@ public class AppSettingsTests : IDisposable
             CopyOnSelect = "off",
             SessionInfoDisplay = "flagged",
             FlaggedViewLayout = "tree",
+            ResumeAgentSessions = true,
         };
         store.Save(settings);
         Assert.Equal(settings, new SettingsStore(_dir).Load());
+    }
+
+    [Fact]
+    public void Resume_agent_sessions_is_off_unless_turned_on()
+    {
+        Assert.False(new AppSettings().EffectiveResumeAgentSessions);
+        Assert.True(new AppSettings { ResumeAgentSessions = true }.EffectiveResumeAgentSessions);
+        Assert.NotEqual(new AppSettings(), new AppSettings { ResumeAgentSessions = true });
+
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings { ResumeAgentSessions = true });
+        Assert.Contains("\"resumeAgentSessions\":true", File.ReadAllText(FilePath));
     }
 
     [Fact]

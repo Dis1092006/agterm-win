@@ -21,8 +21,9 @@
     { "name": "restoreScrollback", "reason": "Turns off restoring each pane's previous output after a relaunch." },
     { "name": "overlayOpacity", "reason": "Sets overlay panel background opacity while Windows transparency effects are enabled." },
     { "name": "closeOnShellExit", "reason": "Keeps a shell pane open with its exit code when the shell exits, by default when the code is not 0." },
-    { "name": "copyOnSelect", "reason": "Picks where a mouse selection is copied: the app's selection buffer that middle-click pastes, that buffer and the Windows clipboard, or nowhere. Upstream gets this from Ghostty's copy-on-select, which the port does not read." }
-  ],
+    { "name": "copyOnSelect", "reason": "Picks where a mouse selection is copied: the app's selection buffer that middle-click pastes, that buffer and the Windows clipboard, or nowhere.     Upstream gets this from Ghostty's copy-on-select, which the port does not read." },
+        { "name": "resumeAgentSessions", "reason": "Installs hooks in Claude Code, Copilot CLI and Codex that pin each agent session's resume command on its pane, so the agent session comes back after a relaunch. Upstream does this with zsh recipes. Off when absent." }
+      ],
   "cli": [
     { "name": "agent-hook resume", "reason": "The command the agent resume hooks run. It pins the agent session's resume command on the pane at session start and clears it at a real exit, so the agent session comes back after a relaunch. It sends only the existing session.restore and tree commands." }
   ]

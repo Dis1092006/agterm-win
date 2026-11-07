@@ -269,7 +269,7 @@ public static class AgentHooksInstaller
             string.Join("\n", installed.Concat(skipped)), warning);
     }
 
-    private static void WriteOwned(string path, string contents, string marker)
+    internal static void WriteOwned(string path, string contents, string marker)
     {
         EnsureOwnedIfPresent(path, marker);
         if (File.Exists(path))
@@ -280,7 +280,7 @@ public static class AgentHooksInstaller
         WriteAtomic(path, contents);
     }
 
-    private static void EnsureOwnedIfPresent(string path, string marker)
+    internal static void EnsureOwnedIfPresent(string path, string marker)
     {
         if (!File.Exists(path)) return;
         if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
@@ -289,7 +289,7 @@ public static class AgentHooksInstaller
             throw new InvalidDataException($"'{path}' is not an agterm-win file; left untouched.");
     }
 
-    private static void WriteConfig(string path, string? existing, string contents)
+    internal static void WriteConfig(string path, string? existing, string contents)
     {
         if (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException($"'{path}' is a link; left untouched.");
@@ -303,7 +303,7 @@ public static class AgentHooksInstaller
         WriteAtomic(path, contents);
     }
 
-    private static void WriteAtomic(string path, string contents)
+    internal static void WriteAtomic(string path, string contents)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
