@@ -15,6 +15,8 @@ public static partial class CodexFeatureConfig
 
     private const string InlineRefusal = "config.toml sets features inline, so agterm-win left it unchanged.";
 
+    private const string DottedRefusal = "config.toml sets features with dotted keys, so agterm-win left it unchanged.";
+
     [GeneratedRegex(@"^\s*\[")]
     private static partial Regex TableHeader();
 
@@ -30,13 +32,16 @@ public static partial class CodexFeatureConfig
     [GeneratedRegex(@"^\s*features\s*=")]
     private static partial Regex InlineFeatures();
 
-    public static CodexDaemonSetting Inspect(string? toml) => Scan(Lines(toml)).Setting;
+    [GeneratedRegex(@"^\s*features\s*\.")]
+    private static partial Regex DottedFeatures();
+
+    public static CodexDaemonSetting Inspect(string? toml) => Scan(Lines(toml), strict: false).Setting;
 
     /// <returns>The new contents, or null when nothing changes.</returns>
     public static string? Enable(string? toml)
     {
         var lines = Lines(toml);
-        var scan = Scan(lines);
+        var scan = Scan(lines, strict: true);
         if (scan.Setting != CodexDaemonSetting.Unset) return null;
         if (scan.FeaturesHeader is { } header)
         {
@@ -53,7 +58,7 @@ public static partial class CodexFeatureConfig
     public static string? Disable(string? toml)
     {
         var lines = Lines(toml);
-        var scan = Scan(lines);
+        var scan = Scan(lines, strict: false);
         if (scan.Setting != CodexDaemonSetting.Ours) return null;
         lines.RemoveAt(scan.SettingLine!.Value);
         return Join(lines, toml!);
@@ -61,7 +66,10 @@ public static partial class CodexFeatureConfig
 
     private readonly record struct ScanResult(CodexDaemonSetting Setting, int? SettingLine, int? FeaturesHeader);
 
-    private static ScanResult Scan(List<string> lines)
+    // strict refuses a file where adding a [features] table would be invalid TOML: a top-level inline
+    // features table, or top-level dotted features keys. Disable is not strict, so turning the setting
+    // off never fails for a file agterm-win did not write to.
+    private static ScanResult Scan(List<string> lines, bool strict)
     {
         string? table = null;
         int? header = null;
@@ -78,7 +86,8 @@ public static partial class CodexFeatureConfig
             if (table is null)
             {
                 if (DottedKey().Match(line) is { Success: true } dotted) key = dotted;
-                else if (InlineFeatures().IsMatch(line)) throw new InvalidDataException(InlineRefusal);
+                else if (strict && InlineFeatures().IsMatch(line)) throw new InvalidDataException(InlineRefusal);
+                else if (strict && DottedFeatures().IsMatch(line)) throw new InvalidDataException(DottedRefusal);
             }
             else if (table == "features" && FeatureKey().Match(line) is { Success: true } plain) key = plain;
             if (key is null) continue;

@@ -91,6 +91,24 @@ public class CodexFeatureConfigTests
     }
 
     [Fact]
+    public void Top_level_dotted_features_keys_are_refused()
+    {
+        // a [features] header after features.x = … at the top level is a duplicate table, which Codex rejects
+        var error = Assert.Throws<InvalidDataException>(() => CodexFeatureConfig.Enable("features.hooks = true\n"));
+
+        Assert.Equal("config.toml sets features with dotted keys, so agterm-win left it unchanged.", error.Message);
+    }
+
+    [Theory]
+    [InlineData("features = { hooks = true }\n")]
+    [InlineData("features.hooks = true\n")]
+    public void Disable_passes_a_file_it_cannot_edit_when_our_line_is_absent(string toml)
+    {
+        // turning the setting off must not fail for a file agterm-win never wrote to
+        Assert.Null(CodexFeatureConfig.Disable(toml));
+    }
+
+    [Fact]
     public void An_inline_features_table_is_refused()
     {
         var error = Assert.Throws<InvalidDataException>(() => CodexFeatureConfig.Enable("features = { hooks = true }\n"));
