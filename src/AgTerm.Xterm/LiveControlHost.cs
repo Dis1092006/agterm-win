@@ -1992,6 +1992,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             return;
         }
 
+        var holds = false;
         Host.RunLocked(() =>
         {
             if (Volatile.Read(ref _shutdownStarted) != 0)
@@ -2002,13 +2003,43 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
             var live = Host.Store.SessionWithId(sessionId);
             if (!OwnsOverlayPane(live, surface)) return;
             Host.Store.RecordOverlayExit(live!.Id, exitCode);
-            if (!live.OverlayWait)
+            holds = live.OverlayWait;
+            if (!holds)
             {
                 Host.Store.CloseOverlay(live.Id);
             }
             ReconcileSurfacesLocked();
         });
+
+        if (holds && await OverlayReleasedByKeystrokeAsync(surface, exitCode).ConfigureAwait(false))
+        {
+            CloseOverlayIfStillOwned(sessionId, surface);
+        }
     }
+
+    private async Task<bool> OverlayReleasedByKeystrokeAsync(XtermPaneSurface surface, int exitCode)
+    {
+        try
+        {
+            await surface.Pane.ShowExitAndWaitForKeystrokeAsync(exitCode).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return false; // an explicit close can tear the pane down under the prompt
+        }
+
+        return Volatile.Read(ref _shutdownStarted) == 0;
+    }
+
+    private void CloseOverlayIfStillOwned(Guid sessionId, XtermPaneSurface surface) =>
+        Host.RunLocked(() =>
+        {
+            if (Volatile.Read(ref _shutdownStarted) != 0) return;
+            var live = Host.Store.SessionWithId(sessionId);
+            if (!OwnsOverlayPane(live, surface)) return;
+            Host.Store.CloseOverlay(live!.Id);
+            ReconcileSurfacesLocked();
+        });
 
     private async Task CloseQuickOnExitAsync(XtermPaneSurface surface)
     {
