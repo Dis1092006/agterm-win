@@ -63,7 +63,7 @@ public class AgentResumeHookE2ETests : ControlApiTestCase
     [Theory]
     [InlineData("claude", "claude --resume ")]
     [InlineData("copilot", "copilot --resume=")]
-    [InlineData("codex", "codex resume ")]
+    [InlineData("codex", "codex --no-daemon resume ")]
     public void Start_pins_and_end_clears_the_agent_session(string agent, string prefix)
     {
         var session = NewSession();
@@ -192,6 +192,6 @@ public class AgentResumeHookE2ETests : ControlApiTestCase
         await process.WaitForExitAsync(timeout.Token);
 
         Assert.Equal((0, "", ""), (process.ExitCode, stdout, await stderr));
-        Assert.Equal("codex resume " + SessionId, RestoreCommand(session));
+        Assert.Equal("codex --no-daemon resume " + SessionId, RestoreCommand(session));
     }
 }

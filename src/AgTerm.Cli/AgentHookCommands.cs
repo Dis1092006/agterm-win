@@ -51,6 +51,7 @@ internal static class AgentHookCommands
         public int Execute(CliEnvironment env)
         {
             if (env.GetEnv(SurfaceEnvironment.SessionId) is not { Length: > 0 } session) return 0;
+            if (Agent.IgnoredWhenSet is { } marker && env.GetEnv(marker) is { Length: > 0 }) return 0;
             var decision = AgentResumeHook.Decide(Agent, Event, env.In.ReadToEnd());
             if (decision.Verb == AgentResumeVerb.Ignore) return 0;
 
@@ -62,7 +63,8 @@ internal static class AgentHookCommands
                 if (decision.Verb == AgentResumeVerb.ClearIfPinned)
                 {
                     var current = PaneRestoreCommand(env, pipe, session, paneId, pane);
-                    if (!current.Found || current.RestoreCommand != decision.Command) return 0;
+                    if (!current.Found || (current.RestoreCommand != decision.Command &&
+                        (decision.LegacyCommand is null || current.RestoreCommand != decision.LegacyCommand))) return 0;
                 }
                 var response = env.Send(pipe, new ControlRequest
                 {

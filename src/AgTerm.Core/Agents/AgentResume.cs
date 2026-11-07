@@ -10,14 +10,15 @@ public enum AgentHookEvent { Start, End }
 public enum AgentResumeVerb { Ignore, Pin, ClearIfPinned }
 
 /// <summary>What a resume hook does with the pane's restore command: pin Command, clear the pin if
-/// it still is Command, or nothing.</summary>
-public readonly record struct AgentResumeDecision(AgentResumeVerb Verb, string? Command)
+/// it still is Command (or LegacyCommand, the same session's pin from an earlier version), or nothing.</summary>
+public readonly record struct AgentResumeDecision(AgentResumeVerb Verb, string? Command, string? LegacyCommand = null)
 {
     public static AgentResumeDecision Ignore => default;
 
     public static AgentResumeDecision Pin(string command) => new(AgentResumeVerb.Pin, command);
 
-    public static AgentResumeDecision ClearIfPinned(string command) => new(AgentResumeVerb.ClearIfPinned, command);
+    public static AgentResumeDecision ClearIfPinned(string command, string? legacyCommand = null) =>
+        new(AgentResumeVerb.ClearIfPinned, command, legacyCommand);
 }
 
 /// <summary>A pane's restore command as tree reports it; Found is false when the session is not in
@@ -32,13 +33,17 @@ public readonly record struct AgentResumePane(bool Found, string? RestoreCommand
 /// clears.</param>
 /// <param name="SkipsSubagents">Whether a payload with agentId or parentAgentId comes from a
 /// subagent that runs inside its parent's session.</param>
+/// <param name="LegacyPinPrefix">The resume command an earlier version pinned, which end still clears.</param>
+/// <param name="IgnoredWhenSet">An environment variable that marks a hook run outside the agent's pane.</param>
 public sealed record AgentResumeProfile(
     string Name,
     string DisplayName,
     string IdField,
     string PinPrefix,
     IReadOnlyList<string>? ClearReasons,
-    bool SkipsSubagents)
+    bool SkipsSubagents,
+    string? LegacyPinPrefix = null,
+    string? IgnoredWhenSet = null)
 {
     public static IReadOnlyList<AgentResumeProfile> All { get; } =
     [
@@ -47,8 +52,11 @@ public sealed record AgentResumeProfile(
         // sessionEnd reason user_exit covers /exit, /clear, Ctrl+C, Ctrl+D and the pane closing;
         // complete is a copilot -p run.
         new("copilot", "Copilot CLI", "sessionId", "copilot --resume=", ["user_exit", "complete"], SkipsSubagents: true),
-        // Codex sends SessionEnd only with reason "other".
-        new("codex", "Codex", "session_id", "codex resume ", ClearReasons: null, SkipsSubagents: false),
+        // Codex sends SessionEnd only with reason "other". Codex 0.167 runs sessions and hooks in a shared
+        // app-server that carries the AGTERM_* of the pane that started it, so a hook from it would pin
+        // another pane (measured with 0.167.0). --no-daemon keeps a resumed session in its own pane.
+        new("codex", "Codex", "session_id", "codex --no-daemon resume ", ClearReasons: null, SkipsSubagents: false,
+            LegacyPinPrefix: "codex resume ", IgnoredWhenSet: "CODEX_DAEMON_SHUTDOWN_SOCKET"),
     ];
 
     public static AgentResumeProfile? Find(string name) => All.FirstOrDefault(agent => agent.Name == name);
@@ -85,7 +93,7 @@ public static partial class AgentResumeHook
             if (hookEvent == AgentHookEvent.Start) return AgentResumeDecision.Pin(pin);
             if (profile.ClearReasons is { } reasons && !reasons.Contains(String(root, "reason")))
                 return AgentResumeDecision.Ignore;
-            return AgentResumeDecision.ClearIfPinned(pin);
+            return AgentResumeDecision.ClearIfPinned(pin, profile.LegacyPinPrefix is { } legacy ? legacy + id : null);
         }
     }
 

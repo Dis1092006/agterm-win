@@ -1500,12 +1500,16 @@ standard input. The pane comes from `$AGTERM_SESSION_ID`, `$AGTERM_PANE` and `$A
 pipe from `$AGTERM_SOCKET`. It has no wire command of its own: it sends `session.restore` and `tree`.
 
 - `start` reads the agent session id from the JSON and pins the agent's resume command on the pane:
-  `claude --resume <id>`, `copilot --resume=<id>` or `codex resume <id>`. A missing id, an id that is not
-  a UUID, or a Copilot subagent payload (`agentId` or `parentAgentId`) pins nothing.
+  `claude --resume <id>`, `copilot --resume=<id>` or `codex --no-daemon resume <id>`. A missing id, an id
+  that is not a UUID, or a Copilot subagent payload (`agentId` or `parentAgentId`) pins nothing. Codex
+  fires its start hook on the first message, so a Codex pane with no message gets no pin.
+- A Codex hook run by Codex's shared background app-server (`$CODEX_DAEMON_SHUTDOWN_SOCKET` is set) does
+  nothing: that process carries the `AGTERM_*` of another pane.
 - `end` clears the pin, but only when the pane's pin is the resume command of the session that ends. A pin
   set by someone else, or by a newer agent session after `/clear`, stays. Claude clears on `reason`
   `prompt_input_exit` or `logout`, Copilot on `user_exit` or `complete`, Codex on any reason. A Claude
-  pane closed by an app quit ends with `other` and keeps the pin, so the session comes back.
+  pane closed by an app quit ends with `other` and keeps the pin, so the session comes back. Codex end
+  also clears the older pin `codex resume <id>`.
 
 ```bash
 agtermctl agent-hook resume claude start < payload.json   # what a Claude Code SessionStart hook runs
@@ -1519,7 +1523,9 @@ typed at launch only while `restoreRunningCommand` is `true`.
 The setting `resumeAgentSessions` (Settings > General, "Resume agent sessions after restart") installs
 these hooks for Claude Code, Copilot CLI and Codex, and turning it off removes them. The hooks run the
 script `~\.config\agterm\agent-resume\agterm-agent-resume.cmd`, which logs what `agtermctl` prints to
-standard error into `agent-resume.log` in the same folder.
+standard error into `agent-resume.log` in the same folder. For Codex it also writes
+`daemon_auto_start = false # agterm-win` under `[features]` in `~\.codex\config.toml`, so a plain `codex`
+runs in its own pane; turning the setting off removes that line, and a value the user set stays.
 
 ## restore
 

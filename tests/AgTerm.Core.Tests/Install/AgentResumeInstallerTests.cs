@@ -27,6 +27,13 @@ public sealed class AgentResumeInstallerTests : IDisposable
     private string ClaudeSettings => Path.Join(_home, ".claude", "settings.json");
     private string CopilotHooks => Path.Join(_home, ".copilot", "hooks", AgentResumeInstaller.CopilotHooksName);
     private string CodexHooks => Path.Join(_home, ".codex", "hooks.json");
+    private string CodexConfig => Path.Join(_home, ".codex", "config.toml");
+
+    private const string CodexTrust = "Codex asks you to trust the new hooks the next time it starts. "
+        + "If Codex's background server is running, stop it once with codex app-server daemon stop.";
+
+    private const string CodexUserOn = "daemon_auto_start = true in Codex config.toml keeps Codex sessions in its "
+        + "background server, so they are not resumed.";
 
     private AgentResumeReport Apply(bool enabled, string? template = null, string? tool = null) =>
         AgentResumeInstaller.Apply(new AgentResumePaths(_home), enabled, tool ?? _tool, template ?? Template);
@@ -465,8 +472,86 @@ public sealed class AgentResumeInstallerTests : IDisposable
             new("Codex", AgentResumeState.On),
         ]);
 
-        Assert.Equal("Claude Code, Codex: on. Copilot CLI: not found. Codex asks you to trust the new hooks the next time it starts.",
-            report.Describe());
+        Assert.Equal("Claude Code, Codex: on. Copilot CLI: not found. " + CodexTrust, report.Describe());
+    }
+
+    [Fact]
+    public void Describe_explains_a_user_daemon_setting()
+    {
+        var report = new AgentResumeReport([new("Codex", AgentResumeState.On, CodexUserOn)]);
+
+        Assert.False(report.HasFailure);
+        Assert.Equal("Codex: on. " + CodexUserOn + " " + CodexTrust, report.Describe());
+    }
+
+    // Codex 0.167 runs hooks in a shared app-server with another pane's AGTERM_*; the setting turns it off.
+
+    [Fact]
+    public void EnablingWritesTheCodexDaemonSetting()
+    {
+        CreateAgents();
+
+        Apply(enabled: true);
+
+        Assert.Equal("[features]\n" + CodexFeatureConfig.OwnedLine + "\n", File.ReadAllText(CodexConfig));
+    }
+
+    [Fact]
+    public void EnablingKeepsTheUserCodexConfigAndBacksItUp()
+    {
+        CreateAgents();
+        File.WriteAllText(CodexConfig, "model = \"o3\"\n");
+
+        Apply(enabled: true);
+
+        Assert.StartsWith("model = \"o3\"\n", File.ReadAllText(CodexConfig));
+        Assert.Contains(CodexFeatureConfig.OwnedLine, File.ReadAllText(CodexConfig));
+        Assert.Equal("model = \"o3\"\n", File.ReadAllText(CodexConfig + ".bak"));
+    }
+
+    [Fact]
+    public void DisablingRemovesOnlyTheCodexDaemonLine()
+    {
+        CreateAgents();
+        Apply(enabled: true);
+        File.WriteAllText(CodexConfig, File.ReadAllText(CodexConfig) + "hooks = true\n");
+
+        Apply(enabled: false);
+
+        Assert.Equal("[features]\nhooks = true\n", File.ReadAllText(CodexConfig));
+    }
+
+    [Fact]
+    public void A_user_daemon_setting_is_left_alone()
+    {
+        CreateAgents();
+        const string mine = "[features]\ndaemon_auto_start = true\n";
+        File.WriteAllText(CodexConfig, mine);
+
+        var report = Apply(enabled: true);
+
+        Assert.Equal(mine, File.ReadAllText(CodexConfig));
+        var codex = report.Agents.Single(agent => agent.DisplayName == "Codex");
+        Assert.Equal(AgentResumeState.On, codex.State);
+        Assert.Equal(CodexUserOn, codex.Reason);
+    }
+
+    [Fact]
+    public void An_inline_features_table_fails_Codex_only()
+    {
+        CreateAgents();
+        const string inline = "features = { hooks = true }\n";
+        File.WriteAllText(CodexConfig, inline);
+
+        var report = Apply(enabled: true);
+
+        var codex = report.Agents.Single(agent => agent.DisplayName == "Codex");
+        Assert.Equal(AgentResumeState.Failed, codex.State);
+        Assert.Equal("config.toml sets features inline, so agterm-win left it unchanged.", codex.Reason);
+        Assert.True(File.Exists(CodexHooks));
+        Assert.Equal(inline, File.ReadAllText(CodexConfig));
+        Assert.Equal(AgentResumeState.On, StateOf(report, "Claude Code"));
+        Assert.Equal(AgentResumeState.On, StateOf(report, "Copilot CLI"));
     }
 
     [Fact]

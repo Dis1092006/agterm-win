@@ -76,7 +76,8 @@ Settings > General > "Resume agent sessions after restart" (`"resumeAgentSession
 session end hooks to each agent it finds. They run `agtermctl agent-hook resume <agent> <start|end>`
 (see reference.md), which pins the resume command at start and clears the pin when the user leaves the
 agent. A pane closed by an app quit keeps its pin, so the agent session comes back. Codex asks to trust the
-new hooks the next time it starts. Write your own hook, as above, only for another agent.
+new hooks the next time it starts, and the setting turns Codex's shared background server off, so stop a
+running one once with `codex app-server daemon stop`. Write your own hook, as above, only for another agent.
 
 ## Create a session and type into it
 

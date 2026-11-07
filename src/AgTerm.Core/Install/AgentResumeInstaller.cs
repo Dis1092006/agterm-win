@@ -8,6 +8,7 @@ namespace AgTerm.Core.Install;
 
 public enum AgentResumeState { On, Off, NotFound, Failed }
 
+/// <param name="Reason">Why a failed agent failed, or a note on an agent that is on or off.</param>
 public sealed record AgentResumeAgentStatus(string DisplayName, AgentResumeState State, string? Reason = null);
 
 public sealed record AgentResumeReport(IReadOnlyList<AgentResumeAgentStatus> Agents, string? Error = null)
@@ -28,8 +29,11 @@ public sealed record AgentResumeReport(IReadOnlyList<AgentResumeAgentStatus> Age
         }
         parts.AddRange(Agents.Where(agent => agent.State == AgentResumeState.Failed)
             .Select(agent => agent.Reason is null ? $"{agent.DisplayName} failed." : $"{agent.DisplayName} failed: {agent.Reason}"));
+        parts.AddRange(Agents.Where(agent => agent.State != AgentResumeState.Failed && agent.Reason is not null)
+            .Select(agent => agent.Reason!));
         if (Agents.Any(agent => agent.DisplayName == "Codex" && agent.State == AgentResumeState.On))
-            parts.Add("Codex asks you to trust the new hooks the next time it starts.");
+            parts.Add("Codex asks you to trust the new hooks the next time it starts. "
+                + "If Codex's background server is running, stop it once with codex app-server daemon stop.");
         return string.Join(" ", parts);
     }
 }
@@ -95,6 +99,7 @@ public static partial class AgentResumeInstaller
                     "codex" => ApplyEvents(CodexDirectory(paths), "hooks.json", CodexFormat, enabled, wrapper),
                     _ => throw new InvalidOperationException(profile.Name),
                 };
+                if (found && profile.Name == "codex") reason = ApplyCodexConfig(CodexDirectory(paths), enabled);
                 state = !found ? AgentResumeState.NotFound : enabled ? AgentResumeState.On : AgentResumeState.Off;
             }
             catch (Exception ex) when (IsFileError(ex) || ex is DecoderFallbackException)
@@ -118,6 +123,20 @@ public static partial class AgentResumeInstaller
     private static string ClaudeDirectory(AgentResumePaths paths) => paths.ClaudeConfigDirectory ?? Path.Join(paths.Home, ".claude");
 
     private static string CodexDirectory(AgentResumePaths paths) => paths.CodexHome ?? Path.Join(paths.Home, ".codex");
+
+    // Codex 0.167 runs hooks in its shared app-server, which carries another pane's AGTERM_*, so the
+    // setting turns that server off. A daemon_auto_start the user set stays as it is.
+    /// <returns>A note for the hint when the user's own setting keeps Codex out of resume.</returns>
+    private static string? ApplyCodexConfig(string directory, bool enabled)
+    {
+        var path = Path.Join(directory, "config.toml");
+        var existing = File.Exists(path) ? ReadText(path) : null;
+        var updated = enabled ? CodexFeatureConfig.Enable(existing) : CodexFeatureConfig.Disable(existing);
+        if (updated is not null) AgentHooksInstaller.WriteConfig(path, existing, updated);
+        return enabled && CodexFeatureConfig.Inspect(updated ?? existing) == CodexDaemonSetting.UserOn
+            ? "daemon_auto_start = true in Codex config.toml keeps Codex sessions in its background server, so they are not resumed."
+            : null;
+    }
 
     private static string ReadText(string path) => File.ReadAllText(path, new UTF8Encoding(false, true));
 
