@@ -81,7 +81,7 @@ public sealed class AskViewSourceTests
         var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
         Assert.Contains("SyncAskAsync", source, StringComparison.Ordinal);
         Assert.Contains(".Pick.PendingAsk", source, StringComparison.Ordinal);
-        Assert.Contains(".Pick.ResolveAsk(", source, StringComparison.Ordinal);
+        Assert.Contains(".Pick.AnswerAsk(", source, StringComparison.Ordinal);
         Assert.Contains(".Pick.EscapeAsk(", source, StringComparison.Ordinal);
         Assert.Contains("AskOverlay.CancelChord = IsCloseSessionChord;", source, StringComparison.Ordinal);
         Assert.Contains("AskAnchorGeometry.Pane(", source, StringComparison.Ordinal);
@@ -143,8 +143,10 @@ public sealed class AskViewSourceTests
             @"public void FocusPanel\(\)\s*\{\s*FocusUnlessContentDialogOpen\(\);\s*DispatcherQueue\.TryEnqueue\(FocusUnlessContentDialogOpen\);\s*\}"),
             code);
         Assert.Matches(new Regex(
-            @"private void FocusUnlessContentDialogOpen\(\)\s*\{(?:\s*//[^\n]*)*\s*if \(!IsContentDialogOpen\(\)\)\s*Focus\(FocusState\.Programmatic\);\s*\}"),
+            @"private void FocusUnlessContentDialogOpen\(\)\s*\{(?:\s*//[^\n]*)*\s*if \(!IsContentDialogOpen\(\)\)\s*FocusTarget\.Focus\(FocusState\.Programmatic\);\s*\}"),
             code);
+        // the field takes the keys when there is one, as upstream focuses its editor
+        Assert.Contains("private Control FocusTarget => InputBox.Visibility == Visibility.Visible ? InputBox : this;", code, StringComparison.Ordinal);
         Assert.Matches(new Regex(
             @"private bool IsContentDialogOpen\(\) =>\s*OpenPopups\(\)\.Any\(popup => popup\.Child is ContentDialog\);"),
             code);
@@ -190,6 +192,86 @@ public sealed class AskViewSourceTests
         Assert.Contains(".AskFocusChanged +=", source, StringComparison.Ordinal);
         Assert.Contains("store.ResolveAsk(", source, StringComparison.Ordinal);
         Assert.Contains("EscapeFocusedTerminalAsk", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_window_keeps_the_terminal_question_draft_in_the_navigator_and_the_store()
+    {
+        var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
+        Assert.Matches(new Regex(
+            @"page\.AskFocusChanged \+= OnPageAskFocusChanged;\s*page\.AskDraftReceived \+= OnPageAskDraftReceived;"),
+            source);
+        Assert.Matches(new Regex(
+            @"if \(!_terminalAsks\.UpdateDraft\(askId, text\) \|\| _terminalAsks\.CurrentSessionId is not \{ \} sessionId\)\s*return;"),
+            source);
+        // one writer at a time: separate MutateAsync calls are not ordered
+        Assert.Matches(new Regex(
+            @"while \(_pendingAskDraft is \{ \} draft && _host is \{ \} host\)\s*\{\s*_pendingAskDraft = null;\s*await host\.StoreCoordinator\.MutateAsync\(store =>\s*store\.UpdateAskDraft\(draft\.SessionId, draft\.AskId, saved => saved\.Text = draft\.Text\)\);\s*\}"),
+            source);
+    }
+
+    [Fact]
+    public void The_window_answers_the_gui_question_with_its_draft()
+    {
+        var source = Source("src", "AgTerm.App", "MainWindow.xaml.cs");
+        Assert.Contains("host.Host.Actions.Pick.AnswerAsk(askId, index);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ControlAskResult.Answered(", source, StringComparison.Ordinal);
+        Assert.Contains("AskOverlay.Open(pending, host.Host.Actions.Pick.AskDraft, _rendererSettings.FontSize, takeFocus: _windowIsActive);", source, StringComparison.Ordinal);
+        Assert.Contains("AskOverlay.DraftChanged += (askId, text) => _host?.Host.Actions.Pick.UpdateAskDraft(askId, draft => draft.Text = text);", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_dialog_shows_a_text_box_for_an_input_form()
+    {
+        var xaml = Source("src", "AgTerm.App", "AskView.xaml");
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Matches(new Regex(
+            @"x:Name=""MessageText""[^>]*/>\s*<TextBox x:Name=""InputBox"""),
+            xaml);
+        foreach (var attribute in new[]
+                 {
+                     "AutomationProperties.AutomationId=\"ask-input\"",
+                     "PreviewKeyDown=\"OnInputPreviewKeyDown\"",
+                     "BeforeTextChanging=\"OnInputBeforeTextChanging\"",
+                     "Paste=\"OnInputPaste\"",
+                     "TextChanged=\"OnInputTextChanged\"",
+                     "TextWrapping=\"Wrap\"",
+                 })
+            Assert.Contains(attribute, xaml, StringComparison.Ordinal);
+        Assert.Contains("InputBox.AcceptsReturn = multiline;", code, StringComparison.Ordinal);
+        Assert.Contains("InputBox.PlaceholderText = input.Field.Placeholder ?? string.Empty;", code, StringComparison.Ordinal);
+        Assert.Contains("InputBox.Text = AskFieldText.ToTextBox(", code, StringComparison.Ordinal);
+        // a multiline field shows 5 to 15 lines, as upstream
+        Assert.Contains("InputBox.MinHeight = 5 * line + chrome;", code, StringComparison.Ordinal);
+        Assert.Contains("InputBox.MaxHeight = 15 * line + chrome;", code, StringComparison.Ordinal);
+        // a question with a field takes the full panel width
+        Assert.Contains("if (ask.Width is not null || ask.Form is AskForm.Input) Panel.Width = maxWidth;", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_dialog_field_validates_each_edit_and_each_paste()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Matches(new Regex(
+            @"if \(_ask\?\.Form is AskForm\.Input input && !AskFieldText\.Accepts\(AskFieldText\.FromTextBox\(args\.NewText, input\.Field\.Mode\), input\.Field\.Mode\)\)\s*args\.Cancel = true;"),
+            code);
+        Assert.Matches(new Regex(@"private async void OnInputPaste\(object sender, TextControlPasteEventArgs e\)\s*\{\s*e\.Handled = true;"), code);
+        Assert.Contains("AskFieldText.PasteInsertion(clipboard, input.Field.Mode)", code, StringComparison.Ordinal);
+        Assert.Contains("DraftChanged?.Invoke(ask.Id, AskFieldText.FromTextBox(InputBox.Text, input.Field.Mode));", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_dialog_field_keeps_its_keys_and_answers_with_the_field_rule()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Contains("AskKeys.FieldIntent((int)e.Key,", code, StringComparison.Ordinal);
+        Assert.Matches(new Regex(
+            @"if \(!AskKeys\.IsFieldEditChord\(\(int\)e\.Key, control, alt\) && CancelChord\?\.Invoke\(e\.Key\) == true\)"),
+            code);
+        // a key the field leaves unhandled bubbles to the dialog: a letter is text there, not a hotkey
+        Assert.Matches(new Regex(
+            @"e\.Handled = true;\s*if \(_ask is not \{ \} ask\) return;(?:\s*//[^\n]*)*\s*if \(IsInField\(e\.OriginalSource\)\) return;"),
+            code);
     }
 
     private static string FindRepoRoot()

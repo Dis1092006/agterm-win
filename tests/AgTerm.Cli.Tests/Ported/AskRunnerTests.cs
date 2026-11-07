@@ -140,6 +140,18 @@ public class AskRunnerTests
     }
 
     [Fact]
+    public void AMultilineAnswerPrintsItsTextAndExitsZero()
+    {
+        var result = ControlAskResult.Answered("ok", "OK", 0) with { Text = "two\nlines" };
+        var script = new Script().Reply(Polled(result));
+        var request = new ControlRequest { Cmd = WireCommand.AskResult, Target = "ask-id" };
+
+        Assert.Equal(0, AskRunner.PrintResult(script.Env(), Options, request));
+        Assert.Equal(ControlJson.Serialize(result) + Environment.NewLine, script.Out.ToString());
+        Assert.Contains("\"text\":\"two\\nlines\"", script.Out.ToString());
+    }
+
+    [Fact]
     public void AOneShotMalformedResultDoesNotCancelSomeoneElsesDialog()
     {
         var script = new Script().Reply(new ControlResponse { Ok = true });

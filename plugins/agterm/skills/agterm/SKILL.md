@@ -482,7 +482,10 @@ is accepted and keeps its ask hidden and pending. A terminal ask leaves the rest
 `--window` selects the window; `--follow` raises it without changing session selection.
 `--default ID` seeds the highlight, `--hotkey ID=LETTER` adds a shortcut, and `--destructive ID` marks a
 button that cannot be the default. `--align left|center|right` aligns the buttons; `--width N` fixes the
-panel width to 10...100 percent of its region. Exit 0 means answered, including No: inspect `.id`.
+panel width to 10...100 percent of its region. `--input line|multiline` adds a text field, with
+`--value TEXT` as its initial text and `--placeholder TEXT` as its hint; without `--button` the form
+gets OK and Cancel, and the answer carries the field as `text`. `--cancel ID` names a button that
+ends the ask like Esc. Exit 0 means answered, including No: inspect `.id`.
 Esc or the `close_session` chord (Alt+W by default) on the interactive ask return `escaped` with exit 3;
 cancellation returns `cancelled`
 with exit 2. `--no-block` returns an id for `ask result ID` or `ask cancel ID`; explicit `--window` must

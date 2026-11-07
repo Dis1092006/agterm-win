@@ -96,9 +96,9 @@ These extend the first catalog, sections 3 and 5. The port has program overlays 
 
 ## 6. Forms in `ask`
 
-These extend the first catalog, section 4. The port's `ask` has buttons only.
+These extend the first catalog, section 4. Before B9a the port's `ask` had buttons only.
 
-- `--input line|multiline` adds a text field, with `--value` and `--placeholder`; the answer carries `text` #778, #779. `--choice id=label`, up to 50 items, makes a radio list, or a checkbox list with `--multiple`, with `--choice-subtitle` and `--checked`; the answer carries `selected`. `--other PLACEHOLDER` adds a free-form line after the items. A form gets OK and Cancel without `--button`, and `--cancel id` names the button that acts as Esc. Args: `cancelButton`, `input`, `placeholder`, `choices`, `multiple`, `checked`, `other`. Port: not done.
+- `--input line|multiline` adds a text field, with `--value` and `--placeholder`; the answer carries `text` #778, #779. `--choice id=label`, up to 50 items, makes a radio list, or a checkbox list with `--multiple`, with `--choice-subtitle` and `--checked`; the answer carries `selected`. `--other PLACEHOLDER` adds a free-form line after the items. A form gets OK and Cancel without `--button`, and `--cancel id` names the button that acts as Esc. Args: `cancelButton`, `input`, `placeholder`, `choices`, `multiple`, `checked`, `other`. Port: partly (B9a). The text field, `--value`, `--placeholder`, `--cancel` and the generated OK and Cancel are done in both styles (PLATFORM-NOTES); the choice list and `--other` are not done.
 - The GUI one-line field matches the dialog: a rounded box with a thin outline #842. Port: not applicable: visual chrome, which parity skips.
 - `ask --hotkey` letters were dead on non-Latin layouts #771. Now an ASCII-capable layout matches the typed letter, and any other layout the US letter at that physical position. Port: done in a Windows form in the ask port (commits `b03f3c4` to `838afa6`). `AskKeys` matches the virtual key, and Windows gives a non-Latin layout the virtual keys of the US letters.
 

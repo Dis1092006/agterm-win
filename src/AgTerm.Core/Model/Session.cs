@@ -317,6 +317,10 @@ public sealed class Session
     /// AppStore owns every change, so the registry retains the outcome before the slot clears.</summary>
     public PendingAsk? AskPending { get; internal set; }
 
+    /// <summary>The pending question's unsubmitted input; it lives as long as AskPending, so
+    /// hiding the dialog keeps it.</summary>
+    public AskDraft? AskDraft { get; internal set; }
+
     /// <summary>The covered pane's identity; null covers the whole session.</summary>
     public Guid? AskPaneIdentity { get; internal set; }
 

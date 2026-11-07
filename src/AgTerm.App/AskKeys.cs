@@ -1,4 +1,5 @@
 using AgTerm.Core.Model;
+using AgTerm.Core.Protocol;
 
 namespace AgTerm.App;
 
@@ -24,4 +25,29 @@ public static class AskKeys
             _ => null,
         };
     }
+
+    private const int Backspace = 0x08, End = 0x23, Home = 0x24, Insert = 0x2D, Delete = 0x2E;
+    private const int C = 0x43, V = 0x56, X = 0x58, Y = 0x59;
+
+    /// <summary>A key in the dialog's text field; null leaves it to the field. Tab and Shift+Tab move
+    /// the highlight, Esc escapes. Enter answers a line field; a multiline field takes Enter as a
+    /// newline and answers on Ctrl+Enter, upstream's Cmd-Return.</summary>
+    public static AskIntent? FieldIntent(int virtualKey, bool shift, bool control, bool alt, bool windows, ControlAskInputMode mode)
+    {
+        if (alt || windows) return null;
+        return virtualKey switch
+        {
+            Tab when !control => shift ? new AskIntent.Backward() : new AskIntent.Forward(),
+            Escape when !control => new AskIntent.Cancel(),
+            Enter when mode == ControlAskInputMode.Line && !control => new AskIntent.Activate(),
+            Enter when mode == ControlAskInputMode.Multiline && control && !shift => new AskIntent.Activate(),
+            _ => null,
+        };
+    }
+
+    /// <summary>A Ctrl edit chord the field keeps (clipboard, undo, select all, word moves and
+    /// deletes), even when the keymap binds it.</summary>
+    public static bool IsFieldEditChord(int virtualKey, bool control, bool alt) =>
+        control && !alt && virtualKey is C or V or X or Z or Y or A or Insert or Backspace or Delete
+            or Left or Up or Right or Down or Home or End;
 }

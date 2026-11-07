@@ -1000,15 +1000,29 @@ position, so it also works on a non-Latin keyboard layout. `--destructive ID` ca
 region; omitted means content sizing. Invalid style, alignment, and width return `unknown style`,
 `unknown align`, and `width must be 10 to 100` respectively.
 
+`--input line|multiline` adds a text field between the message and the buttons, and the question
+takes the full panel width. `--value TEXT` is the field's initial text and `--placeholder TEXT` the hint
+shown while it is empty; both require `--input` (`value requires input`, `placeholder requires input`),
+and another mode returns `unknown input`. The text is at most 65536 UTF-8 bytes (`ask text too long (max
+65536 bytes)`). A line field takes no control characters; a multiline field allows newline and tab only
+(`ask text must not contain control characters`). An edit or a paste that breaks a rule is refused whole.
+Without `--button` the form gets `ok=OK` (the default) and `cancel=Cancel` (the cancel button). A form
+takes no `--hotkey` (`ask input does not take hotkeys`). In the field, Tab and Shift+Tab move the
+highlight and Esc escapes. Return answers a line field; a multiline field takes Return as a newline and
+answers on Ctrl+Return. `--cancel ID` names the button that ends the ask like Esc: pressing it returns
+`escaped`. An unknown id returns `unknown cancel button: ID`.
+
 The blocking call prints one bare result:
 
 ```json
 {"result":"answered","id":"yes","label":"Yes","index":0}
+{"result":"answered","id":"ok","label":"OK","index":0,"text":"the field's text"}
 {"result":"escaped"}
 {"result":"cancelled"}
 ```
 
-Index follows caller order. An answer exits 0, including a named No button; inspect `id` before acting.
+Index follows caller order. `text` is there only on an answer to a question with `--input`, with
+whitespace and newlines kept. An answer exits 0, including a named No button; inspect `id` before acting.
 Esc on a question, or Alt+W (`close_session`) over a GUI question, returns `escaped` with exit 3.
 Cancellation exits 2; failure exits 1.
 `--no-block` prints `{"id":"<ask-id>"}`. `ask result ID [--window W]` prints the current or finished result,

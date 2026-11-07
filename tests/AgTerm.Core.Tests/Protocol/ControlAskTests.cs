@@ -34,6 +34,32 @@ public class ControlAskTests
     }
 
     [Fact]
+    public void AnInputAnswerCarriesItsTextAfterTheIndex()
+    {
+        var result = ControlAskResult.Answered("ok", "OK", 0) with { Text = "a \"q\"\n\\" };
+        var json = "{\"result\":\"answered\",\"id\":\"ok\",\"label\":\"OK\",\"index\":0,\"text\":\"a \\\"q\\\"\\n\\\\\"}";
+        Assert.Equal(json, ControlJson.Serialize(result));
+        Assert.Equal(result, ControlJson.Deserialize<ControlAskResult>(json));
+    }
+
+    [Fact]
+    public void AnEmptyInputAnswerKeepsItsEmptyText() =>
+        Assert.Equal("{\"result\":\"answered\",\"id\":\"ok\",\"label\":\"OK\",\"index\":0,\"text\":\"\"}",
+            ControlJson.Serialize(ControlAskResult.Answered("ok", "OK", 0) with { Text = "" }));
+
+    [Theory]
+    [InlineData("line", ControlAskInputMode.Line)]
+    [InlineData("multiline", ControlAskInputMode.Multiline)]
+    public void InputModeParsesItsWireNames(string wire, ControlAskInputMode expected) =>
+        Assert.Equal(expected, ControlAskInputModes.FromWire(wire));
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Line")]
+    [InlineData("wide")]
+    public void UnknownInputModeParsesToNull(string wire) => Assert.Null(ControlAskInputModes.FromWire(wire));
+
+    [Fact]
     public void AResultFromAServerWithAReasonStillDecodes() =>
         Assert.Equal(ControlAskResult.Cancelled(),
             ControlJson.Deserialize<ControlAskResult>("{\"result\":\"cancelled\",\"reason\":\"presentation-lost\"}"));

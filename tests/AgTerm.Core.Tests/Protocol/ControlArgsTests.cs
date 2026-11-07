@@ -18,10 +18,10 @@ public class ControlArgsTests
         Message = "s",
         Detail = "s", Spinner = "s", HideAfter = 0.5, Markdown = true, Sticky = true, Frame = true,
         Items = new[] { new ControlPickItem { Id = "a", Label = "A" } }, Prompt = "s", Query = "s", AllowCustom = true, Selection = "s",
-        Buttons = new[] { new ControlAskButton { Id = "a", Label = "A", Hotkey = "a" } }, DefaultButton = "s", Style = "s", Align = "s", DestructiveButton = "s",
+        Buttons = new[] { new ControlAskButton { Id = "a", Label = "A", Hotkey = "a" } }, DefaultButton = "s", Style = "s", Align = "s", DestructiveButton = "s", CancelButton = "s", Input = "s", Placeholder = "s",
         Window = "s", Width = 3, Height = 3, SidebarWidth = 300.5, X = 3, Y = 3, Display = 3,
         Status = "s", Blink = true, AutoReset = true, Sound = "s", Light = "s", Dark = "s",
-        Close = true, FontSize = 12.5, AutoSize = true, Mru = true,
+        Close = true, FontSize = 12.5, AutoSize = true, Mru = true, Value = "s",
         Recipients = ["a"], Identity = "s", Ack = true, Ids = ["a"],
     };
 

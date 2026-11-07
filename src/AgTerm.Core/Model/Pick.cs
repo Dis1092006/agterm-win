@@ -35,6 +35,7 @@ public sealed class PickController
     private readonly List<ResolvedPick> _recent = new();
     private PendingPick? _pending;
     private PendingAsk? _pendingAsk;
+    private AskDraft? _askDraft;
     private bool _closed;
 
     public PickController() : this(new AskRegistry())
@@ -131,6 +132,7 @@ public sealed class PickController
             if (_closed || _pending is not null || _pendingAsk is not null) return false;
             if (!Asks.Register(ask.Id, new AskOwner.Window(windowId))) return false;
             _pendingAsk = ask;
+            _askDraft = new AskDraft(ask.Form);
         }
         Changed?.Invoke();
         return true;
@@ -160,6 +162,39 @@ public sealed class PickController
         if (_pendingAsk?.Id != askId || outcome.Result == ControlAskOutcome.Pending) return false;
         Asks.Retain(askId, outcome);
         _pendingAsk = null;
+        _askDraft = null;
+        return true;
+    }
+
+    /// <summary>The pending question's unsubmitted input; it lives as long as PendingAsk.</summary>
+    public AskDraft? AskDraft
+    {
+        get { lock (_gate) return _askDraft; }
+    }
+
+    /// <summary>Edits the pending question's draft; a stale id, from a dialog already resolved,
+    /// changes nothing. Changed is not raised: the edit comes from the dialog that shows it.</summary>
+    public bool UpdateAskDraft(string askId, Action<AskDraft> change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        lock (_gate)
+        {
+            if (_pendingAsk?.Id != askId || _askDraft is not { } draft) return false;
+            change(draft);
+            return true;
+        }
+    }
+
+    /// <summary>Answers the pending question with the button at index and the current draft.</summary>
+    public bool AnswerAsk(string askId, int index)
+    {
+        lock (_gate)
+        {
+            if (_pendingAsk is not { } ask || ask.Id != askId || ask.Answer(index, _askDraft) is not { } outcome
+                || !FinishAskLocked(askId, outcome))
+                return false;
+        }
+        Changed?.Invoke();
         return true;
     }
 

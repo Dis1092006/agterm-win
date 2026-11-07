@@ -130,7 +130,46 @@ public class AskCommandsTests
     [InlineData("--pane requires a session", "Question", "--button", "ok", "--style", "gui", "--pane-id", "token")]
     [InlineData("--pane requires a session", "Question", "--button", "ok", "--style", "gui", "--pane", "left", "--pane-id", "token")]
     [InlineData("--pane must be left or right", "Question", "--button", "ok", "--target", "active", "--pane", "scratch")]
+    [InlineData("--hotkey requires --button", "Question", "--input", "line", "--hotkey", "ok=o")]
     public void InvalidSyntaxIsRefused(string expected, params string[] argv) => Assert.Equal(expected, Rejection(argv));
+
+    [Fact]
+    public void InputFormNeedsNoButtonsAndMapsItsOptions()
+    {
+        var request = Open("Name", "--input", "multiline", "--value", "draft", "--placeholder", "type here", "--cancel", "cancel").MakeRequest();
+
+        Assert.Null(request.Args!.Buttons);
+        Assert.Equal("{\"cmd\":\"ask.open\",\"args\":{\"title\":\"Name\",\"style\":\"terminal\",\"align\":\"right\",\"cancelButton\":\"cancel\",\"input\":\"multiline\",\"placeholder\":\"type here\",\"value\":\"draft\"}}",
+            ControlJson.Serialize(request));
+    }
+
+    [Fact]
+    public void FormKeepsCallerButtons()
+    {
+        var args = Open("Name", "--input", "line", "--button", "save=Save", "--button", "skip=Skip", "--cancel", "skip").MakeRequest().Args!;
+
+        Assert.Equal(new[] { "save", "skip" }, args.Buttons!.Select(button => button.Id));
+        Assert.Equal("skip", args.CancelButton);
+        Assert.Equal("line", args.Input);
+    }
+
+    [Fact]
+    public void APlainAskMapsItsCancelButton() =>
+        Assert.Equal("no", Open("Q", "--button", "yes", "--button", "no", "--cancel", "no").MakeRequest().Args!.CancelButton);
+
+    [Fact]
+    public void OpenHelpExplainsTheInputForm()
+    {
+        var open = AskCommands.Build(new CommandBindings()).Subcommands.Single(c => c.Name == "open");
+        string? Help(string option) => open.Options.Single(o => o.Name == option).Description;
+
+        Assert.Equal("Ask a question and wait for its button answer. --input adds a text field; it defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text.",
+            open.Description);
+        Assert.Equal("ID of the button that ends the dialog like Esc, returning nothing.", Help("--cancel"));
+        Assert.Equal("Add a text field: line or multiline.", Help("--input"));
+        Assert.Equal("Initial text of the --input field.", Help("--value"));
+        Assert.Equal("Hint shown while the --input field is empty.", Help("--placeholder"));
+    }
 
     [Fact]
     public void ResultAndCancelRouteTheIdAndWindow()

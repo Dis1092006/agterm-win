@@ -675,4 +675,222 @@ public class XtermPageAskLiveTests
         Assert.True(narrow.RootElement.GetProperty("column").GetBoolean());
         Assert.True(narrow.RootElement.GetProperty("stacked").GetBoolean());
     }
+
+    private static string InputPayload(string askId, string mode, string value) => $$$"""
+        {"askId":"{{{askId}}}","paneId":"right","coveredPaneIds":["right"],"title":"Name","message":null,
+         "buttons":[{"runs":[{"text":"OK","underline":false}],"destructive":false},{"runs":[{"text":"Cancel","underline":false}],"destructive":false}],
+         "highlighted":0,"align":"right","width":null,"input":{"mode":"{{{mode}}}","value":"{{{value}}}","placeholder":"type here"}}
+        """;
+
+    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootInputAsync(string mode, string value = "draft")
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "right", "Shell")));
+        await _webView.RunAsync<object?>(_ => { view.Focus(); return Task.FromResult<object?>(null); });
+        await Task.Delay(500);
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{InputPayload("IN", mode, value)}}); return 1; })()""");
+        return (page, view);
+    }
+
+    private const string Field = "document.querySelector('.ask-input')";
+
+    [Theory]
+    [InlineData("line", "INPUT")]
+    [InlineData("multiline", "TEXTAREA")]
+    public async Task An_input_question_draws_its_field_full_width_and_focuses_it(string mode, string tag)
+    {
+        var (_, view) = await BootInputAsync(mode);
+
+        using var json = JsonDocument.Parse(await EvalAsync(view, $$"""
+            (() => {
+                const field = {{Field}};
+                const panel = document.querySelector('.ask-panel');
+                const area = document.querySelector('.ask-layer').getBoundingClientRect();
+                return {
+                    tag: field.tagName, value: field.value, placeholder: field.placeholder,
+                    focused: document.activeElement === field,
+                    beforeButtons: field.compareDocumentPosition(document.querySelector('.ask-buttons')) === Node.DOCUMENT_POSITION_FOLLOWING,
+                    fullWidth: Math.abs(panel.getBoundingClientRect().width - Math.min(area.width * 0.9, parseFloat(panel.style.maxWidth))) < 1,
+                    rows: field.rows ?? null,
+                };
+            })()
+            """));
+        var root = json.RootElement;
+        Assert.Equal(tag, root.GetProperty("tag").GetString());
+        Assert.Equal("draft", root.GetProperty("value").GetString());
+        Assert.Equal("type here", root.GetProperty("placeholder").GetString());
+        Assert.True(root.GetProperty("focused").GetBoolean());
+        Assert.True(root.GetProperty("beforeButtons").GetBoolean());
+        Assert.True(root.GetProperty("fullWidth").GetBoolean());
+        if (mode == "multiline") Assert.True(root.GetProperty("rows").GetInt32() >= 5);
+    }
+
+    [Fact]
+    public async Task Typing_in_the_field_posts_the_draft_and_never_reaches_the_terminal()
+    {
+        var (page, view) = await BootInputAsync("line", "");
+        var drafts = new EventRecorder<string>();
+        page.AskDraftReceived += (askId, text) => drafts.Add(askId + "/" + text);
+        var intents = new EventRecorder<string>();
+        page.AskIntentReceived += (_, intent) => intents.Add(intent.GetType().Name);
+
+        await EvalAsync(view, "(() => { document.execCommand('insertText', false, 'ab'); document.execCommand('insertText', false, 'y'); return 1; })()");
+        await WaitUntilAsync(() => drafts.Count >= 2);
+
+        Assert.Equal(new[] { "IN/ab", "IN/aby" }, drafts);
+        Assert.Empty(intents);
+    }
+
+    private const string KeyHelper = """
+        const field = document.querySelector('.ask-input');
+        const key = (key, code, extra) => field.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key, code, bubbles: true, cancelable: true }, extra || {})));
+        """;
+
+    [Fact]
+    public async Task A_line_field_answers_on_enter_and_moves_the_highlight_on_tab()
+    {
+        var (page, view) = await BootInputAsync("line");
+        var intents = new EventRecorder<string>();
+        page.AskIntentReceived += (_, intent) => intents.Add(intent.GetType().Name);
+
+        var prevented = await EvalAsync(view, $$"""
+            (() => {
+                {{KeyHelper}}
+                return [key('Tab', 'Tab'), key('Tab', 'Tab', { shiftKey: true }), key('Enter', 'Enter'), key('Escape', 'Escape'),
+                        key('ArrowLeft', 'ArrowLeft'), key('y', 'KeyY'), key('Enter', 'Enter', { isComposing: true })].map(r => !r);
+            })()
+            """);
+        await Task.Delay(200);
+
+        Assert.Equal("[true,true,true,true,false,false,false]", prevented);
+        Assert.Equal(new[] { "Forward", "Backward", "Activate", "Cancel" }, intents);
+    }
+
+    [Fact]
+    public async Task A_multiline_field_takes_enter_as_a_newline_and_answers_on_ctrl_enter()
+    {
+        var (page, view) = await BootInputAsync("multiline");
+        var intents = new EventRecorder<string>();
+        page.AskIntentReceived += (_, intent) => intents.Add(intent.GetType().Name);
+
+        var prevented = await EvalAsync(view, $$"""
+            (() => {
+                {{KeyHelper}}
+                return [key('Enter', 'Enter'), key('Enter', 'Enter', { shiftKey: true }), key('Enter', 'Enter', { ctrlKey: true, shiftKey: true }),
+                        key('Enter', 'Enter', { ctrlKey: true })].map(r => !r);
+            })()
+            """);
+        await Task.Delay(200);
+
+        Assert.Equal("[false,false,false,true]", prevented);
+        Assert.Equal(new[] { "Activate" }, intents);
+    }
+
+    [Fact]
+    public async Task Native_edit_chords_stay_in_the_field_and_window_chords_reach_the_host()
+    {
+        var (page, view) = await BootInputAsync("line");
+        await _webView.RunAsync(_ => page.SetInterceptChordsAsync(new[] { "c", "v", "x", "z", "y", "a", "w" }
+            .Select(key => new Core.Keymap.PhysicalChord(true, false, false, key))));
+        var chords = new EventRecorder<string>();
+        page.ChordPressed += (paneId, chord) => chords.Add(paneId + ":" + chord.Key);
+
+        var prevented = await EvalAsync(view, $$"""
+            (() => {
+                {{KeyHelper}}
+                return ['c', 'v', 'x', 'z', 'y', 'a', 'w'].map(k => !key(k, 'Key' + k.toUpperCase(), { ctrlKey: true }));
+            })()
+            """);
+        await Task.Delay(200);
+
+        Assert.Equal("[false,false,false,false,false,false,true]", prevented);
+        Assert.Equal(new[] { "right:w" }, chords);
+    }
+
+    [Theory]
+    [InlineData("line", "a\\tb", "kept")]
+    [InlineData("line", "a\\nb", "kept")]
+    [InlineData("multiline", "a\\u0001b", "kept")]
+    [InlineData("multiline", "a\\u007f", "kept")]
+    [InlineData("multiline", "a\\tb\\nc", "kepta\\tb\\nc")]
+    [InlineData("multiline", "a\\r\\nb", "kepta\\nb")]
+    public async Task An_insert_with_a_forbidden_control_is_refused_whole(string mode, string inserted, string expected)
+    {
+        var (_, view) = await BootInputAsync(mode, "kept");
+
+        var value = await EvalAsync(view, $$"""
+            (() => {
+                const field = {{Field}};
+                field.setSelectionRange(field.value.length, field.value.length);
+                const data = new DataTransfer();
+                data.setData('text/plain', "{{inserted}}");
+                field.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+                return field.value;
+            })()
+            """);
+
+        Assert.Equal(JsonSerializer.Deserialize<string>("\"" + expected + "\""), JsonSerializer.Deserialize<string>(value));
+    }
+
+    [Fact]
+    public async Task An_edit_past_the_cap_is_refused_and_one_that_fits_is_taken()
+    {
+        var (_, view) = await BootInputAsync("line", "");
+
+        var lengths = await EvalAsync(view, $$"""
+            (() => {
+                const field = {{Field}};
+                document.execCommand('insertText', false, 'x'.repeat(65535));
+                const first = field.value.length;
+                document.execCommand('insertText', false, 'é');
+                const second = field.value.length;
+                document.execCommand('insertText', false, 'y');
+                return [first, second, field.value.length];
+            })()
+            """);
+
+        Assert.Equal("[65535,65535,65536]", lengths);
+    }
+
+    [Fact]
+    public async Task A_redraw_of_the_same_question_keeps_what_the_user_typed()
+    {
+        var (_, view) = await BootInputAsync("line", "");
+
+        var value = await EvalAsync(view, $$"""
+            (() => {
+                document.execCommand('insertText', false, 'typed');
+                agterm.applyAsk({{InputPayload("IN", "line", "stale")}});
+                return {{Field}}.value;
+            })()
+            """);
+
+        Assert.Equal("\"typed\"", value);
+    }
+
+    [Fact]
+    public async Task Focus_moving_between_the_layer_and_the_field_stays_inside_the_question()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "right", "Shell")));
+        await _webView.RunAsync<object?>(_ => { view.Focus(); return Task.FromResult<object?>(null); });
+        await Task.Delay(500);
+        var focus = new System.Collections.Concurrent.ConcurrentQueue<string?>();
+        page.AskFocusChanged += focus.Enqueue;
+
+        var refocused = await EvalAsync(view, $$"""
+            (() => {
+                agterm.applyAsk({{InputPayload("IN", "line", "")}});
+                document.querySelector('.ask-layer').focus();
+                document.querySelector('.ask-layer').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+                return document.activeElement === {{Field}};
+            })()
+            """);
+        await Task.Delay(300);
+
+        Assert.Equal("true", refocused);
+        Assert.Equal(new string?[] { "IN" }, focus.ToArray());
+    }
 }

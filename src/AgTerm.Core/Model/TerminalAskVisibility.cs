@@ -2,12 +2,14 @@ namespace AgTerm.Core.Model;
 
 /// <summary>A terminal question the window draws now: its session, the pane it covers and that
 /// pane's page id, or the whole session area when Pane is null. CoveredPaneIds are the page panes
-/// whose focus goes to the question; the quick terminal is never one of them.</summary>
+/// whose focus goes to the question; the quick terminal is never one of them. DraftText is the
+/// session's saved field text, null for a question without a field.</summary>
 public sealed record TerminalAskPlacement(Guid SessionId, PendingAsk Ask, OverlayPane? Pane, string? PaneId,
-                                          IReadOnlyList<string> CoveredPaneIds)
+                                          IReadOnlyList<string> CoveredPaneIds, string? DraftText = null)
 {
     /// <summary>By value over the pane list: the window skips a snapshot equal to the last one, and
-    /// a list compared by reference would make every snapshot new.</summary>
+    /// a list compared by reference would make every snapshot new. DraftText is left out: the page
+    /// holds the field text while the question is drawn, so a draft write is not a new snapshot.</summary>
     public bool Equals(TerminalAskPlacement? other) =>
         other is not null && SessionId == other.SessionId && Ask == other.Ask && Pane == other.Pane
         && PaneId == other.PaneId && CoveredPaneIds.SequenceEqual(other.CoveredPaneIds);
@@ -23,12 +25,13 @@ public static class TerminalAskVisibility
         if (zoomActive || dashboardOpen
             || store.ActiveSession is not { AskPending: { } ask } session)
             return null;
+        var draft = ask.Form is AskForm.Input ? session.AskDraft?.Text : null;
         if (session.AskPaneIdentity is null)
-            return new TerminalAskPlacement(session.Id, ask, null, null, SessionPaneIds(session));
+            return new TerminalAskPlacement(session.Id, ask, null, null, SessionPaneIds(session), draft);
         if (session.AskTargetPane is not { } pane || !session.RendersPane(pane) || session.ScratchActive)
             return null;
         var paneId = pane == OverlayPane.Left ? session.Surface?.PaneToken : session.SplitSurface?.PaneToken;
-        return string.IsNullOrWhiteSpace(paneId) ? null : new TerminalAskPlacement(session.Id, ask, pane, paneId, PaneQuestionCovers(session, pane, paneId));
+        return string.IsNullOrWhiteSpace(paneId) ? null : new TerminalAskPlacement(session.Id, ask, pane, paneId, PaneQuestionCovers(session, pane, paneId), draft);
     }
 
     /// <summary>Upstream's overlay belongs to the session's focused side and defers its focus to a

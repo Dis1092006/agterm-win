@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using AgTerm.Core.Protocol;
 
@@ -9,7 +10,8 @@ public sealed record AskAnchor(Guid SessionId, OverlayPane? Pane = null, Guid? P
 
 /// <summary>One question waiting for an answer in its owning session or window. Anchor is set
 /// only for a GUI question opened with a session target; a terminal question keeps its placement
-/// on the session.</summary>
+/// on the session. Form is the text field shown above the buttons, absent for a plain button
+/// ask. CancelId names the button that resolves escaped, as Esc does.</summary>
 public sealed record PendingAsk(
     string Id,
     string Title,
@@ -20,7 +22,107 @@ public sealed record PendingAsk(
     ControlAskStyle Style,
     ControlAskAlignment Align,
     int? Width,
-    AskAnchor? Anchor = null);
+    AskAnchor? Anchor = null,
+    AskForm? Form = null,
+    string? CancelId = null)
+{
+    /// <summary>The outcome of pressing the button at index with draft as the form's input: the
+    /// cancel button escapes with no payload, any other answers with the field text. Null for an
+    /// index outside the buttons.</summary>
+    public ControlAskResult? Answer(int index, AskDraft? draft)
+    {
+        if (index < 0 || index >= Buttons.Count) return null;
+        var button = Buttons[index];
+        if (AskIds.Same(button.Id, CancelId)) return ControlAskResult.Escaped();
+        var answered = ControlAskResult.Answered(button.Id, button.Label, index);
+        return Form switch
+        {
+            AskForm.Input => answered with { Text = (draft ?? new AskDraft(Form)).Text },
+            _ => answered,
+        };
+    }
+}
+
+/// <summary>The optional content an ask shows between its message and its buttons.</summary>
+public abstract record AskForm
+{
+    private AskForm()
+    {
+    }
+
+    public sealed record Input(AskInputForm Field) : AskForm;
+}
+
+/// <summary>An ask's text field: its mode, initial text and the hint shown while it is empty.</summary>
+public sealed record AskInputForm(ControlAskInputMode Mode, string Value = "", string? Placeholder = null)
+{
+    /// <summary>The cap on the prefill and on the field's content, in UTF-8 bytes.</summary>
+    public const int MaxTextBytes = 65_536;
+
+    /// <summary>A C0 control or DEL in text; newline and tab are allowed in a multiline field.</summary>
+    public static bool HasForbiddenControls(string text, ControlAskInputMode mode) =>
+        text.Any(c => (c < 0x20 || c == 0x7F) && (mode == ControlAskInputMode.Line || (c != '\n' && c != '\t')));
+
+    /// <summary>text cut at a character boundary so it fits MaxTextBytes. A character is a text
+    /// element, as Swift's Character is, so a surrogate pair or a combining sequence is never split.</summary>
+    public static string Clamped(string text)
+    {
+        if (Encoding.UTF8.GetByteCount(text) <= MaxTextBytes) return text;
+        var bytes = 0;
+        var kept = 0;
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+        {
+            var element = elements.GetTextElement();
+            bytes += Encoding.UTF8.GetByteCount(element);
+            if (bytes > MaxTextBytes) break;
+            kept += element.Length;
+        }
+        return text[..kept];
+    }
+}
+
+/// <summary>The rules for the GUI dialog's text box. A WinUI TextBox keeps each line break as \r,
+/// so a multiline field converts on the way in and out. An edit over the cap or with a forbidden
+/// control is refused whole.</summary>
+public static class AskFieldText
+{
+    public static string FromTextBox(string text, ControlAskInputMode mode) =>
+        mode == ControlAskInputMode.Multiline ? text.Replace("\r\n", "\n").Replace('\r', '\n') : text;
+
+    public static string ToTextBox(string text, ControlAskInputMode mode) =>
+        mode == ControlAskInputMode.Multiline ? text.Replace('\n', '\r') : text;
+
+    public static bool Accepts(string text, ControlAskInputMode mode) =>
+        !AskInputForm.HasForbiddenControls(text, mode) && Encoding.UTF8.GetByteCount(text) <= AskInputForm.MaxTextBytes;
+
+    /// <summary>The text a paste inserts, or null when it is refused. A Windows clipboard CRLF is one
+    /// newline in a multiline field; a lone \r is still refused.</summary>
+    public static string? PasteInsertion(string clipboard, ControlAskInputMode mode)
+    {
+        var text = mode == ControlAskInputMode.Multiline ? clipboard.Replace("\r\n", "\n") : clipboard;
+        return AskInputForm.HasForbiddenControls(text, mode) ? null : text;
+    }
+}
+
+/// <summary>The user's unsubmitted input, kept by the ask's slot owner so hiding the dialog keeps it.</summary>
+public sealed class AskDraft
+{
+    private string _text;
+
+    /// <summary>Starts from the form's prefill.</summary>
+    public AskDraft(AskForm? form)
+    {
+        _text = form is AskForm.Input input ? AskInputForm.Clamped(input.Field.Value) : "";
+    }
+
+    /// <summary>The input field content, held within AskInputForm.MaxTextBytes.</summary>
+    public string Text
+    {
+        get => _text;
+        set => _text = AskInputForm.Clamped(value ?? "");
+    }
+}
 
 public static class AskIds
 {

@@ -268,6 +268,18 @@ public sealed record ControlArgs
     [JsonPropertyName("destructiveButton")]
     public string? DestructiveButton { get; init; }
 
+    /// <summary>ask.open button id that ends the dialog like Esc, returning escaped with no payload.</summary>
+    [JsonPropertyName("cancelButton")]
+    public string? CancelButton { get; init; }
+
+    /// <summary>ask.open text field mode: line or multiline.</summary>
+    [JsonPropertyName("input")]
+    public string? Input { get; init; }
+
+    /// <summary>ask.open hint shown while the input field is empty.</summary>
+    [JsonPropertyName("placeholder")]
+    public string? Placeholder { get; init; }
+
     /// <summary>Target window (id / prefix / "active" = frontmost) for session/workspace/tree/font
     /// commands.</summary>
     [JsonPropertyName("window")]
@@ -340,6 +352,10 @@ public sealed record ControlArgs
     /// <summary>Populate the dashboard from the window's MRU sessions instead of explicit ids.</summary>
     [JsonPropertyName("mru")]
     public bool? Mru { get; init; }
+
+    /// <summary>ask.open initial text of the input field.</summary>
+    [JsonPropertyName("value")]
+    public string? Value { get; init; }
 
     /// <summary>The SESSION:PANE addresses msg.send --to names; the scalar to keeps its navigation meaning.</summary>
     [JsonPropertyName("recipients")]

@@ -19,10 +19,27 @@ public sealed partial class AppStore
         if (SessionWithId(sessionId) is not { } session || session.AskPending is not null) return false;
         if (!Asks.Register(ask.Id, new AskOwner.Session(sessionId, windowId))) return false;
         session.AskPending = ask;
+        session.AskDraft = new AskDraft(ask.Form);
         session.AskPaneIdentity = paneIdentity;
         AsksChanged?.Invoke();
         return true;
     }
+
+    /// <summary>Edits the pending question's draft; a stale id, from a dialog already resolved,
+    /// changes nothing. No AsksChanged: the edit comes from the dialog that shows it.</summary>
+    public bool UpdateAskDraft(Guid sessionId, string askId, Action<AskDraft> change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        if (SessionWithId(sessionId) is not { } session || session.AskPending?.Id != askId || session.AskDraft is not { } draft)
+            return false;
+        change(draft);
+        return true;
+    }
+
+    /// <summary>Answers the pending question with the button at index and the current draft.</summary>
+    public bool AnswerAsk(Guid sessionId, string askId, int index) =>
+        SessionWithId(sessionId) is { AskPending: { } ask } session && ask.Id == askId
+        && ask.Answer(index, session.AskDraft) is { } outcome && Resolve(session, askId, outcome);
 
     public bool ResolveAsk(Guid sessionId, string askId, ControlAskResult outcome) =>
         SessionWithId(sessionId) is { } session && Resolve(session, askId, outcome);
@@ -48,6 +65,7 @@ public sealed partial class AppStore
         if (session.AskPending?.Id != askId || outcome.Result == ControlAskOutcome.Pending) return false;
         Asks.Retain(askId, outcome);
         session.AskPending = null;
+        session.AskDraft = null;
         session.AskPaneIdentity = null;
         AsksChanged?.Invoke();
         return true;

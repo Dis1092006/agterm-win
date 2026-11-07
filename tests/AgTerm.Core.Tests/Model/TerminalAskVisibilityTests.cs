@@ -53,6 +53,31 @@ public class TerminalAskVisibilityTests
         Assert.Equal(new[] { "right-token" }, placement.CoveredPaneIds);
     }
 
+    // a dialog shown again, after a session switch, starts from what the user typed before
+    [Fact]
+    public void APlacementCarriesTheSessionDraftWithoutComparingIt()
+    {
+        var (store, session) = Selected();
+        var ask = Ask() with { Form = new AskForm.Input(new AskInputForm(ControlAskInputMode.Line, "prefill")) };
+        store.OpenAsk(session.Id, ask, null, WindowId);
+        var before = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal("prefill", before.DraftText);
+
+        store.UpdateAskDraft(session.Id, "ASK", draft => draft.Text = "typed");
+
+        var after = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal("typed", after.DraftText);
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public void APlainQuestionHasNoDraftText()
+    {
+        var (store, session) = Selected();
+        store.OpenAsk(session.Id, Ask(), null, WindowId);
+        Assert.Null(TerminalAskVisibility.For(store, false, false, false)!.DraftText);
+    }
+
     private static void OpenOverlay(Session session)
     {
         session.OverlaySurface = new SpySurface("overlay-token");

@@ -94,6 +94,118 @@ public sealed class TerminalAskNavigatorTests
     public void ANoMatchHotkeyDoesNothing() =>
         Assert.Equal(new TerminalAskResolution.None(), Navigated().Apply("ASK", new AskIntent.Hotkey("z")));
 
+    private static PendingAsk InputAsk(string id = "ASK", ControlAskInputMode mode = ControlAskInputMode.Line) =>
+        new(id, "Name", null,
+            new[] { new ControlAskButton { Id = "ok", Label = "OK" }, new ControlAskButton { Id = "cancel", Label = "Cancel" } },
+            "ok", null, ControlAskStyle.Terminal, ControlAskAlignment.Right, null,
+            Form: new AskForm.Input(new AskInputForm(mode, "prefill", "hint")), CancelId: "cancel");
+
+    private static TerminalAskPlacement InputPlacement(PendingAsk ask, string? draft) =>
+        Placement(ask) with { DraftText = draft };
+
+    [Fact]
+    public void AnInputAskShowsItsFieldWithTheSessionDraft()
+    {
+        var view = new TerminalAskNavigator().Present(InputPlacement(InputAsk(mode: ControlAskInputMode.Multiline), "typed"))!;
+
+        Assert.Equal(new TerminalAskInputView("multiline", "typed", "hint"), view.Input);
+        Assert.Null(new TerminalAskNavigator().Present(Placement(Ask()))!.Input);
+    }
+
+    [Fact]
+    public void TheAnswerCarriesTheLatestDraft()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(InputPlacement(InputAsk(), "prefill"));
+
+        Assert.True(navigator.UpdateDraft("ASK", "hello"));
+
+        Assert.Equal(new TerminalAskResolution.Resolve(SessionId, "ASK", ControlAskResult.Answered("ok", "OK", 0) with { Text = "hello" }),
+            navigator.Apply("ASK", new AskIntent.Activate()));
+    }
+
+    [Fact]
+    public void TheCancelButtonEscapesWithoutText()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(InputPlacement(InputAsk(), "x"));
+        var moved = Assert.IsType<TerminalAskResolution.Redraw>(navigator.Apply("ASK", new AskIntent.Forward()));
+        Assert.Equal(1, moved.View.Highlighted);
+
+        Assert.Equal(new TerminalAskResolution.Resolve(SessionId, "ASK", ControlAskResult.Escaped()),
+            navigator.Apply("ASK", new AskIntent.Activate()));
+    }
+
+    [Fact]
+    public void ARedrawShowsTheLatestDraft()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(InputPlacement(InputAsk(), "prefill"));
+        navigator.UpdateDraft("ASK", "typed");
+
+        var moved = Assert.IsType<TerminalAskResolution.Redraw>(navigator.Apply("ASK", new AskIntent.Forward()));
+        Assert.Equal("typed", moved.View.Input!.Value);
+    }
+
+    // a draft write to the store runs off the UI thread and can land after the dialog comes back
+    [Fact]
+    public void TheDraftOutlivesHidingTheSameAsk()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(InputPlacement(InputAsk(), "prefill"));
+        navigator.UpdateDraft("ASK", "newer");
+        navigator.Present(null);
+
+        Assert.Equal("newer", navigator.Present(InputPlacement(InputAsk(), "older"))!.Input!.Value);
+        Assert.Equal("next", navigator.Present(InputPlacement(InputAsk("NEXT"), "next"))!.Input!.Value);
+    }
+
+    [Theory]
+    [InlineData(ControlAskInputMode.Line, "a\tb", false)]
+    [InlineData(ControlAskInputMode.Line, "a\nb", false)]
+    [InlineData(ControlAskInputMode.Multiline, "a\u0001b", false)]
+    [InlineData(ControlAskInputMode.Multiline, "a\r\nb", false)]
+    [InlineData(ControlAskInputMode.Multiline, "a\u007f", false)]
+    [InlineData(ControlAskInputMode.Multiline, "a\tb\nc", true)]
+    [InlineData(ControlAskInputMode.Line, "", true)]
+    public void ADraftWithAForbiddenControlIsRefused(ControlAskInputMode mode, string text, bool accepted)
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(InputPlacement(InputAsk(mode: mode), "kept"));
+
+        Assert.Equal(accepted, navigator.UpdateDraft("ASK", text));
+        Assert.Equal(accepted ? text : "kept", navigator.Present(InputPlacement(InputAsk(mode: mode), "kept"))!.Input!.Value);
+    }
+
+    [Fact]
+    public void ADraftPastTheCapIsRefused()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(InputPlacement(InputAsk(), "kept"));
+
+        Assert.True(navigator.UpdateDraft("ASK", new string('x', AskInputForm.MaxTextBytes)));
+        Assert.False(navigator.UpdateDraft("ASK", new string('x', AskInputForm.MaxTextBytes + 1)));
+    }
+
+    [Fact]
+    public void ADraftForAStaleOrPlainAskIsRefused()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(InputPlacement(InputAsk(), "kept"));
+        Assert.False(navigator.UpdateDraft("OTHER", "x"));
+
+        Assert.False(Navigated().UpdateDraft("ASK", "x"));
+    }
+
+    [Fact]
+    public void TheDrawnQuestionNamesItsSession()
+    {
+        var navigator = new TerminalAskNavigator();
+        Assert.Null(navigator.CurrentSessionId);
+        navigator.Present(InputPlacement(InputAsk(), "kept"));
+        Assert.Equal(SessionId, navigator.CurrentSessionId);
+    }
+
     private static TerminalAskNavigator Navigated()
     {
         var navigator = new TerminalAskNavigator();

@@ -1,9 +1,13 @@
+using System.Text;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 
 namespace AgTerm.Xterm;
 
 public sealed record TerminalAskButtonView(IReadOnlyList<AskLabelRun> Runs, bool Destructive);
+
+/// <summary>A question's text field: Mode is "line" or "multiline".</summary>
+public sealed record TerminalAskInputView(string Mode, string Value, string? Placeholder);
 
 /// <summary>What the page draws for the window's terminal question.</summary>
 public sealed record TerminalAskView(
@@ -15,7 +19,8 @@ public sealed record TerminalAskView(
     IReadOnlyList<TerminalAskButtonView> Buttons,
     int? Highlighted,
     string Align,
-    int? Width);
+    int? Width,
+    TerminalAskInputView? Input = null);
 
 public abstract record TerminalAskResolution
 {
@@ -25,16 +30,23 @@ public abstract record TerminalAskResolution
 }
 
 /// <summary>The keyboard state of the window's terminal question. The page only reports intents;
-/// the highlight lives here, so both styles share AskNavigation. UI thread only.</summary>
+/// the highlight lives here, so both styles share AskNavigation. The field text lives here too:
+/// the store copy is written off the UI thread and can lag, so the answer reads this one. UI
+/// thread only.</summary>
 public sealed class TerminalAskNavigator
 {
     private TerminalAskPlacement? _placement;
     private AskNavigation? _navigation;
+    private string? _draftAskId;
+    private string _draftText = "";
 
     public string? CurrentAskId => _placement?.Ask.Id;
 
+    public Guid? CurrentSessionId => _placement?.SessionId;
+
     /// <summary>The highlight survives a redraw of the same question and resets for a new one or
-    /// after the question was hidden, as upstream's view state does.</summary>
+    /// after the question was hidden, as upstream's view state does. The field text survives a
+    /// hide of the same question and starts from the placement's draft for a new one.</summary>
     public TerminalAskView? Present(TerminalAskPlacement? placement)
     {
         if (placement is null)
@@ -45,8 +57,25 @@ public sealed class TerminalAskNavigator
         }
         if (_placement?.Ask.Id != placement.Ask.Id || _navigation is null)
             _navigation = AskNavigation.For(placement.Ask);
+        if (_draftAskId != placement.Ask.Id)
+        {
+            _draftAskId = placement.Ask.Id;
+            _draftText = placement.DraftText ?? new AskDraft(placement.Ask.Form).Text;
+        }
         _placement = placement;
         return View();
+    }
+
+    /// <summary>Takes the page's field text for the drawn question. Refuses a stale id, a question
+    /// without a field, a forbidden control and text over the cap, keeping the old text.</summary>
+    public bool UpdateDraft(string askId, string text)
+    {
+        if (_placement is not { Ask: { Form: AskForm.Input input } ask } || ask.Id != askId
+            || AskInputForm.HasForbiddenControls(text, input.Field.Mode)
+            || Encoding.UTF8.GetByteCount(text) > AskInputForm.MaxTextBytes)
+            return false;
+        _draftText = text;
+        return true;
     }
 
     public TerminalAskResolution Apply(string askId, AskIntent intent)
@@ -56,8 +85,8 @@ public sealed class TerminalAskNavigator
         return _navigation.Apply(intent) switch
         {
             AskIntentOutcome.Moved => new TerminalAskResolution.Redraw(View()),
-            AskIntentOutcome.Answer answer => new TerminalAskResolution.Resolve(placement.SessionId, askId,
-                ControlAskResult.Answered(placement.Ask.Buttons[answer.Index].Id, placement.Ask.Buttons[answer.Index].Label, answer.Index)),
+            AskIntentOutcome.Answer answer when placement.Ask.Answer(answer.Index, new AskDraft(placement.Ask.Form) { Text = _draftText }) is { } result =>
+                new TerminalAskResolution.Resolve(placement.SessionId, askId, result),
             AskIntentOutcome.Escape => new TerminalAskResolution.Resolve(placement.SessionId, askId, ControlAskResult.Escaped()),
             _ => new TerminalAskResolution.None(),
         };
@@ -85,6 +114,9 @@ public sealed class TerminalAskNavigator
                 ControlAskAlignment.Center => "center",
                 _ => "right",
             },
-            ask.Width);
+            ask.Width,
+            ask.Form is AskForm.Input input
+                ? new TerminalAskInputView(input.Field.Mode == ControlAskInputMode.Multiline ? "multiline" : "line", _draftText, input.Field.Placeholder)
+                : null);
     }
 }

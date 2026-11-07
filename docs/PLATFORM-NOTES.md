@@ -720,6 +720,12 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - `AskRegistry` keeps the pending ids itself. Upstream asks the owner through a closure; here the owner's model is behind the window lock and polls arrive on the pipe thread.
   - `ask.cancel` without `--window` runs in the owner's window, wherever the frontmost window is.
   - A hotkey matches by virtual key, so on a Cyrillic layout the key at the Latin letter's position presses the button. Upstream matches the typed character, and there a hotkey does nothing on a non-Latin layout.
+- `ask.open` text field: `input`, `value`, `placeholder` and `cancelButton` (upstream `96b0a6c6`). A question shows a line or a multiline field, and the answer carries its text as `text`.
+  - A multiline field answers on Ctrl+Enter, where upstream uses Cmd-Return. Enter types a newline there, as upstream.
+  - A paste into a multiline field takes a Windows clipboard CRLF as one newline. A lone `\r` is still refused.
+  - A paste with a line break into a line field is refused whole, as upstream does. A browser input and a WinUI TextBox would cut the text at the break instead.
+  - In the field, a Ctrl edit chord (copy, paste, cut, undo, redo, select all, Insert, Backspace, Delete, arrows, Home, End) stays with the field even when the keymap binds it. Any other chord still goes where it goes over a question without a field.
+  - The `gui` field is a WinUI TextBox, which keeps a line break as `\r`. The draft and the answer get `\n`.
 - `session.hud` (`session.hud.open`, `session.hud.update`, `session.hud.close`, session `hud`): a passive message panel that a script posts over a session through `agtermctl session hud` (upstream `d0bec154`, `1923906e`, `224321c5`, `094dc986`, `9247b96f`, `8e710a6e`, `3ac149e6`).
   - The panel is an HTML layer in the xterm page, drawn from rows the host wraps and sizes. Upstream runs a helper script in a terminal surface and passes it a body file. The port has neither, so `hud helper is not bundled in this build` and `could not write the hud message` never occur.
   - `sizePercent` and `heightPercent` in `tree` come from a cell the page measures in CSS pixels, in the terminal's font. For the same text they differ from the numbers macOS reports; the clamp rules are the same.

@@ -206,8 +206,14 @@ public sealed partial class ControlDispatcher
         var args = request.Args;
         if (args?.Title is not { } title || string.IsNullOrWhiteSpace(title))
             return Err("ask.open requires a title");
-        if (args.Buttons is not { } buttons)
+        var (form, formError) = ParseAskForm(args);
+        if (formError is not null)
+            return Err(formError);
+        var generated = args.Buttons is null && form is not null;
+        if ((args.Buttons ?? (generated ? AskFormButtons : null)) is not { } buttons)
             return Err("ask.open requires buttons");
+        var defaultButton = args.DefaultButton ?? (generated ? "ok" : null);
+        var cancelButton = args.CancelButton ?? (generated ? "cancel" : null);
         if (buttons.Length == 0)
             return Err("ask.open requires at least one button");
         if (buttons.Length > ControlAskButton.MaxButtons)
@@ -223,13 +229,15 @@ public sealed partial class ControlDispatcher
         if (CommandRestore.HasControlCharacter(title) || CommandRestore.HasControlCharacter(args.Message ?? "")
             || buttons.Any(button => CommandRestore.HasControlCharacter(button.Label)))
             return Err("ask text must not contain control characters");
-        foreach (var (role, id) in new[] { ("default", args.DefaultButton), ("destructive", args.DestructiveButton) })
+        foreach (var (role, id) in new[] { ("default", defaultButton), ("destructive", args.DestructiveButton), ("cancel", cancelButton) })
         {
             if (id is not null && Array.IndexOf(ids, id.Normalize(NormalizationForm.FormC)) < 0)
                 return Err($"unknown {role} button: {id}");
         }
-        if (args.DestructiveButton is not null && AskIds.Same(args.DefaultButton, args.DestructiveButton))
+        if (args.DestructiveButton is not null && AskIds.Same(defaultButton, args.DestructiveButton))
             return Err("default button must not be destructive");
+        if (form is AskForm.Input && buttons.Any(button => button.Hotkey is not null))
+            return Err("ask input does not take hotkeys");
         if (ControlAskStyles.FromWire(args.Style ?? "terminal") is not { } style)
             return Err("unknown style");
         if (ControlAskAlignments.FromWire(args.Align ?? "right") is not { } align)
@@ -248,12 +256,40 @@ public sealed partial class ControlDispatcher
             title,
             args.Message,
             buttons.Select(button => button with { Hotkey = button.Hotkey?.ToLowerInvariant() }).ToArray(),
-            args.DefaultButton,
+            defaultButton,
             args.DestructiveButton,
             style,
             align,
-            args.Width);
+            args.Width,
+            Form: form,
+            CancelId: cancelButton);
         return _actions.OpenAsk(ask, request.Target, args.Window, new ControlAskPlacement(pane, args.PaneId), args.Follow == true);
+    }
+
+    private static readonly ControlAskButton[] AskFormButtons =
+    {
+        new() { Id = "ok", Label = "OK" },
+        new() { Id = "cancel", Label = "Cancel" },
+    };
+
+    /// <summary>Port of upstream parseAskForm: the optional text field, refusing its arguments
+    /// without it. Returns no form and no error for a plain button ask.</summary>
+    private static (AskForm? Form, string? Error) ParseAskForm(ControlArgs args)
+    {
+        if (args.Input is not { } input)
+        {
+            if (args.Value is not null) return (null, "value requires input");
+            if (args.Placeholder is not null) return (null, "placeholder requires input");
+            return (null, null);
+        }
+        if (ControlAskInputModes.FromWire(input) is not { } mode)
+            return (null, "unknown input");
+        var value = args.Value ?? "";
+        if (Encoding.UTF8.GetByteCount(value) > AskInputForm.MaxTextBytes)
+            return (null, $"ask text too long (max {AskInputForm.MaxTextBytes} bytes)");
+        if (CommandRestore.HasControlCharacter(args.Placeholder ?? "") || AskInputForm.HasForbiddenControls(value, mode))
+            return (null, "ask text must not contain control characters");
+        return (new AskForm.Input(new AskInputForm(mode, value, args.Placeholder)), null);
     }
 
     private static string? HotkeyRejection(IEnumerable<ControlAskButton> buttons)
