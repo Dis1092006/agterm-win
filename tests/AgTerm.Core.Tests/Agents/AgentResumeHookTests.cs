@@ -51,7 +51,8 @@ public class AgentResumeHookTests
             AgentResumeHook.Decide(Agent("claude"), AgentHookEvent.Start, ClaudeStart(Id)));
         Assert.Equal(AgentResumeDecision.Pin("copilot --resume=" + Id),
             AgentResumeHook.Decide(Agent("copilot"), AgentHookEvent.Start, CopilotStart(Id)));
-        Assert.Equal(AgentResumeDecision.Pin("codex resume " + Id),
+        // --no-daemon keeps the resumed session, and its hooks, in its own pane
+        Assert.Equal(AgentResumeDecision.Pin("codex --no-daemon resume " + Id),
             AgentResumeHook.Decide(Agent("codex"), AgentHookEvent.Start, CodexStart(Id)));
     }
 
@@ -119,8 +120,15 @@ public class AgentResumeHookTests
     [InlineData("anything")]
     public void Codex_clears_on_any_end(string reason)
     {
-        Assert.Equal(AgentResumeDecision.ClearIfPinned("codex resume " + Id),
+        // 0.1.107 pinned "codex resume <id>", so that pin clears too
+        Assert.Equal(AgentResumeDecision.ClearIfPinned("codex --no-daemon resume " + Id, "codex resume " + Id),
             AgentResumeHook.Decide(Agent("codex"), AgentHookEvent.End, CodexEnd(reason)));
+    }
+
+    [Fact]
+    public void Claude_end_has_no_legacy_command()
+    {
+        Assert.Null(AgentResumeHook.Decide(Agent("claude"), AgentHookEvent.End, ClaudeEnd("logout")).LegacyCommand);
     }
 
     [Fact]

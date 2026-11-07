@@ -176,7 +176,7 @@ public sealed class AgentHookCommandTests
         var run = Hook(["codex", "end"], End("other"), PaneEnvironment, request => request.Cmd switch
         {
             WireCommand.Tree when request.Args?.Window is not null => new ControlResponse { Ok = false, Error = "no such window: WIN-1" },
-            WireCommand.Tree => TreeWith("codex resume " + Id),
+            WireCommand.Tree => TreeWith("codex --no-daemon resume " + Id),
             _ => new ControlResponse { Ok = true },
         });
 
@@ -185,6 +185,30 @@ public sealed class AgentHookCommandTests
         Assert.Equal(3, run.Sent.Count);
         Assert.Null(run.Sent[1].Request.Args?.Window);
         Assert.Equal("clear", run.Sent[2].Request.Args?.Mode);
+    }
+
+    [Fact]
+    public void Codex_hook_from_the_shared_app_server_sends_nothing()
+    {
+        // Codex 0.167 runs hooks in its shared app-server, which carries the AGTERM_* of another pane
+        var environment = new Dictionary<string, string?>(PaneEnvironment) { ["CODEX_DAEMON_SHUTDOWN_SOCKET"] = "1" };
+
+        var run = Hook(["codex", "start"], Start(Id), environment);
+
+        Assert.Equal(0, run.Exit);
+        Assert.Empty(run.Sent);
+        Assert.Equal("", run.Error);
+    }
+
+    [Fact]
+    public void Codex_end_clears_the_pin_from_before_no_daemon()
+    {
+        var run = Hook(["codex", "end"], End("other"), PaneEnvironment, request => request.Cmd == WireCommand.Tree
+            ? TreeWith("codex resume " + Id)
+            : new ControlResponse { Ok = true });
+
+        Assert.Equal(WireCommand.SessionRestore, run.Sent[^1].Request.Cmd);
+        Assert.Equal("clear", run.Sent[^1].Request.Args?.Mode);
     }
 
     [Fact]
