@@ -1,5 +1,6 @@
 using AgTerm.App;
 using AgTerm.Core.Model;
+using AgTerm.Core.Protocol;
 
 namespace AgTerm.Xterm.Tests;
 
@@ -53,6 +54,67 @@ public sealed class AskDialogRulesTests
         Assert.Null(AskKeys.Intent(0x31, false, false, false, false));
         Assert.Null(AskKeys.Intent(0x20, false, false, false, false));
     }
+
+    [Theory]
+    [InlineData(ControlAskInputMode.Line)]
+    [InlineData(ControlAskInputMode.Multiline)]
+    public void InTheFieldTabMovesAndEscapeCancels(ControlAskInputMode mode)
+    {
+        Assert.Equal(new AskIntent.Forward(), AskKeys.FieldIntent(Tab, false, false, false, false, mode));
+        Assert.Equal(new AskIntent.Backward(), AskKeys.FieldIntent(Tab, true, false, false, false, mode));
+        Assert.Equal(new AskIntent.Cancel(), AskKeys.FieldIntent(Escape, false, false, false, false, mode));
+    }
+
+    [Fact]
+    public void InALineFieldEnterAnswers()
+    {
+        Assert.Equal(new AskIntent.Activate(), AskKeys.FieldIntent(Enter, false, false, false, false, ControlAskInputMode.Line));
+        Assert.Null(AskKeys.FieldIntent(Enter, false, true, false, false, ControlAskInputMode.Line));
+    }
+
+    [Fact]
+    public void InAMultilineFieldCtrlEnterAnswersAndEnterTypesANewline()
+    {
+        Assert.Equal(new AskIntent.Activate(), AskKeys.FieldIntent(Enter, false, true, false, false, ControlAskInputMode.Multiline));
+        Assert.Null(AskKeys.FieldIntent(Enter, false, false, false, false, ControlAskInputMode.Multiline));
+        Assert.Null(AskKeys.FieldIntent(Enter, true, true, false, false, ControlAskInputMode.Multiline));
+        Assert.Null(AskKeys.FieldIntent(Enter, false, true, true, false, ControlAskInputMode.Multiline));
+    }
+
+    [Theory]
+    [InlineData(0x59)]
+    [InlineData(Left)]
+    [InlineData(Down)]
+    [InlineData(0x20)]
+    public void InTheFieldLettersArrowsAndSpaceStayWithTheText(int key) =>
+        Assert.Null(AskKeys.FieldIntent(key, false, false, false, false, ControlAskInputMode.Line));
+
+    [Theory]
+    [InlineData(0x43)]
+    [InlineData(0x56)]
+    [InlineData(0x58)]
+    [InlineData(0x5A)]
+    [InlineData(0x59)]
+    [InlineData(0x41)]
+    [InlineData(0x2D)]
+    [InlineData(0x08)]
+    [InlineData(0x2E)]
+    [InlineData(Left)]
+    [InlineData(Right)]
+    [InlineData(Up)]
+    [InlineData(Down)]
+    [InlineData(0x24)]
+    [InlineData(0x23)]
+    public void CtrlEditKeysBelongToTheField(int key)
+    {
+        Assert.True(AskKeys.IsFieldEditChord(key, control: true, alt: false));
+        Assert.False(AskKeys.IsFieldEditChord(key, control: true, alt: true));
+        Assert.False(AskKeys.IsFieldEditChord(key, control: false, alt: false));
+    }
+
+    [Fact]
+    public void OtherCtrlKeysAreWindowChords() =>
+        Assert.False(AskKeys.IsFieldEditChord(0x57, control: true, alt: false));
 
     [Theory]
     [InlineData(1000, 13, null, 576)]

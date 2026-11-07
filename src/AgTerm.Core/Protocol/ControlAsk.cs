@@ -56,6 +56,10 @@ public sealed record ControlAskResult
     [JsonPropertyName("index")]
     public int? Index { get; init; }
 
+    /// <summary>An input ask's field content on an answer, whitespace and newlines kept.</summary>
+    [JsonPropertyName("text")]
+    public string? Text { get; init; }
+
     public static ControlAskResult Pending() => new() { Result = ControlAskOutcome.Pending };
 
     public static ControlAskResult Escaped() => new() { Result = ControlAskOutcome.Escaped };
@@ -81,6 +85,26 @@ public enum ControlAskStyle
 {
     Terminal,
     Gui,
+}
+
+/// <summary>A one-line ask text field, where Enter answers, or a multiline one, where Enter
+/// inserts a newline and Ctrl+Enter answers.</summary>
+public enum ControlAskInputMode
+{
+    Line,
+    Multiline,
+}
+
+public static class ControlAskInputModes
+{
+    public static ControlAskInputMode? FromWire(string wire) => wire switch
+    {
+        "line" => ControlAskInputMode.Line,
+        "multiline" => ControlAskInputMode.Multiline,
+        _ => null,
+    };
+
+    public static string Wire(ControlAskInputMode mode) => mode == ControlAskInputMode.Multiline ? "multiline" : "line";
 }
 
 public enum ControlAskAlignment

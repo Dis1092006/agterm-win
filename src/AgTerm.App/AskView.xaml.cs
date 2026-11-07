@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.System;
 
@@ -30,6 +31,9 @@ public sealed partial class AskView : UserControl
 
     public event Action<string>? Escaped;
 
+    /// <summary>The field's text after each accepted edit.</summary>
+    public event Action<string, string>? DraftChanged;
+
     /// <summary>The window's close_session chord: it dismisses the question instead of closing a session.</summary>
     public Func<VirtualKey, bool>? CancelChord { get; set; }
 
@@ -47,7 +51,7 @@ public sealed partial class AskView : UserControl
 
     /// <summary>takeFocus is false for a question sent to a background window: focusing would
     /// activate the window. The host calls FocusPanel when the user activates it.</summary>
-    public void Open(PendingAsk ask, double terminalFontSize, bool takeFocus)
+    public void Open(PendingAsk ask, AskDraft? draft, double terminalFontSize, bool takeFocus)
     {
         ArgumentNullException.ThrowIfNull(ask);
         _ask = ask;
@@ -57,6 +61,7 @@ public sealed partial class AskView : UserControl
         MessageText.Text = ask.Message ?? string.Empty;
         MessageText.Visibility = string.IsNullOrEmpty(ask.Message) ? Visibility.Collapsed : Visibility.Visible;
         Visibility = Visibility.Visible;
+        BuildInput(ask, draft);
         BuildButtons(ask);
         ApplyHighlight();
         ApplyLayout();
@@ -69,6 +74,8 @@ public sealed partial class AskView : UserControl
         _navigation = null;
         _buttons.Clear();
         ButtonHost.Children.Clear();
+        InputBox.Visibility = Visibility.Collapsed;
+        InputBox.Text = string.Empty;
         Visibility = Visibility.Collapsed;
     }
 
@@ -89,7 +96,39 @@ public sealed partial class AskView : UserControl
         // the dialog is modal for the window: focus moved under its backdrop gets no keys; the host
         // focuses the question again when the dialog closes
         if (!IsContentDialogOpen())
-            Focus(FocusState.Programmatic);
+            FocusTarget.Focus(FocusState.Programmatic);
+    }
+
+    private Control FocusTarget => InputBox.Visibility == Visibility.Visible ? InputBox : this;
+
+    private void BuildInput(PendingAsk ask, AskDraft? draft)
+    {
+        if (ask.Form is not AskForm.Input input)
+        {
+            InputBox.Visibility = Visibility.Collapsed;
+            InputBox.Text = string.Empty;
+            return;
+        }
+        var multiline = input.Field.Mode == ControlAskInputMode.Multiline;
+        InputBox.AcceptsReturn = multiline;
+        InputBox.PlaceholderText = input.Field.Placeholder ?? string.Empty;
+        InputBox.Text = AskFieldText.ToTextBox((draft ?? new AskDraft(ask.Form)).Text, input.Field.Mode);
+        InputBox.Select(InputBox.Text.Length, 0);
+        if (multiline)
+        {
+            // a TextBox line is about 1.33 of its font size; the padding and the border come on top
+            var line = Math.Ceiling(InputBox.FontSize * 1.33);
+            var chrome = InputBox.Padding.Top + InputBox.Padding.Bottom
+                + InputBox.BorderThickness.Top + InputBox.BorderThickness.Bottom;
+            InputBox.MinHeight = 5 * line + chrome;
+            InputBox.MaxHeight = 15 * line + chrome;
+        }
+        else
+        {
+            InputBox.ClearValue(MinHeightProperty);
+            InputBox.ClearValue(MaxHeightProperty);
+        }
+        InputBox.Visibility = Visibility.Visible;
     }
 
     private void BuildButtons(PendingAsk ask)
@@ -187,7 +226,7 @@ public sealed partial class AskView : UserControl
 
         Panel.Width = double.NaN;
         Panel.MaxWidth = maxWidth;
-        if (ask.Width is not null) Panel.Width = maxWidth;
+        if (ask.Width is not null || ask.Form is AskForm.Input) Panel.Width = maxWidth;
         PanelScroll.MaxHeight = Math.Max(
             0, AskPanelLayout.MaxPanelHeight(_anchor.Height) - 2 * AskPanelLayout.PanelPadding - border.Top - border.Bottom);
         Panel.Measure(new Size(maxWidth, double.PositiveInfinity));
@@ -242,6 +281,8 @@ public sealed partial class AskView : UserControl
         // a GUI question is modal for the window: no key reaches the window's chords or focus navigation
         e.Handled = true;
         if (_ask is not { } ask) return;
+        // a key the field leaves unhandled is text there, not a hotkey
+        if (IsInField(e.OriginalSource)) return;
         if (CancelChord?.Invoke(e.Key) == true)
         {
             Escaped?.Invoke(ask.Id);
@@ -250,6 +291,70 @@ public sealed partial class AskView : UserControl
         var intent = AskKeys.Intent((int)e.Key, IsDown(VirtualKey.Shift), IsDown(VirtualKey.Control),
             IsDown(VirtualKey.Menu), IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows));
         if (intent is not null) Handle(intent);
+    }
+
+    private void OnInputPreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (_ask is not { Form: AskForm.Input input } ask) return;
+        var control = IsDown(VirtualKey.Control);
+        var alt = IsDown(VirtualKey.Menu);
+        if (!AskKeys.IsFieldEditChord((int)e.Key, control, alt) && CancelChord?.Invoke(e.Key) == true)
+        {
+            e.Handled = true;
+            Escaped?.Invoke(ask.Id);
+            return;
+        }
+        // during IME composition the key comes as VK_PROCESSKEY, which no rule takes
+        var intent = AskKeys.FieldIntent((int)e.Key, IsDown(VirtualKey.Shift), control, alt,
+            IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows), input.Field.Mode);
+        if (intent is null) return;
+        e.Handled = true;
+        Handle(intent);
+    }
+
+    private void OnInputBeforeTextChanging(TextBox sender, TextBoxBeforeTextChangingEventArgs args)
+    {
+        if (_ask?.Form is AskForm.Input input && !AskFieldText.Accepts(AskFieldText.FromTextBox(args.NewText, input.Field.Mode), input.Field.Mode))
+            args.Cancel = true;
+    }
+
+    private async void OnInputPaste(object sender, TextControlPasteEventArgs e)
+    {
+        e.Handled = true;
+        if (_ask is not { Form: AskForm.Input input } ask) return;
+        string? clipboard;
+        try
+        {
+            var content = Clipboard.GetContent();
+            clipboard = content.Contains(StandardDataFormats.Text) ? await content.GetTextAsync() : null;
+        }
+        catch (Exception)
+        {
+            return; // an unreadable clipboard pastes nothing
+        }
+        if (clipboard is null || _ask?.Id != ask.Id || AskFieldText.PasteInsertion(clipboard, input.Field.Mode) is not { } text)
+            return;
+        var inserted = AskFieldText.ToTextBox(text, input.Field.Mode);
+        var start = InputBox.SelectionStart;
+        var before = InputBox.Text;
+        InputBox.SelectedText = inserted;
+        if (InputBox.Text != before)
+            InputBox.Select(start + inserted.Length, 0);
+    }
+
+    private void OnInputTextChanged(object sender, TextChangedEventArgs e) => PublishDraft();
+
+    private void PublishDraft()
+    {
+        if (_ask is { Form: AskForm.Input input } ask)
+            DraftChanged?.Invoke(ask.Id, AskFieldText.FromTextBox(InputBox.Text, input.Field.Mode));
+    }
+
+    private bool IsInField(object? source)
+    {
+        for (var node = source as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
+            if (ReferenceEquals(node, InputBox)) return true;
+        return false;
     }
 
     private void OnLosingFocus(UIElement sender, LosingFocusEventArgs args)
@@ -300,6 +405,8 @@ public sealed partial class AskView : UserControl
                     _buttons[highlighted].StartBringIntoView();
                 break;
             case AskIntentOutcome.Answer answer:
+                // TextChanged comes later on the dispatcher; the answer must read the last edit
+                PublishDraft();
                 Answered?.Invoke(ask.Id, answer.Index);
                 break;
             case AskIntentOutcome.Escape:

@@ -189,6 +189,21 @@
       .ask-button.ask-destructive {
         font-weight: bold;
       }
+      .ask-input {
+        box-sizing: border-box;
+        width: 100%;
+        margin: 0;
+        border: 1px solid;
+        border-radius: 0;
+        background: transparent;
+        font: inherit;
+        line-height: 1.2;
+        outline: none;
+        resize: none;
+      }
+      .ask-input::placeholder {
+        color: var(--ask-placeholder);
+      }
       /* above the overlay layer (20), under a pane question (60) and the search bar (70). Visible over
          a base pane a full-size scratch hides, because upstream draws the hud above the scratch */
       .hud-layer {

@@ -299,4 +299,112 @@ public class ControlDispatcherAskTests
             new MockControlActions.Call.AskCancel("ask-id", null),
         }, actions.Calls);
     }
+
+    private static async Task<PendingAsk> Opened(ControlArgs args)
+    {
+        var (response, actions) = await Open(args);
+        Assert.True(response!.Ok, response.Error);
+        return OpenCall(actions).Ask;
+    }
+
+    private static AskForm.Input InputForm(ControlAskInputMode mode, string value = "", string? placeholder = null) =>
+        new(new AskInputForm(mode, value, placeholder));
+
+    [Fact]
+    public async Task AFormWithoutButtonsGetsOkAndCancelWithOkDefault()
+    {
+        var ask = await Opened(new ControlArgs { Title = "Name", Input = "line" });
+        Assert.Equal(new[] { Button("ok", "OK"), Button("cancel", "Cancel") }, ask.Buttons);
+        Assert.Equal("ok", ask.DefaultId);
+        Assert.Equal("cancel", ask.CancelId);
+        Assert.Equal(InputForm(ControlAskInputMode.Line), ask.Form);
+    }
+
+    [Fact]
+    public async Task CallerButtonsReplaceTheDefaultsAndCancelMayBeTheDefault()
+    {
+        var ask = await Opened(new ControlArgs
+        {
+            Title = "Name", Input = "multiline", Value = "x", Placeholder = "who",
+            Buttons = new[] { Button("save", "Save"), Button("skip", "Skip") }, DefaultButton = "skip", CancelButton = "skip",
+        });
+        Assert.Equal(new[] { "save", "skip" }, ask.Buttons.Select(button => button.Id));
+        Assert.Equal("skip", ask.DefaultId);
+        Assert.Equal("skip", ask.CancelId);
+        Assert.Equal(InputForm(ControlAskInputMode.Multiline, "x", "who"), ask.Form);
+    }
+
+    [Fact]
+    public async Task CallerButtonsWithAFormGetNoGeneratedRoles()
+    {
+        var ask = await Opened(new ControlArgs { Title = "Name", Input = "line", Buttons = new[] { Button("save", "Save") } });
+        Assert.Null(ask.DefaultId);
+        Assert.Null(ask.CancelId);
+    }
+
+    [Fact]
+    public async Task APlainAskStillRequiresButtonsAndHasNoCancelRole()
+    {
+        AssertRejected("ask.open requires buttons", await Open(new ControlArgs { Title = "Go?" }));
+        var ask = await Opened(new ControlArgs { Title = "Go?", Buttons = Ok });
+        Assert.Null(ask.Form);
+        Assert.Null(ask.CancelId);
+        Assert.Null(ask.DefaultId);
+    }
+
+    [Fact]
+    public async Task APlainAskTakesACancelRole() =>
+        Assert.Equal("ok", (await Opened(new ControlArgs { Title = "Go?", Buttons = Ok, CancelButton = "ok" })).CancelId);
+
+    public static TheoryData<ControlArgs, string> InvalidForms => new()
+    {
+        { new ControlArgs { Title = "T", Input = "wide" }, "unknown input" },
+        { new ControlArgs { Title = "T", Input = "" }, "unknown input" },
+        { new ControlArgs { Title = "T", Buttons = Ok, Value = "x" }, "value requires input" },
+        { new ControlArgs { Title = "T", Buttons = Ok, Placeholder = "x" }, "placeholder requires input" },
+        { new ControlArgs { Title = "T", Value = "x" }, "value requires input" },
+        { new ControlArgs { Title = "T", Input = "line", CancelButton = "nope" }, "unknown cancel button: nope" },
+        { new ControlArgs { Title = "T", Buttons = Ok, CancelButton = "nope" }, "unknown cancel button: nope" },
+        { new ControlArgs { Title = "T", Input = "line", Buttons = new[] { Button("ok", "OK", "o") } }, "ask input does not take hotkeys" },
+        { new ControlArgs { Title = "T", Input = "line", Buttons = new[] { Button("ok", "OK", "1") } }, "ask input does not take hotkeys" },
+        { new ControlArgs { Title = "T", Input = "line", Buttons = Array.Empty<ControlAskButton>() }, "ask.open requires at least one button" },
+        { new ControlArgs { Title = "T", Value = "a\tb", Input = "line" }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Value = "a\nb", Input = "line" }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Value = "a\u0007b", Input = "multiline" }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Input = "multiline", Placeholder = "a\nb" }, "ask text must not contain control characters" },
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidForms))]
+    public async Task AnInvalidFormNeverReachesTheHost(ControlArgs args, string error) => AssertRejected(error, await Open(args));
+
+    [Fact]
+    public async Task AFormIsCheckedBeforeTheButtons() =>
+        AssertRejected("unknown input",
+            await Open(new ControlArgs { Title = "T", Input = "wide", Buttons = Array.Empty<ControlAskButton>() }));
+
+    [Fact]
+    public async Task AnInputHotkeyIsRefusedBeforeTheStyle() =>
+        AssertRejected("ask input does not take hotkeys",
+            await Open(new ControlArgs { Title = "T", Input = "line", Style = "bad", Buttons = new[] { Button("ok", "OK", "o") } }));
+
+    [Fact]
+    public async Task ACancelIdMatchesACanonicallyEquivalentButtonId()
+    {
+        var ask = await Opened(new ControlArgs { Title = "T", Buttons = new[] { Button("caf\u00E9", "Cafe") }, CancelButton = "cafe\u0301" });
+        Assert.Equal("cafe\u0301", ask.CancelId);
+    }
+
+    [Fact]
+    public async Task AMultilineValueKeepsItsAllowedControls() =>
+        Assert.Equal(InputForm(ControlAskInputMode.Multiline, "a\nb\tc"),
+            (await Opened(new ControlArgs { Title = "T", Value = "a\nb\tc", Input = "multiline" })).Form);
+
+    [Fact]
+    public async Task TheValueIsCappedInUtf8Bytes()
+    {
+        var fits = string.Concat(Enumerable.Repeat("\u00E9", AskInputForm.MaxTextBytes / 2));
+        await Opened(new ControlArgs { Title = "T", Value = fits, Input = "line" });
+        AssertRejected("ask text too long (max 65536 bytes)", await Open(new ControlArgs { Title = "T", Value = fits + "x", Input = "line" }));
+    }
 }

@@ -102,6 +102,8 @@ public sealed partial class MainWindow : Window
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
     private string? _focusedAskId; // UI-thread confined
+    private (Guid SessionId, string AskId, string Text)? _pendingAskDraft; // UI-thread confined
+    private bool _askDraftWriterRunning; // UI-thread confined
     private TerminalHudPlacement? _presentedHud; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
@@ -224,6 +226,7 @@ public sealed partial class MainWindow : Window
             _paletteTransitions.RunAsync(() => CloseKeybindingsAsync()), "Keyboard shortcuts close failed");
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
         AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
+        AskOverlay.DraftChanged += (askId, text) => _host?.Host.Actions.Pick.UpdateAskDraft(askId, draft => draft.Text = text);
         _contentDialogs.DialogClosed += FocusModalAfterContentDialog;
         TerminalView.SizeChanged += OnTerminalViewSizeChanged;
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
@@ -729,6 +732,7 @@ public sealed partial class MainWindow : Window
         page.DashboardClosed += OnPageDashboardClosed;
         page.AskIntentReceived += OnPageAskIntentReceived;
         page.AskFocusChanged += OnPageAskFocusChanged;
+        page.AskDraftReceived += OnPageAskDraftReceived;
         page.HudLinkRequested += OnPageHudLinkRequested;
         page.TerminalLinkRequested += (_, target, allowPathFallback) => ObserveTaskFault(
             OpenTerminalLinkAsync(target, allowPathFallback), "Open terminal link failed");
@@ -1644,7 +1648,7 @@ public sealed partial class MainWindow : Window
             host.StoreCoordinator.MutateAsync(store => store.SuppressAutoFollow()));
         _shownAskId = pending.Id;
         _terminalFocus.Cancel();
-        AskOverlay.Open(pending, _rendererSettings.FontSize, takeFocus: _windowIsActive);
+        AskOverlay.Open(pending, host.Host.Actions.Pick.AskDraft, _rendererSettings.FontSize, takeFocus: _windowIsActive);
         await UpdateAskAnchorAsync();
     }
 
@@ -1684,12 +1688,11 @@ public sealed partial class MainWindow : Window
 
     private async Task HandleAskAnsweredAsync(string askId, int index)
     {
-        if (_shownAskId != askId || _host is not { } host || host.Host.Actions.Pick.PendingAsk is not { } ask || ask.Id != askId)
+        if (_shownAskId != askId || _host is not { } host || host.Host.Actions.Pick.PendingAsk?.Id != askId)
             return;
         _shownAskId = null;
         AskOverlay.Close();
-        var button = ask.Buttons[index];
-        host.Host.Actions.Pick.ResolveAsk(askId, ControlAskResult.Answered(button.Id, button.Label, index));
+        host.Host.Actions.Pick.AnswerAsk(askId, index);
         await _paletteTransitions.RunAsync(() => FinishPaletteCloseAsync(restoreFocus: false));
         RestoreFocusAfterPick();
     }
@@ -1727,6 +1730,37 @@ public sealed partial class MainWindow : Window
 
     private void OnPageAskFocusChanged(string? askId) =>
         DispatcherQueue.TryEnqueue(() => _focusedAskId = askId);
+
+    // The navigator keeps the text the answer reads. The store copy is for a dialog shown again
+    // after a session switch; separate MutateAsync calls are not ordered, so one writer sends the
+    // latest text at a time.
+    private void OnPageAskDraftReceived(string askId, string text) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_terminalAsks.UpdateDraft(askId, text) || _terminalAsks.CurrentSessionId is not { } sessionId)
+                return;
+            _pendingAskDraft = (sessionId, askId, text);
+            if (!_askDraftWriterRunning)
+                ObserveTaskFault(WriteAskDraftsAsync(), "Ask draft write failed");
+        });
+
+    private async Task WriteAskDraftsAsync()
+    {
+        _askDraftWriterRunning = true;
+        try
+        {
+            while (_pendingAskDraft is { } draft && _host is { } host)
+            {
+                _pendingAskDraft = null;
+                await host.StoreCoordinator.MutateAsync(store =>
+                    store.UpdateAskDraft(draft.SessionId, draft.AskId, saved => saved.Text = draft.Text));
+            }
+        }
+        finally
+        {
+            _askDraftWriterRunning = false;
+        }
+    }
 
     private void OnPageHudLinkRequested(string url) =>
         ObserveTaskFault(Task.Run(() => OpenHudLink(url)), "Open hud link failed");

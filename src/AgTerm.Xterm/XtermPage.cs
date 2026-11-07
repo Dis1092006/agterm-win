@@ -152,6 +152,7 @@ public sealed class XtermPage
             highlighted = view.Highlighted,
             align = view.Align,
             width = view.Width,
+            input = view.Input is { } input ? new { mode = input.Mode, value = input.Value, placeholder = input.Placeholder } : null,
         }, AskScriptLiteral);
         return _host.ExecuteScriptAsync($"agterm.applyAsk({payload})");
     }
@@ -273,6 +274,9 @@ public sealed class XtermPage
 
     /// <summary>The question took the page focus (its id) or lost it (null).</summary>
     public event Action<string?>? AskFocusChanged;
+
+    /// <summary>The user edited the question's text field: its id and the whole new text, not yet checked.</summary>
+    public event Action<string, string>? AskDraftReceived;
 
     /// <summary>A Ctrl+click on a HUD link: the URL under the pointer, not yet checked.</summary>
     public event Action<string>? HudLinkRequested;
@@ -562,6 +566,12 @@ public sealed class XtermPage
         if (msg?.Type == "askFocus")
         {
             AskFocusChanged?.Invoke(msg.AskId);
+            return;
+        }
+        if (msg?.Type == "askDraft")
+        {
+            if (msg is { AskId: { } draftAskId, Text: { } draftText })
+                AskDraftReceived?.Invoke(draftAskId, draftText);
             return;
         }
         if (msg?.Type == "hudLink")

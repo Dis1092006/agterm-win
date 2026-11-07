@@ -27,8 +27,36 @@ public sealed class XtermPageAskTests
 
         var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyAsk"));
         Assert.Contains(
-            """{"askId":"ASK","paneId":"right-token","coveredPaneIds":["right-token"],"title":"Delete?","message":null,"buttons":[{"runs":[{"text":"! ","underline":false},{"text":"D","underline":true},{"text":"elete","underline":false}],"destructive":true}],"highlighted":0,"align":"right","width":null}""",
+            """{"askId":"ASK","paneId":"right-token","coveredPaneIds":["right-token"],"title":"Delete?","message":null,"buttons":[{"runs":[{"text":"! ","underline":false},{"text":"D","underline":true},{"text":"elete","underline":false}],"destructive":true}],"highlighted":0,"align":"right","width":null,"input":null}""",
             script);
+    }
+
+    [Fact]
+    public async Task ApplyAsk_serializes_the_input_field()
+    {
+        var page = await InitializedAsync();
+
+        await page.ApplyAskAsync(new TerminalAskView("ASK", null, new[] { "left-token" }, "Name", null,
+            new[] { new TerminalAskButtonView(new[] { new AskLabelRun("OK", false) }, false) },
+            0, "right", null, new TerminalAskInputView("multiline", "typed", "hint")));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyAsk"));
+        Assert.Contains(""","input":{"mode":"multiline","value":"typed","placeholder":"hint"}}""", script);
+    }
+
+    [Fact]
+    public async Task Ask_drafts_reach_the_host()
+    {
+        var page = await InitializedAsync();
+        var seen = new List<string>();
+        page.AskDraftReceived += (askId, text) => seen.Add(askId + "/" + text);
+
+        _host.RaiseMessage("""{"type":"askDraft","askId":"A","text":"hi\nthere"}""");
+        _host.RaiseMessage("""{"type":"askDraft","askId":"A","text":""}""");
+        _host.RaiseMessage("""{"type":"askDraft","text":"x"}""");
+        _host.RaiseMessage("""{"type":"askDraft","askId":"A"}""");
+
+        Assert.Equal(new[] { "A/hi\nthere", "A/" }, seen);
     }
 
     [Fact]

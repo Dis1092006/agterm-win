@@ -1778,7 +1778,7 @@ function focusAskLayer() {
   if (externalInputOwner) return;
   programmaticFocusPaneId = askState.paneId;
   try {
-    askLayerEl.focus();
+    (askLayerEl.querySelector(".ask-input") ?? askLayerEl).focus();
   } finally {
     programmaticFocusPaneId = null;
   }
@@ -1837,23 +1837,180 @@ function askOwnerPaneId() {
   return askState.paneId ?? visibleFocusedPaneId();
 }
 
-// window chords keep working over a question; only built-in chords, as the menu would
+// window chords keep working over a question; only built-in chords, as the menu would. True when
+// the chord went to the host.
 function routeAskChord(ev) {
   const key = keymapKey(ev);
   const paneId = askOwnerPaneId();
-  if (key === null || paneId === null) return;
+  if (key === null || paneId === null) return false;
   const chord = { ctrl: ev.ctrlKey, alt: ev.altKey, shift: ev.shiftKey, key };
-  if (!interceptChords.some((c) => samePhysicalChord(c, chord))) return;
+  if (!interceptChords.some((c) => samePhysicalChord(c, chord))) return false;
   post({ type: "chord", paneId, generation: hotkeyGeneration, ...chord });
+  return true;
 }
 
 function onAskKeyDown(ev) {
   if (!askState) return;
-  ev.preventDefault();
   ev.stopPropagation();
+  if (ev.target instanceof Element && ev.target.classList.contains("ask-input")) {
+    onAskInputKeyDown(ev);
+    return;
+  }
+  ev.preventDefault();
   const intent = askIntentFromKey(ev);
   if (intent) post({ type: "askIntent", askId: askState.askId, ...intent });
   else routeAskChord(ev);
+}
+
+// Upstream AskTextEditor: Tab and Shift+Tab move the highlight with the caret kept in the field,
+// Esc escapes, and Return answers a line field; a multiline field takes Return as a newline and
+// answers on Cmd-Return, here Ctrl+Enter. Nothing resolves while an IME composes.
+function onAskInputKeyDown(ev) {
+  if (ev.isComposing || ev.keyCode === 229) return;
+  const multiline = ev.target.tagName === "TEXTAREA";
+  const plain = !ev.ctrlKey && !ev.altKey && !ev.metaKey;
+  let intent = null;
+  if (ev.key === "Tab" && plain) intent = ev.shiftKey ? "backward" : "forward";
+  else if (ev.key === "Escape" && plain) intent = "cancel";
+  else if (
+    ev.key === "Enter" &&
+    !ev.altKey &&
+    !ev.metaKey &&
+    (multiline ? ev.ctrlKey && !ev.shiftKey : !ev.ctrlKey)
+  )
+    intent = "activate";
+  if (intent) {
+    ev.preventDefault();
+    post({ type: "askIntent", askId: askState.askId, intent });
+    return;
+  }
+  if (!ev.ctrlKey && !ev.altKey) return;
+  if (isAskInputEditChord(ev)) return;
+  if (routeAskChord(ev)) ev.preventDefault();
+}
+
+// the field's own clipboard, undo, select-all and word-wise caret chords win over window chords
+function isAskInputEditChord(ev) {
+  if (!ev.ctrlKey || ev.altKey || ev.metaKey) return false;
+  if (/^Key[CVXZYA]$/.test(ev.code || "")) return true;
+  return [
+    "Insert",
+    "Backspace",
+    "Delete",
+    "ArrowLeft",
+    "ArrowRight",
+    "ArrowUp",
+    "ArrowDown",
+    "Home",
+    "End",
+  ].includes(ev.key);
+}
+
+const ASK_INPUT_MAX_BYTES = 65536;
+const askTextEncoder = new TextEncoder();
+
+// upstream AskInputForm.hasForbiddenControls: a C0 control or DEL; a multiline field allows newline and tab
+function askInputForbidden(text, mode) {
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    if ((code < 0x20 || code === 0x7f) && (mode === "line" || (ch !== "\n" && ch !== "\t")))
+      return true;
+  }
+  return false;
+}
+
+// a Windows clipboard ends its lines with CRLF; a multiline field keeps each as one newline
+function askInputInsertion(text, mode) {
+  return mode === "multiline" ? text.replace(/\r\n/g, "\n") : text;
+}
+
+function askInputFits(text) {
+  return askTextEncoder.encode(text).length <= ASK_INPUT_MAX_BYTES;
+}
+
+function askInputAfterInsert(field, text) {
+  const start = field.selectionStart ?? field.value.length;
+  const end = field.selectionEnd ?? start;
+  return field.value.slice(0, start) + text + field.value.slice(end);
+}
+
+// A multiline field shows five to fifteen lines of its text, soft wraps included, as upstream sizes it.
+function growAskInput(field) {
+  if (field.tagName !== "TEXTAREA") return;
+  const style = getComputedStyle(field);
+  const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+  const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  const chrome = padding + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+  field.style.height = "auto";
+  const lines = Math.min(Math.max(Math.ceil((field.scrollHeight - padding) / line), 5), 15);
+  field.style.height = `${lines * line + chrome}px`;
+}
+
+// The field holds what the user types; the host gets every accepted change. An edit with a
+// forbidden control or past the cap is refused whole and the old text stays, as upstream's field
+// refuses it; a composition is checked once it commits.
+function buildAskInput(payload, fg, cell) {
+  const input = payload.input;
+  const multiline = input.mode === "multiline";
+  const field = document.createElement(multiline ? "textarea" : "input");
+  field.className = "ask-input";
+  if (multiline) field.rows = 5;
+  else field.type = "text";
+  field.spellcheck = false;
+  field.placeholder = input.placeholder ?? "";
+  field.value = input.value;
+  field.style.color = fg;
+  field.style.caretColor = fg;
+  field.style.borderColor = rgbaFromHex(fg, 0.2);
+  field.style.padding = `${0.5 * cell}px`;
+  field.style.setProperty("--ask-placeholder", rgbaFromHex(fg, 0.45));
+
+  let accepted = field.value;
+  let composing = false;
+  let selection = [field.value.length, field.value.length];
+  const commit = () => {
+    const value = field.value;
+    if (value === accepted) return;
+    if (askInputForbidden(value, input.mode) || !askInputFits(value)) {
+      field.value = accepted;
+      field.setSelectionRange(selection[0], selection[1]);
+      return;
+    }
+    accepted = value;
+    growAskInput(field);
+    post({ type: "askDraft", askId: payload.askId, text: value });
+  };
+  field.addEventListener("beforeinput", (ev) => {
+    if (composing || ev.inputType === "insertCompositionText") return;
+    selection = [field.selectionStart, field.selectionEnd];
+    if (!ev.inputType.startsWith("insert")) return;
+    const text =
+      ev.inputType === "insertLineBreak" || ev.inputType === "insertParagraph"
+        ? "\n"
+        : askInputInsertion(ev.data ?? ev.dataTransfer?.getData("text/plain") ?? "", input.mode);
+    if (askInputForbidden(text, input.mode) || !askInputFits(askInputAfterInsert(field, text)))
+      ev.preventDefault();
+  });
+  // the browser would drop the newlines of a paste into a line field; upstream refuses the paste
+  field.addEventListener("paste", (ev) => {
+    ev.preventDefault();
+    const text = askInputInsertion(ev.clipboardData?.getData("text/plain") ?? "", input.mode);
+    if (text === "" || askInputForbidden(text, input.mode)) return;
+    if (!askInputFits(askInputAfterInsert(field, text))) return;
+    document.execCommand("insertText", false, text);
+  });
+  field.addEventListener("compositionstart", () => {
+    composing = true;
+    selection = [field.selectionStart, field.selectionEnd];
+  });
+  field.addEventListener("compositionend", () => {
+    composing = false;
+    commit();
+  });
+  field.addEventListener("input", (ev) => {
+    if (!composing && !ev.isComposing) commit();
+  });
+  return field;
 }
 
 function askFontSize(paneId) {
@@ -1869,15 +2026,21 @@ function buildAskLayer(payload) {
   layer.setAttribute("role", "dialog");
   layer.setAttribute("aria-label", payload.title);
   layer.addEventListener("keydown", onAskKeyDown);
-  layer.addEventListener("focus", () => post({ type: "askFocus", askId: payload.askId }));
-  // a layer being removed is reported by removeAsk, so a blur fired during removal must stay silent
-  layer.addEventListener("blur", () => {
-    if (askLayerEl === layer) post({ type: "askFocus", askId: null });
+  // focus moving between the layer and its field stays inside the question; a layer being removed
+  // is reported by removeAsk, so a focusout fired during removal must stay silent
+  layer.addEventListener("focusin", (ev) => {
+    if (!layer.contains(ev.relatedTarget)) post({ type: "askFocus", askId: payload.askId });
+  });
+  layer.addEventListener("focusout", (ev) => {
+    if (askLayerEl === layer && !layer.contains(ev.relatedTarget))
+      post({ type: "askFocus", askId: null });
   });
   layer.addEventListener("pointerdown", (ev) => {
     if (ev.target.closest(".ask-button")) return;
-    ev.preventDefault();
     askState.releasedLayerPaneId = null;
+    // a click in the field places the caret, and its focusin reports the pane as any click does
+    if (ev.target.closest(".ask-input")) return;
+    ev.preventDefault();
     focusAskLayer();
     if (payload.paneId) emitPaneFocus(payload.paneId);
   });
@@ -1909,6 +2072,7 @@ function buildAskLayer(payload) {
     message.textContent = payload.message;
     panel.appendChild(message);
   }
+  if (payload.input) panel.appendChild(buildAskInput(payload, fg, cell));
 
   const row = document.createElement("div");
   row.className = "ask-buttons-row";
@@ -1963,12 +2127,16 @@ function layoutAsk(payload) {
     typeof payload.width === "number"
       ? (area.width * payload.width) / 100
       : Math.min(area.width * 0.9, 72 * cell);
+  // a question with a field takes the whole width, as upstream sizes an input form
+  const fixed = typeof payload.width === "number" || payload.input != null;
   panel.style.maxWidth = `${Math.max(0, maxWidth)}px`;
-  panel.style.width = typeof payload.width === "number" ? `${Math.max(0, maxWidth)}px` : "max-content";
+  panel.style.width = fixed ? `${Math.max(0, maxWidth)}px` : "max-content";
   panel.style.maxHeight = `${Math.max(0, area.height - 2 * cell)}px`;
   buttons.classList.remove("ask-column");
   if (buttons.scrollWidth > buttons.parentElement.clientWidth + 0.5)
     buttons.classList.add("ask-column");
+  const field = askLayerEl.querySelector(".ask-input");
+  if (field) growAskInput(field);
 }
 
 function removeAsk() {

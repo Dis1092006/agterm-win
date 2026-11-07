@@ -36,6 +36,10 @@ internal static class AskCommands
         public IReadOnlyList<string> Hotkeys { get; init; } = Array.Empty<string>();
         public string? Default { get; init; }
         public string? Destructive { get; init; }
+        public string? CancelButton { get; init; }
+        public string? Input { get; init; }
+        public string? Value { get; init; }
+        public string? Placeholder { get; init; }
         public string Style { get; init; } = "terminal";
         public string Align { get; init; } = "right";
         public string? Width { get; init; }
@@ -80,6 +84,10 @@ internal static class AskCommands
                 PaneId = PaneId,
                 Title = Title,
                 Width = ParsedWidth(),
+                Value = Value,
+                CancelButton = CancelButton,
+                Input = Input,
+                Placeholder = Placeholder,
             }),
         };
 
@@ -95,10 +103,17 @@ internal static class AskCommands
             return value;
         }
 
-        private ControlAskButton[] ParsedButtons()
+        /// <summary>A form (--input) defaults its buttons on the server, so it may send none.</summary>
+        private ControlAskButton[]? ParsedButtons()
         {
             if (Buttons.Count == 0)
-                throw new CliValidationException("ask requires at least one --button");
+            {
+                if (Input is null)
+                    throw new CliValidationException("ask requires at least one --button");
+                if (Hotkeys.Count > 0)
+                    throw new CliValidationException("--hotkey requires --button");
+                return null;
+            }
             var choices = Buttons.Select(ParseButton).ToArray();
             var assigned = new HashSet<int>();
             foreach (var token in Hotkeys)
@@ -152,7 +167,8 @@ internal static class AskCommands
     {
         var ask = new System.CommandLine.Command("ask",
             "Open, poll, or cancel a themed question dialog. Use ask open TITLE when the title is 'open', 'result', or 'cancel'.");
-        var open = new System.CommandLine.Command("open", "Ask a question and wait for its button answer.");
+        var open = new System.CommandLine.Command("open",
+            "Ask a question and wait for its button answer. --input adds a text field; it defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text.");
         BindOpen(bindings, open);
         ask.Subcommands.Add(open);
         ask.Subcommands.Add(BuildIdCommand(bindings, "result", "Print a dialog's current or terminal result as JSON.",
@@ -183,6 +199,10 @@ internal static class AskCommands
         var align = new Option<string>("--align") { Description = "Button block alignment: left, center, or right.", DefaultValueFactory = _ => "right" };
         var width = new Option<string?>("--width") { Description = "Panel width as an integer percent of the anchor (10...100); omit for automatic sizing." };
         var destructive = new Option<string?>("--destructive") { Description = "ID of the destructive button." };
+        var cancelButton = new Option<string?>("--cancel") { Description = "ID of the button that ends the dialog like Esc, returning nothing." };
+        var input = new Option<string?>("--input") { Description = "Add a text field: line or multiline." };
+        var value = new Option<string?>("--value") { Description = "Initial text of the --input field." };
+        var placeholder = new Option<string?>("--placeholder") { Description = "Hint shown while the --input field is empty." };
         var target = new Option<string?>("--target") { Description = "Session id, prefix, or 'active'. Default: selected session for terminal, window-centered for gui." };
         var pane = new Option<string?>("--pane") { Description = "Anchor to the session's left or right pane. GUI style requires --target." };
         var paneId = new Option<string?>("--pane-id") { Description = "Stable pane token; overrides --pane. GUI style requires --target." };
@@ -191,7 +211,7 @@ internal static class AskCommands
         var client = new ClientOptions.Binder();
         client.AddTo(command);
         command.Arguments.Add(title);
-        foreach (var option in new Option[] { message, buttons, hotkeys, defaultButton, style, align, width, destructive, target, pane, paneId, follow, noBlock })
+        foreach (var option in new Option[] { message, buttons, hotkeys, defaultButton, style, align, width, destructive, cancelButton, input, value, placeholder, target, pane, paneId, follow, noBlock })
             command.Options.Add(option);
         bindings.Register(command, result => new Open
         {
@@ -204,6 +224,10 @@ internal static class AskCommands
             Align = result.GetValue(align) ?? "right",
             Width = result.GetValue(width),
             Destructive = result.GetValue(destructive),
+            CancelButton = result.GetValue(cancelButton),
+            Input = result.GetValue(input),
+            Value = result.GetValue(value),
+            Placeholder = result.GetValue(placeholder),
             Target = result.GetValue(target),
             Pane = result.GetValue(pane),
             PaneId = result.GetValue(paneId),

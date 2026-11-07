@@ -35,6 +35,15 @@
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextWrapping="Wrap"
                                AutomationProperties.AutomationId="ask-message" />
+                    <TextBox x:Name="InputBox"
+                             Visibility="Collapsed"
+                             TextWrapping="Wrap"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             AutomationProperties.AutomationId="ask-input"
+                             PreviewKeyDown="OnInputPreviewKeyDown"
+                             BeforeTextChanging="OnInputBeforeTextChanging"
+                             Paste="OnInputPaste"
+                             TextChanged="OnInputTextChanged" />
                     <Grid x:Name="ButtonHost" />
                 </StackPanel>
             </ScrollViewer>
