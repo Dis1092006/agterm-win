@@ -503,8 +503,16 @@ public sealed class AgentResumeInstallerTests : IDisposable
         process.Environment.Remove("AGTERMCTL");
         if (temporary is not null) process.Environment["TEMP"] = temporary;
         using var child = Process.Start(process)!;
-        child.StandardInput.Write(payload);
-        child.StandardInput.Close();
+        try
+        {
+            child.StandardInput.Write(payload);
+            child.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+            // the wrapper does not read stdin itself, so with a tool that does not read it either cmd
+            // can exit before the write and the pipe is already closed
+        }
         var output = child.StandardOutput.ReadToEnd();
         var error = child.StandardError.ReadToEnd();
         child.WaitForExit();
