@@ -206,6 +206,14 @@ public sealed class PaletteControllerTests
     }
 
     [Fact]
+    public void An_unmarked_row_still_gives_its_hidden_mark_a_path()
+    {
+        var item = Item("x", "X");
+
+        Assert.False(string.IsNullOrEmpty(item.MarkData));
+    }
+
+    [Fact]
     public void AcceptSelected_with_no_results_stays_open_and_Close_clears_transient_state()
     {
         var controller = new PaletteController();
