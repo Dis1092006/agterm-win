@@ -662,8 +662,9 @@ All are read-only projections of GUI state.
   visits that session. **Pass `--follow` to select the target after opening** (a no-op if it is already
   active); use it when you want the user pulled to the overlay, omit it to open quietly. `--background-color #rrggbb` gives the overlay pane its own solid
   background color, independent of the session's own `session background color` (nil = the default theme
-  background). `--wait` keeps the overlay open after the command exits (close it with
-  `session overlay close`). `--block` waits for the command to exit and makes agtermctl exit with the
+  background). `--wait` keeps the overlay open after the command exits, under a
+  `[process exited with code N; press any key to close]` line: a key in the overlay closes it, and so
+  does `session overlay close`. `--block` waits for the command to exit and makes agtermctl exit with the
   command's status
   (cannot combine with `--wait`); the program renders normally — capture its OUTPUT via the program's
   own output file, not the control channel. Returns the overlay's session id. `--target` defaults to

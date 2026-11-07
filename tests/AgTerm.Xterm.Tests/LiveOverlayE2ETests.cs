@@ -1,5 +1,6 @@
 using AgTerm.Cli;
 using AgTerm.Xterm;
+using System.Text.Json;
 
 namespace AgTerm.Xterm.Tests;
 
@@ -338,6 +339,29 @@ public sealed class LiveOverlayE2ETests : IDisposable
         Assert.False(ReadLocked(() => _host.Host.Store.SessionWithId(sessionId)!.OverlayActive));
         Assert.Equal(42, ReadLocked(() => _host.Host.Store.SessionWithId(sessionId)!.OverlayExitCode));
 
+        var result = CtlOk("session", "overlay", "result", "--target", sessionId.ToString());
+        Assert.Contains("42", result);
+    }
+
+    // upstream 7df70fe: --wait holds the overlay on ghostty's "press any key to close" prompt, and the
+    // keypress closes it (GhosttySurfaceView.waitAfterCommand)
+    [Fact]
+    public async Task Overlay_wait_shows_the_exit_prompt_and_a_keystroke_closes_it()
+    {
+        WaitForText(">");
+        var sessionId = ReadLocked(() => _host.Host.Store.SelectedSessionId!.Value);
+
+        var surface = await OpenOverlayAsync(sessionId, "exit 42", wait: true);
+        WaitForOverlayText(surface, TerminalPane.ExitedBannerText(42));
+        Assert.True(ReadLocked(() => _host.Host.Store.SessionWithId(sessionId)!.OverlayActive),
+            "the prompt must hold the overlay open");
+
+        var page = await _page.Value;
+        await _webView.RunAsync(_ => page.ExecuteScriptAsync(
+            $"agterm.dispatchKey({JsonSerializer.Serialize(surface.PaneToken)}, {{key:\"a\"}})"));
+
+        await surface.ShutdownStarted.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(ReadLocked(() => _host.Host.Store.SessionWithId(sessionId)!.OverlayActive));
         var result = CtlOk("session", "overlay", "result", "--target", sessionId.ToString());
         Assert.Contains("42", result);
     }
