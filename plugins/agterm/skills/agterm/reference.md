@@ -1007,23 +1007,41 @@ shown while it is empty; both require `--input` (`value requires input`, `placeh
 and another mode returns `unknown input`. The text is at most 65536 UTF-8 bytes (`ask text too long (max
 65536 bytes)`). A line field takes no control characters; a multiline field allows newline and tab only
 (`ask text must not contain control characters`). An edit or a paste that breaks a rule is refused whole.
-Without `--button` the form gets `ok=OK` (the default) and `cancel=Cancel` (the cancel button). A form
+Without `--button` the form gets `ok=OK` (the default) and `cancel=Cancel` (the cancel button). A field
 takes no `--hotkey` (`ask input does not take hotkeys`). In the field, Tab and Shift+Tab move the
 highlight and Esc escapes. Return answers a line field; a multiline field takes Return as a newline and
 answers on Ctrl+Return. `--cancel ID` names the button that ends the ask like Esc: pressing it returns
 `escaped`. An unknown id returns `unknown cancel button: ID`.
+
+`--choice ID=LABEL` (1 to 50 items) adds a radio list between the message and the buttons, or a
+checkbox list with `--multiple`. A token without `=` is both id and label. `--choice-subtitle ID=TEXT`
+adds a dimmed description under that item; it may span lines. `--checked ID` checks an item at open;
+repeat it with `--multiple`. Without `--checked` a radio list checks its first item and a checkbox list
+none. `--input` and `--choice` are exclusive (`input and choices are exclusive`), and `--multiple` and
+`--checked` require `--choice` (`multiple requires choices`, `checked requires choices`). Other errors:
+`ask choices must be 1 to 50`, `ask choice label must not be empty`, `ask choice ids must be unique`,
+`ask checked ids must be unique`, `unknown checked choice: ID`, and `radio choices accept one checked id`.
+Without `--button` the list gets OK and Cancel too. In the list, Up and Down move the cursor, Space
+checks the cursor's item, and a click checks the clicked one; Left, Right and Tab move the button
+highlight and Return answers.
+
+```powershell
+agtermctl ask "Open which?" --multiple --choice 398="issue #398" --choice-subtitle 398="waits on you" --choice 395="PR #395"
+```
 
 The blocking call prints one bare result:
 
 ```json
 {"result":"answered","id":"yes","label":"Yes","index":0}
 {"result":"answered","id":"ok","label":"OK","index":0,"text":"the field's text"}
+{"result":"answered","id":"ok","label":"OK","index":0,"selected":["398","395"]}
 {"result":"escaped"}
 {"result":"cancelled"}
 ```
 
 Index follows caller order. `text` is there only on an answer to a question with `--input`, with
-whitespace and newlines kept. An answer exits 0, including a named No button; inspect `id` before acting.
+whitespace and newlines kept. `selected` is there only on an answer to a question with `--choice`; it
+lists the checked ids in caller order, exactly one for a radio list. An answer exits 0, including a named No button; inspect `id` before acting.
 Esc on a question, or Alt+W (`close_session`) over a GUI question, returns `escaped` with exit 3.
 Cancellation exits 2; failure exits 1.
 `--no-block` prints `{"id":"<ask-id>"}`. `ask result ID [--window W]` prints the current or finished result,

@@ -16,10 +16,18 @@ namespace AgTerm.App;
 public sealed partial class AskView : UserControl
 {
     private readonly List<Button> _buttons = new();
+    private readonly List<ChoiceRow> _choiceRows = new();
     private PendingAsk? _ask;
     private AskNavigation? _navigation;
+    private AskDraft _draft = new(null);
     private AskRect _anchor = new(0, 0, 0, 0);
     private double _fontSize = 13;
+
+    // upstream's gui cell; the list spacing and paddings are fractions of it
+    private const double Cell = 8;
+    private const double MarkerWidth = 16;
+
+    private sealed record ChoiceRow(StackPanel Row, Border Line, FontIcon Marker);
 
     public AskView()
     {
@@ -31,8 +39,8 @@ public sealed partial class AskView : UserControl
 
     public event Action<string>? Escaped;
 
-    /// <summary>The field's text after each accepted edit.</summary>
-    public event Action<string, string>? DraftChanged;
+    /// <summary>A copy of the draft after each accepted field edit and each list change.</summary>
+    public event Action<string, AskDraft>? DraftChanged;
 
     /// <summary>The window's close_session chord: it dismisses the question instead of closing a session.</summary>
     public Func<VirtualKey, bool>? CancelChord { get; set; }
@@ -56,15 +64,20 @@ public sealed partial class AskView : UserControl
         ArgumentNullException.ThrowIfNull(ask);
         _ask = ask;
         _navigation = AskNavigation.For(ask);
+        // the store keeps the draft; the dialog edits its own copy and publishes each change
+        _draft = draft?.Copy() ?? new AskDraft(ask.Form);
         _fontSize = terminalFontSize;
         TitleText.Text = ask.Title;
         MessageText.Text = ask.Message ?? string.Empty;
         MessageText.Visibility = string.IsNullOrEmpty(ask.Message) ? Visibility.Collapsed : Visibility.Visible;
         Visibility = Visibility.Visible;
-        BuildInput(ask, draft);
+        BuildInput(ask);
+        BuildChoices(ask);
         BuildButtons(ask);
         ApplyHighlight();
+        ApplyChoices();
         ApplyLayout();
+        if (_choiceRows.Count > 0) DispatcherQueue.TryEnqueue(BringCursorIntoView);
         if (takeFocus) FocusPanel();
     }
 
@@ -72,8 +85,12 @@ public sealed partial class AskView : UserControl
     {
         _ask = null;
         _navigation = null;
+        _draft = new AskDraft(null);
         _buttons.Clear();
         ButtonHost.Children.Clear();
+        _choiceRows.Clear();
+        ChoiceHost.Children.Clear();
+        ChoiceScroll.Visibility = Visibility.Collapsed;
         InputBox.Visibility = Visibility.Collapsed;
         InputBox.Text = string.Empty;
         Visibility = Visibility.Collapsed;
@@ -101,7 +118,7 @@ public sealed partial class AskView : UserControl
 
     private Control FocusTarget => InputBox.Visibility == Visibility.Visible ? InputBox : this;
 
-    private void BuildInput(PendingAsk ask, AskDraft? draft)
+    private void BuildInput(PendingAsk ask)
     {
         if (ask.Form is not AskForm.Input input)
         {
@@ -112,7 +129,7 @@ public sealed partial class AskView : UserControl
         var multiline = input.Field.Mode == ControlAskInputMode.Multiline;
         InputBox.AcceptsReturn = multiline;
         InputBox.PlaceholderText = input.Field.Placeholder ?? string.Empty;
-        InputBox.Text = AskFieldText.ToTextBox((draft ?? new AskDraft(ask.Form)).Text, input.Field.Mode);
+        InputBox.Text = AskFieldText.ToTextBox(_draft.Text, input.Field.Mode);
         InputBox.Select(InputBox.Text.Length, 0);
         if (multiline)
         {
@@ -130,6 +147,98 @@ public sealed partial class AskView : UserControl
         }
         InputBox.Visibility = Visibility.Visible;
     }
+
+    private void BuildChoices(PendingAsk ask)
+    {
+        _choiceRows.Clear();
+        ChoiceHost.Children.Clear();
+        if (ask.Form is not AskForm.Choices { List: var list })
+        {
+            ChoiceScroll.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var secondary = ThemeBrush("TextFillColorSecondaryBrush");
+        for (var index = 0; index < list.Items.Count; index++)
+        {
+            var choice = list.Items[index];
+            var marker = new FontIcon
+            {
+                FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
+                FontSize = MarkerWidth,
+                Width = MarkerWidth,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var label = new TextBlock
+            {
+                Text = choice.Label,
+                TextWrapping = TextWrapping.NoWrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            // a star column, not a horizontal StackPanel, so a long label is cut at the panel width
+            var content = new Grid { ColumnSpacing = Cell };
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumn(label, 1);
+            content.Children.Add(marker);
+            content.Children.Add(label);
+            var line = new Border
+            {
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(Cell * 0.5, Cell * 0.15, Cell * 0.5, Cell * 0.15),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Child = content,
+            };
+            // a transparent background takes the taps between the line and the panel edge too
+            var row = new StackPanel { Spacing = Cell * 0.2, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
+            row.Children.Add(line);
+            if (!string.IsNullOrEmpty(choice.Subtitle))
+                row.Children.Add(new TextBlock
+                {
+                    Text = choice.Subtitle,
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = secondary,
+                    Margin = new Thickness(Cell * 0.5 + MarkerWidth + Cell, 0, 0, 0),
+                });
+            AutomationProperties.SetName(row, choice.Label);
+            AutomationProperties.SetAutomationId(row, $"ask-choice-{choice.Id}");
+            var tapped = index;
+            row.Tapped += (_, _) => Handle(new AskIntent.ToggleAt(tapped));
+            _choiceRows.Add(new ChoiceRow(row, line, marker));
+            ChoiceHost.Children.Add(row);
+        }
+        ChoiceScroll.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Upstream's gui markers in Segoe Fluent glyphs: the accent color when checked and the
+    /// secondary color otherwise, with the cursor line on an accent fill.</summary>
+    private void ApplyChoices()
+    {
+        if (_ask?.Form is not AskForm.Choices { List: var list }) return;
+        var accent = (Windows.UI.Color)Application.Current.Resources["SystemAccentColor"];
+        for (var index = 0; index < _choiceRows.Count; index++)
+        {
+            var row = _choiceRows[index];
+            var isChecked = _draft.IsChecked(index);
+            row.Marker.Glyph = list.Multiple
+                ? (isChecked ? "\uE73A" : "\uE739") // CheckboxComposite, Checkbox
+                : (isChecked ? "\uECCB" : "\uECCA"); // RadioBtnOn, RadioBtnOff
+            row.Marker.Foreground = ThemeBrush(isChecked ? "AccentTextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
+            if (index == _draft.Cursor)
+                row.Line.Background = new SolidColorBrush(accent) { Opacity = 0.25 };
+            else
+                row.Line.ClearValue(Border.BackgroundProperty);
+            AutomationProperties.SetItemStatus(row.Row, isChecked ? "checked" : string.Empty);
+        }
+    }
+
+    private void BringCursorIntoView()
+    {
+        if (_draft.Cursor < _choiceRows.Count)
+            _choiceRows[_draft.Cursor].Row.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+    }
+
+    private static Brush ThemeBrush(string key) => (Brush)Application.Current.Resources[key];
 
     private void BuildButtons(PendingAsk ask)
     {
@@ -227,9 +336,19 @@ public sealed partial class AskView : UserControl
         Panel.Width = double.NaN;
         Panel.MaxWidth = maxWidth;
         if (ask.Width is not null || ask.Form is AskForm.Input) Panel.Width = maxWidth;
-        PanelScroll.MaxHeight = Math.Max(
+        var limit = Math.Max(
             0, AskPanelLayout.MaxPanelHeight(_anchor.Height) - 2 * AskPanelLayout.PanelPadding - border.Top - border.Bottom);
+        PanelScroll.MaxHeight = limit;
+        ChoiceScroll.MaxHeight = double.PositiveInfinity;
         Panel.Measure(new Size(maxWidth, double.PositiveInfinity));
+        // a long list scrolls in its own region down to 3 lines, as upstream, so the title and the
+        // buttons stay in view; below that the whole panel scrolls
+        if (_choiceRows.Count > 0 && ContentStack.DesiredSize.Height > limit)
+        {
+            var minimum = 3 * Math.Ceiling(FontSize * 1.33);
+            ChoiceScroll.MaxHeight = Math.Max(minimum, ChoiceScroll.DesiredSize.Height - (ContentStack.DesiredSize.Height - limit));
+            Panel.Measure(new Size(maxWidth, double.PositiveInfinity));
+        }
         var size = Panel.DesiredSize;
         Canvas.SetLeft(Panel, _anchor.X + (_anchor.Width - size.Width) / 2);
         Canvas.SetTop(Panel, _anchor.Y + (_anchor.Height - size.Height) / 2);
@@ -342,12 +461,17 @@ public sealed partial class AskView : UserControl
             InputBox.Select(start + inserted.Length, 0);
     }
 
-    private void OnInputTextChanged(object sender, TextChangedEventArgs e) => PublishDraft();
+    private void OnInputTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_ask?.Form is AskForm.Input) PublishDraft();
+    }
 
     private void PublishDraft()
     {
-        if (_ask is { Form: AskForm.Input input } ask)
-            DraftChanged?.Invoke(ask.Id, AskFieldText.FromTextBox(InputBox.Text, input.Field.Mode));
+        if (_ask is not { } ask) return;
+        if (ask.Form is AskForm.Input input)
+            _draft.Text = AskFieldText.FromTextBox(InputBox.Text, input.Field.Mode);
+        DraftChanged?.Invoke(ask.Id, _draft.Copy());
     }
 
     private bool IsInField(object? source)
@@ -396,6 +520,14 @@ public sealed partial class AskView : UserControl
     private void Handle(AskIntent intent)
     {
         if (_ask is not { } ask || _navigation is null) return;
+        // a list intent changes the draft; any other, or one without a list, goes to the buttons
+        if (_draft.Apply(intent))
+        {
+            ApplyChoices();
+            PublishDraft();
+            BringCursorIntoView();
+            return;
+        }
         switch (_navigation.Apply(intent))
         {
             case AskIntentOutcome.Moved:

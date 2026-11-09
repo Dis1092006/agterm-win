@@ -18,6 +18,23 @@ public sealed record ControlAskButton
     public string? Hotkey { get; init; }
 }
 
+/// <summary>One item of an ask's radio or checkbox list, in caller order.</summary>
+public sealed record ControlAskChoice
+{
+    public const int MaxChoices = 50;
+
+    /// <summary>Names the item in checked and in the answered selected list.</summary>
+    [JsonPropertyName("id")]
+    public required string Id { get; init; }
+
+    [JsonPropertyName("label")]
+    public required string Label { get; init; }
+
+    /// <summary>An optional description drawn dimmed under the label; it may span lines.</summary>
+    [JsonPropertyName("subtitle")]
+    public string? Subtitle { get; init; }
+}
+
 /// <summary>The state or terminal outcome ask.result reports.</summary>
 [JsonConverter(typeof(ControlAskOutcomeConverter))]
 public enum ControlAskOutcome
@@ -60,6 +77,10 @@ public sealed record ControlAskResult
     [JsonPropertyName("text")]
     public string? Text { get; init; }
 
+    /// <summary>A choice ask's checked ids in caller order on an answer. An empty list is kept.</summary>
+    [JsonPropertyName("selected")]
+    public IReadOnlyList<string>? Selected { get; init; }
+
     public static ControlAskResult Pending() => new() { Result = ControlAskOutcome.Pending };
 
     public static ControlAskResult Escaped() => new() { Result = ControlAskOutcome.Escaped };
@@ -68,6 +89,13 @@ public sealed record ControlAskResult
 
     public static ControlAskResult Answered(string id, string label, int index) =>
         new() { Result = ControlAskOutcome.Answered, Id = id, Label = label, Index = index };
+
+    public bool Equals(ControlAskResult? other) =>
+        other is not null && Result == other.Result && Id == other.Id && Label == other.Label && Index == other.Index
+        && Text == other.Text
+        && (Selected is null ? other.Selected is null : other.Selected is not null && Selected.SequenceEqual(other.Selected));
+
+    public override int GetHashCode() => HashCode.Combine(Result, Id, Label, Index, Text, Selected?.Count);
 }
 
 /// <summary>A session node's pending terminal question. pane is the covered pane's current role,

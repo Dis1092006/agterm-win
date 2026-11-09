@@ -17,9 +17,11 @@ Status: done.
 
 - Wire args `choices`, `multiple` and `checked`; CLI `--choice id=label`, `--choice-subtitle`, `--multiple`, `--checked`. At most 50 items.
 - A radio list, or a checkbox list with `--multiple`. The answer carries `selected`.
-- Both styles, with the same keys as upstream.
+- Both styles, with the same keys as upstream: Up and Down move the list cursor, Space checks the cursor's item, a click checks the clicked one. Left and Right move the button highlight; without a list Up and Down move it too.
+- The cursor and the checked items live in the store draft, next to the field text.
+- Windows adaptation: the `gui` markers are Segoe Fluent glyphs (PLATFORM-NOTES).
 
-Status: not started.
+Status: done.
 
 ## B9c: the "other" row
 

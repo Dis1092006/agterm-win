@@ -204,6 +204,43 @@
       .ask-input::placeholder {
         color: var(--ask-placeholder);
       }
+      /* upstream gives the list at least three lines and lets it scroll while the title and the
+         buttons stay in view */
+      .ask-choices {
+        display: flex;
+        flex-direction: column;
+        flex: 0 1 auto;
+        min-height: 3.6em;
+        overflow-y: auto;
+        line-height: 1.2;
+      }
+      .ask-choice {
+        display: flex;
+        flex-direction: column;
+        flex: none;
+        cursor: default;
+      }
+      .ask-choice-line {
+        box-sizing: border-box;
+        display: flex;
+        width: fit-content;
+        max-width: 100%;
+      }
+      .ask-choice-marker {
+        flex: none;
+        min-width: 3ch;
+        white-space: pre;
+      }
+      .ask-choice-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: pre;
+      }
+      .ask-choice-subtitle {
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+      }
       /* above the overlay layer (20), under a pane question (60) and the search bar (70). Visible over
          a base pane a full-size scratch hides, because upstream draws the hud above the scratch */
       .hud-layer {

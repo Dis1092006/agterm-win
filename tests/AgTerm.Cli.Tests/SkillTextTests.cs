@@ -28,6 +28,25 @@ public class SkillTextTests
     }
 
     [Fact]
+    public void Ask_documents_the_choice_list_and_its_answer()
+    {
+        var skill = ReadSkill("SKILL.md");
+        foreach (var flag in new[] { "`--choice ID=LABEL`", "`--multiple`", "`--choice-subtitle`", "`--checked`", "`selected`" })
+            Assert.Contains(flag, skill);
+        var reference = ReadSkill("reference.md");
+        var ask = reference[reference.IndexOf("## ask", StringComparison.Ordinal)..];
+        ask = ask[..ask.IndexOf("## quick", StringComparison.Ordinal)];
+        foreach (var text in new[]
+                 {
+                     "`--choice ID=LABEL`", "`--multiple`", "`--choice-subtitle ID=TEXT`", "`--checked ID`",
+                     "`input and choices are exclusive`", "`radio choices accept one checked id`",
+                     "\"selected\":[\"398\",\"395\"]", "Space",
+                 })
+            Assert.Contains(text, ask);
+        Assert.DoesNotContain("A form\ntakes no `--hotkey`", ask.ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
     public void Active_workspace_rule_follows_the_foreground_create()
     {
         var reference = ReadSkill("reference.md");

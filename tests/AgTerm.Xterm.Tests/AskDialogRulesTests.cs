@@ -11,16 +11,24 @@ public sealed class AskDialogRulesTests
     [Theory]
     [InlineData(Tab, false)]
     [InlineData(Right, false)]
-    [InlineData(Down, false)]
-    public void TabRightAndDownMoveForward(int key, bool shift) =>
+    public void TabAndRightMoveForward(int key, bool shift) =>
         Assert.Equal(new AskIntent.Forward(), AskKeys.Intent(key, shift, false, false, false));
 
     [Theory]
     [InlineData(Tab, true)]
     [InlineData(Left, false)]
-    [InlineData(Up, false)]
-    public void ShiftTabLeftAndUpMoveBack(int key, bool shift) =>
+    public void ShiftTabAndLeftMoveBack(int key, bool shift) =>
         Assert.Equal(new AskIntent.Backward(), AskKeys.Intent(key, shift, false, false, false));
+
+    // a list takes them as its cursor and toggle; without a list Up and Down move the highlight
+    [Fact]
+    public void UpDownAndSpaceAreListIntents()
+    {
+        Assert.Equal(new AskIntent.Up(), AskKeys.Intent(Up, false, false, false, false));
+        Assert.Equal(new AskIntent.Down(), AskKeys.Intent(Down, false, false, false, false));
+        Assert.Equal(new AskIntent.Toggle(), AskKeys.Intent(0x20, false, false, false, false));
+        Assert.Null(AskKeys.Intent(0x20, false, true, false, false));
+    }
 
     [Fact]
     public void EnterActivatesAndEscapeCancels()
@@ -52,7 +60,7 @@ public sealed class AskDialogRulesTests
     public void OtherKeysDoNothing()
     {
         Assert.Null(AskKeys.Intent(0x31, false, false, false, false));
-        Assert.Null(AskKeys.Intent(0x20, false, false, false, false));
+        Assert.Null(AskKeys.Intent(0x70, false, false, false, false));
     }
 
     [Theory]

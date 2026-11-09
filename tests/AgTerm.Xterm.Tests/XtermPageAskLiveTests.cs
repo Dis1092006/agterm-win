@@ -112,13 +112,14 @@ public class XtermPageAskLiveTests
                 key('ArrowUp', 'ArrowUp');
                 key('Enter', 'Enter');
                 key('Escape', 'Escape');
+                key(' ', 'Space');
                 key('н', 'KeyY');
                 key('y', 'KeyY', { ctrlKey: true });
             })()
             """));
         await Task.Delay(200);
 
-        Assert.Equal(new[] { "Forward", "Backward", "Forward", "Forward", "Backward", "Backward", "Activate", "Cancel", "Hotkey:y" }, intents);
+        Assert.Equal(new[] { "Forward", "Backward", "Forward", "Down", "Backward", "Up", "Activate", "Cancel", "Toggle", "Hotkey:y" }, intents);
         Assert.Empty(data);
     }
 
@@ -867,6 +868,148 @@ public class XtermPageAskLiveTests
             """);
 
         Assert.Equal("\"typed\"", value);
+    }
+
+    private static string ChoicePayload(string askId, bool multiple, int cursor, string checkedFlags, int count = 3)
+    {
+        var items = Enumerable.Range(0, count).Select(i => new
+        {
+            label = $"Item {i}",
+            subtitle = i == 0 ? "about item" : null,
+            @checked = checkedFlags.Length > i && checkedFlags[i] == '1',
+        });
+        return JsonSerializer.Serialize(new
+        {
+            askId,
+            paneId = "right",
+            coveredPaneIds = new[] { "right" },
+            title = "Pick",
+            message = (string?)null,
+            buttons = new[] { "OK", "Cancel" }.Select(label => new { runs = new[] { new { text = label, underline = false } }, destructive = false }),
+            highlighted = 0,
+            align = "right",
+            width = (int?)null,
+            input = (object?)null,
+            choices = new { multiple, cursor, items },
+        });
+    }
+
+    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootChoicesAsync(bool multiple, int cursor, string checkedFlags, int count = 3)
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
+        await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "right", "Shell")));
+        await _webView.RunAsync<object?>(_ => { view.Focus(); return Task.FromResult<object?>(null); });
+        await Task.Delay(500);
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", multiple, cursor, checkedFlags, count)}}); return 1; })()""");
+        return (page, view);
+    }
+
+    private const string ChoiceRows = """
+        (() => {
+            const rows = Array.from(document.querySelectorAll('.ask-choice'));
+            const buttons = document.querySelector('.ask-buttons');
+            return {
+                markers: rows.map(r => r.querySelector('.ask-choice-marker').textContent),
+                labels: rows.map(r => r.querySelector('.ask-choice-label').textContent),
+                subtitles: rows.map(r => r.querySelector('.ask-choice-subtitle')?.textContent ?? null),
+                current: rows.map(r => r.classList.contains('ask-choice-current')),
+                filled: rows.map(r => getComputedStyle(r.querySelector('.ask-choice-line')).backgroundColor !== 'rgba(0, 0, 0, 0)'),
+                subtitleFilled: rows.map(r => { const s = r.querySelector('.ask-choice-subtitle'); return s ? getComputedStyle(s).backgroundColor !== 'rgba(0, 0, 0, 0)' : false; }),
+                beforeButtons: rows.length > 0 && rows[rows.length - 1].compareDocumentPosition(buttons) === Node.DOCUMENT_POSITION_FOLLOWING,
+                focused: document.querySelector('.ask-layer').contains(document.activeElement),
+            };
+        })()
+        """;
+
+    [Theory]
+    [InlineData(false, "( )", "(•)")]
+    [InlineData(true, "[ ]", "[x]")]
+    public async Task A_choice_question_draws_its_list_with_markers_and_the_cursor_row_filled(bool multiple, string off, string on)
+    {
+        var (_, view) = await BootChoicesAsync(multiple, 1, "011");
+
+        using var json = JsonDocument.Parse(await EvalAsync(view, ChoiceRows));
+        var root = json.RootElement;
+        Assert.Equal(new[] { off, on, on }, root.GetProperty("markers").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(new[] { "Item 0", "Item 1", "Item 2" }, root.GetProperty("labels").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(new[] { "about item", null, null }, root.GetProperty("subtitles").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(new[] { false, true, false }, root.GetProperty("current").EnumerateArray().Select(e => e.GetBoolean()));
+        Assert.Equal(new[] { false, true, false }, root.GetProperty("filled").EnumerateArray().Select(e => e.GetBoolean()));
+        Assert.All(root.GetProperty("subtitleFilled").EnumerateArray(), e => Assert.False(e.GetBoolean()));
+        Assert.True(root.GetProperty("beforeButtons").GetBoolean());
+        Assert.True(root.GetProperty("focused").GetBoolean());
+    }
+
+    [Fact]
+    public async Task A_redraw_of_the_same_question_moves_the_cursor_and_the_checks()
+    {
+        var (_, view) = await BootChoicesAsync(true, 0, "100");
+
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", true, 2, "001")}}); return 1; })()""");
+
+        using var json = JsonDocument.Parse(await EvalAsync(view, ChoiceRows));
+        var root = json.RootElement;
+        Assert.Equal(new[] { "[ ]", "[ ]", "[x]" }, root.GetProperty("markers").EnumerateArray().Select(e => e.GetString()));
+        Assert.Equal(new[] { false, false, true }, root.GetProperty("current").EnumerateArray().Select(e => e.GetBoolean()));
+    }
+
+    [Fact]
+    public async Task A_row_click_toggles_it_without_moving_focus()
+    {
+        var (page, view) = await BootChoicesAsync(false, 0, "100");
+        var intents = new EventRecorder<string>();
+        page.AskIntentReceived += (askId, intent) => intents.Add(askId + "/" + (intent is AskIntent.ToggleAt at ? "toggleAt:" + at.Index : intent.GetType().Name));
+
+        var state = await EvalAsync(view, """
+            (() => {
+                const row = document.querySelectorAll('.ask-choice')[2];
+                const down = new PointerEvent('pointerdown', { bubbles: true, cancelable: true });
+                row.querySelector('.ask-choice-label').dispatchEvent(down);
+                row.querySelector('.ask-choice-label').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                return { prevented: down.defaultPrevented, focused: document.querySelector('.ask-layer').contains(document.activeElement) };
+            })()
+            """);
+        await WaitUntilAsync(() => intents.Count >= 1);
+        await Task.Delay(200);
+
+        using var json = JsonDocument.Parse(state);
+        Assert.True(json.RootElement.GetProperty("prevented").GetBoolean());
+        Assert.True(json.RootElement.GetProperty("focused").GetBoolean());
+        Assert.Equal(new[] { "CH/toggleAt:2" }, intents);
+    }
+
+    [Fact]
+    public async Task A_long_list_scrolls_in_its_own_region_and_follows_the_cursor()
+    {
+        var (_, view) = await BootChoicesAsync(false, 0, "1", count: 60);
+        await EvalAsync(view, "(() => { document.querySelector('[data-pane-id=\"right\"]').style.height = '320px'; return 1; })()");
+        await Task.Delay(500);
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", false, 59, "1", 60)}}); return 1; })()""");
+        await Task.Delay(300);
+
+        using var json = JsonDocument.Parse(await EvalAsync(view, """
+            (() => {
+                const inside = (el, box) => { const r = el.getBoundingClientRect(); return r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5; };
+                const panel = document.querySelector('.ask-panel');
+                const list = document.querySelector('.ask-choices');
+                const rows = document.querySelectorAll('.ask-choice');
+                const box = panel.getBoundingClientRect();
+                return {
+                    listScrolls: list.scrollHeight > list.clientHeight + 1,
+                    panelFits: panel.scrollHeight <= panel.clientHeight + 1,
+                    title: inside(document.querySelector('.ask-title'), box),
+                    buttons: inside(document.querySelector('.ask-buttons'), box),
+                    last: inside(rows[rows.length - 1], list.getBoundingClientRect()),
+                };
+            })()
+            """));
+        var root = json.RootElement;
+        Assert.True(root.GetProperty("listScrolls").GetBoolean());
+        Assert.True(root.GetProperty("panelFits").GetBoolean());
+        Assert.True(root.GetProperty("title").GetBoolean());
+        Assert.True(root.GetProperty("buttons").GetBoolean());
+        Assert.True(root.GetProperty("last").GetBoolean());
     }
 
     [Fact]

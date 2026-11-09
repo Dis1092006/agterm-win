@@ -5,7 +5,7 @@ using AgTerm.Core.Tests.Ported;
 
 namespace AgTerm.Core.Tests.Model;
 
-// Ported from agtermCore AskTests.swift input-form cases (upstream 96b0a6c6); the choice-list cases come with B9b.
+// Ported from agtermCore AskTests.swift input-form and choice-list cases (upstream 96b0a6c6).
 public class AskFormTests
 {
     private static readonly Guid WindowId = Guid.NewGuid();
@@ -23,6 +23,12 @@ public class AskFormTests
 
     private static AskForm.Input Input(ControlAskInputMode mode, string value = "", string? placeholder = null) =>
         new(new AskInputForm(mode, value, placeholder));
+
+    private static ControlAskChoice[] Items(params string[] ids) =>
+        ids.Select(id => new ControlAskChoice { Id = id, Label = id.ToUpperInvariant() }).ToArray();
+
+    private static AskForm.Choices Choices(ControlAskChoice[] items, bool multiple = false, params string[] checkedIds) =>
+        new(new AskChoiceForm(items, multiple, checkedIds));
 
     [Fact]
     public void InputAnswerCarriesTheDraftTextAndCancelEscapesWithoutIt()
@@ -42,6 +48,92 @@ public class AskFormTests
     [Fact]
     public void AnswerWithoutADraftUsesTheFormsInitialValue() =>
         Assert.Equal("x", Ask(Input(ControlAskInputMode.Line, "x")).Answer(0, null)!.Text);
+
+    [Fact]
+    public void ChoiceAnswerListsCheckedIdsInCallerOrder()
+    {
+        var form = Choices(Items("a", "b", "c"), multiple: true, "c");
+        var ask = Ask(form, "cancel");
+        var draft = new AskDraft(form);
+        draft.Toggle(0);
+        Assert.Equal(["a", "c"], draft.Selected);
+        Assert.Equal(ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["a", "c"] }, ask.Answer(0, draft));
+        Assert.Null(ask.Answer(0, draft)!.Text);
+        Assert.Equal(ControlAskResult.Escaped(), ask.Answer(1, draft));
+    }
+
+    [Fact]
+    public void AnswerWithoutADraftUsesTheFormsInitialChoices() =>
+        Assert.Equal(["a"], Ask(Choices(Items("a", "b"))).Answer(0, null)!.Selected);
+
+    [Fact]
+    public void RadioDraftStartsOnTheFirstItemAndPicksExactlyOne()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b", "c")));
+        Assert.Equal(["a"], draft.Selected);
+        Assert.Equal(0, draft.Cursor);
+        draft.MoveCursor(2);
+        draft.ToggleCursor();
+        Assert.Equal(["c"], draft.Selected);
+        draft.ToggleCursor();
+        Assert.Equal(["c"], draft.Selected);
+    }
+
+    [Fact]
+    public void RadioDraftStartsOnItsCheckedItem()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b", "c"), multiple: false, "b"));
+        Assert.Equal(["b"], draft.Selected);
+        Assert.Equal(1, draft.Cursor);
+    }
+
+    [Fact]
+    public void DraftCursorStartsOnTheFirstCheckedItemAndStopsAtTheEnds()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b", "c"), multiple: true, "c", "b"));
+        Assert.Equal(1, draft.Cursor);
+        draft.MoveCursor(-5);
+        Assert.Equal(0, draft.Cursor);
+        draft.MoveCursor(9);
+        Assert.Equal(2, draft.Cursor);
+    }
+
+    [Fact]
+    public void CheckboxDraftTogglesAndMayEndEmpty()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b"), multiple: true, "b"));
+        draft.Toggle(1);
+        Assert.Empty(draft.Selected);
+        draft.Toggle(7);
+        draft.Toggle(-1);
+        Assert.Empty(draft.Selected);
+        Assert.Equal(1, draft.Cursor);
+    }
+
+    [Fact]
+    public void ADraftWithoutAListIgnoresCursorMoves()
+    {
+        var draft = new AskDraft(Input(ControlAskInputMode.Line));
+        draft.MoveCursor(1);
+        draft.ToggleCursor();
+        Assert.Equal(0, draft.Cursor);
+        Assert.Empty(draft.Selected);
+    }
+
+    [Fact]
+    public void CheckedIdsMatchCanonicallyEquivalentChoiceIds()
+    {
+        var draft = new AskDraft(Choices(Items("caf\u00E9", "b"), multiple: true, "cafe\u0301"));
+        Assert.Equal(["caf\u00E9"], draft.Selected);
+    }
+
+    [Fact]
+    public void ChoiceFormsCompareByTheirItems()
+    {
+        Assert.Equal(Choices(Items("a", "b"), multiple: true, "a"), Choices(Items("a", "b"), multiple: true, "a"));
+        Assert.NotEqual(Choices(Items("a", "b")), Choices(Items("a", "c")));
+        Assert.NotEqual(Choices(Items("a", "b"), multiple: true, "a"), Choices(Items("a", "b"), multiple: true, "b"));
+    }
 
     [Fact]
     public void CancelRoleAppliesWithoutAForm()
@@ -131,6 +223,19 @@ public class AskFormTests
     }
 
     [Fact]
+    public void ASessionAnswerCarriesTheDraftsSelection()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
+        store.OpenAsk(session.Id, Ask(Choices(Items("a", "b"), multiple: true), "cancel"), null, WindowId);
+
+        Assert.True(store.UpdateAskDraft(session.Id, "a", draft => draft.Toggle(1)));
+        Assert.True(store.AnswerAsk(session.Id, "a", 0));
+
+        Assert.Equal(ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["b"] }, store.Asks.Find("a")!.Result);
+    }
+
+    [Fact]
     public void ASessionCancelButtonAnswerEscapes()
     {
         var store = AppStoreFixtures.MakeStore();
@@ -189,9 +294,76 @@ public class AskFormTests
     [Fact]
     public void AnchoringKeepsTheFormAndCancelRole()
     {
-        var form = Input(ControlAskInputMode.Line);
+        var form = Choices(Items("a"));
         var anchored = Ask(form, "cancel") with { Anchor = new AskAnchor(Guid.NewGuid()) };
         Assert.Equal(form, anchored.Form);
         Assert.Equal("cancel", anchored.CancelId);
+    }
+
+    // upstream AskDialogView.handle: with a list Up and Down move its cursor and Space toggles it
+    [Fact]
+    public void AListTakesTheCursorAndToggleIntents()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b", "c"), multiple: true));
+
+        Assert.True(draft.Apply(new AskIntent.Down()));
+        Assert.Equal(1, draft.Cursor);
+        Assert.True(draft.Apply(new AskIntent.Toggle()));
+        Assert.Equal(["b"], draft.Selected);
+        Assert.True(draft.Apply(new AskIntent.Up()));
+        Assert.Equal(0, draft.Cursor);
+        Assert.True(draft.Apply(new AskIntent.ToggleAt(2)));
+        Assert.Equal(2, draft.Cursor);
+        Assert.Equal(["b", "c"], draft.Selected);
+    }
+
+    [Fact]
+    public void AListLeavesButtonIntentsAndAMissedRowAlone()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b")));
+
+        foreach (AskIntent intent in new AskIntent[] { new AskIntent.Forward(), new AskIntent.Backward(), new AskIntent.Activate(),
+                     new AskIntent.Cancel(), new AskIntent.Hotkey("a"), new AskIntent.Press(0), new AskIntent.ToggleAt(2), new AskIntent.ToggleAt(-1) })
+            Assert.False(draft.Apply(intent));
+        Assert.Equal(["a"], draft.Selected);
+    }
+
+    [Fact]
+    public void ADraftWithoutAListLeavesTheListIntentsToTheButtons()
+    {
+        var draft = new AskDraft(Input(ControlAskInputMode.Line));
+
+        foreach (AskIntent intent in new AskIntent[] { new AskIntent.Up(), new AskIntent.Down(), new AskIntent.Toggle(), new AskIntent.ToggleAt(0) })
+            Assert.False(draft.Apply(intent));
+    }
+
+    [Fact]
+    public void IsCheckedReadsAnItemByIndex()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b", "c"), true, "c", "a"));
+
+        Assert.Equal(new[] { true, false, true }, Enumerable.Range(0, 3).Select(draft.IsChecked));
+        Assert.False(draft.IsChecked(3));
+        Assert.False(draft.IsChecked(-1));
+    }
+
+    [Fact]
+    public void ACopyIsIndependentAndCopyFromRestoresIt()
+    {
+        var draft = new AskDraft(Choices(Items("a", "b", "c"), multiple: true));
+        draft.Toggle(2);
+        draft.Text = "t";
+
+        var copy = draft.Copy();
+        draft.Toggle(0);
+
+        Assert.Equal(["c"], copy.Selected);
+        Assert.Equal(2, copy.Cursor);
+        Assert.Equal("t", copy.Text);
+
+        draft.CopyFrom(copy);
+        Assert.Equal(["c"], draft.Selected);
+        Assert.Equal(2, draft.Cursor);
+        Assert.Equal("t", draft.Text);
     }
 }

@@ -143,6 +143,22 @@ public class AskNavigationTests
         Assert.Equal(new AskIntentOutcome.Escape(), navigation.Apply(new AskIntent.Cancel()));
     }
 
+    // upstream AskDialogView.handle: without a list Up and Down move the button highlight, Space does nothing
+    [Fact]
+    public void UpAndDownMoveTheButtonsAndATogglePicksNothing()
+    {
+        var navigation = new AskNavigation(new[]
+        {
+            new ControlAskButton { Id = "yes", Label = "Yes" },
+            new ControlAskButton { Id = "no", Label = "No" },
+        });
+        Assert.Equal(new AskIntentOutcome.Moved(1), navigation.Apply(new AskIntent.Down()));
+        Assert.Equal(new AskIntentOutcome.Moved(0), navigation.Apply(new AskIntent.Up()));
+        Assert.Equal(new AskIntentOutcome.None(), navigation.Apply(new AskIntent.Toggle()));
+        Assert.Equal(new AskIntentOutcome.None(), navigation.Apply(new AskIntent.ToggleAt(0)));
+        Assert.Equal(0, navigation.Highlighted);
+    }
+
     [Theory]
     [InlineData("left", OverlayPane.Left)]
     [InlineData("primary", OverlayPane.Left)]

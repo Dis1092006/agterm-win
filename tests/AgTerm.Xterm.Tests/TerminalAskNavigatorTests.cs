@@ -101,7 +101,134 @@ public sealed class TerminalAskNavigatorTests
             Form: new AskForm.Input(new AskInputForm(mode, "prefill", "hint")), CancelId: "cancel");
 
     private static TerminalAskPlacement InputPlacement(PendingAsk ask, string? draft) =>
-        Placement(ask) with { DraftText = draft };
+        Placement(ask) with { Draft = draft is null ? null : new AskDraft(ask.Form) { Text = draft } };
+
+    private static PendingAsk ChoiceAsk(string id = "ASK", bool multiple = false, IReadOnlyList<string>? check = null) =>
+        new(id, "Pick", null,
+            new[] { new ControlAskButton { Id = "ok", Label = "OK" }, new ControlAskButton { Id = "cancel", Label = "Cancel" } },
+            "ok", null, ControlAskStyle.Terminal, ControlAskAlignment.Right, null,
+            Form: new AskForm.Choices(new AskChoiceForm(
+                new[]
+                {
+                    new ControlAskChoice { Id = "a", Label = "Alpha", Subtitle = "first" },
+                    new ControlAskChoice { Id = "b", Label = "Beta" },
+                    new ControlAskChoice { Id = "c", Label = "Gamma" },
+                },
+                multiple, check)),
+            CancelId: "cancel");
+
+    [Fact]
+    public void AChoiceAskShowsItsListWithTheCheckedItemsAndTheCursor()
+    {
+        var view = new TerminalAskNavigator().Present(Placement(ChoiceAsk(multiple: true, check: ["c", "b"])))!;
+
+        Assert.Null(view.Input);
+        var list = view.Choices!;
+        Assert.True(list.Multiple);
+        Assert.Equal(1, list.Cursor);
+        Assert.Equal(
+            new[]
+            {
+                new TerminalAskChoiceView("Alpha", "first", false),
+                new TerminalAskChoiceView("Beta", null, true),
+                new TerminalAskChoiceView("Gamma", null, true),
+            },
+            list.Items);
+        Assert.Null(new TerminalAskNavigator().Present(Placement(Ask()))!.Choices);
+    }
+
+    [Fact]
+    public void AChoiceAskStartsFromTheSessionDraft()
+    {
+        var ask = ChoiceAsk();
+        var draft = new AskDraft(ask.Form);
+        draft.Toggle(2);
+
+        var list = new TerminalAskNavigator().Present(Placement(ask) with { Draft = draft })!.Choices!;
+
+        Assert.Equal(2, list.Cursor);
+        Assert.Equal(new[] { false, false, true }, list.Items.Select(item => item.Checked));
+    }
+
+    [Fact]
+    public void ListIntentsMoveTheCursorAndToggleWithASnapshot()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(Placement(ChoiceAsk(multiple: true)));
+
+        var down = Assert.IsType<TerminalAskResolution.Drafted>(navigator.Apply("ASK", new AskIntent.Down()));
+        Assert.Equal(1, down.View.Choices!.Cursor);
+        Assert.Equal(0, down.View.Highlighted);
+
+        var toggled = Assert.IsType<TerminalAskResolution.Drafted>(navigator.Apply("ASK", new AskIntent.Toggle()));
+        Assert.True(toggled.View.Choices!.Items[1].Checked);
+        Assert.Equal(["b"], toggled.Draft.Selected);
+
+        var clicked = Assert.IsType<TerminalAskResolution.Drafted>(navigator.Apply("ASK", new AskIntent.ToggleAt(2)));
+        Assert.Equal(2, clicked.View.Choices!.Cursor);
+        Assert.Equal(["b", "c"], clicked.Draft.Selected);
+        Assert.Equal(["b"], toggled.Draft.Selected);
+
+        var up = Assert.IsType<TerminalAskResolution.Drafted>(navigator.Apply("ASK", new AskIntent.Up()));
+        Assert.Equal(1, up.Draft.Cursor);
+    }
+
+    [Fact]
+    public void AMissedRowDoesNothing() =>
+        Assert.Equal(new TerminalAskResolution.None(), ChoiceNavigated().Apply("ASK", new AskIntent.ToggleAt(3)));
+
+    [Fact]
+    public void WithoutAListUpAndDownMoveTheButtons()
+    {
+        var navigator = Navigated();
+
+        Assert.Equal(1, Assert.IsType<TerminalAskResolution.Redraw>(navigator.Apply("ASK", new AskIntent.Down())).View.Highlighted);
+        Assert.Equal(0, Assert.IsType<TerminalAskResolution.Redraw>(navigator.Apply("ASK", new AskIntent.Up())).View.Highlighted);
+        Assert.Equal(new TerminalAskResolution.None(), navigator.Apply("ASK", new AskIntent.Toggle()));
+    }
+
+    [Fact]
+    public void TheAnswerCarriesTheSelection()
+    {
+        var navigator = ChoiceNavigated(multiple: true);
+        navigator.Apply("ASK", new AskIntent.ToggleAt(0));
+        navigator.Apply("ASK", new AskIntent.ToggleAt(2));
+
+        Assert.Equal(new TerminalAskResolution.Resolve(SessionId, "ASK", ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["a", "c"] }),
+            navigator.Apply("ASK", new AskIntent.Activate()));
+    }
+
+    [Fact]
+    public void TheSelectionOutlivesHidingTheSameAsk()
+    {
+        var navigator = ChoiceNavigated();
+        navigator.Apply("ASK", new AskIntent.ToggleAt(1));
+        navigator.Present(null);
+
+        Assert.True(navigator.Present(Placement(ChoiceAsk()))!.Choices!.Items[1].Checked);
+        Assert.True(navigator.Present(Placement(ChoiceAsk("NEXT")))!.Choices!.Items[0].Checked);
+    }
+
+    [Fact]
+    public void TheDraftSnapshotIsACopyOfTheDrawnDraft()
+    {
+        var navigator = new TerminalAskNavigator();
+        Assert.Null(navigator.DraftSnapshot());
+        navigator.Present(InputPlacement(InputAsk(), "prefill"));
+        navigator.UpdateDraft("ASK", "typed");
+
+        var snapshot = navigator.DraftSnapshot()!;
+        navigator.UpdateDraft("ASK", "later");
+
+        Assert.Equal("typed", snapshot.Text);
+    }
+
+    private static TerminalAskNavigator ChoiceNavigated(bool multiple = false)
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(Placement(ChoiceAsk(multiple: multiple)));
+        return navigator;
+    }
 
     [Fact]
     public void AnInputAskShowsItsFieldWithTheSessionDraft()

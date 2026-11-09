@@ -153,6 +153,14 @@ public sealed class XtermPage
             align = view.Align,
             width = view.Width,
             input = view.Input is { } input ? new { mode = input.Mode, value = input.Value, placeholder = input.Placeholder } : null,
+            choices = view.Choices is { } choices
+                ? new
+                {
+                    multiple = choices.Multiple,
+                    cursor = choices.Cursor,
+                    items = choices.Items.Select(item => new { label = item.Label, subtitle = item.Subtitle, @checked = item.Checked }),
+                }
+                : null,
         }, AskScriptLiteral);
         return _host.ExecuteScriptAsync($"agterm.applyAsk({payload})");
     }
@@ -468,6 +476,10 @@ public sealed class XtermPage
         "cancel" => new Core.Model.AskIntent.Cancel(),
         "hotkey" when msg.Letter is { Length: 1 } letter => new Core.Model.AskIntent.Hotkey(letter),
         "press" when msg.Index is { } index => new Core.Model.AskIntent.Press(index),
+        "up" => new Core.Model.AskIntent.Up(),
+        "down" => new Core.Model.AskIntent.Down(),
+        "toggle" => new Core.Model.AskIntent.Toggle(),
+        "toggleAt" when msg.Index is { } row => new Core.Model.AskIntent.ToggleAt(row),
         _ => null,
     };
 
