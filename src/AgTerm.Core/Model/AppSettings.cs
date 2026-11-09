@@ -10,7 +10,7 @@ namespace AgTerm.Core.Model;
 /// before a field existed still decodes — that optionality IS the forward-compat mechanism, so
 /// there is no version field (a version bump would only add a discard-on-mismatch path that wipes
 /// the user's settings). Raw-string enum fields (toolbarMode, dockBounce, the status shapes,
-/// newSessionDirectory, autoFollowAttention, hiddenInterfaceElements) decode tolerantly: an
+/// newSessionDirectory, autoFollowAttention, hidden/shownInterfaceElements) decode tolerantly: an
 /// unknown future value resolves to the default at the effective* read point instead of failing
 /// the whole decode.
 /// </summary>
@@ -72,6 +72,7 @@ public sealed record AppSettings
     [JsonPropertyName("attentionNavigationAcrossWindows")] public bool? AttentionNavigationAcrossWindows { get; init; }
     [JsonPropertyName("sidebarFontSize")] public double? SidebarFontSize { get; init; }
     [JsonPropertyName("hiddenInterfaceElements")] public IReadOnlyList<string>? HiddenInterfaceElements { get; init; }
+    [JsonPropertyName("shownInterfaceElements")] public IReadOnlyList<string>? ShownInterfaceElements { get; init; }
     [JsonPropertyName("autoHideSidebarInactiveWindows")] public bool? AutoHideSidebarInactiveWindows { get; init; }
     /// <summary>The raw SessionInfoDisplay for the sidebar info line; null means always. Resolved by
     /// EffectiveSessionInfoDisplay.</summary>
@@ -193,10 +194,11 @@ public sealed record AppSettings
         AttentionIncludesActive == other.AttentionIncludesActive &&
         AttentionNavigationAcrossWindows == other.AttentionNavigationAcrossWindows &&
         ResumeAgentSessions == other.ResumeAgentSessions &&
-        (HiddenInterfaceElements is null
-            ? other.HiddenInterfaceElements is null
-            : other.HiddenInterfaceElements is not null &&
-              HiddenInterfaceElements.SequenceEqual(other.HiddenInterfaceElements));
+        SameList(HiddenInterfaceElements, other.HiddenInterfaceElements) &&
+        SameList(ShownInterfaceElements, other.ShownInterfaceElements);
+
+    private static bool SameList(IReadOnlyList<string>? a, IReadOnlyList<string>? b) =>
+        a is null ? b is null : b is not null && a.SequenceEqual(b);
 
     public override int GetHashCode() => HashCode.Combine(FontFamily, FontSize, Theme, SidebarFontSize);
 
@@ -211,11 +213,13 @@ public sealed record AppSettings
         _ => Model.SidebarThemeStyle.Off,
     };
 
-    /// <summary>Whether a chrome element is hidden. Everything is shown by default, so an element
-    /// absent from the persisted list reads as visible; a raw value matches exactly, as upstream's
-    /// enum decode does.</summary>
-    public bool IsInterfaceElementHidden(InterfaceElement element) =>
-        HiddenInterfaceElements?.Contains(element.RawValue(), StringComparer.Ordinal) == true;
+    /// <summary>Whether a chrome element is hidden. An element hidden by default is hidden unless it is
+    /// in shownInterfaceElements; any other element is hidden only when it is in hiddenInterfaceElements.
+    /// A raw value matches exactly, as upstream's enum decode does. Upstream
+    /// resolvedHiddenInterfaceElements.</summary>
+    public bool IsInterfaceElementHidden(InterfaceElement element) => element.HiddenByDefault()
+        ? ShownInterfaceElements?.Contains(element.RawValue(), StringComparer.Ordinal) != true
+        : HiddenInterfaceElements?.Contains(element.RawValue(), StringComparer.Ordinal) == true;
 
     /// <summary>The SwiftUI-overlay opacity for an inactive-pane mute strength: clamped to 0…10,
     /// scaled by 0.08 (0 → 0, 5 → 0.4 — the historical default, 10 → 0.8).</summary>

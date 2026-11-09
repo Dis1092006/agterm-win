@@ -351,8 +351,8 @@ public class AppSettingsTests : IDisposable
     public void Interface_elements_carry_upstreams_raw_values_in_order()
     {
         Assert.Equal(
-            ["sidebarToggle", "sessionName", "windowName", "sessionContext", "recentSessions", "scratch", "split",
-             "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession",
+            ["sidebarToggle", "workspaceName", "sessionName", "windowName", "sessionContext", "recentSessions",
+             "scratch", "split", "overlayToggle", "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession",
              "workspaceIcons", "sessionIcons", "sessionFlags"],
             Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
     }
@@ -379,11 +379,57 @@ public class AppSettingsTests : IDisposable
         Assert.False(settings.IsInterfaceElementHidden(other));
     }
 
+    // upstream InterfaceElement.hiddenByDefault: the opt-in elements start hidden, the rest start shown
     [Fact]
-    public void Every_interface_element_is_shown_by_default()
+    public void Only_the_opt_in_elements_are_hidden_by_default()
     {
+        Assert.Equal([InterfaceElement.WorkspaceName, InterfaceElement.OverlayToggle],
+            Enum.GetValues<InterfaceElement>().Where(e => e.HiddenByDefault()));
         Assert.All(Enum.GetValues<InterfaceElement>(),
-            e => Assert.False(new AppSettings().IsInterfaceElementHidden(e)));
+            e => Assert.Equal(e.HiddenByDefault(), new AppSettings().IsInterfaceElementHidden(e)));
+    }
+
+    // upstream resolvedHiddenInterfaceElements: the shown list alone governs an element hidden by
+    // default, the hidden list alone governs the rest, and an unknown name in either is ignored
+    [Fact]
+    public void The_shown_list_alone_governs_an_element_hidden_by_default()
+    {
+        var shown = new AppSettings { ShownInterfaceElements = ["workspaceName", "teleporter"] };
+        Assert.False(shown.IsInterfaceElementHidden(InterfaceElement.WorkspaceName));
+        Assert.True(shown.IsInterfaceElementHidden(InterfaceElement.OverlayToggle));
+        Assert.False(shown.IsInterfaceElementHidden(InterfaceElement.SessionName));
+
+        var hidden = new AppSettings
+        {
+            HiddenInterfaceElements = ["workspaceName", "dashboard"],
+            ShownInterfaceElements = ["workspaceName", "overlayToggle", "dashboard"],
+        };
+        Assert.False(hidden.IsInterfaceElementHidden(InterfaceElement.WorkspaceName));
+        Assert.False(hidden.IsInterfaceElementHidden(InterfaceElement.OverlayToggle));
+        Assert.True(hidden.IsInterfaceElementHidden(InterfaceElement.Dashboard));
+    }
+
+    [Fact]
+    public void Shown_interface_elements_match_the_raw_value_exactly()
+    {
+        var settings = new AppSettings { ShownInterfaceElements = ["WorkspaceName"] };
+
+        Assert.True(settings.IsInterfaceElementHidden(InterfaceElement.WorkspaceName));
+    }
+
+    [Fact]
+    public void Shown_interface_elements_round_trip_and_are_omitted_when_unset()
+    {
+        var store = new SettingsStore(_dir);
+        store.Save(new AppSettings());
+        Assert.DoesNotContain("shownInterfaceElements", File.ReadAllText(FilePath));
+
+        var settings = new AppSettings { ShownInterfaceElements = ["overlayToggle", "someFutureElement"] };
+        store.Save(settings);
+        Assert.Contains("\"shownInterfaceElements\"", File.ReadAllText(FilePath));
+        var loaded = new SettingsStore(_dir).Load();
+        Assert.Equal(settings, loaded);
+        Assert.NotEqual(new AppSettings { ShownInterfaceElements = ["overlayToggle"] }, loaded);
     }
 
     [Fact]

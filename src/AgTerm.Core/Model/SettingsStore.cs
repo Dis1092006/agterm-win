@@ -167,7 +167,11 @@ public sealed class SettingsSnapshot
     {
         Path = path;
         Content = content;
-        Settings = settings with { HiddenInterfaceElements = settings.HiddenInterfaceElements?.ToArray().AsReadOnly() };
+        Settings = settings with
+        {
+            HiddenInterfaceElements = settings.HiddenInterfaceElements?.ToArray().AsReadOnly(),
+            ShownInterfaceElements = settings.ShownInterfaceElements?.ToArray().AsReadOnly(),
+        };
     }
 
     public AppSettings Settings { get; }

@@ -1,7 +1,8 @@
 namespace AgTerm.Core.Model;
 
 /// <summary>
-/// A chrome element the user can hide through the hiddenInterfaceElements setting — the port of
+/// A chrome element the user can hide through the hiddenInterfaceElements setting, or show through
+/// shownInterfaceElements when it is hidden by default — the port of
 /// agtermCore's InterfaceElement. The persisted form is the raw value (the upstream case name), in
 /// upstream's declaration order.
 /// </summary>
@@ -9,12 +10,14 @@ public enum InterfaceElement
 {
     // title bar
     SidebarToggle,
+    WorkspaceName,
     SessionName,
     WindowName,
     SessionContext,
     RecentSessions,
     Scratch,
     Split,
+    OverlayToggle,
     Dashboard,
     QuickTerminal,
     // sidebar
@@ -37,6 +40,11 @@ public static class InterfaceElementExtensions
         var name = element.ToString();
         return char.ToLowerInvariant(name[0]) + name[1..];
     }
+
+    /// <summary>Whether the element starts hidden and shows only once it is in shownInterfaceElements.
+    /// Upstream InterfaceElement.hiddenByDefault.</summary>
+    public static bool HiddenByDefault(this InterfaceElement element) =>
+        element is InterfaceElement.WorkspaceName or InterfaceElement.OverlayToggle;
 
     /// <summary>Which of the two separators in the title bar's trailing button cluster to draw, given
     /// how many visible buttons each group has (A = recent sessions + attention, B = scratch + split,

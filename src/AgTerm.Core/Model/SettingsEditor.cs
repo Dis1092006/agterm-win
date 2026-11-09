@@ -197,8 +197,18 @@ public sealed class SettingsEditor
             DarkTheme = null, FollowSystemAppearance = null };
     });
 
+    /// <summary>An element hidden by default is toggled in shownInterfaceElements, written sorted and
+    /// dropped when empty, as upstream SettingsModel.setInterfaceElementVisible; any other element is
+    /// toggled in hiddenInterfaceElements.</summary>
     public Task SetInterfaceVisibleAsync(InterfaceElement element, bool visible) => ChangeAsync(settings =>
     {
+        if (element.HiddenByDefault())
+        {
+            var shown = (settings.ShownInterfaceElements ?? []).Where(name => name != element.RawValue()).ToList();
+            if (visible) shown.Add(element.RawValue());
+            shown.Sort(StringComparer.Ordinal);
+            return settings with { ShownInterfaceElements = shown.Count == 0 ? null : shown };
+        }
         var hidden = (settings.HiddenInterfaceElements ?? []).Where(name => name != element.RawValue()).ToList();
         if (!visible) hidden.Add(element.RawValue());
         return settings with { HiddenInterfaceElements = hidden.Count == 0 ? null : hidden };

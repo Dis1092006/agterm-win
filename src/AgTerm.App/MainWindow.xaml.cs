@@ -3296,11 +3296,12 @@ public sealed partial class MainWindow : Window
         var showAttention = settings.AttentionButtonEnabled == true;
         var showScratch = !settings.IsInterfaceElementHidden(InterfaceElement.Scratch);
         var showSplit = !settings.IsInterfaceElementHidden(InterfaceElement.Split);
+        var showOverlay = !settings.IsInterfaceElementHidden(InterfaceElement.OverlayToggle);
         var showDashboard = !settings.IsInterfaceElementHidden(InterfaceElement.Dashboard);
         var showQuick = !settings.IsInterfaceElementHidden(InterfaceElement.QuickTerminal);
         var dividers = InterfaceElementExtensions.TitlebarGroupDividers(
             (showRecent ? 1 : 0) + (showAttention ? 1 : 0),
-            (showScratch ? 1 : 0) + (showSplit ? 1 : 0),
+            (showScratch ? 1 : 0) + (showSplit ? 1 : 0) + (showOverlay ? 1 : 0),
             (showDashboard ? 1 : 0) + (showQuick ? 1 : 0));
 
         RecentSessionsButton.Visibility = VisibleIf(showRecent);
@@ -3342,6 +3343,13 @@ public sealed partial class MainWindow : Window
                 _ => "Show split",
             },
             _keymap, SplitToggleAction(state)));
+
+        OverlayButton.Visibility = VisibleIf(showOverlay);
+        OverlayButton.IsEnabled = state.Overlay != TitleBarOverlay.None;
+        OverlaySlash.Visibility = VisibleIf(state.Overlay == TitleBarOverlay.Hidden);
+        ToolTipService.SetToolTip(OverlayButton, WindowsShortcutText.Hint(
+            state.Overlay == TitleBarOverlay.Shown ? "Hide Overlays" : "Show Overlays",
+            _keymap, BuiltinAction.ToggleOverlay));
 
         DividerAfterB.Visibility = VisibleIf(dividers.AfterB);
 
@@ -3407,6 +3415,8 @@ public sealed partial class MainWindow : Window
     private void OnScratchClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.ToggleScratch);
 
     private void OnSplitClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(SplitToggleAction(_titleBarState));
+
+    private void OnOverlayClick(object sender, RoutedEventArgs e) => ExecuteTitleBarAction(BuiltinAction.ToggleOverlay);
 
     // upstream splitButton: the click and the tooltip's shortcut follow the session's split axis
     private static BuiltinAction SplitToggleAction(TitleBarState state) =>
@@ -3587,7 +3597,7 @@ public sealed partial class MainWindow : Window
             return;
         }
         Title = TitleBarText.OsTitle(_sessionTitle, _customWindowName);
-        AppTitleBar.Title = TitleBarText.Visible(
+        AppTitleBar.Title = TitleBarText.Visible(_titleBarState.WorkspaceName,
             _sessionTitle ?? ProductIdentity.Name, _customWindowName, _titleBarState.Context, settings);
         ApplyToolbarMode(settings);
     }

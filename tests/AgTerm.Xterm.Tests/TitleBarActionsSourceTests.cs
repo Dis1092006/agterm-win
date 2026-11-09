@@ -2,7 +2,7 @@ using AgTerm.App;
 
 namespace AgTerm.Xterm.Tests;
 
-// upstream titlebarTrailingActions: recent sessions + attention | scratch + split | dashboard + quick
+// upstream titlebarTrailingActions: recent sessions + attention | scratch + split + overlays | dashboard + quick
 // terminal, each gated by its interface element (the bell by attentionButtonEnabled), with a divider only
 // between two full groups. MainWindow is a WinUI type the test project does not compile, so the wiring is
 // pinned in source; TitleBarStateTests and AppSettingsTests cover the state and the divider rule.
@@ -19,7 +19,7 @@ public sealed class TitleBarActionsSourceTests
         string[] order =
         [
             "recent-sessions-button", "attention-button", "x:Name=\"DividerAfterA\"",
-            "scratch-toggle", "split-toggle", "x:Name=\"DividerAfterB\"",
+            "scratch-toggle", "split-toggle", "overlay-toggle", "x:Name=\"DividerAfterB\"",
             "dashboard-toggle-button", "quick-terminal-toggle",
         ];
         var positions = order.Select(token => header.IndexOf(token, StringComparison.Ordinal)).ToArray();
@@ -157,8 +157,24 @@ public sealed class TitleBarActionsSourceTests
         var refresh = MethodBody(window, "private void RefreshTitleBarActions(AppSettings settings)");
         Assert.Contains("InterfaceElementExtensions.TitlebarGroupDividers(", refresh, StringComparison.Ordinal);
         Assert.Contains("settings.AttentionButtonEnabled == true", refresh, StringComparison.Ordinal);
-        foreach (var element in new[] { "RecentSessions", "Scratch", "Split", "Dashboard", "QuickTerminal" })
+        foreach (var element in new[] { "RecentSessions", "Scratch", "Split", "OverlayToggle", "Dashboard", "QuickTerminal" })
             Assert.Contains($"InterfaceElement.{element})", refresh, StringComparison.Ordinal);
+        Assert.Contains("(showScratch ? 1 : 0) + (showSplit ? 1 : 0) + (showOverlay ? 1 : 0)", refresh, StringComparison.Ordinal);
+    }
+
+    // upstream 7f450d17 (#790) overlayToggleButton: disabled with no overlay, crossed out while one is
+    // hidden, and the tooltip names what a click does. Zoom and the dashboard hide the whole row.
+    [Fact]
+    public void Overlay_button_follows_the_active_sessions_overlay()
+    {
+        var refresh = MethodBody(Source("MainWindow.xaml.cs"), "private void RefreshTitleBarActions(AppSettings settings)");
+
+        Assert.Contains("OverlayButton.Visibility = VisibleIf(showOverlay);", refresh, StringComparison.Ordinal);
+        Assert.Contains("OverlayButton.IsEnabled = state.Overlay != TitleBarOverlay.None;", refresh, StringComparison.Ordinal);
+        Assert.Contains("OverlaySlash.Visibility = VisibleIf(state.Overlay == TitleBarOverlay.Hidden);", refresh, StringComparison.Ordinal);
+        Assert.Contains("state.Overlay == TitleBarOverlay.Shown ? \"Hide Overlays\" : \"Show Overlays\",", refresh, StringComparison.Ordinal);
+        Assert.Contains("_keymap, BuiltinAction.ToggleOverlay));", refresh, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"OverlaySlash\"", Source("MainWindow.xaml"), StringComparison.Ordinal);
     }
 
     // a Windows extension: upstream draws no open state on these two buttons
@@ -194,6 +210,7 @@ public sealed class TitleBarActionsSourceTests
         Assert.Contains("BuiltinAction.ToggleHorizontalSplit : BuiltinAction.ToggleSplit", window, StringComparison.Ordinal);
         Assert.Contains("ExecuteTitleBarAction(BuiltinAction.Dashboard)", window, StringComparison.Ordinal);
         Assert.Contains("ExecuteTitleBarAction(BuiltinAction.QuickTerminal)", window, StringComparison.Ordinal);
+        Assert.Contains("ExecuteTitleBarAction(BuiltinAction.ToggleOverlay)", window, StringComparison.Ordinal);
         Assert.Contains("WindowPaletteActions.SelectSession(store, sessionId)",
             MethodBody(window, "private async Task SelectRecentSessionAsync(Guid sessionId)"), StringComparison.Ordinal);
     }
