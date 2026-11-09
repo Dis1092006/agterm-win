@@ -58,6 +58,7 @@ public class Phase5ActionCoverageTests
         new(BuiltinAction.ToggleHorizontalSplit, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+d", "cmd+shift+d", "ctrl+shift+d"),
         new(BuiltinAction.ToggleScratch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+j", "opt+j", "alt+j"),
         new(BuiltinAction.ToggleTerminalZoom, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+return", "cmd+shift+return", "ctrl+shift+return"),
+        new(BuiltinAction.ToggleOverlay, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+shift+j", "cmd+shift+j", "ctrl+shift+j"),
         new(BuiltinAction.ToggleSearch, ActionDisposition.Implemented, ChordDisposition.Bound, "cmd+f", "opt+f", "alt+f"),
         new(BuiltinAction.ToggleSidebar, ActionDisposition.Implemented, ChordDisposition.Bound, "ctrl+cmd+s", "opt+s", "alt+s"),
         new(BuiltinAction.SelectTheme, ActionDisposition.Implemented, ChordDisposition.Keyless, null, null, null),
@@ -97,7 +98,7 @@ public class Phase5ActionCoverageTests
     [Fact]
     public void Coverage_table_contains_each_builtin_action_once_with_an_explicit_disposition()
     {
-        Assert.Equal(45, Coverage.Length);
+        Assert.Equal(46, Coverage.Length);
         Assert.Equal(Coverage.Length, Coverage.Select(row => row.Action).Distinct().Count());
         Assert.Equal(BuiltinActions.All, Coverage.Select(row => row.Action).ToArray());
         Assert.All(Coverage, row => Assert.Equal(ActionDisposition.Implemented, row.Disposition));

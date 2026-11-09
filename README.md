@@ -195,14 +195,14 @@ either default.
 | `toggle_scratch`       | ⌘J            | Alt+J            | `custom_command_palette`     | ⌃⇧O           | Ctrl+Shift+O         |
 | `toggle_terminal_zoom` | ⌘⇧↩           | Ctrl+Shift+Enter | `show_attention`             | ⌃⇧I           | Ctrl+Shift+I         |
 | `toggle_search`        | ⌘F            | Alt+F            | `dashboard`                  | ⌘⇧D           | Ctrl+Shift+D         |
-| `toggle_sidebar`       | ⌃⌘S           | Alt+S            |                              |               |                      |
+| `toggle_sidebar`       | ⌃⌘S           | Alt+S            | `toggle_overlay`             | ⌘⇧J           | Ctrl+Shift+J         |
 
 Keyless actions (`rename_*`, `delete_*`, `duplicate_session`, `clear_status`, `select_theme`,
 `toggle_flagged_view`, `focus_workspace`, `first_session`, `last_session`) bind via `map` in
 `keymap.conf`. _Shadowed_: `cmd` and `ctrl` fold onto the same physical key, and the cmd
 interpretation wins — `⌃⌥↑↓` lose to `⌘⌥↑↓`; `map` them to free chords
 (e.g. `map ctrl+shift+down next_attention_session`). Both carry Alt, so the shell is unaffected.
-F2 additionally renames the selected sidebar row (a UI gesture, not a keymap bind). Palettes/split/scratch/zoom/fullscreen/quick/
+F2 additionally renames the selected sidebar row (a UI gesture, not a keymap bind). Palettes/split/scratch/zoom/overlay/fullscreen/quick/
 dashboard hotkeys are implemented in the live app.
 
 ## License

@@ -8,6 +8,7 @@ namespace AgTerm.Cli.Tests;
 
 // session tint, workspace tint and the creation tint of session new / workspace new
 // (parity/adopted.json, upstream f3fea57b TintCommandsTests)
+[Collection(ConsoleCollection.Name)]
 public class TintCommandsTests
 {
     private static ControlRequest Request(params string[] argv) =>

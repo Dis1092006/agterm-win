@@ -201,6 +201,11 @@ public sealed record ControlSessionNode
     /// first shown). Always reported.</summary>
     [JsonPropertyName("realized")]
     public bool? Realized { get; init; }
+
+    /// <summary>The hidden overlay slots by name ("session"); null when none is hidden. A hidden
+    /// overlay still counts in overlay, which reports occupancy.</summary>
+    [JsonPropertyName("hiddenOverlays")]
+    public string[]? HiddenOverlays { get; init; }
 }
 
 /// <summary>A workspace and its sessions as projected into the tree response.</summary>

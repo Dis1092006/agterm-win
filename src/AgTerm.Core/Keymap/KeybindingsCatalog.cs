@@ -85,7 +85,7 @@ public static class KeybindingsCatalog
             or BuiltinAction.FocusWorkspace or BuiltinAction.ToggleWorkspaceFilter
             or BuiltinAction.EditFocusedWorkspaces => "Workspaces",
         BuiltinAction.ToggleSplit or BuiltinAction.ToggleHorizontalSplit or BuiltinAction.ToggleScratch
-            or BuiltinAction.ToggleTerminalZoom
+            or BuiltinAction.ToggleTerminalZoom or BuiltinAction.ToggleOverlay
             or BuiltinAction.FocusLeftPane or BuiltinAction.FocusRightPane or BuiltinAction.QuickTerminal => "Panes",
         BuiltinAction.PreviousSession or BuiltinAction.NextSession or BuiltinAction.PreviousAttentionSession
             or BuiltinAction.NextAttentionSession or BuiltinAction.FirstSession or BuiltinAction.LastSession => "Navigation",
@@ -119,6 +119,7 @@ public static class KeybindingsCatalog
         BuiltinAction.ToggleHorizontalSplit => "Toggle Horizontal Split",
         BuiltinAction.ToggleScratch => "Toggle Scratch",
         BuiltinAction.ToggleTerminalZoom => "Toggle Terminal Zoom",
+        BuiltinAction.ToggleOverlay => "Toggle Overlays",
         BuiltinAction.ToggleSearch => "Find…",
         BuiltinAction.ToggleSidebar => "Toggle Sidebar",
         BuiltinAction.SelectTheme => "Select Theme…",

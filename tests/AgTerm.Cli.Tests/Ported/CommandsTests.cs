@@ -12,6 +12,7 @@ namespace AgTerm.Cli.Tests.Ported;
 // value equality on ControlRequest. Swift `ControlArgs(...)` with only-nil parameters is a PRESENT
 // empty args object and ports to `new ControlArgs()`; a Swift request built with no args at all
 // ports to an omitted Args (null).
+[Collection(ConsoleCollection.Name)]
 public class CommandsTests
 {
     /// <summary>Parse argv into a subcommand and build its `ControlRequest`. Throws if parsing or request-building fails.</summary>

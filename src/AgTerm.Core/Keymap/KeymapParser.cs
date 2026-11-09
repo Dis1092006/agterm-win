@@ -80,7 +80,8 @@ public static class KeymapParser
     /// <summary>
     /// Actions whose shipped default sits on a chord an older keymap.conf may already use (upstream
     /// eb29d556): cmd+shift+d belonged to dashboard before toggle_horizontal_split took it, and
-    /// cmd+shift+g was free before dashboard took it. A file that explicitly binds that chord to
+    /// cmd+shift+g was free before dashboard took it; cmd+shift+j was free before toggle_overlay took it (upstream
+    /// 7f450d17). A file that explicitly binds that chord to
     /// something else, by a map line or a custom command, keeps it: the action ships keyless instead
     /// of invalidating the file, unless the file maps the action itself.
     /// </summary>
@@ -90,7 +91,7 @@ public static class KeymapParser
         foreach (var o in overrides) lastWins[o.Action] = o.Chord;
 
         var vacated = new HashSet<BuiltinAction>();
-        foreach (var action in new[] { BuiltinAction.ToggleHorizontalSplit, BuiltinAction.Dashboard })
+        foreach (var action in new[] { BuiltinAction.ToggleHorizontalSplit, BuiltinAction.Dashboard, BuiltinAction.ToggleOverlay })
         {
             if (action.DefaultChord() is not { } chord || lastWins.ContainsKey(action)) continue;
             var usedByAnotherMap = lastWins.Any(pair => pair.Key != action && pair.Value == chord);

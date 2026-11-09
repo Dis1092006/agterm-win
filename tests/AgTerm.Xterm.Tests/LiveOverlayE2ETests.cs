@@ -536,6 +536,65 @@ public sealed class LiveOverlayE2ETests : IDisposable
         CtlOk("session", "scratch", "off", "--target", sessionId.ToString());
     }
 
+    // upstream 7f450d17: hiding keeps the overlay running and mounted; only the layer leaves the layout.
+    [Fact]
+    public async Task Overlay_hide_drops_the_layer_and_show_returns_the_same_live_surface()
+    {
+        WaitForText(">");
+        var sessionId = ReadLocked(() => _host.Host.Store.SelectedSessionId!.Value);
+        var surface = await OpenOverlayAsync(sessionId, "echo overlay-kept&& pause", sizePercent: 70);
+        WaitForOverlayText(surface, "overlay-kept");
+
+        var hiddenSnapshot = new TaskCompletionSource<LiveSelectionSnapshot>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _host.StoreCoordinator.SelectionSnapshotChanged += snapshot =>
+        {
+            if (snapshot.ToTerminalLayout(1) is TerminalLayout.Single) hiddenSnapshot.TrySetResult(snapshot);
+        };
+        Assert.Equal("hidden", CtlOk("session", "overlay", "hide", "--target", sessionId.ToString()).Trim());
+        var hidden = await hiddenSnapshot.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // the toggle_overlay action needs "has an overlay", which a hidden one still is
+        Assert.False(hidden.OverlayVisible);
+        Assert.True(hidden.OverlayActive);
+        Assert.True(ReadLocked(() => _host.Host.Store.SessionWithId(sessionId)!.OverlayActive));
+        Assert.Same(surface, ReadLocked(() => _host.Host.Store.SessionWithId(sessionId)!.OverlaySurface));
+        Assert.Contains("(overlay hidden)", CtlOk("tree"), StringComparison.Ordinal);
+
+        var shownLayout = WaitForPublishedLayoutAsync(layout =>
+            layout is TerminalLayout.Layered { Layer.SizePercent: 70 } layered
+            && layered.Layer.PaneId == surface.PaneToken);
+        Assert.Equal("shown", CtlOk("session", "overlay", "toggle", "--target", sessionId.ToString()).Trim());
+        await shownLayout;
+        Assert.Contains("overlay-kept", WaitForOverlayText(surface, "overlay-kept"), StringComparison.Ordinal);
+
+        CloseOverlayOk(sessionId);
+    }
+
+    [Fact]
+    public async Task Overlay_hide_reveals_the_scratch_layer_under_it()
+    {
+        WaitForText(">");
+        var sessionId = ReadLocked(() => _host.Host.Store.SelectedSessionId!.Value);
+        var scratchRealized = new TaskCompletionSource<XtermPaneSurface>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _host.SurfaceRealized += (request, surface) =>
+        {
+            if (request.Kind == LiveSurfaceKind.Scratch && request.SessionId == sessionId)
+                scratchRealized.TrySetResult(surface);
+        };
+        CtlOk("session", "scratch", "on", "--target", sessionId.ToString());
+        var scratchSurface = await scratchRealized.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var overlaySurface = await OpenOverlayAsync(sessionId, "pause");
+
+        var scratchLayout = WaitForPublishedLayoutAsync(layout =>
+            layout is TerminalLayout.Layered layered && layered.Layer.PaneId == scratchSurface.PaneToken);
+        CtlOk("session", "overlay", "hide", "--target", sessionId.ToString());
+        await scratchLayout;
+        Assert.Same(overlaySurface, ReadLocked(() => _host.Host.Store.SessionWithId(sessionId)!.OverlaySurface));
+
+        CloseOverlayOk(sessionId);
+        CtlOk("session", "scratch", "off", "--target", sessionId.ToString());
+    }
+
     [Fact]
     public void Overlay_block_waits_for_live_command_and_returns_its_exit_code()
     {

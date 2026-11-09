@@ -116,6 +116,26 @@ public sealed class CloseSessionShortcutTests : IDisposable
         Assert.Null(await ReadAsync(store => store.SessionWithId(id)));
     }
 
+    // upstream 7f450d17: a hidden overlay is not in front of the user, so the ladder passes it by.
+    [Fact]
+    public async Task CloseSessionShortcutPassesAHiddenOverlayAndHidesTheScratch()
+    {
+        var id = await ActiveIdAsync();
+        await MutateAsync(store =>
+        {
+            store.ToggleScratch(id);
+            Assert.True(store.OpenOverlay(id, "cat"));
+            Assert.Null(store.SetOverlaysHidden(id, null, hidden: true));
+        });
+
+        await PressAsync();
+
+        Assert.Equal((true, true, false), await ReadAsync(store =>
+            (store.SessionWithId(id)!.OverlayActive, store.SessionWithId(id)!.OverlayHidden,
+                store.SessionWithId(id)!.ScratchActive)));
+        await AssertSessionSurvivedAsync(id);
+    }
+
     [Fact]
     public async Task CloseSessionShortcutPeelsWindowCoversBeforeSessionCovers()
     {

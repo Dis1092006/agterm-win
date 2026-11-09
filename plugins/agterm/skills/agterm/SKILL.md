@@ -4,7 +4,7 @@ description: >
   Drive agterm-win, a Windows terminal app, programmatically via its agtermctl CLI and a local
   control named pipe. Use when running inside an agterm-win session and asked to control the terminal:
   create, rename, close, select, tint, or reorder sessions and workspaces; split panes; toggle the
-  per-session scratch terminal; open or close overlay terminals and read their exit status; type
+  per-session scratch terminal; open, close, hide or show overlay terminals and read their exit status; type
   into a session, copy its selection, or search its scrollback; post desktop notifications; message other panes; manage windows (new, list,
   select, close, resize, move); change font size; or reload and edit the keymap and the app
   settings. Also covers the
@@ -228,7 +228,8 @@ seen` — omitted when zero), `commandWait` (whether a `--command` session was c
 hold open after the command exits — the read side of `session new --wait`, omitted for a plain or
 non-holding session), `overlaySizePercent` (an open overlay's floating-panel percent 1–100,
 omitted for a full-pane overlay or no overlay so gate on `overlay` first; the read side of `overlay
-resize` for a record-then-restore zoom), `splitRatio` (the left-pane divider fraction 0.05–0.95 of a
+resize` for a record-then-restore zoom), `hiddenOverlays` (the hidden overlay slots, `["session"]` on
+agterm-win; omitted when none is hidden; the read side of `overlay hide`), `splitRatio` (the left-pane divider fraction 0.05–0.95 of a
 session that has a split — shown or hidden; omitted when there's no split or the ratio was never set (at
 the default 0.5) —
 the read side of `session resize`, record it to restore the exact divider), `splitFocused`
@@ -369,7 +370,11 @@ omitted when expanded).
 - `overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow]` ·
   `overlay resize (--size-percent N | --full)` ·
   `overlay close` ·
+  `overlay hide|show|toggle [--pane left|right]` ·
   `overlay result` — run a program on top of a session; `--block` waits and exits with its status.
+  `overlay hide` hides the overlay without closing it (Ctrl+Shift+J for the user): the program keeps
+  running, `--block` keeps waiting, and the slot stays taken, so `overlay open` or `session hud` there
+  fails with `overlay hidden` until it is shown or closed. `toggle` answers `hidden` or `shown`.
   `overlay resize` changes an ALREADY-OPEN overlay: `--size-percent N` (1-100) makes it a floating panel,
   `--full` switches it back to the full-pane overlay; the program keeps running (no re-spawn).
   Target with `--target "$AGTERM_SESSION_ID"` for YOUR session (default `active` is the user's selection).

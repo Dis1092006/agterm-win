@@ -9,7 +9,7 @@ public sealed class KeybindingsCatalogTests
     {
         var groups = KeybindingsCatalog.Create(AgTerm.Core.Keymap.Keymap.Empty);
         var rows = groups.SelectMany(group => group.Items).ToArray();
-        Assert.Equal(46, rows.Length);
+        Assert.Equal(47, rows.Length);
         foreach (var action in BuiltinActions.All)
             Assert.Single(rows, row => row.Id == action.WireName());
         var session = Assert.Single(rows, row => row.Id == "new_session");
@@ -18,6 +18,10 @@ public sealed class KeybindingsCatalogTests
         Assert.Equal("Unbound", Assert.Single(rows, row => row.Id == "rename_window").Status);
         Assert.Contains(groups, group => group.Name == "Sessions");
         Assert.Equal("Ctrl+Shift+F1", Assert.Single(rows, row => row.Id == "keyboard-shortcuts").Shortcut);
+        var overlay = Assert.Single(rows, row => row.Id == "toggle_overlay");
+        Assert.Equal("Toggle Overlays", overlay.Title);
+        Assert.Equal("Ctrl+Shift+J", overlay.Shortcut);
+        Assert.Contains(overlay, Assert.Single(groups, group => group.Name == "Panes").Items);
     }
 
     // upstream a2552826: the two membership editors, keyless

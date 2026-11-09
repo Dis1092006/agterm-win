@@ -157,6 +157,8 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse CloseSessionOverlay(string? target, string? window);
     ControlResponse ResizeSessionOverlay(string? target, string? window, int? sizePercent);
     ControlResponse SessionOverlayResult(string? target, string? window);
+    /// <summary>Hides, shows or toggles the session's overlays, or one pane's; a hidden overlay keeps running.</summary>
+    ControlResponse SetSessionOverlayVisibility(string? target, string? window, OverlayPane? pane, OverlayVisibilityMode mode);
     ControlResponse SetSessionBackground(string? target, string? window, ControlSessionBackgroundOptions options);
     ControlResponse ReadSessionText(string? target, string? window, ControlSessionTextOptions options);
     ControlResponse WindowNew(string? name);

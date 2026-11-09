@@ -138,7 +138,9 @@ exits — the read side of `session new --wait`; omitted for a plain or non-hold
 `overlaySizePercent` (an open overlay's size — the
 floating panel's percent of the pane, 1–100; omitted = a full-pane overlay or no overlay, so gate on
 `overlay` first; the read side of `session overlay resize`, e.g. record it before switching to `--full`
-to restore the exact size), `hud` (the open HUD message panel, see `session hud`; omitted when none),
+to restore the exact size), `hiddenOverlays` (the hidden overlay slots, `["session"]` on agterm-win;
+omitted when none is hidden; the read side of `session overlay hide`), `hud` (the open HUD message
+panel, see `session hud`; omitted when none),
 `ask` (`{id, pane}` of a pending terminal-style question on this session, see `ask`; omitted when none;
 a gui-style question is reported by the top-level `askPending` instead), `scratch` (scratch shown),
 `flagged` (in the
@@ -679,6 +681,14 @@ All are read-only projections of GUI state.
   session id.
 - `session overlay close [--target] [--window W]` — close (destroy) the overlay. Wire:
   `session.overlay.close`.
+- `session overlay hide|show|toggle [--pane left|right] [--target] [--window W]` — hide the overlay
+  without closing it, or show it again. Wire: `session.overlay.hide`, `session.overlay.show`,
+  `session.overlay.toggle`. `toggle` hides while it is shown, else shows it, and `result.text` says
+  `hidden` or `shown`. A hidden program keeps running, `--block` keeps waiting and `session overlay
+  result` still answers. The slot stays taken until the overlay closes: `session overlay open`, or
+  `session hud` on the session-wide slot, fails with `overlay hidden` while it is hidden. A HUD cannot be
+  hidden (`no overlay`). agterm-win has no pane overlays, so `--pane` always answers `no overlay`. The
+  user's chord is `toggle_overlay` (Ctrl+Shift+J). Read it back as `hiddenOverlays` on `tree`.
 - `session overlay result [--target] [--window W]` — returns `result.exitCode` once the overlay has
   closed. Wire: `session.overlay.result`. Errors `overlay still running` while up, `no overlay result`
   if none ran.

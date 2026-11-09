@@ -13,7 +13,7 @@ public sealed partial class AppStore
     {
         if (SessionWithId(sessionId) is not { } session ||
             session.SearchActive ||
-            session.FullOverlayActive ||
+            session.FullOverlayVisible ||
             session.OnScreenSurface is not { } owner)
         {
             return false;
@@ -404,6 +404,7 @@ public sealed partial class AppStore
             session.OverlayExitCode = exitCode;
         }
         session.OverlayActive = false;
+        session.OverlayHidden = false;
         session.OverlaySurface?.Teardown();
         session.OverlaySurface = null;
         session.OverlayCommand = null;

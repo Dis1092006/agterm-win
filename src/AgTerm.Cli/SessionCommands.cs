@@ -1959,7 +1959,29 @@ internal static class SessionCommands
                 Args = Client.WithWindow(),
             };
         }
+
+        /// <summary>session overlay hide, show and toggle: one request shape, three commands.</summary>
+        internal sealed class Visibility : IRequestCommand
+        {
+            public required WireCommand Cmd { get; init; }
+            public string? Pane { get; init; }
+            public required TargetOptions Target { get; init; }
+            public required ClientOptions Client { get; init; }
+            public IConnectionOptions Options => Client;
+
+            public void Validate() => ValidateOverlayPane(Pane);
+
+            public ControlRequest MakeRequest() => new()
+            {
+                Cmd = Cmd,
+                Target = Target.Target,
+                Args = Client.WithWindow(Pane is null ? null : new ControlArgs { Pane = Pane }),
+            };
+        }
     }
+
+    private const string OverlayVisibilityScope =
+        "Without --pane this acts on every overlay of the session: the session-wide one and both pane overlays.";
 
     private static System.CommandLine.Command BuildOverlay(CommandBindings bindings)
     {
@@ -1967,9 +1989,41 @@ internal static class SessionCommands
             "Open, resize, or close an ephemeral overlay terminal on a session.");
         overlay.Subcommands.Add(BuildOverlayOpen(bindings));
         overlay.Subcommands.Add(BuildOverlayClose(bindings));
+        overlay.Subcommands.Add(BuildOverlayVisibility(bindings, "hide", WireCommand.SessionOverlayHide,
+            "Hide the session's overlays without closing them.\n\n"
+            + "A hidden overlay keeps running and stays in `tree` (hiddenOverlays); the terminal under it takes input. "
+            + OverlayVisibilityScope));
+        overlay.Subcommands.Add(BuildOverlayVisibility(bindings, "show", WireCommand.SessionOverlayShow,
+            "Show the session's hidden overlays again.\n\n" + OverlayVisibilityScope));
+        overlay.Subcommands.Add(BuildOverlayVisibility(bindings, "toggle", WireCommand.SessionOverlayToggle,
+            "Hide the session's overlays if any is shown, otherwise show them all.\n\n"
+            + "Prints the state left behind, hidden or shown. " + OverlayVisibilityScope));
         overlay.Subcommands.Add(BuildOverlayResize(bindings));
         overlay.Subcommands.Add(BuildOverlayResult(bindings));
         return overlay;
+    }
+
+    private static System.CommandLine.Command BuildOverlayVisibility(
+        CommandBindings bindings, string name, WireCommand wire, string description)
+    {
+        var cmd = new System.CommandLine.Command(name, description);
+        var pane = new Option<string?>("--pane")
+        {
+            Description = "Only that split pane's overlay (primary/left/top or split/right/bottom).",
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Options.Add(pane);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Overlay.Visibility
+        {
+            Cmd = wire,
+            Pane = result.GetValue(pane),
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
     }
 
     private static System.CommandLine.Command BuildOverlayOpen(CommandBindings bindings)

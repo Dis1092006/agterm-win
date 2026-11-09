@@ -196,6 +196,28 @@ public static class OverlayResultError
     public const string NoResult = "no overlay result";
 }
 
+/// <summary>Error strings for session.overlay.hide|show|toggle and for opening into a slot whose
+/// overlay is hidden (upstream OverlayVisibilityError).</summary>
+public static class OverlayVisibilityError
+{
+    /// <summary>The slot still holds its overlay, running; show or close it before opening another.</summary>
+    public const string Hidden = "overlay hidden";
+
+    public const string NoOverlay = "no overlay";
+
+    public static string Message(OverlayVisibilityFailure failure) => failure switch
+    {
+        OverlayVisibilityFailure.UnknownSession => "no such session",
+        _ => NoOverlay,
+    };
+}
+
+/// <summary>The rejection of a --pane selector on session.overlay.* (upstream PaneOverlayError).</summary>
+public static class PaneOverlayError
+{
+    public const string InvalidPane = "session.overlay: --pane must be left or right";
+}
+
 /// <summary>
 /// Advisory text notify returns in result.text when the banner toggle is off; shared so the
 /// server's wording and any caller matching on it cannot drift.

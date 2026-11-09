@@ -14,18 +14,23 @@ public sealed class KeymapEditOverlay : IDisposable
     private readonly ILiveStoreCoordinator _coordinator;
     private readonly Func<Task> _reloadAsync;
     private readonly Action<string, Exception>? _logException;
+    private readonly Action? _beep;
     private readonly object _lock = new();
     private Guid? _sessionId;
     private int _disposed;
 
+    /// <param name="beep">Answers an open the session refused because a hidden overlay holds the
+    /// slot (upstream beepIfHiddenOverlayRefused): nothing on screen explains that refusal.</param>
     public KeymapEditOverlay(
         ILiveStoreCoordinator coordinator,
         Func<Task> reloadAsync,
-        Action<string, Exception>? logException = null)
+        Action<string, Exception>? logException = null,
+        Action? beep = null)
     {
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _reloadAsync = reloadAsync ?? throw new ArgumentNullException(nameof(reloadAsync));
         _logException = logException;
+        _beep = beep;
         _coordinator.SidebarInvalidated += OnSidebarInvalidated;
     }
 
@@ -39,16 +44,19 @@ public sealed class KeymapEditOverlay : IDisposable
         Directory.CreateDirectory(directory);
 
         var opened = false;
+        var refusedHidden = false;
         await _coordinator.MutateAsync(store =>
         {
-            if (store.SelectedSessionId is not { } id ||
-                !store.OpenOverlay(id, command, directory, sizePercent: SizePercent))
+            if (store.SelectedSessionId is not { } id) return;
+            if (!store.OpenOverlay(id, command, directory, sizePercent: SizePercent))
             {
+                refusedHidden = store.SessionWithId(id)?.OverlayHidden == true;
                 return;
             }
             lock (_lock) _sessionId = id;
             opened = true;
         }, cancellationToken).ConfigureAwait(false);
+        if (refusedHidden) _beep?.Invoke();
         return opened;
     }
 

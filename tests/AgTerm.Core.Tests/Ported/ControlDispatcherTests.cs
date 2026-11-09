@@ -2339,6 +2339,62 @@ public class ControlDispatcherTests
         }, actions.Calls);
     }
 
+    [Theory]
+    [InlineData(Command.SessionOverlayHide, OverlayVisibilityMode.Hide)]
+    [InlineData(Command.SessionOverlayShow, OverlayVisibilityMode.Show)]
+    [InlineData(Command.SessionOverlayToggle, OverlayVisibilityMode.Toggle)]
+    public async Task SessionOverlayVisibilityRoutesTargetWindowPaneAndMode(Command cmd, OverlayVisibilityMode mode)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+        actions.NextOverlayVisibilityResponse = Ok(new ControlResult { Id = "session", Text = "hidden" });
+
+        var whole = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = cmd, Target = "session", Args = new ControlArgs { Window = "win" },
+        });
+        var pane = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = cmd, Target = "session", Args = new ControlArgs { Pane = "split" },
+        });
+
+        ExpectResponse(Ok(new ControlResult { Id = "session", Text = "hidden" }), whole);
+        ExpectResponse(Ok(new ControlResult { Id = "session", Text = "hidden" }), pane);
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.OverlayVisibility("session", "win", null, mode),
+            new MockControlActions.Call.OverlayVisibility("session", null, OverlayPane.Right, mode),
+        }, actions.Calls);
+    }
+
+    [Theory]
+    [InlineData(Command.SessionOverlayHide)]
+    [InlineData(Command.SessionOverlayShow)]
+    [InlineData(Command.SessionOverlayToggle)]
+    public async Task SessionOverlayVisibilityRejectsAnUnknownPaneBeforeTheHost(Command cmd)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = cmd, Target = "session", Args = new ControlArgs { Pane = "scratch" },
+        });
+
+        ExpectResponse(new ControlResponse { Ok = false, Error = "session.overlay: --pane must be left or right" }, response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
+    public void SessionOverlayVisibilityCommandsRoundTripTheirWireNames()
+    {
+        Assert.Equal("session.overlay.hide", Command.SessionOverlayHide.ToWire());
+        Assert.Equal("session.overlay.show", Command.SessionOverlayShow.ToWire());
+        Assert.Equal("session.overlay.toggle", Command.SessionOverlayToggle.ToWire());
+        Assert.True(CommandWire.TryParse("session.overlay.toggle", out var parsed));
+        Assert.Equal(Command.SessionOverlayToggle, parsed);
+    }
+
     [Fact]
     public async Task SessionOverlayResultKeepsExactActionErrorResponse()
     {

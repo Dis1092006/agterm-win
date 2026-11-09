@@ -77,7 +77,7 @@ public sealed class CloseSessionShortcut
             if (store.ActiveSession is not { } session) return;
             if (session.HudActive)
                 store.CloseHud(session.Id);
-            else if (session.OverlayActive)
+            else if (session.OverlayVisible)
                 store.CloseOverlay(session.Id);
             else if (session.ScratchActive)
                 store.ToggleScratch(session.Id);

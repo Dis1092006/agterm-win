@@ -44,6 +44,7 @@ public sealed class WindowCommandRouter
             [BuiltinAction.ToggleHorizontalSplit] = true,
             [BuiltinAction.ToggleScratch] = true,
             [BuiltinAction.ToggleTerminalZoom] = true,
+            [BuiltinAction.ToggleOverlay] = true,
             [BuiltinAction.ToggleSearch] = true,
             [BuiltinAction.ToggleSidebar] = true,
             [BuiltinAction.SelectTheme] = true,

@@ -30,6 +30,7 @@ public class WindowCommandRouterTests
         BuiltinAction.ToggleHorizontalSplit,
         BuiltinAction.ToggleScratch,
         BuiltinAction.ToggleTerminalZoom,
+        BuiltinAction.ToggleOverlay,
         BuiltinAction.ToggleSearch,
         BuiltinAction.QuickTerminal,
         BuiltinAction.SessionPalette,
@@ -58,19 +59,19 @@ public class WindowCommandRouterTests
     [Fact]
     public void ActionImplementations_covers_all_builtin_actions_with_correct_implemented_state()
     {
-        // --- all 45 distinct enum members ---
+        // --- all 46 distinct enum members ---
         var all = BuiltinActions.All;
-        Assert.Equal(45, all.Count);
-        Assert.Equal(45, all.Distinct().Count());
+        Assert.Equal(46, all.Count);
+        Assert.Equal(46, all.Distinct().Count());
 
-        // --- test data covers exactly those 45 members ---
+        // --- test data covers exactly those 46 members ---
         var expected = ImplementedActions.ToHashSet();
-        Assert.Equal(45, expected.Count);
+        Assert.Equal(46, expected.Count);
         Assert.Equal(expected, all.ToHashSet());
 
-        // --- ActionImplementations has exactly the 45 keys, each once ---
+        // --- ActionImplementations has exactly the 46 keys, each once ---
         var map = WindowCommandRouter.ActionImplementations;
-        Assert.Equal(45, map.Count);
+        Assert.Equal(46, map.Count);
         Assert.Equal(expected, map.Keys.ToHashSet());
 
         // --- each expected Implemented value matches ---
