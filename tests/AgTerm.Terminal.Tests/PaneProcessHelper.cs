@@ -43,10 +43,10 @@ internal static class PaneProcessHelper
                 Report(Spawn(LongPing, CreateSuspended));
                 break;
             case "detached":
-                Report(Spawn(LongPing, DetachedProcess, waitStarted: true));
+                Report(Spawn(LongPing, DetachedProcess, waitFor: IsConnected));
                 break;
             case "newconsole":
-                Report(Spawn(LongPing, CreateNewConsole, hidden: true, waitStarted: true));
+                Report(Spawn(LongPing, CreateNewConsole, hidden: true, waitFor: IsConnected));
                 break;
             case "gui":
                 var script = Path.Combine(Path.GetTempPath(), $"agterm-pane-helper-{Environment.ProcessId}.vbs");
@@ -96,6 +96,11 @@ internal static class PaneProcessHelper
     }
 
     private static void Report(int pid) => Console.WriteLine($"SPAWNED pid={pid}");
+
+    /// <summary>A new console child shows its creator with flag 0 until it connects to its own
+    /// console (or to none) with flag 1. If the pane closes before that, the sweep sees a console
+    /// program whose creator died with the pane and ends it.</summary>
+    private static bool IsConnected(long value) => value >= 0 && (value & 3) == 1;
 
     /// <summary>Starts a child the way a program in the pane would; it inherits this process's
     /// console unless the flags say otherwise.</summary>
