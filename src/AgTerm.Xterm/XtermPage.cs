@@ -466,6 +466,10 @@ public sealed class XtermPage
         writer.WriteString("paneId", layer.PaneId);
         if (layer.SizePercent is { } sizePercent)
             writer.WriteNumber("sizePercent", sizePercent);
+        if (layer.Width is { } width)
+            writer.WriteNumber("width", width);
+        if (layer.Height is { } height)
+            writer.WriteNumber("height", height);
         if (layer.BackgroundColor is { } backgroundColor)
             writer.WriteString("backgroundColor", backgroundColor);
         writer.WriteEndObject();

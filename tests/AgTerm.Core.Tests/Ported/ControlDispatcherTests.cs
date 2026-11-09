@@ -2478,10 +2478,95 @@ public class ControlDispatcherTests
             Args = new ControlArgs { SizePercent = 0 },
         });
 
-        ExpectResponse(Err("session.overlay.resize requires --size-percent or --full"), missing);
+        ExpectResponse(Err("session.overlay.resize requires --size-percent, --width/--height or --full"), missing);
         ExpectResponse(Err("session.overlay.resize: --full is mutually exclusive with --size-percent"), both);
         ExpectResponse(Err("session.overlay.resize: --size-percent must be 1...100"), tooBig);
         ExpectResponse(Err("session.overlay.resize: --size-percent must be 1...100"), tooSmall);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
+    public async Task SessionOverlayResizeRoutesPointsWithAndWithoutAPercent()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayResize, Target = "session", Args = new ControlArgs { Height = 240 },
+        });
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayResize, Target = "session",
+            Args = new ControlArgs { SizePercent = 60, Window = "win", Width = 700 },
+        });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.OverlayPointResize("session", null, null, new OverlayPointSize(Height: 240)),
+            new MockControlActions.Call.OverlayPointResize("session", "win", 60, new OverlayPointSize(Width: 700)),
+        }, actions.Calls);
+    }
+
+    public static TheoryData<ControlArgs, string> BadResizePoints => new()
+    {
+        { new ControlArgs { Full = true, Height = 240 }, OverlayPointError.FullConflict },
+        { new ControlArgs { Height = 0 }, OverlayPointError.NotPositive },
+        { new ControlArgs { SizePercent = 60, Width = -5 }, OverlayPointError.NotPositive },
+    };
+
+    [Theory]
+    [MemberData(nameof(BadResizePoints))]
+    public async Task SessionOverlayResizeRefusesBadPoints(ControlArgs args, string error)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayResize, Target = "session", Args = args,
+        });
+
+        ExpectResponse(Err(error), response);
+        Assert.Empty(actions.Calls);
+    }
+
+    [Fact]
+    public async Task SessionOverlayOpenRoutesPointsBesideThePercent()
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayOpen, Target = "session",
+            Args = new ControlArgs { Command = "cat", SizePercent = 60, Width = 500, Height = 240 },
+        });
+
+        var open = Assert.IsType<MockControlActions.Call.OverlayOpen>(Assert.Single(actions.Calls));
+        Assert.Equal(60, open.Options.SizePercent);
+        Assert.Equal(new OverlayPointSize(500, 240), open.Options.Points);
+    }
+
+    public static TheoryData<ControlArgs, string> BadOpenPoints => new()
+    {
+        { new ControlArgs { Command = "cat", Height = 240 }, OverlayPointError.NeedsPercent },
+        { new ControlArgs { Command = "cat", SizePercent = 60, Height = 0 }, OverlayPointError.NotPositive },
+    };
+
+    [Theory]
+    [MemberData(nameof(BadOpenPoints))]
+    public async Task SessionOverlayOpenRefusesBadPoints(ControlArgs args, string error)
+    {
+        var actions = new MockControlActions();
+        var dispatcher = new ControlDispatcher(actions);
+
+        var response = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.SessionOverlayOpen, Target = "session", Args = args,
+        });
+
+        ExpectResponse(Err(error), response);
         Assert.Empty(actions.Calls);
     }
 

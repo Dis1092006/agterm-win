@@ -242,6 +242,19 @@ public sealed class Session
     /// the default full-pane overlay.</summary>
     public int? OverlaySizePercent { get; set; }
 
+    /// <summary>A floating overlay's per-axis point overrides of OverlaySizePercent; empty otherwise.
+    /// Cleared on open and close, never persisted.</summary>
+    public OverlayPointSize OverlayPoints { get; set; }
+
+    /// <summary>A floating overlay's size in points in the session area the page last reported: the
+    /// read-back of --width/--height and of --size-percent alike. Null for a full overlay, a HUD, no
+    /// overlay, and before the page has laid the session out.</summary>
+    public (double Width, double Height)? OverlayContentSize =>
+        OverlayActive && OverlaySizePercent is { } percent
+                      && HudMetrics?.Session is { Width: > 0, Height: > 0 } area
+            ? OverlayPointSize.PanelSize((area.Width, area.Height), percent, OverlayPoints)
+            : null;
+
     /// <summary>Whether a FULL-coverage overlay is up: active with no size percent.</summary>
     public bool FullOverlayActive => OverlayActive && OverlaySizePercent is null;
 

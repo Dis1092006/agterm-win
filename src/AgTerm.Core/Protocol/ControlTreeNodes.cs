@@ -85,6 +85,15 @@ public sealed record ControlSessionNode
     [JsonPropertyName("overlaySizePercent")]
     public int? OverlaySizePercent { get; init; }
 
+    /// <summary>A floating overlay's content size in points, after --width/--height and the cap, from
+    /// the session's last layout. Omitted for a full overlay, a HUD, and a session not laid out yet.
+    /// The read side of session.overlay.open/.resize --width/--height.</summary>
+    [JsonPropertyName("overlayWidth")]
+    public double? OverlayWidth { get; init; }
+
+    [JsonPropertyName("overlayHeight")]
+    public double? OverlayHeight { get; init; }
+
     /// <summary>The message panel in the session's overlay slot; overlay reads false beside it.</summary>
     [JsonPropertyName("hud")]
     public ControlHudNode? Hud { get; init; }

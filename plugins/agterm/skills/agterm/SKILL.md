@@ -228,7 +228,9 @@ seen` — omitted when zero), `commandWait` (whether a `--command` session was c
 hold open after the command exits — the read side of `session new --wait`, omitted for a plain or
 non-holding session), `overlaySizePercent` (an open overlay's floating-panel percent 1–100,
 omitted for a full-pane overlay or no overlay so gate on `overlay` first; the read side of `overlay
-resize` for a record-then-restore zoom), `hiddenOverlays` (the hidden overlay slots, `["session"]` on
+resize` for a record-then-restore zoom of a percent-only panel), `overlayWidth`/`overlayHeight` (a
+floating overlay's content size in points as laid out, the read side of `--width`/`--height`),
+`hiddenOverlays` (the hidden overlay slots, `["session"]` on
 agterm-win; omitted when none is hidden; the read side of `overlay hide`), `splitRatio` (the left-pane divider fraction 0.05–0.95 of a
 session that has a split — shown or hidden; omitted when there's no split or the ratio was never set (at
 the default 0.5) —
@@ -367,8 +369,8 @@ omitted when expanded).
   solid terminal background color, for the session. Per session; survives restart; read back as the tree
   node's `background`. `--opacity` 0.0–1.0. agterm-win validates and stores the spec, but the window does
   not draw it.
-- `overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow]` ·
-  `overlay resize (--size-percent N | --full)` ·
+- `overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow]` ·
+  `overlay resize (--size-percent N [--width PT] [--height PT] | --width PT [--height PT] | --height PT | --full)` ·
   `overlay close` ·
   `overlay hide|show|toggle [--pane left|right]` ·
   `overlay result` — run a program on top of a session; `--block` waits and exits with its status.
@@ -377,6 +379,7 @@ omitted when expanded).
   fails with `overlay hidden` until it is shown or closed. `toggle` answers `hidden` or `shown`.
   `overlay resize` changes an ALREADY-OPEN overlay: `--size-percent N` (1-100) makes it a floating panel,
   `--full` switches it back to the full-pane overlay; the program keeps running (no re-spawn).
+  `--width`/`--height` size a floating panel in points per axis; reference.md owns the rules.
   Target with `--target "$AGTERM_SESSION_ID"` for YOUR session (default `active` is the user's selection).
   **By default `overlay open` does NOT switch the user** — full and floating (`--size-percent`) both open
   on `--target` and run their program in the background; the panel appears when the user visits that

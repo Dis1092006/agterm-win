@@ -20,7 +20,15 @@ Status: done.
 
 ## B10b: `--width` and `--height` in points
 
-- `session overlay open` and `session overlay resize` take `--width` and `--height` in points. Each replaces `--size-percent` on its own axis and is capped at 80% of the session.
-- `tree` reports the laid-out size as `overlayWidth` and `overlayHeight`.
+- `session overlay open` and `session overlay resize` take `--width` and `--height` in points. Each replaces `--size-percent` on its own axis and is capped at 80% of the session. The other axis keeps the percent, which keeps its 1...100 range.
+- Wire args are the existing `width` and `height` of `ControlArgs`. A value of 0 or less is refused with `session.overlay: --width/--height must be positive`.
+- Open: points without a percent are refused with `session.overlay.open: --width/--height need --size-percent`. Checks run in upstream's order: the percent range, then positive points, then the missing percent.
+- Resize with `--size-percent` sizes from that percent and keeps only the axes given with it. Resize with points alone changes those axes and keeps the rest. On a full overlay it is refused with `session.overlay.resize: --width/--height need a floating overlay; pass --size-percent too`. On a HUD it is refused with `a hud measures its own height: --width/--height do not apply`. `--full` clears the points, and `--full` with points is refused with `session.overlay.resize: --full is mutually exclusive with --width/--height`.
+- The resize error with nothing given becomes `session.overlay.resize requires --size-percent, --width/--height or --full`, as upstream changed it.
+- The points are cleared on close, on a new open and on a resize to full. They are not persisted.
+- `tree` reports the floating panel's size as `overlayWidth` and `overlayHeight`, after the cap. They are omitted for a full overlay, a HUD, and a session the page has not laid out yet. The size comes from the session area the page last reported, the same metrics a HUD measures against.
+- The page sizes a point axis as `min(N px, 80%)`. A point is a CSS pixel of the page.
+- CLI `--width` and `--height` on `session overlay open|resize`, with upstream's help text and parse-time validation.
+- Not in B10b: `--pane` with points (the port has no pane overlays), the page title strip (no HTML overlays), and overlays shown on another Mac.
 
-Status: not started.
+Status: done.

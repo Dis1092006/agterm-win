@@ -201,6 +201,59 @@ public sealed class LiveHudE2ETests : IDisposable
         return page;
     }
 
+    // upstream 9bbb3408: a floating overlay sized in points is drawn at those CSS px, and tree reads
+    // back its size in the session area the page measured; the axis without points keeps the percent
+    [Fact]
+    public async Task A_floating_overlay_sized_in_points_reads_back_the_size_drawn_in_the_page()
+    {
+        var page = await ShowSessionAsync();
+        var session = ActiveSessionNode()["id"]!.GetValue<string>();
+
+        var opened = await OpenLayeredAsync(page, 2, layer => layer.Width == 300,
+            "session", "overlay", "open", "pause", "--size-percent", "50", "--width", "300", "--target", session);
+        var area = ReadLocked(() => _host.Host.Store.ActiveSession!.HudMetrics!.Session);
+        var node = ActiveSessionNode();
+        Assert.Equal(300, node["overlayWidth"]!.GetValue<double>());
+        Assert.Equal(area.Height * 0.5, node["overlayHeight"]!.GetValue<double>(), 3);
+        await WaitForPageAsync(page, LayerClientSize(opened.Layer.PaneId, "clientWidth", 300));
+
+        var resized = await OpenLayeredAsync(page, 3, layer => layer.Height == 120,
+            "session", "overlay", "resize", "--height", "120", "--target", session);
+        Assert.Equal(300, resized.Layer.Width);
+        node = ActiveSessionNode();
+        Assert.Equal(300, node["overlayWidth"]!.GetValue<double>());
+        Assert.Equal(120, node["overlayHeight"]!.GetValue<double>());
+        await WaitForPageAsync(page, LayerClientSize(resized.Layer.PaneId, "clientHeight", 120));
+
+        CtlOk("session", "overlay", "close", "--target", session);
+    }
+
+    /// <summary>Runs the command, waits for the layered layout it publishes, and lays it out in the
+    /// page as MainWindow does.</summary>
+    private async Task<TerminalLayout.Layered> OpenLayeredAsync(
+        XtermPage page, long generation, Func<TerminalLayer, bool> predicate, params string[] argv)
+    {
+        var published = new TaskCompletionSource<TerminalLayout.Layered>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _host.StoreCoordinator.SelectionSnapshotChanged += snapshot =>
+        {
+            if (snapshot.ToTerminalLayout(generation) is TerminalLayout.Layered layered && predicate(layered.Layer))
+                published.TrySetResult(layered);
+        };
+        CtlOk(argv);
+        var layout = await published.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.True(await _webView.RunAsync(_ => page.ApplyLayoutAsync(layout)));
+        return layout;
+    }
+
+    // the client size leaves out the layer's 1px border: a point size is the area inside it
+    private static string LayerClientSize(string paneId, string property, int px) => $$"""
+        (() => {
+            const el = document.querySelector('[data-pane-id="{{paneId}}"]');
+            return el !== null && el.{{property}} === {{px}};
+        })()
+        """;
+
     // review focus 1: a HUD opened while its session is off screen reads the unmeasured width, and
     // selecting and showing that session measures it in the page with no further command
     [Fact]

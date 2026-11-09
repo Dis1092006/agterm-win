@@ -156,6 +156,9 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse OpenSessionOverlay(string? target, string? window, ControlSessionOverlayOpenOptions options);
     ControlResponse CloseSessionOverlay(string? target, string? window);
     ControlResponse ResizeSessionOverlay(string? target, string? window, int? sizePercent);
+    /// <summary>session.overlay.resize --width/--height: with a percent the points replace the
+    /// overrides whole, without one only the given axes of a floating overlay change.</summary>
+    ControlResponse ResizeSessionOverlay(string? target, string? window, int? sizePercent, OverlayPointSize points);
     ControlResponse SessionOverlayResult(string? target, string? window);
     /// <summary>Hides, shows or toggles the session's overlays, or one pane's; a hidden overlay keeps running.</summary>
     ControlResponse SetSessionOverlayVisibility(string? target, string? window, OverlayPane? pane, OverlayVisibilityMode mode);
@@ -208,9 +211,10 @@ public sealed record ControlAskPlacement(OverlayPane? Pane = null, string? PaneI
 /// target session: PaneId is a live pane token that overrides Pane.</summary>
 public sealed record ControlHudPlacement(OverlayPane? Pane = null, string? PaneId = null);
 
+/// <summary>Points overrides SizePercent per axis; the dispatcher passes it only beside a percent.</summary>
 public sealed record ControlSessionOverlayOpenOptions(
     string Command, string? Cwd, bool Wait, int? SizePercent, string? BackgroundColor,
-    bool Follow = false);
+    bool Follow = false, OverlayPointSize Points = default);
 
 public sealed record ControlSessionBackgroundOptions(BackgroundWatermark? Watermark);
 

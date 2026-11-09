@@ -301,11 +301,13 @@ public sealed record ControlArgs
     [JsonPropertyName("window")]
     public string? Window { get; init; }
 
-    /// <summary>window.resize width in points, or ask.open panel width as an integer percent of the anchor (10...100).</summary>
+    /// <summary>window.resize width in points, ask.open panel width as an integer percent of the anchor
+    /// (10...100), or a floating overlay's content width in points for session.overlay.open/resize.</summary>
     [JsonPropertyName("width")]
     public int? Width { get; init; }
 
-    /// <summary>New window frame height in points for window.resize.</summary>
+    /// <summary>New window frame height in points for window.resize, or a floating overlay's content
+    /// height in points for session.overlay.open/resize.</summary>
     [JsonPropertyName("height")]
     public int? Height { get; init; }
 
