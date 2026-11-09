@@ -55,9 +55,23 @@ public sealed class XtermPageAskTests
             new TerminalAskChoicesView(true, new[] { new TerminalAskChoiceView("Alpha", "first", true), new TerminalAskChoiceView("Beta", null, false) }, 1)));
 
         var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyAsk"));
-        Assert.Contains(""","input":null,"choices":{"multiple":true,"cursor":1,"items":[{"label":"Alpha","subtitle":"first","checked":true},{"label":"Beta","subtitle":null,"checked":false}]}}""", script);
+        Assert.Contains(""","input":null,"choices":{"multiple":true,"cursor":1,"items":[{"label":"Alpha","subtitle":"first","checked":true},{"label":"Beta","subtitle":null,"checked":false}],"other":null}}""", script);
     }
 
+    [Fact]
+    public async Task ApplyAsk_serializes_the_other_row()
+    {
+        var page = await InitializedAsync();
+
+        await page.ApplyAskAsync(new TerminalAskView("ASK", null, new[] { "left-token" }, "Pick", null,
+            new[] { new TerminalAskButtonView(new[] { new AskLabelRun("OK", false) }, false) },
+            0, "right", null, null,
+            new TerminalAskChoicesView(false, new[] { new TerminalAskChoiceView("Alpha", null, false) }, 1,
+                new TerminalAskOtherView("another", "qa", true, true))));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyAsk"));
+        Assert.Contains(""","other":{"placeholder":"another","text":"qa","selected":true,"enabled":true}}}""", script);
+    }
     [Fact]
     public async Task Ask_drafts_reach_the_host()
     {
@@ -92,6 +106,7 @@ public sealed class XtermPageAskTests
     [InlineData("""{"type":"askIntent","askId":"A","intent":"down"}""", "down")]
     [InlineData("""{"type":"askIntent","askId":"A","intent":"toggle"}""", "toggle")]
     [InlineData("""{"type":"askIntent","askId":"A","intent":"toggleAt","index":3}""", "toggleAt:3")]
+    [InlineData("""{"type":"askIntent","askId":"A","intent":"editOther"}""", "editOther")]
     public async Task Ask_intents_reach_the_host(string json, string expected)
     {
         var page = await InitializedAsync();
@@ -108,6 +123,7 @@ public sealed class XtermPageAskTests
             AskIntent.Down => "down",
             AskIntent.Toggle => "toggle",
             AskIntent.ToggleAt at => "toggleAt:" + at.Index,
+            AskIntent.EditOther => "editOther",
             _ => "?",
         };
 

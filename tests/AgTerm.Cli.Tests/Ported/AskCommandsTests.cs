@@ -136,7 +136,18 @@ public class AskCommandsTests
     [InlineData("--choice-subtitle requires ID=TEXT", "Question", "--choice", "a", "--choice-subtitle", "a")]
     [InlineData("unknown subtitle choice: b", "Question", "--choice", "a", "--choice-subtitle", "b=x")]
     [InlineData("subtitle already set for choice: a", "Question", "--choice", "a", "--choice-subtitle", "a=x", "--choice-subtitle", "a=y")]
+    [InlineData("--other requires --choice", "Question", "--button", "ok", "--other", "x")]
+    [InlineData("--other requires --choice", "Question", "--input", "line", "--other", "x")]
     public void InvalidSyntaxIsRefused(string expected, params string[] argv) => Assert.Equal(expected, Rejection(argv));
+
+    [Fact]
+    public void OtherMapsItsPlaceholderBesideTheChoices()
+    {
+        var args = Open("Review", "--choice", "a", "--other", "Something else").MakeRequest().Args!;
+        Assert.Equal("Something else", args.Other);
+        Assert.Equal(new[] { new ControlAskChoice { Id = "a", Label = "a" } }, args.Choices);
+        Assert.Null(Open("Review", "--choice", "a").MakeRequest().Args!.Other);
+    }
 
     [Fact]
     public void ChoiceFormMapsItemsSubtitlesAndChecks()
@@ -201,7 +212,7 @@ public class AskCommandsTests
         var open = AskCommands.Build(new CommandBindings()).Subcommands.Single(c => c.Name == "open");
         string? Help(string option) => open.Options.Single(o => o.Name == option).Description;
 
-        Assert.Equal("Ask a question and wait for its button answer. --input adds a text field and --choice a radio list (checkboxes with --multiple); either form defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text or the selected ids.",
+        Assert.Equal("Ask a question and wait for its button answer. --input adds a text field and --choice a radio list (checkboxes with --multiple); either form defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text or the selected ids, plus the --other row's text when it is selected.",
             open.Description);
         Assert.Equal("ID of the button that ends the dialog like Esc, returning nothing.", Help("--cancel"));
         Assert.Equal("Add a text field: line or multiline.", Help("--input"));
@@ -211,6 +222,7 @@ public class AskCommandsTests
         Assert.Equal("Item description ID=TEXT, drawn dimmed under its label.", Help("--choice-subtitle"));
         Assert.Equal("Make the --choice list checkboxes instead of radio buttons.", Help("--multiple"));
         Assert.Equal("ID of an item selected at open. Repeat with --multiple.", Help("--checked"));
+        Assert.Equal("Add a free-form row after the --choice list, with this placeholder; its text answers as `text`.", Help("--other"));
     }
 
     [Fact]

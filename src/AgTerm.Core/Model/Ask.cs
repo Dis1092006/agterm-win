@@ -38,7 +38,8 @@ public sealed record PendingAsk(
         return Form switch
         {
             AskForm.Input => answered with { Text = (draft ?? new AskDraft(Form)).Text },
-            AskForm.Choices => answered with { Selected = (draft ?? new AskDraft(Form)).Selected },
+            AskForm.Choices when (draft ?? new AskDraft(Form)) is var input =>
+                answered with { Text = input.OtherText, Selected = input.Selected },
             _ => answered,
         };
     }
@@ -57,15 +58,22 @@ public abstract record AskForm
 }
 
 /// <summary>An ask's radio or checkbox list. Checked lists the ids selected on open; a radio
-/// list holds at most one.</summary>
-public sealed record AskChoiceForm(IReadOnlyList<ControlAskChoice> Items, bool Multiple = false, IReadOnlyList<string>? Checked = null)
+/// list holds at most one. Other is the placeholder of a free-form row after the items, null for
+/// no such row.</summary>
+public sealed record AskChoiceForm(IReadOnlyList<ControlAskChoice> Items, bool Multiple = false, IReadOnlyList<string>? Checked = null,
+                                   string? Other = null)
 {
     public IReadOnlyList<string> Checked { get; init; } = Checked ?? [];
 
     public bool Equals(AskChoiceForm? other) =>
-        other is not null && Multiple == other.Multiple && Items.SequenceEqual(other.Items) && Checked.SequenceEqual(other.Checked);
+        other is not null && Multiple == other.Multiple && Items.SequenceEqual(other.Items) && Checked.SequenceEqual(other.Checked)
+        && Other == other.Other;
 
-    public override int GetHashCode() => HashCode.Combine(Multiple, Items.Count, Checked.Count);
+    public override int GetHashCode() => HashCode.Combine(Multiple, Items.Count, Checked.Count, Other);
+
+    /// <summary>Text with no non-whitespace character: the free-form row is disabled and unselected
+    /// while its text is blank, and an answer never carries blank text.</summary>
+    public static bool IsBlank(string text) => text.All(char.IsWhiteSpace);
 }
 
 /// <summary>An ask's text field: its mode, initial text and the hint shown while it is empty.</summary>
@@ -127,7 +135,10 @@ public sealed class AskDraft
     private readonly string[] _ids;
     private readonly string[] _keys;
     private readonly bool _multiple;
+    private readonly bool _hasOther;
     private readonly HashSet<string> _checked = new(StringComparer.Ordinal);
+    // the radio item the free-form row took over from, restored when its text goes blank
+    private string? _previousPick;
 
     /// <summary>Starts from the form's initial values: the prefill, the checked ids, and a radio
     /// list's first item when nothing is checked. The cursor starts on the first checked item in
@@ -144,36 +155,68 @@ public sealed class AskDraft
         _ids = list.Items.Select(item => item.Id).ToArray();
         _keys = _ids.Select(Key).ToArray();
         _multiple = list.Multiple;
+        _hasOther = list.Other is not null;
         var initial = list.Multiple ? list.Checked : list.Checked.Take(1).DefaultIfEmpty(_ids.FirstOrDefault());
         foreach (var id in initial)
             if (id is not null) _checked.Add(Key(id));
         Cursor = Math.Max(0, Array.FindIndex(_keys, _checked.Contains));
     }
 
-    /// <summary>The input field content, held within AskInputForm.MaxTextBytes.</summary>
+    /// <summary>The input field content, or the free-form row's text in a choice list, held within
+    /// AskInputForm.MaxTextBytes. A choice-list edit selects the row when non-blank and unselects it
+    /// when blank, even when the text did not change.</summary>
     public string Text
     {
         get => _text;
-        set => _text = AskInputForm.Clamped(value ?? "");
+        set
+        {
+            _text = AskInputForm.Clamped(value ?? "");
+            if (!_hasOther) return;
+            if (AskChoiceForm.IsBlank(_text)) UnselectOther();
+            else SelectOther();
+        }
     }
 
-    /// <summary>The index of the list item keyboard actions apply to.</summary>
+    /// <summary>The index of the list item keyboard actions apply to; the free-form row follows the items.</summary>
     public int Cursor { get; private set; }
 
-    /// <summary>The checked ids in caller order, as the caller spelled them in the list.</summary>
+    /// <summary>The checked ids in caller order, as the caller spelled them in the list. The
+    /// free-form row answers through OtherText.</summary>
     public IReadOnlyList<string> Selected => _ids.Where((_, index) => _checked.Contains(_keys[index])).ToArray();
 
-    /// <summary>Steps the cursor by offset, stopping at the list ends.</summary>
+    /// <summary>The free-form row is part of the answer.</summary>
+    public bool OtherSelected { get; private set; }
+
+    /// <summary>The free-form row's text is not blank, so the row can be selected.</summary>
+    public bool OtherEnabled => _hasOther && !AskChoiceForm.IsBlank(_text);
+
+    /// <summary>The free-form row's text as typed while the row is selected, null otherwise.</summary>
+    public string? OtherText => OtherSelected && OtherEnabled ? _text : null;
+
+    /// <summary>The cursor is on the free-form row, where the row's own field takes the keys.</summary>
+    public bool CursorOnOther => _hasOther && Cursor == _keys.Length;
+
+    /// <summary>Steps the cursor by offset, stopping at the list ends; the free-form row is the last stop.</summary>
     public void MoveCursor(int offset)
     {
-        if (_keys.Length == 0) return;
-        Cursor = Math.Clamp(Cursor + offset, 0, _keys.Length - 1);
+        var rows = _keys.Length + (_hasOther ? 1 : 0);
+        if (rows == 0) return;
+        Cursor = Math.Clamp(Cursor + offset, 0, rows - 1);
     }
 
-    /// <summary>Moves the cursor to index, then picks a radio item or flips a checkbox. An index
+    /// <summary>Moves the cursor to index, then picks a radio item or flips a checkbox. The
+    /// free-form row toggles only while enabled, and a picked radio row stays picked. An index
     /// outside the list changes nothing.</summary>
     public void Toggle(int index)
     {
+        if (_hasOther && index == _keys.Length)
+        {
+            Cursor = index;
+            if (!OtherEnabled) return;
+            if (_multiple && OtherSelected) OtherSelected = false;
+            else SelectOther();
+            return;
+        }
         if (index < 0 || index >= _keys.Length) return;
         Cursor = index;
         var key = _keys[index];
@@ -181,9 +224,29 @@ public sealed class AskDraft
         {
             _checked.Clear();
             _checked.Add(key);
+            OtherSelected = false;
+            _previousPick = null;
             return;
         }
         if (!_checked.Remove(key)) _checked.Add(key);
+    }
+
+    private void SelectOther()
+    {
+        if (OtherSelected) return;
+        OtherSelected = true;
+        if (_multiple) return;
+        _previousPick = _checked.FirstOrDefault();
+        _checked.Clear();
+    }
+
+    private void UnselectOther()
+    {
+        if (!OtherSelected) return;
+        OtherSelected = false;
+        if (_multiple) return;
+        if ((_previousPick ?? _keys.FirstOrDefault()) is { } pick) _checked.Add(pick);
+        _previousPick = null;
     }
 
     public void ToggleCursor() => Toggle(Cursor);
@@ -191,8 +254,9 @@ public sealed class AskDraft
     public bool IsChecked(int index) => index >= 0 && index < _keys.Length && _checked.Contains(_keys[index]);
 
     /// <summary>Applies a list intent: Up and Down move the cursor, Toggle flips the cursor's
-    /// item and ToggleAt the clicked one. False for any other intent, for a row outside the list
-    /// and for a draft without a list, so the buttons take it.</summary>
+    /// item and ToggleAt the clicked one, EditOther moves the cursor to the free-form row. False
+    /// for any other intent, for a row outside the list and for a draft without a list, so the
+    /// buttons take it.</summary>
     public bool Apply(AskIntent intent)
     {
         if (_keys.Length == 0) return false;
@@ -207,8 +271,11 @@ public sealed class AskDraft
             case AskIntent.Toggle:
                 ToggleCursor();
                 return true;
-            case AskIntent.ToggleAt at when at.Index >= 0 && at.Index < _keys.Length:
+            case AskIntent.ToggleAt at when at.Index >= 0 && at.Index < _keys.Length + (_hasOther ? 1 : 0):
                 Toggle(at.Index);
+                return true;
+            case AskIntent.EditOther when _hasOther:
+                Cursor = _keys.Length;
                 return true;
             default:
                 return false;
@@ -218,27 +285,33 @@ public sealed class AskDraft
     /// <summary>A snapshot another thread can read while this draft keeps changing.</summary>
     public AskDraft Copy()
     {
-        var copy = new AskDraft(_ids, _keys, _multiple) { _text = _text, Cursor = Cursor };
+        var copy = new AskDraft(_ids, _keys, _multiple, _hasOther)
+        {
+            _text = _text, Cursor = Cursor, OtherSelected = OtherSelected, _previousPick = _previousPick,
+        };
         copy._checked.UnionWith(_checked);
         return copy;
     }
 
-    /// <summary>Takes the text, cursor and checked items of a draft of the same form.</summary>
+    /// <summary>Takes the text, cursor, checked items and free-form row state of a draft of the same form.</summary>
     public void CopyFrom(AskDraft source)
     {
         ArgumentNullException.ThrowIfNull(source);
         _text = source._text;
         Cursor = source.Cursor;
+        OtherSelected = source.OtherSelected;
+        _previousPick = source._previousPick;
         _checked.Clear();
         _checked.UnionWith(source._checked);
     }
 
-    private AskDraft(string[] ids, string[] keys, bool multiple)
+    private AskDraft(string[] ids, string[] keys, bool multiple, bool hasOther)
     {
         _text = "";
         _ids = ids;
         _keys = keys;
         _multiple = multiple;
+        _hasOther = hasOther;
     }
 
     private static string Key(string id) => id.Normalize(NormalizationForm.FormC);
@@ -269,6 +342,8 @@ public abstract record AskIntent
     public sealed record Toggle : AskIntent;
     /// <summary>A click on the list row at Index.</summary>
     public sealed record ToggleAt(int Index) : AskIntent;
+    /// <summary>Focus or a click in the free-form row's field: moves the cursor there without toggling.</summary>
+    public sealed record EditOther : AskIntent;
 }
 
 public abstract record AskIntentOutcome
@@ -328,7 +403,7 @@ public sealed class AskNavigation
             case AskIntent.Backward or AskIntent.Up:
                 MoveBackward();
                 return Moved();
-            case AskIntent.Toggle or AskIntent.ToggleAt:
+            case AskIntent.Toggle or AskIntent.ToggleAt or AskIntent.EditOther:
                 return new AskIntentOutcome.None();
             case AskIntent.Activate:
                 return Answered(Activate());

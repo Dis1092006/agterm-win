@@ -1025,8 +1025,18 @@ Without `--button` the list gets OK and Cancel too. In the list, Up and Down mov
 checks the cursor's item, and a click checks the clicked one; Left, Right and Tab move the button
 highlight and Return answers.
 
+`--other PLACEHOLDER` adds one free-form line after the items, with the placeholder as its hint. Text
+with a non-space character enables and selects the line. Clearing the text disables it, and a radio list
+goes back to its previous pick. While the line is selected, the answer adds its raw `text` beside
+`selected`: a radio list answers the text with `selected` `[]`, never both, and a checkbox list answers
+the checked ids and the text. On the line Space is text, Up returns to the item above, and Down stays. A
+click on its marker checks it like an item once it has text. `--other` requires `--choice`
+(`other requires choices`). A blank placeholder returns `ask other placeholder must not be blank`, and a
+control character in it `ask text must not contain control characters`.
+
 ```powershell
 agtermctl ask "Open which?" --multiple --choice 398="issue #398" --choice-subtitle 398="waits on you" --choice 395="PR #395"
+agtermctl ask "Deploy where?" --choice staging --choice production --other "another environment"
 ```
 
 The blocking call prints one bare result:
@@ -1035,13 +1045,15 @@ The blocking call prints one bare result:
 {"result":"answered","id":"yes","label":"Yes","index":0}
 {"result":"answered","id":"ok","label":"OK","index":0,"text":"the field's text"}
 {"result":"answered","id":"ok","label":"OK","index":0,"selected":["398","395"]}
+{"result":"answered","id":"ok","label":"OK","index":0,"text":"canary","selected":[]}
 {"result":"escaped"}
 {"result":"cancelled"}
 ```
 
-Index follows caller order. `text` is there only on an answer to a question with `--input`, with
-whitespace and newlines kept. `selected` is there only on an answer to a question with `--choice`; it
-lists the checked ids in caller order, exactly one for a radio list. An answer exits 0, including a named No button; inspect `id` before acting.
+Index follows caller order. `text` is there on an answer to a question with `--input`, or with `--other`
+while its line is selected, with whitespace and newlines kept. `selected` is there only on an answer to
+a question with `--choice`; it lists the checked ids in caller order, exactly one for a radio list unless
+the `--other` line answered, when it is `[]` beside `text`. An answer exits 0, including a named No button; inspect `id` before acting.
 Esc on a question, or Alt+W (`close_session`) over a GUI question, returns `escaped` with exit 3.
 Cancellation exits 2; failure exits 1.
 `--no-block` prints `{"id":"<ask-id>"}`. `ask result ID [--window W]` prints the current or finished result,

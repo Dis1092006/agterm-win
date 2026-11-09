@@ -159,6 +159,9 @@ public sealed class XtermPage
                     multiple = choices.Multiple,
                     cursor = choices.Cursor,
                     items = choices.Items.Select(item => new { label = item.Label, subtitle = item.Subtitle, @checked = item.Checked }),
+                    other = choices.Other is { } other
+                        ? new { placeholder = other.Placeholder, text = other.Text, selected = other.Selected, enabled = other.Enabled }
+                        : null,
                 }
                 : null,
         }, AskScriptLiteral);
@@ -480,6 +483,7 @@ public sealed class XtermPage
         "down" => new Core.Model.AskIntent.Down(),
         "toggle" => new Core.Model.AskIntent.Toggle(),
         "toggleAt" when msg.Index is { } row => new Core.Model.AskIntent.ToggleAt(row),
+        "editOther" => new Core.Model.AskIntent.EditOther(),
         _ => null,
     };
 

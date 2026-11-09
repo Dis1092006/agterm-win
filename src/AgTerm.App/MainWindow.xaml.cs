@@ -1733,12 +1733,15 @@ public sealed partial class MainWindow : Window
 
     // The navigator keeps the draft the answer reads. The store copy is for a dialog shown again
     // after a session switch; separate MutateAsync calls are not ordered, so one writer sends the
-    // latest snapshot at a time.
+    // latest snapshot at a time. An edit of a list's free-form row can select it, so the list redraws.
     private void OnPageAskDraftReceived(string askId, string text) =>
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (_terminalAsks.UpdateDraft(askId, text) && _terminalAsks.DraftSnapshot() is { } draft)
-                SaveTerminalAskDraft(askId, draft);
+            if (!_terminalAsks.UpdateDraft(askId, text) || _terminalAsks.DraftSnapshot() is not { } draft)
+                return;
+            SaveTerminalAskDraft(askId, draft);
+            if (_terminalAsks.ListRedraw() is { } view)
+                ObserveTaskFault(ApplyTerminalAskAsync(view), "Apply terminal ask failed");
         });
 
     private void SaveTerminalAskDraft(string askId, AskDraft draft)

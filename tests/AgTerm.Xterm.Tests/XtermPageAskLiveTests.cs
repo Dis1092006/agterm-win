@@ -870,7 +870,7 @@ public class XtermPageAskLiveTests
         Assert.Equal("\"typed\"", value);
     }
 
-    private static string ChoicePayload(string askId, bool multiple, int cursor, string checkedFlags, int count = 3)
+    private static string ChoicePayload(string askId, bool multiple, int cursor, string checkedFlags, int count = 3, object? other = null)
     {
         var items = Enumerable.Range(0, count).Select(i => new
         {
@@ -890,18 +890,18 @@ public class XtermPageAskLiveTests
             align = "right",
             width = (int?)null,
             input = (object?)null,
-            choices = new { multiple, cursor, items },
+            choices = new { multiple, cursor, items, other },
         });
     }
 
-    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootChoicesAsync(bool multiple, int cursor, string checkedFlags, int count = 3)
+    private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootChoicesAsync(bool multiple, int cursor, string checkedFlags, int count = 3, object? other = null)
     {
         var (page, view) = await BootPageAsync();
         await _webView.RunAsync(_ => page.OpenTerminalAsync("right"));
         await _webView.RunAsync(_ => page.ApplyLayoutAsync(new TerminalLayout.Single(1, "right", "Shell")));
         await _webView.RunAsync<object?>(_ => { view.Focus(); return Task.FromResult<object?>(null); });
         await Task.Delay(500);
-        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", multiple, cursor, checkedFlags, count)}}); return 1; })()""");
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", multiple, cursor, checkedFlags, count, other)}}); return 1; })()""");
         return (page, view);
     }
 
@@ -1012,6 +1012,141 @@ public class XtermPageAskLiveTests
         Assert.True(root.GetProperty("last").GetBoolean());
     }
 
+    private static object Other(string text = "", bool selected = false, bool enabled = false) =>
+        new { placeholder = "another", text, selected, enabled };
+
+    private const string OtherRow = """
+        (() => {
+            const row = document.querySelector('.ask-other');
+            const marker = row.querySelector('.ask-choice-marker');
+            const field = row.querySelector('.ask-input');
+            const items = document.querySelectorAll('.ask-choice');
+            return {
+                marker: marker.textContent,
+                opacity: getComputedStyle(marker).opacity,
+                filled: getComputedStyle(marker).backgroundColor !== 'rgba(0, 0, 0, 0)',
+                checked: row.getAttribute('aria-checked'),
+                placeholder: field.placeholder,
+                value: field.value,
+                afterItems: items[items.length - 1].compareDocumentPosition(row) === Node.DOCUMENT_POSITION_FOLLOWING,
+                inList: document.querySelector('.ask-choices').contains(row),
+                fieldFocused: document.activeElement === field,
+                layerFocused: document.activeElement === document.querySelector('.ask-layer'),
+            };
+        })()
+        """;
+
+    [Fact]
+    public async Task An_other_row_follows_the_items_with_a_dimmed_marker_and_the_layer_keeps_the_keys()
+    {
+        var (_, view) = await BootChoicesAsync(false, 0, "100", other: Other());
+
+        using var json = JsonDocument.Parse(await EvalAsync(view, OtherRow));
+        var root = json.RootElement;
+        Assert.Equal("( )", root.GetProperty("marker").GetString());
+        Assert.Equal("0.4", root.GetProperty("opacity").GetString());
+        Assert.False(root.GetProperty("filled").GetBoolean());
+        Assert.Equal("false", root.GetProperty("checked").GetString());
+        Assert.Equal("another", root.GetProperty("placeholder").GetString());
+        Assert.Equal("", root.GetProperty("value").GetString());
+        Assert.True(root.GetProperty("afterItems").GetBoolean());
+        Assert.True(root.GetProperty("inList").GetBoolean());
+        Assert.False(root.GetProperty("fieldFocused").GetBoolean());
+        Assert.True(root.GetProperty("layerFocused").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_cursor_on_the_other_row_fills_its_marker_and_hands_the_keys_to_its_field()
+    {
+        var (_, view) = await BootChoicesAsync(true, 0, "100", other: Other());
+
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", true, 3, "100", 3, Other("qa", true, true))}}); return 1; })()""");
+        using var on = JsonDocument.Parse(await EvalAsync(view, OtherRow));
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", true, 0, "100", 3, Other("qa", true, true))}}); return 1; })()""");
+        using var off = JsonDocument.Parse(await EvalAsync(view, OtherRow));
+
+        Assert.Equal("[x]", on.RootElement.GetProperty("marker").GetString());
+        Assert.Equal("1", on.RootElement.GetProperty("opacity").GetString());
+        Assert.True(on.RootElement.GetProperty("filled").GetBoolean());
+        Assert.Equal("true", on.RootElement.GetProperty("checked").GetString());
+        Assert.Equal("", on.RootElement.GetProperty("value").GetString());
+        Assert.True(on.RootElement.GetProperty("fieldFocused").GetBoolean());
+        Assert.False(off.RootElement.GetProperty("filled").GetBoolean());
+        Assert.True(off.RootElement.GetProperty("layerFocused").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_other_field_takes_space_as_text_and_sends_up_and_down_to_the_list()
+    {
+        var (page, view) = await BootChoicesAsync(false, 3, "000", other: Other());
+        var drafts = new EventRecorder<string>();
+        page.AskDraftReceived += (askId, text) => drafts.Add(askId + "/" + text);
+        var intents = new EventRecorder<string>();
+        page.AskIntentReceived += (_, intent) => intents.Add(intent.GetType().Name);
+
+        var prevented = await EvalAsync(view, """
+            (() => {
+                const field = document.querySelector('.ask-other .ask-input');
+                const key = (key, code, extra) => field.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key, code, bubbles: true, cancelable: true }, extra || {})));
+                const result = [key(' ', 'Space'), key('y', 'KeyY'), key('ArrowUp', 'ArrowUp'), key('ArrowDown', 'ArrowDown'),
+                                key('Tab', 'Tab'), key('Enter', 'Enter'), key('Escape', 'Escape'),
+                                key('ArrowUp', 'ArrowUp', { isComposing: true })].map(r => !r);
+                document.execCommand('insertText', false, 'a b');
+                return result;
+            })()
+            """);
+        await WaitUntilAsync(() => drafts.Count >= 1 && intents.Count >= 5);
+        await Task.Delay(200);
+
+        Assert.Equal("[false,false,true,true,true,true,true,false]", prevented);
+        Assert.Equal(new[] { "Up", "Down", "Forward", "Activate", "Cancel" }, intents);
+        Assert.Equal(new[] { "CH/a b" }, drafts);
+    }
+
+    [Fact]
+    public async Task Focusing_the_other_field_moves_the_cursor_and_a_marker_click_toggles_the_row()
+    {
+        var (page, view) = await BootChoicesAsync(false, 0, "100", other: Other("qa", false, true));
+        var intents = new EventRecorder<string>();
+        page.AskIntentReceived += (askId, intent) => intents.Add(askId + "/" + (intent is AskIntent.ToggleAt at ? "toggleAt:" + at.Index : intent.GetType().Name));
+
+        var prevented = await EvalAsync(view, """
+            (() => {
+                const row = document.querySelector('.ask-other');
+                const marker = row.querySelector('.ask-choice-marker');
+                const down = new PointerEvent('pointerdown', { bubbles: true, cancelable: true });
+                marker.dispatchEvent(down);
+                marker.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                row.querySelector('.ask-input').focus();
+                return down.defaultPrevented;
+            })()
+            """);
+        await WaitUntilAsync(() => intents.Count >= 2);
+        await Task.Delay(200);
+
+        Assert.Equal("true", prevented);
+        Assert.Equal(new[] { "CH/toggleAt:3", "CH/EditOther" }, intents);
+    }
+
+    [Fact]
+    public async Task A_long_list_scrolls_to_the_other_row()
+    {
+        var (_, view) = await BootChoicesAsync(false, 0, "1", count: 60, other: Other());
+        await EvalAsync(view, "(() => { document.querySelector('[data-pane-id=\"right\"]').style.height = '320px'; return 1; })()");
+        await Task.Delay(500);
+        await EvalAsync(view, $$"""(() => { agterm.applyAsk({{ChoicePayload("CH", false, 60, "1", 60, Other())}}); return 1; })()""");
+        await Task.Delay(300);
+
+        var inside = await EvalAsync(view, """
+            (() => {
+                const list = document.querySelector('.ask-choices').getBoundingClientRect();
+                const field = document.querySelector('.ask-other .ask-input').getBoundingClientRect();
+                return field.top >= list.top - 0.5 && field.bottom <= list.bottom + 0.5;
+            })()
+            """);
+
+        Assert.Equal("true", inside);
+    }
     [Fact]
     public async Task Focus_moving_between_the_layer_and_the_field_stays_inside_the_question()
     {

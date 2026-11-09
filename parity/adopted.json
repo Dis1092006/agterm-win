@@ -53,6 +53,7 @@
     { "name": "choices", "upstream": "96b0a6c6" },
     { "name": "multiple", "upstream": "96b0a6c6" },
     { "name": "checked", "upstream": "96b0a6c6" },
+    { "name": "other", "upstream": "9b60cdfe" },
     { "name": "value", "upstream": "96b0a6c6" },
     { "name": "textColor", "upstream": "1923906e" },
     { "name": "detail", "upstream": "d0bec154" },

@@ -366,4 +366,219 @@ public class AskFormTests
         Assert.Equal(2, draft.Cursor);
         Assert.Equal("t", draft.Text);
     }
+
+    private static AskForm.Choices OtherForm(bool multiple, params string[] checkedIds) =>
+        new(new AskChoiceForm(Items("a", "b", "c"), multiple, checkedIds, "Something else"));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TypingSelectsTheOtherRowAndBlankTextDisablesIt(bool multiple)
+    {
+        var draft = new AskDraft(OtherForm(multiple));
+        Assert.False(draft.OtherEnabled);
+        draft.Text = " ";
+        Assert.False(draft.OtherEnabled || draft.OtherSelected);
+        Assert.Null(draft.OtherText);
+        draft.Text = " x";
+        Assert.True(draft.OtherEnabled && draft.OtherSelected);
+        Assert.Equal(" x", draft.OtherText);
+        draft.Text = "  ";
+        Assert.False(draft.OtherEnabled || draft.OtherSelected);
+        Assert.Null(draft.OtherText);
+        Assert.Equal("  ", draft.Text);
+    }
+
+    [Fact]
+    public void RadioOtherRestoresThePickItTookOverFrom()
+    {
+        var draft = new AskDraft(OtherForm(false, "b"));
+        draft.Text = "x";
+        Assert.Empty(draft.Selected);
+        Assert.True(draft.OtherSelected);
+        draft.Text = "xyz";
+        draft.Text = "";
+        Assert.Equal(["b"], draft.Selected);
+        Assert.False(draft.OtherSelected);
+    }
+
+    [Fact]
+    public void RadioPickElsewhereKeepsOtherTextAndClearingItKeepsThatPick()
+    {
+        var draft = new AskDraft(OtherForm(false, "b"));
+        draft.Text = "x";
+        draft.Toggle(2);
+        Assert.Equal(["c"], draft.Selected);
+        Assert.False(draft.OtherSelected);
+        Assert.Equal("x", draft.Text);
+        Assert.True(draft.OtherEnabled);
+        draft.Text = "";
+        Assert.Equal(["c"], draft.Selected);
+        draft.Text = "y";
+        Assert.Empty(draft.Selected);
+        Assert.True(draft.OtherSelected);
+        draft.Text = "";
+        Assert.Equal(["c"], draft.Selected);
+    }
+
+    [Fact]
+    public void RadioOtherWithoutAnInitialPickFallsBackToTheFirstItem()
+    {
+        var draft = new AskDraft(OtherForm(false));
+        draft.Toggle(3);
+        Assert.False(draft.OtherSelected);
+        draft.Text = "x";
+        draft.Text = "";
+        Assert.Equal(["a"], draft.Selected);
+    }
+
+    [Fact]
+    public void RadioOtherMarkerPicksAnEnabledRowAndIsANoOpOncePicked()
+    {
+        var draft = new AskDraft(OtherForm(false, "b"));
+        draft.Text = "x";
+        draft.Toggle(0);
+        draft.Toggle(3);
+        Assert.True(draft.OtherSelected);
+        Assert.Empty(draft.Selected);
+        draft.Toggle(3);
+        Assert.True(draft.OtherSelected);
+        Assert.Empty(draft.Selected);
+        draft.Text = "";
+        Assert.Equal(["a"], draft.Selected);
+    }
+
+    [Fact]
+    public void CheckboxOtherMarkerTogglesWhileEnabledAndKeepsTheText()
+    {
+        var draft = new AskDraft(OtherForm(true, "a"));
+        draft.Toggle(3);
+        Assert.False(draft.OtherSelected);
+        draft.Text = "x";
+        draft.Toggle(3);
+        Assert.False(draft.OtherSelected);
+        Assert.True(draft.OtherEnabled);
+        Assert.Equal("x", draft.Text);
+        Assert.Null(draft.OtherText);
+        Assert.Equal(["a"], draft.Selected);
+        draft.Text = "xy";
+        Assert.True(draft.OtherSelected);
+        Assert.Equal("xy", draft.OtherText);
+    }
+
+    [Fact]
+    public void CursorReachesTheOtherRowAfterFiftyItemsAndClampsThere()
+    {
+        var items = Enumerable.Range(1, ControlAskChoice.MaxChoices).Select(i => new ControlAskChoice { Id = $"i{i}", Label = $"I{i}" }).ToArray();
+        var draft = new AskDraft(new AskForm.Choices(new AskChoiceForm(items, true, null, "Other")));
+        draft.MoveCursor(100);
+        Assert.Equal(ControlAskChoice.MaxChoices, draft.Cursor);
+        Assert.True(draft.CursorOnOther);
+        draft.MoveCursor(1);
+        Assert.Equal(ControlAskChoice.MaxChoices, draft.Cursor);
+        draft.MoveCursor(-1);
+        Assert.False(draft.CursorOnOther);
+
+        var plain = new AskDraft(Choices(Items("a", "b")));
+        plain.MoveCursor(5);
+        Assert.Equal(1, plain.Cursor);
+        Assert.False(plain.CursorOnOther);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OtherAnswerReturnsRawTextOnlyWhileSelected(bool multiple)
+    {
+        var form = new AskForm.Choices(new AskChoiceForm(Items("a", "b", "other"), multiple, ["other"], "Something else"));
+        var ask = Ask(form, "cancel");
+        var draft = new AskDraft(form);
+        draft.Text = "  mine  ";
+        var answered = ask.Answer(0, draft);
+        Assert.Equal("  mine  ", answered?.Text);
+        Assert.Equal(multiple ? new[] { "other" } : Array.Empty<string>(), answered?.Selected);
+        Assert.Equal(ControlAskResult.Escaped(), ask.Answer(1, draft));
+        draft.Toggle(0);
+        Assert.Equal(multiple ? "  mine  " : null, ask.Answer(0, draft)?.Text);
+        if (multiple) draft.Toggle(3);
+        Assert.Null(ask.Answer(0, draft)?.Text);
+    }
+
+    [Fact]
+    public void ARadioAnswerThroughTheOtherRowKeepsAnEmptySelectedList() =>
+        Assert.Equal("{\"result\":\"answered\",\"id\":\"ok\",\"label\":\"OK\",\"index\":0,\"text\":\"mine\",\"selected\":[]}",
+            ControlJson.Serialize(Ask(OtherForm(false)).Answer(0, new AskDraft(OtherForm(false)) { Text = "mine" })));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RetypingTheSameTextReselectsTheRow(bool multiple)
+    {
+        var draft = new AskDraft(OtherForm(multiple));
+        draft.Text = "x";
+        draft.Toggle(multiple ? 3 : 0);
+        Assert.False(draft.OtherSelected);
+        draft.Text = "x";
+        Assert.True(draft.OtherSelected);
+        Assert.Equal("x", draft.OtherText);
+    }
+
+    [Theory]
+    [InlineData("", true)]
+    [InlineData(" \t\n\u00A0\u2003", true)]
+    [InlineData(" x ", false)]
+    [InlineData("\u200B", false)]
+    public void IsBlankMeansOnlyWhitespace(string text, bool blank) => Assert.Equal(blank, AskChoiceForm.IsBlank(text));
+
+    [Fact]
+    public void FormsWithDifferentOtherRowsAreNotEqual()
+    {
+        Assert.Equal(new AskChoiceForm(Items("a"), Other: "x"), new AskChoiceForm(Items("a"), Other: "x"));
+        Assert.NotEqual(new AskChoiceForm(Items("a"), Other: "x"), new AskChoiceForm(Items("a"), Other: "y"));
+        Assert.NotEqual(new AskChoiceForm(Items("a"), Other: "x"), new AskChoiceForm(Items("a")));
+    }
+
+    // Port: Down and a marker click reach the row after the items; EditOther is a focus or click into its field.
+    [Fact]
+    public void ListIntentsReachTheOtherRow()
+    {
+        var draft = new AskDraft(OtherForm(true));
+        Assert.True(draft.Apply(new AskIntent.ToggleAt(3)));
+        Assert.Equal(3, draft.Cursor);
+        Assert.False(draft.Apply(new AskIntent.ToggleAt(4)));
+        Assert.True(draft.Apply(new AskIntent.Up()));
+        Assert.True(draft.Apply(new AskIntent.EditOther()));
+        Assert.True(draft.CursorOnOther);
+        Assert.False(draft.OtherSelected);
+        draft.Text = "x";
+        Assert.True(draft.Apply(new AskIntent.Toggle()));
+        Assert.False(draft.OtherSelected);
+    }
+
+    [Fact]
+    public void EditOtherIsRefusedWithoutAnOtherRow()
+    {
+        Assert.False(new AskDraft(Choices(Items("a"))).Apply(new AskIntent.EditOther()));
+        Assert.False(new AskDraft(Input(ControlAskInputMode.Line)).Apply(new AskIntent.EditOther()));
+    }
+
+    [Fact]
+    public void ACopyCarriesTheOtherRowAndThePickItTookOverFrom()
+    {
+        var draft = new AskDraft(OtherForm(false, "b"));
+        draft.Text = "x";
+
+        var copy = draft.Copy();
+        Assert.True(copy.OtherSelected);
+        Assert.Equal("x", copy.OtherText);
+        copy.Text = "";
+        Assert.Equal(["b"], copy.Selected);
+        Assert.True(draft.OtherSelected);
+
+        var restored = new AskDraft(OtherForm(false));
+        restored.CopyFrom(draft);
+        Assert.True(restored.OtherSelected);
+        restored.Text = "";
+        Assert.Equal(["b"], restored.Selected);
+    }
 }

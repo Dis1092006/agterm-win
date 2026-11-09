@@ -29,6 +29,10 @@ public sealed partial class AskView : UserControl
 
     private sealed record ChoiceRow(StackPanel Row, Border Line, FontIcon Marker);
 
+    private sealed record OtherRow(Grid Row, Border Line, FontIcon Marker, TextBox Box);
+
+    private OtherRow? _otherRow;
+
     public AskView()
     {
         InitializeComponent();
@@ -90,6 +94,7 @@ public sealed partial class AskView : UserControl
         ButtonHost.Children.Clear();
         _choiceRows.Clear();
         ChoiceHost.Children.Clear();
+        _otherRow = null;
         ChoiceScroll.Visibility = Visibility.Collapsed;
         InputBox.Visibility = Visibility.Collapsed;
         InputBox.Text = string.Empty;
@@ -116,7 +121,10 @@ public sealed partial class AskView : UserControl
             FocusTarget.Focus(FocusState.Programmatic);
     }
 
-    private Control FocusTarget => InputBox.Visibility == Visibility.Visible ? InputBox : this;
+    private Control FocusTarget =>
+        InputBox.Visibility == Visibility.Visible ? InputBox
+        : _otherRow is { } other && _draft.CursorOnOther ? other.Box
+        : this;
 
     private void BuildInput(PendingAsk ask)
     {
@@ -152,6 +160,7 @@ public sealed partial class AskView : UserControl
     {
         _choiceRows.Clear();
         ChoiceHost.Children.Clear();
+        _otherRow = null;
         if (ask.Form is not AskForm.Choices { List: var list })
         {
             ChoiceScroll.Visibility = Visibility.Collapsed;
@@ -207,7 +216,56 @@ public sealed partial class AskView : UserControl
             _choiceRows.Add(new ChoiceRow(row, line, marker));
             ChoiceHost.Children.Add(row);
         }
+        if (list.Other is { } placeholder)
+            ChoiceHost.Children.Add(BuildOtherRow(list.Items.Count, placeholder));
         ChoiceScroll.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>Upstream's free-form row: a marker that toggles like an item once the text is not
+    /// blank, and a line field beside it that edits without toggling.</summary>
+    private Grid BuildOtherRow(int index, string placeholder)
+    {
+        var marker = new FontIcon
+        {
+            FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
+            FontSize = MarkerWidth,
+            Width = MarkerWidth,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        // the same padding as an item's line, so the markers stand in one column
+        var line = new Border
+        {
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(Cell * 0.5, Cell * 0.15, Cell * 0.5, Cell * 0.15),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = marker,
+        };
+        AutomationProperties.SetName(line, placeholder);
+        AutomationProperties.SetAutomationId(line, "ask-other");
+        line.Tapped += (_, _) => Handle(new AskIntent.ToggleAt(index));
+        var box = new TextBox
+        {
+            PlaceholderText = placeholder,
+            Text = AskFieldText.ToTextBox(_draft.Text, ControlAskInputMode.Line),
+            TextWrapping = TextWrapping.NoWrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        box.Select(box.Text.Length, 0);
+        AutomationProperties.SetName(box, placeholder);
+        AutomationProperties.SetAutomationId(box, "ask-other-input");
+        box.PreviewKeyDown += OnInputPreviewKeyDown;
+        box.BeforeTextChanging += OnInputBeforeTextChanging;
+        box.Paste += OnInputPaste;
+        box.TextChanged += OnInputTextChanged;
+        box.GotFocus += OnOtherGotFocus;
+        var row = new Grid { ColumnSpacing = Cell };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(box, 1);
+        row.Children.Add(line);
+        row.Children.Add(box);
+        _otherRow = new OtherRow(row, line, marker, box);
+        return row;
     }
 
     /// <summary>Upstream's gui markers in Segoe Fluent glyphs: the accent color when checked and the
@@ -230,12 +288,37 @@ public sealed partial class AskView : UserControl
                 row.Line.ClearValue(Border.BackgroundProperty);
             AutomationProperties.SetItemStatus(row.Row, isChecked ? "checked" : string.Empty);
         }
+        if (_otherRow is { } other)
+        {
+            var selected = _draft.OtherSelected;
+            other.Marker.Glyph = list.Multiple
+                ? (selected ? "\uE73A" : "\uE739")
+                : (selected ? "\uECCB" : "\uECCA");
+            other.Marker.Foreground = ThemeBrush(selected ? "AccentTextFillColorPrimaryBrush" : "TextFillColorSecondaryBrush");
+            if (_draft.CursorOnOther)
+                other.Line.Background = new SolidColorBrush(accent) { Opacity = 0.25 };
+            else
+                other.Line.ClearValue(Border.BackgroundProperty);
+            other.Line.Opacity = _draft.OtherEnabled ? 1 : 0.4;
+            AutomationProperties.SetItemStatus(other.Line, selected ? "checked" : string.Empty);
+        }
     }
 
     private void BringCursorIntoView()
     {
         if (_draft.Cursor < _choiceRows.Count)
             _choiceRows[_draft.Cursor].Row.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+        else if (_otherRow is { } other && _draft.CursorOnOther)
+            other.Row.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+    }
+
+    /// <summary>The free-form row's field holds the keys only while the cursor is on the row, as
+    /// upstream's editorActive: a cursor move hands the focus across while the dialog holds it.</summary>
+    private void HandFieldFocus()
+    {
+        if (_otherRow is null || XamlRoot is null) return;
+        if (FocusManager.GetFocusedElement(XamlRoot) is not DependencyObject focused || !IsInside(focused)) return;
+        if (!ReferenceEquals(focused, FocusTarget)) FocusTarget.Focus(FocusState.Programmatic);
     }
 
     private static Brush ThemeBrush(string key) => (Brush)Application.Current.Resources[key];
@@ -335,7 +418,8 @@ public sealed partial class AskView : UserControl
 
         Panel.Width = double.NaN;
         Panel.MaxWidth = maxWidth;
-        if (ask.Width is not null || ask.Form is AskForm.Input) Panel.Width = maxWidth;
+        // a WinUI TextBox widens with its text, so a list's free-form row would grow the panel off center
+        if (ask.Width is not null || ask.Form is AskForm.Input || _otherRow is not null) Panel.Width = maxWidth;
         var limit = Math.Max(
             0, AskPanelLayout.MaxPanelHeight(_anchor.Height) - 2 * AskPanelLayout.PanelPadding - border.Top - border.Bottom);
         PanelScroll.MaxHeight = limit;
@@ -414,7 +498,7 @@ public sealed partial class AskView : UserControl
 
     private void OnInputPreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (_ask is not { Form: AskForm.Input input } ask) return;
+        if (_ask is not { } ask || FieldMode(sender) is not { } mode) return;
         var control = IsDown(VirtualKey.Control);
         var alt = IsDown(VirtualKey.Menu);
         if (!AskKeys.IsFieldEditChord((int)e.Key, control, alt) && CancelChord?.Invoke(e.Key) == true)
@@ -425,22 +509,32 @@ public sealed partial class AskView : UserControl
         }
         // during IME composition the key comes as VK_PROCESSKEY, which no rule takes
         var intent = AskKeys.FieldIntent((int)e.Key, IsDown(VirtualKey.Shift), control, alt,
-            IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows), input.Field.Mode);
+            IsDown(VirtualKey.LeftWindows) || IsDown(VirtualKey.RightWindows), mode,
+            routesVertical: ask.Form is AskForm.Choices);
         if (intent is null) return;
         e.Handled = true;
         Handle(intent);
     }
 
+    /// <summary>The mode of a dialog text field: the input form's field, or a choice list's
+    /// free-form row, which is a line field. Null for anything else.</summary>
+    private ControlAskInputMode? FieldMode(object? sender) => _ask?.Form switch
+    {
+        AskForm.Input input when ReferenceEquals(sender, InputBox) => input.Field.Mode,
+        AskForm.Choices when _otherRow is { } other && ReferenceEquals(sender, other.Box) => ControlAskInputMode.Line,
+        _ => null,
+    };
+
     private void OnInputBeforeTextChanging(TextBox sender, TextBoxBeforeTextChangingEventArgs args)
     {
-        if (_ask?.Form is AskForm.Input input && !AskFieldText.Accepts(AskFieldText.FromTextBox(args.NewText, input.Field.Mode), input.Field.Mode))
+        if (FieldMode(sender) is { } mode && !AskFieldText.Accepts(AskFieldText.FromTextBox(args.NewText, mode), mode))
             args.Cancel = true;
     }
 
     private async void OnInputPaste(object sender, TextControlPasteEventArgs e)
     {
         e.Handled = true;
-        if (_ask is not { Form: AskForm.Input input } ask) return;
+        if (_ask is not { } ask || sender is not TextBox box || FieldMode(box) is not { } mode) return;
         string? clipboard;
         try
         {
@@ -451,19 +545,44 @@ public sealed partial class AskView : UserControl
         {
             return; // an unreadable clipboard pastes nothing
         }
-        if (clipboard is null || _ask?.Id != ask.Id || AskFieldText.PasteInsertion(clipboard, input.Field.Mode) is not { } text)
+        if (clipboard is null || _ask?.Id != ask.Id || AskFieldText.PasteInsertion(clipboard, mode) is not { } text)
             return;
-        var inserted = AskFieldText.ToTextBox(text, input.Field.Mode);
-        var start = InputBox.SelectionStart;
-        var before = InputBox.Text;
-        InputBox.SelectedText = inserted;
-        if (InputBox.Text != before)
-            InputBox.Select(start + inserted.Length, 0);
+        var inserted = AskFieldText.ToTextBox(text, mode);
+        var start = box.SelectionStart;
+        var before = box.Text;
+        box.SelectedText = inserted;
+        if (box.Text != before)
+            box.Select(start + inserted.Length, 0);
     }
 
     private void OnInputTextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_ask?.Form is AskForm.Input) PublishDraft();
+        if (_ask?.Form is AskForm.Input)
+            PublishDraft();
+        else if (ReferenceEquals(sender, _otherRow?.Box) && TakeOtherText())
+        {
+            ApplyChoices();
+            PublishDraft();
+        }
+    }
+
+    /// <summary>Copies the free-form row's field into the draft, which selects the row when the
+    /// text is not blank. False when the draft already has the text.</summary>
+    private bool TakeOtherText()
+    {
+        if (_otherRow is not { } other) return false;
+        // the text set when the row is built comes back as TextChanged and must not select the row
+        var text = AskFieldText.FromTextBox(other.Box.Text, ControlAskInputMode.Line);
+        if (text == _draft.Text) return false;
+        _draft.Text = text;
+        return true;
+    }
+
+    // a click into the field moves the list cursor onto the row, as upstream's onFocus
+    private void OnOtherGotFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_draft.CursorOnOther)
+            Handle(new AskIntent.EditOther());
     }
 
     private void PublishDraft()
@@ -477,7 +596,7 @@ public sealed partial class AskView : UserControl
     private bool IsInField(object? source)
     {
         for (var node = source as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
-            if (ReferenceEquals(node, InputBox)) return true;
+            if (ReferenceEquals(node, InputBox) || ReferenceEquals(node, _otherRow?.Box)) return true;
         return false;
     }
 
@@ -526,6 +645,7 @@ public sealed partial class AskView : UserControl
             ApplyChoices();
             PublishDraft();
             BringCursorIntoView();
+            HandFieldFocus();
             return;
         }
         switch (_navigation.Apply(intent))
@@ -538,6 +658,7 @@ public sealed partial class AskView : UserControl
                 break;
             case AskIntentOutcome.Answer answer:
                 // TextChanged comes later on the dispatcher; the answer must read the last edit
+                TakeOtherText();
                 PublishDraft();
                 Answered?.Invoke(ask.Id, answer.Index);
                 break;

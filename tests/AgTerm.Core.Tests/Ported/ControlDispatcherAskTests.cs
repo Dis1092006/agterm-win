@@ -401,6 +401,14 @@ public class ControlDispatcherAskTests
         { new ControlArgs { Title = "T", Choices = [new ControlAskChoice { Id = null!, Label = "A" }] }, "invalid request: ask choice requires id and label" },
         { new ControlArgs { Title = "T", Choices = [new ControlAskChoice { Id = "a", Label = null! }] }, "invalid request: ask choice requires id and label" },
         { new ControlArgs { Title = "T", Choices = Items("a"), Checked = [null!] }, "invalid request: ask checked id must be a string" },
+        { new ControlArgs { Title = "T", Input = "line", Other = "x" }, "other requires choices" },
+        { new ControlArgs { Title = "T", Buttons = Ok, Other = "x" }, "other requires choices" },
+        { new ControlArgs { Title = "T", Buttons = Ok, Multiple = true, Other = "x" }, "multiple requires choices" },
+        { new ControlArgs { Title = "T", Value = "x", Input = "line", Other = "  " }, "other requires choices" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Other = "  " }, "ask other placeholder must not be blank" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Other = "" }, "ask other placeholder must not be blank" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Other = "a\tb" }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Choices = Items("a", "b"), Checked = ["a", "b"], Other = "  " }, "radio choices accept one checked id" },
     };
 
     private static ControlAskChoice Choice(string id, string label, string? subtitle = null) =>
@@ -418,6 +426,11 @@ public class ControlDispatcherAskTests
         Assert.Equal("ok", ask.DefaultId);
         Assert.Equal("cancel", ask.CancelId);
     }
+
+    [Fact]
+    public async Task OtherPlaceholderReachesHostWithTheChoices() =>
+        Assert.Equal(new AskForm.Choices(new AskChoiceForm(Items("a"), false, [], "Something else")),
+            (await Opened(new ControlArgs { Title = "Pick", Choices = Items("a"), Other = "Something else" })).Form);
 
     [Fact]
     public async Task ARadioListWithoutCheckedIdsReachesTheHostAsRadio() =>

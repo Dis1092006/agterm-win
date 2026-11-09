@@ -1,6 +1,6 @@
 # B9: forms in `ask`
 
-Upstream v0.40.0 extends `ask` with a text field, a choice list and a free-form "other" row (`docs/upstream/delta-ed831ab-to-v0.40.0.md` §6, upstream `96b0a6c6` and the commits after it). The port takes them in three PRs. The plan stays in `docs/plans/` until B9c is merged.
+Upstream v0.40.0 extends `ask` with a text field, a choice list and a free-form "other" row (`docs/upstream/delta-ed831ab-to-v0.40.0.md` §6, upstream `96b0a6c6` and the commits after it). The port takes them in three PRs.
 
 ## B9a: text field
 
@@ -27,5 +27,7 @@ Status: done.
 
 - Wire arg `other`; CLI `--other PLACEHOLDER`.
 - A free-form line after the items. Its text goes into the answer.
+- Both styles. The row's field holds the keys only while the list cursor is on the row; Up and Down in it go back to the list.
+- Windows adaptation: a click into the field sends an `EditOther` intent, and the `gui` panel with the row takes the full width (PLATFORM-NOTES).
 
-Status: not started.
+Status: done.

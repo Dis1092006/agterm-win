@@ -152,6 +152,17 @@ public class AskRunnerTests
     }
 
     [Fact]
+    public void AnAnswerWithOtherTextPrintsTheSelectionAndTheText()
+    {
+        var result = ControlAskResult.Answered("ok", "OK", 0) with { Text = " mine ", Selected = ["a"] };
+        var script = new Script().Reply(Polled(result));
+
+        Assert.Equal(0, AskRunner.PrintResult(script.Env(), Options, new ControlRequest { Cmd = WireCommand.AskResult, Target = "ask-id" }));
+        Assert.Equal("{\"result\":\"answered\",\"id\":\"ok\",\"label\":\"OK\",\"index\":0,\"text\":\" mine \",\"selected\":[\"a\"]}" + Environment.NewLine,
+            script.Out.ToString());
+    }
+
+    [Fact]
     public void AOneShotMalformedResultDoesNotCancelSomeoneElsesDialog()
     {
         var script = new Script().Reply(new ControlResponse { Ok = true });
