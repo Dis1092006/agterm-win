@@ -1495,15 +1495,18 @@ const LETTER_SCAN_CODES = {
 };
 
 // A win32-input-mode record (ESC [ Vk ; Sc ; Uc ; Kd ; Cs ; Rc _) for Ctrl and a letter key
-// ("KeyZ"), with the lowercase Latin letter as the character. PSReadLine names a key whose
-// character is a control character through the keyboard layout, so on a non-Latin layout 0x1a
-// becomes Ctrl+я; with the letter it is Ctrl+z on any layout. The other fields copy xterm's own
-// encoder: Cs is LEFT_CTRL (xterm sets RIGHT_CTRL only for the ControlRight key itself, and
-// PowerShell sees Control either way), and no lock flags.
-function win32CtrlLetter(code, keyDown) {
-  const letter = code.slice(3);
-  return `\x1b[${letter.charCodeAt(0)};${LETTER_SCAN_CODES[letter]};`
-    + `${letter.toLowerCase().charCodeAt(0)};${keyDown ? 1 : 0};8;1_`;
+// ("KeyZ"), with a lowercase Latin letter as the character: the typed one when the layout types
+// a Latin letter (Dvorak), else the key's own. PSReadLine names a key whose character is a
+// control character through the layout of the console window, which under ConPTY stays the one
+// active when the shell started: in a shell started on Russian 0x1a becomes Ctrl+я. With the
+// letter it is Ctrl+z on any layout. The other fields copy xterm's own encoder: Vk and Sc follow
+// the key position, Cs is LEFT_CTRL (xterm sets RIGHT_CTRL only for the ControlRight key itself,
+// and PowerShell sees Control either way), and no lock flags.
+function win32CtrlLetter(code, keyDown, typed) {
+  const position = code.slice(3);
+  const letter = /^[a-zA-Z]$/.test(typed || "") ? typed.toLowerCase() : position.toLowerCase();
+  return `\x1b[${position.charCodeAt(0)};${LETTER_SCAN_CODES[position]};`
+    + `${letter.charCodeAt(0)};${keyDown ? 1 : 0};8;1_`;
 }
 
 // the event.code a physical key reports, for the keys tests drive (letters/digits are positional
@@ -3315,16 +3318,18 @@ function openPane(paneId, opts) {
   // a key released while the page had no focus never reports it
   term.textarea?.addEventListener("blur", () => pane.rewrittenKeys.clear());
 
-  // While PSReadLine reads input, Ctrl and a letter key on a non-Latin layout go as the record
-  // with the Latin letter (see win32CtrlLetter), so Ctrl+Z on Russian runs Undo, not Ctrl+я.
-  // Ctrl+Shift is left alone: xterm's record already matches a Ctrl+Shift binding there.
+  // While PSReadLine reads input, Ctrl and a letter key go as the record with a Latin letter
+  // (see win32CtrlLetter) on every layout: the shell may have started on another layout than the
+  // one the key is pressed on. So Ctrl+Z runs Undo, not Ctrl+я. Ctrl+Shift is left alone: xterm's
+  // record already matches a Ctrl+Shift binding there. Ctrl+C keeps xterm's record, as the
+  // clipboard handler leaves it to xterm on purpose.
   const rewriteCtrlLetter = (ev) => {
     if (!pane.readline || !win32Encodes()) return false;
     if (!ev.ctrlKey || ev.shiftKey || ev.altKey || ev.metaKey) return false;
-    if (!/^Key[A-Z]$/.test(ev.code || "")) return false;
-    if (typeof ev.key !== "string" || ev.key.length !== 1 || /^[a-zA-Z]$/.test(ev.key)) return false;
-    pane.term.input(win32CtrlLetter(ev.code, true), true);
-    pane.rewrittenKeys.set(ev.code, win32CtrlLetter(ev.code, false));
+    if (!/^Key[A-Z]$/.test(ev.code || "") || ev.code === "KeyC") return false;
+    if (typeof ev.key !== "string" || ev.key.length !== 1) return false;
+    pane.term.input(win32CtrlLetter(ev.code, true, ev.key), true);
+    pane.rewrittenKeys.set(ev.code, win32CtrlLetter(ev.code, false, ev.key));
     return true;
   };
 

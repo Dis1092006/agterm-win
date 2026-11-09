@@ -126,8 +126,9 @@ public class PowerShellReadlineIntegrationTests : IDisposable
     [MemberData(nameof(Shells))]
     public async Task The_ctrl_z_record_with_the_latin_letter_runs_undo(string shell)
     {
-        // The record the page sends for Ctrl+Z on a non-Latin layout. PSReadLine has to name it
-        // Ctrl+z from the character, without the layout, or it would not undo there.
+        // The record the page sends for Ctrl+Z while PSReadLine reads. PSReadLine has to name it
+        // Ctrl+z from the character, without the layout, or it would not undo in a shell that
+        // started on a non-Latin layout.
         var pty = StartShell(shell);
         var at = WaitFor(Marker("agterm-readline=1;paste=shift-insert"));
 

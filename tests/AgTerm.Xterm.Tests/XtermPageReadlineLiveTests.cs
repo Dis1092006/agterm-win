@@ -277,10 +277,11 @@ public class XtermPageReadlineLiveTests
         Assert.Equal("", data);
     }
 
-    // Ctrl+letter on a non-Latin layout. PSReadLine names a key whose character is a control
-    // character through the keyboard layout, so on Russian xterm's Ctrl+Z record (character 0x1a)
-    // reads as Ctrl+я and Undo does not run. While PSReadLine reads input the pane sends the record
-    // with the Latin letter instead.
+    // Ctrl+letter. PSReadLine names a key whose character is a control character through the
+    // keyboard layout of the console window, and under ConPTY that is the layout that was active
+    // when the shell started. So xterm's Ctrl+Z record (character 0x1a) reads as Ctrl+я in a shell
+    // started on Russian, whatever layout the key is pressed on, and Undo does not run. While
+    // PSReadLine reads input the pane sends the record with the Latin letter instead.
 
     private const string Russian = "фисвуапршолдьтщзйкыегмцчня";
 
@@ -308,8 +309,22 @@ public class XtermPageReadlineLiveTests
     }
 
     [Fact]
+    public async Task While_psreadline_reads_latin_ctrl_z_sends_the_record_with_the_latin_letter()
+    {
+        var pane = await OpenAsync("rl-latin-ctrl-z");
+        await FeedAsync(pane, NoPasteKey);
+
+        var press = await KeysAsync(pane, Down("z", "KeyZ", 90, ctrl: true));
+        var release = await KeysAsync(pane, Up("z", "KeyZ", 90, ctrl: true));
+
+        Assert.Equal(CtrlZDown, press);
+        Assert.Equal(CtrlZUp, release);
+    }
+
+    [Fact]
     public async Task The_record_matches_xterms_own_latin_record_except_the_character()
     {
+        var reference = await OpenAsync("rl-ctrl-letters-ref", readlineMarker: false);
         var pane = await OpenAsync("rl-ctrl-letters");
         await FeedAsync(pane, NoPasteKey);
 
@@ -317,16 +332,36 @@ public class XtermPageReadlineLiveTests
         foreach (var latin in "abdefghijklmnopqrstuwxyz")
         {
             var upper = char.ToUpperInvariant(latin);
-            var xterm = await KeysAsync(pane, Down(latin.ToString(), $"Key{upper}", upper, ctrl: true));
-            await KeysAsync(pane, Up(latin.ToString(), $"Key{upper}", upper, ctrl: true));
-            var bridge = await KeysAsync(pane, CyrillicCtrl(latin));
-            await KeysAsync(pane, CyrillicCtrl(latin, "keyup"));
+            Key[] latinKeys =
+            [
+                Down(latin.ToString(), $"Key{upper}", upper, ctrl: true),
+                Up(latin.ToString(), $"Key{upper}", upper, ctrl: true),
+            ];
+            var xterm = await KeysAsync(reference, latinKeys[0]);
+            await KeysAsync(reference, latinKeys[1]);
 
             var fields = xterm.TrimStart('\u001b', '[').TrimEnd('_').Split(';');
             Assert.Equal(6, fields.Length);
             fields[2] = ((int)latin).ToString();
-            Assert.Equal($"\u001b[{string.Join(';', fields)}_", bridge);
+            var expected = $"\u001b[{string.Join(';', fields)}_";
+
+            Assert.Equal(expected, await KeysAsync(pane, latinKeys[0]));
+            await KeysAsync(pane, latinKeys[1]);
+            Assert.Equal(expected, await KeysAsync(pane, CyrillicCtrl(latin)));
+            await KeysAsync(pane, CyrillicCtrl(latin, "keyup"));
         }
+    }
+
+    [Fact]
+    public async Task On_a_latin_layout_the_record_carries_the_typed_letter()
+    {
+        // Dvorak types x on the QWERTY B key. xterm takes the key and scan codes from the
+        // position, and PSReadLine names the key from the character, so it reads Ctrl+x.
+        var pane = await OpenAsync("rl-dvorak");
+        await FeedAsync(pane, NoPasteKey);
+
+        Assert.Equal("\u001b[66;48;120;1;8;1_", await KeysAsync(pane, Down("x", "KeyB", 66, ctrl: true)));
+        Assert.Equal("\u001b[66;48;120;0;8;1_", await KeysAsync(pane, Up("x", "KeyB", 66, ctrl: true)));
     }
 
     /// <summary>What a pane without the readline marker sends for the keys: today's encoding.</summary>
@@ -349,10 +384,27 @@ public class XtermPageReadlineLiveTests
         Assert.Equal(today, await KeysAsync(deaf, CyrillicCtrl('z')));
     }
 
+    [Fact]
+    public async Task Without_the_marker_latin_ctrl_z_is_encoded_as_today()
+    {
+        var latinCtrlZ = Down("z", "KeyZ", 90, ctrl: true);
+        var reference = await OpenAsync("rl-latin-today-ref", readlineMarker: false);
+        var today = await TodayAsync(reference, latinCtrlZ);
+        Assert.NotEqual(CtrlZDown, today);
+
+        var notReading = await OpenAsync("rl-latin-today-off");
+        await FeedAsync(notReading, NoPasteKey);
+        await FeedAsync(notReading, NotReading);
+
+        Assert.Equal(today, await KeysAsync(notReading, latinCtrlZ));
+    }
+
     public static TheoryData<string, string, string, int, bool, bool, bool> UnchangedKeys() => new()
     {
-        { "latin ctrl+z", "z", "KeyZ", 90, true, false, false },
         { "ctrl+c without a selection", "с", "KeyC", 67, true, false, false },
+        { "latin ctrl+c without a selection", "c", "KeyC", 67, true, false, false },
+        { "latin ctrl+shift+z", "Z", "KeyZ", 90, true, true, false },
+        { "latin ctrl+alt+letter", "z", "KeyZ", 90, true, false, true },
         { "ctrl+alt+letter", "я", "KeyZ", 90, true, false, true },
         { "ctrl+shift+cyrillic z", "Я", "KeyZ", 90, true, true, false },
     };
