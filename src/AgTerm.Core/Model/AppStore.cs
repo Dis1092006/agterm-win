@@ -349,6 +349,8 @@ public sealed partial class AppStore
                     SplitFocused = session.HasSplit ? session.SplitFocused : null,
                     Overlay = session.OverlayActive,
                     OverlaySizePercent = session.OverlayActive ? session.OverlaySizePercent : null,
+            OverlayWidth = session.OverlayContentSize?.Width,
+            OverlayHeight = session.OverlayContentSize?.Height,
                     HiddenOverlays = session.HiddenOverlayNames is { Count: > 0 } hidden ? [.. hidden] : null,
                     Hud = HudNode(session),
                     Ask = session.AskPending is { } ask

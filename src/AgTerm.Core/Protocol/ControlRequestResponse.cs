@@ -212,6 +212,25 @@ public static class OverlayVisibilityError
     };
 }
 
+/// <summary>Error strings for session.overlay.open/.resize --width/--height (upstream
+/// OverlayPointError). Upstream's pane and remote cases are absent: the port has neither.</summary>
+public static class OverlayPointError
+{
+    public const string NotPositive = "session.overlay: --width/--height must be positive";
+    public const string NeedsPercent = "session.overlay.open: --width/--height need --size-percent";
+    public const string FullConflict = "session.overlay.resize: --full is mutually exclusive with --width/--height";
+    public const string NotFloating =
+        "session.overlay.resize: --width/--height need a floating overlay; pass --size-percent too";
+    public const string Hud = "a hud measures its own height: --width/--height do not apply";
+
+    public static string Message(OverlayPointResizeFailure failure) => failure switch
+    {
+        OverlayPointResizeFailure.Hud => Hud,
+        OverlayPointResizeFailure.NotFloating => NotFloating,
+        _ => OverlayVisibilityError.NoOverlay,
+    };
+}
+
 /// <summary>The rejection of a --pane selector on session.overlay.* (upstream PaneOverlayError).</summary>
 public static class PaneOverlayError
 {

@@ -51,6 +51,60 @@ public sealed class XtermPageOverlayTests
         Assert.DoesNotContain("workspaceName", script);
     }
 
+    [Fact]
+    public async Task Layered_with_point_sizes_serializes_width_and_height_after_the_percent()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+
+        var accepted = await page.ApplyLayoutAsync(
+            new TerminalLayout.Layered(
+                9,
+                new TerminalLayout.Single(3, "main", "My Shell"),
+                new TerminalLayer("overlay", sizePercent: 60, width: 600, height: 240)));
+
+        Assert.True(accepted);
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyLayout"));
+        Assert.Contains(
+            """"layer":{"paneId":"overlay","sizePercent":60,"width":600,"height":240}"""",
+            script);
+    }
+
+    [Fact]
+    public async Task Layered_with_one_point_axis_omits_the_other()
+    {
+        var page = await InitializedAsync();
+        _host.ScriptResult = _ => "true";
+
+        await page.ApplyLayoutAsync(
+            new TerminalLayout.Layered(
+                9,
+                new TerminalLayout.Single(3, "main", "My Shell"),
+                new TerminalLayer("overlay", sizePercent: 60, height: 240)));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyLayout"));
+        Assert.Contains(""""layer":{"paneId":"overlay","sizePercent":60,"height":240}"""", script);
+    }
+
+    [Theory]
+    [InlineData(0, null)]
+    [InlineData(-5, null)]
+    [InlineData(null, 0)]
+    [InlineData(null, -5)]
+    public void TerminalLayer_rejects_point_sizes_that_are_not_positive(int? width, int? height)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new TerminalLayer("p", sizePercent: 50, width: width, height: height));
+    }
+
+    [Theory]
+    [InlineData(600, null)]
+    [InlineData(null, 240)]
+    public void TerminalLayer_rejects_point_sizes_on_a_full_layer(int? width, int? height)
+    {
+        Assert.Throws<ArgumentException>(() => new TerminalLayer("p", width: width, height: height));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("  ")]
@@ -425,6 +479,11 @@ public sealed class XtermPageOverlayLiveTests
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:101}}",
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:50.5}}",
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',backgroundColor:'red'}}",
+            "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',width:300}}",
+            "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:50,width:0}}",
+            "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:50,height:-1}}",
+            "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:50,width:1.5}}",
+            "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer',sizePercent:50,height:'200'}}",
             "{type:'layered',generation:3,base:{type:'single',paneId:'rj-base'},layer:{paneId:'rj-layer'},extra:true}",
         };
         foreach (var payload in invalidPayloads)
@@ -676,7 +735,66 @@ public sealed class XtermPageOverlayLiveTests
             $"quick grid: {quickTerm.Cols}x{quickTerm.Rows}");
     }
 
+    // A point axis sizes the floating layer in CSS px, capped at 80% of the panes area; an axis
+    // without points keeps the percent.
+    [Fact]
+    public async Task Layered_floating_point_sizes_set_px_axes_capped_at_eighty_percent()
+    {
+        var (page, view) = await BootPageAsync();
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("ps-base"));
+        await _webView.RunAsync(_ => page.OpenTerminalAsync("ps-layer"));
+
+        Assert.True(await ApplyAsync(page, new TerminalLayout.Layered(
+            1,
+            new TerminalLayout.Single(1, "ps-base", "shell"),
+            new TerminalLayer("ps-layer", sizePercent: 50, width: 300))));
+
+        var size = await ReadLayerSizeAsync(view, "ps-layer");
+        Assert.InRange(size.Width, 299, 301);
+        Assert.InRange(size.HeightRatio, 0.45, 0.55);
+
+        Assert.True(await ApplyAsync(page, new TerminalLayout.Layered(
+            2,
+            new TerminalLayout.Single(1, "ps-base", "shell"),
+            new TerminalLayer("ps-layer", sizePercent: 50, width: 100_000, height: 120))));
+
+        size = await ReadLayerSizeAsync(view, "ps-layer");
+        Assert.InRange(size.WidthRatio, 0.78, 0.82);
+        Assert.InRange(size.Height, 119, 121);
+
+        Assert.True(await ApplyAsync(page, new TerminalLayout.Layered(
+            3,
+            new TerminalLayout.Single(1, "ps-base", "shell"),
+            new TerminalLayer("ps-layer", sizePercent: 50))));
+
+        size = await ReadLayerSizeAsync(view, "ps-layer");
+        Assert.InRange(size.WidthRatio, 0.45, 0.55);
+        Assert.InRange(size.HeightRatio, 0.45, 0.55);
+    }
+
     // ---- Helpers ----
+
+    private async Task<LayerSize> ReadLayerSizeAsync(
+        Microsoft.Web.WebView2.WinForms.WebView2 view, string layerPaneId)
+    {
+        var raw = await ExecuteAsync(view, $$"""
+            (function() {
+              const cb = document.getElementById('panes').getBoundingClientRect();
+              const el = document.querySelector('[data-pane-id="{{layerPaneId}}"]');
+              const lb = el.getBoundingClientRect();
+              // client sizes leave out the 1px border: a point size is the area inside it
+              return {
+                width: el.clientWidth,
+                height: el.clientHeight,
+                widthRatio: cb.width > 0 ? lb.width / cb.width : 0,
+                heightRatio: cb.height > 0 ? lb.height / cb.height : 0
+              };
+            })()
+            """);
+        return JsonSerializer.Deserialize<LayerSize>(raw, JsonOpts)!;
+    }
+
+    private sealed record LayerSize(double Width, double Height, double WidthRatio, double HeightRatio);
 
     private async Task<(XtermPage Page, Microsoft.Web.WebView2.WinForms.WebView2 View)> BootPageAsync()
     {

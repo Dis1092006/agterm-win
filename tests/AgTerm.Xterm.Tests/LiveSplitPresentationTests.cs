@@ -273,6 +273,24 @@ public sealed class LiveSelectionSnapshotLayoutTests
     }
 
     [Fact]
+    public void ToTerminalLayout_passes_overlay_point_sizes_to_the_layer()
+    {
+        var snapshot = new LiveSelectionSnapshot(
+            Guid.NewGuid(), "session",
+            MainPaneId: "main-token",
+            OverlayPaneId: "overlay-token",
+            OverlayVisible: true,
+            OverlaySizePercent: 60,
+            OverlayWidth: 600,
+            OverlayHeight: 240);
+
+        var layered = Assert.IsType<TerminalLayout.Layered>(snapshot.ToTerminalLayout(4));
+        Assert.Equal(60, layered.Layer.SizePercent);
+        Assert.Equal(600, layered.Layer.Width);
+        Assert.Equal(240, layered.Layer.Height);
+    }
+
+    [Fact]
     public void ToTerminalLayout_places_overlay_above_scratch_and_falls_back_when_overlay_is_unrealized()
     {
         var withOverlay = new LiveSelectionSnapshot(

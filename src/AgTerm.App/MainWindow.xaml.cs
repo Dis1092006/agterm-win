@@ -965,7 +965,9 @@ public sealed partial class MainWindow : Window
                 host.Host.Actions.Quick.Surface?.PaneToken,
                 host.Host.Actions.Quick.Visible,
                 PaneThemes: PaneThemeAssignment.For(store),
-                SplitAxis: selectedSession?.SplitAxis);
+                SplitAxis: selectedSession?.SplitAxis,
+                OverlayWidth: selectedSession?.OverlayPoints.Width,
+                OverlayHeight: selectedSession?.OverlayPoints.Height);
 
             var committedSurfaces = store.Workspaces
                 .SelectMany(workspace => workspace.Sessions)

@@ -120,7 +120,9 @@
     { "name": "info", "upstream": "80f822bf" },
     { "name": "infoMarkdown", "upstream": "80f822bf" },
     { "name": "infoHideAfter", "upstream": "80f822bf" },
-    { "name": "hiddenOverlays", "upstream": "7f450d17" }
+    { "name": "hiddenOverlays", "upstream": "7f450d17" },
+    { "name": "overlayWidth", "upstream": "9bbb3408" },
+    { "name": "overlayHeight", "upstream": "9bbb3408" }
   ],
   "workspaceNode": [
     { "name": "tint", "upstream": "f3fea57b" },

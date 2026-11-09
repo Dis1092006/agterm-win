@@ -108,6 +108,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record OverlayOpen(string? Target, string? Window, ControlSessionOverlayOpenOptions Options) : Call;
         public sealed record OverlayClose(string? Target, string? Window) : Call;
         public sealed record OverlayResize(string? Target, string? Window, int? SizePercent) : Call;
+        public sealed record OverlayPointResize(string? Target, string? Window, int? SizePercent, OverlayPointSize Points) : Call;
         public sealed record OverlayResult(string? Target, string? Window) : Call;
     public sealed record OverlayVisibility(string? Target, string? Window, OverlayPane? Pane, OverlayVisibilityMode Mode) : Call;
         public sealed record SessionBackground(string? Target, string? Window, ControlSessionBackgroundOptions Options) : Call;
@@ -665,6 +666,12 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse ResizeSessionOverlay(string? target, string? window, int? sizePercent)
     {
         Calls.Add(new Call.OverlayResize(target, window, sizePercent));
+        return NextOverlayResizeResponse;
+    }
+
+    public ControlResponse ResizeSessionOverlay(string? target, string? window, int? sizePercent, OverlayPointSize points)
+    {
+        Calls.Add(new Call.OverlayPointResize(target, window, sizePercent, points));
         return NextOverlayResizeResponse;
     }
 

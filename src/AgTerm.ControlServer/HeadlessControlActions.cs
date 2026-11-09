@@ -1986,7 +1986,7 @@ public sealed partial class HeadlessControlActions : IControlActions
             if (store.SessionWithId(id) is { OverlayHidden: true })
                 return Err(OverlayVisibilityError.Hidden);
             if (!store.OpenOverlay(id, options.Command, options.Cwd, options.Wait,
-                    options.SizePercent, options.BackgroundColor))
+                    options.SizePercent, options.BackgroundColor, options.Points))
                 return Err("overlay already open");
             // the overlay runs without an implicit select; --follow is the user-facing jump.
             if (options.Follow) store.SelectSession(id);
@@ -2020,6 +2020,14 @@ public sealed partial class HeadlessControlActions : IControlActions
                 return Err("no overlay");
             return OkId(id);
         });
+    }
+
+    public ControlResponse ResizeSessionOverlay(string? target, string? window, int? sizePercent, OverlayPointSize points)
+    {
+        return ResolveSession(target, window, (store, id) =>
+            store.ResizeOverlayInPoints(id, sizePercent, points) is { } failure
+                ? Err(OverlayPointError.Message(failure))
+                : OkId(id));
     }
 
     public ControlResponse SessionOverlayResult(string? target, string? window)

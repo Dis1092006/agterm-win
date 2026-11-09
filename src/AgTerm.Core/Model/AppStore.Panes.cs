@@ -352,10 +352,12 @@ public sealed partial class AppStore
     /// program exits, CloseOverlay tears it down. No-op (returns false) when the session is unknown
     /// or already has an overlay open. NOT persisted — the overlay never survives a relaunch.
     /// sizePercent (clamped to 1..100) requests a FLOATING overlay; null gives the default full-pane
-    /// overlay that hides the session. backgroundColor (#rrggbb) gives the overlay pane its own
+    /// overlay that hides the session. points overrides that percent per axis and is ignored without
+    /// one. backgroundColor (#rrggbb) gives the overlay pane its own
     /// solid background; null leaves the default theme background.</summary>
     public bool OpenOverlay(Guid sessionId, string command, string? cwd = null,
-                            bool wait = false, int? sizePercent = null, string? backgroundColor = null)
+                            bool wait = false, int? sizePercent = null, string? backgroundColor = null,
+                            OverlayPointSize points = default)
     {
         if (SessionWithId(sessionId) is not { } session) return false;
         // a HUD is a message about work in flight, so it yields the slot to a program
@@ -366,6 +368,7 @@ public sealed partial class AppStore
         session.OverlayWait = wait;
         session.OverlayExitCode = null;
         session.OverlaySizePercent = sizePercent is { } percent ? Math.Min(100, Math.Max(1, percent)) : null;
+        session.OverlayPoints = sizePercent is null ? default : points;
         session.OverlayBackgroundColor = backgroundColor;
         session.OverlayActive = true;
         NotifySidebar();
@@ -376,13 +379,33 @@ public sealed partial class AppStore
     /// <summary>Resizes an already-open overlay in place. sizePercent (clamped to 1..100) switches
     /// it to a FLOATING panel at that percent of the pane; null switches it to the full-pane
     /// overlay. The overlay surface stays mounted, so this only re-flows the layout — the program
-    /// keeps running, never re-spawns. No-op (returns false) with no overlay open.</summary>
-    public bool ResizeOverlay(Guid sessionId, int? sizePercent)
+    /// keeps running, never re-spawns. points replaces the point overrides whole, so an axis it omits
+    /// goes back to the percent; a full resize clears them. No-op (returns false) with no overlay open.</summary>
+    public bool ResizeOverlay(Guid sessionId, int? sizePercent, OverlayPointSize points = default)
     {
         if (SessionWithId(sessionId) is not { } session || !session.OverlayActive) return false;
         session.OverlaySizePercent = sizePercent is { } percent ? Math.Min(100, Math.Max(1, percent)) : null;
+        session.OverlayPoints = sizePercent is null ? default : points;
         NotifySidebar();
         return true;
+    }
+
+    /// <summary>Resizes an open program overlay in points: with a percent the points replace the
+    /// overrides whole, without one only the supplied axes change (upstream resizeOverlayInPoints).</summary>
+    public OverlayPointResizeFailure? ResizeOverlayInPoints(Guid sessionId, int? sizePercent, OverlayPointSize points)
+    {
+        if (SessionWithId(sessionId) is not { } session) return OverlayPointResizeFailure.NoOverlay;
+        if (session.HudActive) return OverlayPointResizeFailure.Hud;
+        if (!session.OverlayActive) return OverlayPointResizeFailure.NoOverlay;
+        if (sizePercent is not null)
+        {
+            ResizeOverlay(sessionId, sizePercent, points);
+            return null;
+        }
+        if (session.OverlaySizePercent is null) return OverlayPointResizeFailure.NotFloating;
+        session.OverlayPoints = session.OverlayPoints.Merging(points);
+        NotifySidebar();
+        return null;
     }
 
     /// <summary>Records the overlay program's exit status so session.overlay.result can report it
@@ -411,6 +434,7 @@ public sealed partial class AppStore
         session.OverlayCwd = null;
         session.OverlayWait = false;
         session.OverlaySizePercent = null;
+        session.OverlayPoints = default;
         session.OverlayBackgroundColor = null;
         NotifySidebar();
         ScheduleTreeChanged();

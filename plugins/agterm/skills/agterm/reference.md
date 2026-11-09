@@ -138,7 +138,9 @@ exits — the read side of `session new --wait`; omitted for a plain or non-hold
 `overlaySizePercent` (an open overlay's size — the
 floating panel's percent of the pane, 1–100; omitted = a full-pane overlay or no overlay, so gate on
 `overlay` first; the read side of `session overlay resize`, e.g. record it before switching to `--full`
-to restore the exact size), `hiddenOverlays` (the hidden overlay slots, `["session"]` on agterm-win;
+to restore the exact size of a percent-only panel), `overlayWidth`/`overlayHeight` (a floating overlay's
+content size in points as last laid out, after `--width`/`--height` and their cap; omitted for a full
+overlay, a HUD, or a session not laid out yet), `hiddenOverlays` (the hidden overlay slots, `["session"]` on agterm-win;
 omitted when none is hidden; the read side of `session overlay hide`), `hud` (the open HUD message
 panel, see `session hud`; omitted when none),
 `ask` (`{id, pane}` of a pending terminal-style question on this session, see `ask`; omitted when none;
@@ -652,7 +654,7 @@ All are read-only projections of GUI state.
   background, but the window does not draw it: the panes keep the theme background. Read the current
   background back from a session's `background` field in `tree --json` (a `{kind, colorHex, …}` object,
   omitted when none).
-- `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N] [--background-color #rrggbb] [--follow] [--target] [--window W]`
+- `session overlay open <command> [--cwd DIR] [--wait] [--block] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--target] [--window W]`
   — run `command` in an ephemeral terminal on top of the session; it closes when the command exits.
   Wire: `session.overlay.open`.
   `command` runs through `%COMSPEC% /c` (cmd.exe), so cmd operators (`&&`, `|`, `>`) DO work here. For
@@ -672,13 +674,22 @@ All are read-only projections of GUI state.
   own output file, not the control channel. Returns the overlay's session id. `--target` defaults to
   `active`, so an automated caller should pass `--target "$AGTERM_SESSION_ID"` — otherwise a (usually
   blocking, full-pane) overlay lands on whatever session is currently active, not the calling one.
-- `session overlay resize (--size-percent N | --full) [--target] [--window W]` — resize an ALREADY-OPEN
-  overlay in place. Wire: `session.overlay.resize`. Exactly one of `--size-percent N` (1–100, makes it a
-  floating framed panel) or
-  `--full` (switches it back to the full-pane overlay that hides the session) is required; passing both
-  or neither, or a percent outside 1–100, is an error. The overlay program keeps running across the
+- `session overlay resize (--size-percent N [--width PT] [--height PT] | --width PT [--height PT] | --height PT | --full) [--target] [--window W]`
+  — resize an ALREADY-OPEN overlay in place. Wire: `session.overlay.resize`. `--size-percent N` (1–100)
+  makes it a floating framed panel and `--full` switches it back to the full-pane overlay that hides the
+  session; passing both, or none of the options, or a percent outside 1–100, is an error.
+  `--width`/`--height` (positive points, also on `open` beside `--size-percent`) override the given
+  content axes of a floating overlay; a point axis is capped at 80% of the session, a percent axis keeps
+  1–100. With `--size-percent` the panel re-sizes from that percent with exactly the point axes given;
+  alone they change only their axes of a panel that is already floating (`session.overlay.resize:
+  --width/--height need a floating overlay; pass --size-percent too` on a full one); `--size-percent`
+  alone or `--full` drops them. Refused on a HUD (`a hud measures its own height: --width/--height do not
+  apply`). A point is a CSS pixel of the terminal page. Read back `overlayWidth`/`overlayHeight`.
+  The overlay program keeps running across the
   resize — it is a layout re-flow, never a re-spawn. Errors `no overlay` when none is open. Returns the
-  session id.
+  session id. Other errors: `session.overlay: --width/--height must be positive`,
+  `session.overlay.open: --width/--height need --size-percent`,
+  `session.overlay.resize: --full is mutually exclusive with --width/--height`.
 - `session overlay close [--target] [--window W]` — close (destroy) the overlay. Wire:
   `session.overlay.close`.
 - `session overlay hide|show|toggle [--pane left|right] [--target] [--window W]` — hide the overlay

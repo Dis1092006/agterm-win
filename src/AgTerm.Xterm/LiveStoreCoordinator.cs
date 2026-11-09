@@ -36,7 +36,9 @@ public sealed record LiveSelectionSnapshot(
     PaneThemeTable? PaneThemes = null,
     bool QuickHoldsKey = false,
     SplitAxis? SplitAxis = null,
-    bool OverlayActive = false)
+    bool OverlayActive = false,
+    int? OverlayWidth = null,
+    int? OverlayHeight = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -96,7 +98,9 @@ public sealed record LiveSelectionSnapshot(
             return new TerminalLayout.Layered(
                 generation,
                 baseLayout,
-                new TerminalLayer(OverlayPaneId, OverlaySizePercent, OverlayBackgroundColor));
+                new TerminalLayer(OverlayPaneId, OverlaySizePercent, OverlayBackgroundColor,
+                                  OverlaySizePercent is null ? null : OverlayWidth,
+                                  OverlaySizePercent is null ? null : OverlayHeight));
         }
 
         if (ScratchActive && !string.IsNullOrWhiteSpace(ScratchPaneId))
@@ -440,7 +444,9 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             PaneThemes: PaneThemeAssignment.For(_host.Store),
             QuickHoldsKey: _host.Actions.Quick.HoldsKey,
             SplitAxis: selectedSession?.SplitAxis,
-            OverlayActive: selectedSession?.OverlayActive ?? false);
+            OverlayActive: selectedSession?.OverlayActive ?? false,
+            OverlayWidth: selectedSession?.OverlayPoints.Width,
+            OverlayHeight: selectedSession?.OverlayPoints.Height);
     }
 
     private bool QuickTerminalShown() =>

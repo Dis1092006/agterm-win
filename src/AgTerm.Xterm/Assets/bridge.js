@@ -41,7 +41,9 @@
 //       {type:'dashboard', generation, cells:[{paneId,controlRef}], highlightedControlRef, fontSize?} |
 //       {type:'layered', generation,
 //          base:{type:'single', paneId} | {type:'split', leftPaneId, rightPaneId, ratio, focusedPaneId},
-//          layer:{paneId, sizePercent?, backgroundColor?}}.
+//          layer:{paneId, sizePercent?, width?, height?, backgroundColor?}}.
+//          width/height (positive integer CSS px, only beside sizePercent) replace the percent on
+//          their axis, capped at 80% of the panes area.
 //     applyLayout rejects stale generations (< highest accepted) with false and does no DOM changes.
 // The FIRST opened pane is shown automatically; window resizes refit all visible panes.
 "use strict";
@@ -74,6 +76,8 @@ const SPLIT_MAX_RATIO = 0.95;
 const SPLIT_DIVIDER_WIDTH_PX = 4;
 const OVERLAY_CATCHER_Z_INDEX = 10;
 const OVERLAY_LAYER_Z_INDEX = 20;
+// HudLayout.MaxSizePercent: the most of the panes area a point-sized layer axis takes
+const OVERLAY_POINT_MAX_PERCENT = 80;
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const HEX_DIGITS_RE = /^[0-9a-fA-F]{6}$/;
 // HudLayout's panel constants in AgTerm.Core: the page draws the box the store measured
@@ -658,7 +662,7 @@ function validateLayeredLayout(layout) {
   const base = validateLayeredBaseLayout(layout.base);
   if (!base) return null;
 
-  if (!hasOnlyKeys(layout.layer, ["paneId", "sizePercent", "backgroundColor"]))
+  if (!hasOnlyKeys(layout.layer, ["paneId", "sizePercent", "width", "height", "backgroundColor"]))
     return null;
 
   const layerPaneId = normalizeKnownPaneId(layout.layer.paneId);
@@ -683,6 +687,12 @@ function validateLayeredLayout(layout) {
     sizePercent = layout.layer.sizePercent;
   }
 
+  // point axes size a floating layer in CSS px; a full layer has none
+  const width = layerPointSize(layout.layer.width);
+  const height = layerPointSize(layout.layer.height);
+  if (width === undefined || height === undefined) return null;
+  if ((width !== null || height !== null) && sizePercent === null) return null;
+
   let backgroundColor = null;
   if (
     layout.layer.backgroundColor !== undefined &&
@@ -697,8 +707,18 @@ function validateLayeredLayout(layout) {
     base,
     layerPaneId,
     sizePercent,
+    width,
+    height,
     backgroundColor,
   };
+}
+
+// null when absent, undefined when invalid, else a positive integer
+function layerPointSize(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1)
+    return undefined;
+  return value;
 }
 
 function applyLayeredPresentation(validLayered, shouldFocusLayer) {
@@ -747,8 +767,13 @@ function applyLayeredPresentation(validLayered, shouldFocusLayer) {
     layerPane.el.style.top = "50%";
     layerPane.el.style.left = "50%";
     layerPane.el.style.transform = "translate(-50%, -50%)";
-    layerPane.el.style.width = size;
-    layerPane.el.style.height = size;
+    // a point axis is capped at OVERLAY_POINT_MAX_PERCENT so some of the session stays in view
+    layerPane.el.style.width = validLayered.width === null
+      ? size
+      : `min(${validLayered.width}px, ${OVERLAY_POINT_MAX_PERCENT}%)`;
+    layerPane.el.style.height = validLayered.height === null
+      ? size
+      : `min(${validLayered.height}px, ${OVERLAY_POINT_MAX_PERCENT}%)`;
     layerPane.el.style.borderRadius = "10px";
     layerPane.el.style.border = "1px solid rgba(255, 255, 255, 0.2)";
     layerPane.el.style.boxShadow = "0 16px 48px rgba(0, 0, 0, 0.45)";
@@ -763,6 +788,8 @@ function applyLayeredPresentation(validLayered, shouldFocusLayer) {
     base: validLayered.base,
     layerPaneId: validLayered.layerPaneId,
     sizePercent: validLayered.sizePercent,
+    width: validLayered.width,
+    height: validLayered.height,
     backgroundColor: validLayered.backgroundColor,
   });
 

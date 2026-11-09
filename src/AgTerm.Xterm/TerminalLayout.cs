@@ -26,7 +26,8 @@ public sealed record TerminalDashboardCell
 
 public sealed record TerminalLayer
 {
-    public TerminalLayer(string paneId, int? sizePercent = null, string? backgroundColor = null)
+    public TerminalLayer(string paneId, int? sizePercent = null, string? backgroundColor = null,
+                         int? width = null, int? height = null)
     {
         if (string.IsNullOrWhiteSpace(paneId))
             throw new ArgumentException("Pane id is required.", nameof(paneId));
@@ -39,9 +40,18 @@ public sealed record TerminalLayer
         if (backgroundColor is not null && !IsValidHexColor(backgroundColor))
             throw new ArgumentException("Background color must be # followed by six hex digits.", nameof(backgroundColor));
 
+        if (width is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(width), "Layer width must be positive.");
+        if (height is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(height), "Layer height must be positive.");
+        if ((width is not null || height is not null) && sizePercent is null)
+            throw new ArgumentException("Layer point sizes need a size percent.", nameof(width));
+
         PaneId = paneId;
         SizePercent = sizePercent;
         BackgroundColor = backgroundColor;
+        Width = width;
+        Height = height;
     }
 
     public string PaneId { get; }
@@ -49,6 +59,13 @@ public sealed record TerminalLayer
     public int? SizePercent { get; }
 
     public string? BackgroundColor { get; }
+
+    /// <summary>The floating layer's width in CSS px, capped at 80% of the panes area; null keeps the
+    /// percent.</summary>
+    public int? Width { get; }
+
+    /// <summary>The floating layer's height in CSS px, capped like Width.</summary>
+    public int? Height { get; }
 
     private static bool IsValidHexColor(string value)
     {

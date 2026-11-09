@@ -1832,6 +1832,8 @@ internal static class SessionCommands
             public bool Block { get; init; }
             public bool Follow { get; init; }
             public int? SizePercent { get; init; }
+            public int? Width { get; init; }
+            public int? Height { get; init; }
             public string? BackgroundColor { get; init; }
             public required TargetOptions Target { get; init; }
             public required ClientOptions Client { get; init; }
@@ -1846,6 +1848,9 @@ internal static class SessionCommands
                 if (BackgroundColor is { } backgroundColor && !WatermarkConfig.IsValidColorHex(backgroundColor))
                     throw new CliValidationException("background-color must be a #rrggbb hex value");
                 ValidateSizePercent(SizePercent);
+                ValidatePoints(Width, Height);
+                if ((Width is not null || Height is not null) && SizePercent is null)
+                    throw new CliValidationException("--width/--height need --size-percent");
             }
 
             public ControlRequest MakeRequest() => new()
@@ -1856,6 +1861,7 @@ internal static class SessionCommands
                 {
                     Cwd = Cwd, Command = Command, Wait = Wait ? true : null,
                     SizePercent = SizePercent, Follow = Follow ? true : null,
+                    Width = Width, Height = Height,
                     Color = BackgroundColor,
                 }),
             };
@@ -1922,28 +1928,42 @@ internal static class SessionCommands
         internal sealed class Resize : IRequestCommand
         {
             public int? SizePercent { get; init; }
+            public int? Width { get; init; }
+            public int? Height { get; init; }
             public bool Full { get; init; }
             public required TargetOptions Target { get; init; }
             public required ClientOptions Client { get; init; }
             public IConnectionOptions Options => Client;
 
-            // require exactly one of --size-percent / --full at parse time (before any connection), so it is a
-            // clean usage error and unit-testable without a socket; the dispatcher re-checks the same rules.
+            // the dispatcher re-checks the same rules; here they are a clean usage error before any connection
             public void Validate()
             {
+                var points = Width is not null || Height is not null;
                 if (Full && SizePercent is not null)
                     throw new CliValidationException("--full cannot be combined with --size-percent");
-                if (!Full && SizePercent is null)
-                    throw new CliValidationException("provide --size-percent PERCENT or --full");
+                if (Full && points)
+                    throw new CliValidationException("--full cannot be combined with --width/--height");
+                if (!Full && SizePercent is null && !points)
+                    throw new CliValidationException("provide --size-percent PERCENT, --width/--height POINTS or --full");
                 ValidateSizePercent(SizePercent);
+                ValidatePoints(Width, Height);
             }
 
             public ControlRequest MakeRequest() => new()
             {
                 Cmd = WireCommand.SessionOverlayResize,
                 Target = Target.Target,
-                Args = Client.WithWindow(new ControlArgs { SizePercent = SizePercent, Full = Full ? true : null }),
+                Args = Client.WithWindow(new ControlArgs
+                {
+                    SizePercent = SizePercent, Full = Full ? true : null, Width = Width, Height = Height,
+                }),
             };
+        }
+
+        private static void ValidatePoints(int? width, int? height)
+        {
+            if (width is <= 0 || height is <= 0)
+                throw new CliValidationException("--width/--height must be positive");
         }
 
         internal sealed class Result : IRequestCommand
@@ -2054,6 +2074,8 @@ internal static class SessionCommands
         {
             Description = "Render a floating, framed panel at PERCENT (1-100) of the pane instead of full-size.",
         };
+        var width = OverlayWidthOption();
+        var height = OverlayHeightOption();
         var backgroundColor = new Option<string?>("--background-color")
         {
             Description = "Solid background color (#rrggbb) for the overlay pane, independent of the session's own.",
@@ -2066,6 +2088,8 @@ internal static class SessionCommands
         cmd.Options.Add(block);
         cmd.Options.Add(follow);
         cmd.Options.Add(sizePercent);
+        cmd.Options.Add(width);
+        cmd.Options.Add(height);
         cmd.Options.Add(backgroundColor);
         target.AddTo(cmd);
         options.AddTo(cmd);
@@ -2077,12 +2101,25 @@ internal static class SessionCommands
             Block = result.GetValue(block),
             Follow = result.GetValue(follow),
             SizePercent = result.GetValue(sizePercent),
+            Width = result.GetValue(width),
+            Height = result.GetValue(height),
             BackgroundColor = result.GetValue(backgroundColor),
             Target = target.Read(result),
             Client = options.Read(result),
         });
         return cmd;
     }
+
+    // upstream's height help adds "a page's title strip is added on top"; the port has no pages
+    private static Option<int?> OverlayWidthOption() => new("--width")
+    {
+        Description = "Panel content width in points, in place of --size-percent's width (at most 80% of the session).",
+    };
+
+    private static Option<int?> OverlayHeightOption() => new("--height")
+    {
+        Description = "Panel content height in points, in place of --size-percent's height (at most 80% of the session).",
+    };
 
     private static System.CommandLine.Command BuildOverlayClose(CommandBindings bindings)
     {
@@ -2101,12 +2138,17 @@ internal static class SessionCommands
 
     private static System.CommandLine.Command BuildOverlayResize(CommandBindings bindings)
     {
+        // the abstract plus the upstream discussion, so `--help` carries the same guidance.
         var cmd = new System.CommandLine.Command("resize",
-            "Resize an open overlay: floating at a percent, or back to full-pane.");
+            "Resize an open overlay: floating at a percent or in points, or back to full-pane.\n\n"
+            + "--size-percent re-sizes from that percent, keeping only the --width/--height given with it. "
+            + "--width/--height alone change those axes of an overlay that is already floating.");
         var sizePercent = new Option<int?>("--size-percent")
         {
             Description = "Resize to a floating, framed panel at PERCENT (1-100) of the pane.",
         };
+        var width = OverlayWidthOption();
+        var height = OverlayHeightOption();
         var full = new Option<bool>("--full")
         {
             Description = "Resize to full-pane (translucent, hides the session).",
@@ -2114,12 +2156,16 @@ internal static class SessionCommands
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Options.Add(sizePercent);
+        cmd.Options.Add(width);
+        cmd.Options.Add(height);
         cmd.Options.Add(full);
         target.AddTo(cmd);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Overlay.Resize
         {
             SizePercent = result.GetValue(sizePercent),
+            Width = result.GetValue(width),
+            Height = result.GetValue(height),
             Full = result.GetValue(full),
             Target = target.Read(result),
             Client = options.Read(result),

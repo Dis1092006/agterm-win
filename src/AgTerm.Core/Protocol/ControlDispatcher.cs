@@ -903,13 +903,17 @@ public sealed partial class ControlDispatcher
                     return Err($"invalid color: {color} (#rrggbb)");
                 if (request.Args?.SizePercent is < 1 or > 100)
                     return Err("session.overlay.open: --size-percent must be 1...100");
+                var openPoints = new OverlayPointSize(request.Args?.Width, request.Args?.Height);
+                if (openPoints.Width is <= 0 || openPoints.Height is <= 0) return Err(OverlayPointError.NotPositive);
+                if (!openPoints.IsEmpty && request.Args?.SizePercent is null) return Err(OverlayPointError.NeedsPercent);
                 return _actions.OpenSessionOverlay(request.Target, request.Args?.Window,
                     new ControlSessionOverlayOpenOptions(command,
                         Cwd: request.Args?.Cwd,
                         Wait: request.Args?.Wait ?? false,
                         SizePercent: request.Args?.SizePercent,
                         BackgroundColor: request.Args?.Color,
-                        Follow: request.Args?.Follow ?? false));
+                        Follow: request.Args?.Follow ?? false,
+                        Points: openPoints));
             }
             case Command.SessionOverlayClose:
                 return _actions.CloseSessionOverlay(request.Target, request.Args?.Window);
@@ -917,12 +921,17 @@ public sealed partial class ControlDispatcher
             {
                 var wantsFull = request.Args?.Full == true;
                 var percent = request.Args?.SizePercent;
+                var points = new OverlayPointSize(request.Args?.Width, request.Args?.Height);
                 if (wantsFull && percent is not null)
                     return Err("session.overlay.resize: --full is mutually exclusive with --size-percent");
-                if (!wantsFull && percent is null)
-                    return Err("session.overlay.resize requires --size-percent or --full");
+                if (wantsFull && !points.IsEmpty) return Err(OverlayPointError.FullConflict);
+                if (!wantsFull && percent is null && points.IsEmpty)
+                    return Err("session.overlay.resize requires --size-percent, --width/--height or --full");
                 if (percent is < 1 or > 100)
                     return Err("session.overlay.resize: --size-percent must be 1...100");
+                if (points.Width is <= 0 || points.Height is <= 0) return Err(OverlayPointError.NotPositive);
+                if (!points.IsEmpty)
+                    return _actions.ResizeSessionOverlay(request.Target, request.Args?.Window, percent, points);
                 return _actions.ResizeSessionOverlay(request.Target, request.Args?.Window,
                     wantsFull ? null : percent);
             }
