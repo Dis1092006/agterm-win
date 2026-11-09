@@ -227,13 +227,16 @@ public sealed class CustomCommandProcessRunner
 {
     private readonly Func<string, string?>? _which;
     private readonly Func<string, string?>? _env;
+    private readonly CustomCommandUsageStore? _usage;
 
     public CustomCommandProcessRunner(
         Func<string, string?>? which = null,
-        Func<string, string?>? env = null)
+        Func<string, string?>? env = null,
+        CustomCommandUsageStore? usage = null)
     {
         _which = which;
         _env = env;
+        _usage = usage;
     }
 
     public Task<CustomCommandProcessHandle> StartAsync(
@@ -246,8 +249,16 @@ public sealed class CustomCommandProcessRunner
         }, cancellationToken);
 
     /// <summary>Starts the process on the calling thread, for a caller that cannot wait on another
-    /// thread (keymap.run runs inside the host gate).</summary>
+    /// thread (keymap.run runs inside the host gate). A started command counts as one run in the usage
+    /// store, the single spawn path every caller goes through (upstream CustomCommandRunner).</summary>
     public CustomCommandProcessHandle Start(CustomCommandInvocation invocation)
+    {
+        var handle = Spawn(invocation);
+        _usage?.Record(invocation.Name);
+        return handle;
+    }
+
+    private CustomCommandProcessHandle Spawn(CustomCommandInvocation invocation)
     {
         // Process.Start would refuse it too, with "The directory name is invalid" and no path.
         if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory) && !Path.Exists(invocation.WorkingDirectory))

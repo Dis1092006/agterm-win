@@ -3,7 +3,7 @@ using AgTerm.App;
 namespace AgTerm.Xterm.Tests;
 
 // upstream titlebarTrailingActions: recent sessions + attention | scratch + split + overlays | dashboard + quick
-// terminal, each gated by its interface element (the bell by attentionButtonEnabled), with a divider only
+// terminal + custom commands, each gated by its interface element (the bell by attentionButtonEnabled), with a divider only
 // between two full groups. MainWindow is a WinUI type the test project does not compile, so the wiring is
 // pinned in source; TitleBarStateTests and AppSettingsTests cover the state and the divider rule.
 public sealed class TitleBarActionsSourceTests
@@ -20,7 +20,7 @@ public sealed class TitleBarActionsSourceTests
         [
             "recent-sessions-button", "attention-button", "x:Name=\"DividerAfterA\"",
             "scratch-toggle", "split-toggle", "overlay-toggle", "x:Name=\"DividerAfterB\"",
-            "dashboard-toggle-button", "quick-terminal-toggle",
+            "dashboard-toggle-button", "quick-terminal-toggle", "custom-commands-button",
         ];
         var positions = order.Select(token => header.IndexOf(token, StringComparison.Ordinal)).ToArray();
         Assert.All(positions, position => Assert.True(position >= 0));
@@ -35,7 +35,7 @@ public sealed class TitleBarActionsSourceTests
         var start = xaml.IndexOf("<TitleBar.RightHeader>", StringComparison.Ordinal);
         var header = xaml[start..xaml.IndexOf("</TitleBar.RightHeader>", start, StringComparison.Ordinal)];
         var help = header.IndexOf("AutomationProperties.AutomationId=\"help-button\"", StringComparison.Ordinal);
-        Assert.True(help > header.IndexOf("quick-terminal-toggle", StringComparison.Ordinal), "help-button must follow quick-terminal-toggle");
+        Assert.True(help > header.IndexOf("custom-commands-button", StringComparison.Ordinal), "help-button must follow custom-commands-button");
         // the modal exit buttons sit after the TitleBarActions panel, so Help stays last inside it
         var actionsEnd = header.IndexOf("</StackPanel>", help, StringComparison.Ordinal);
         Assert.Equal(
@@ -157,9 +157,10 @@ public sealed class TitleBarActionsSourceTests
         var refresh = MethodBody(window, "private void RefreshTitleBarActions(AppSettings settings)");
         Assert.Contains("InterfaceElementExtensions.TitlebarGroupDividers(", refresh, StringComparison.Ordinal);
         Assert.Contains("settings.AttentionButtonEnabled == true", refresh, StringComparison.Ordinal);
-        foreach (var element in new[] { "RecentSessions", "Scratch", "Split", "OverlayToggle", "Dashboard", "QuickTerminal" })
+        foreach (var element in new[] { "RecentSessions", "Scratch", "Split", "OverlayToggle", "Dashboard", "QuickTerminal", "CustomCommands" })
             Assert.Contains($"InterfaceElement.{element})", refresh, StringComparison.Ordinal);
         Assert.Contains("(showScratch ? 1 : 0) + (showSplit ? 1 : 0) + (showOverlay ? 1 : 0)", refresh, StringComparison.Ordinal);
+        Assert.Contains("(showDashboard ? 1 : 0) + (showQuick ? 1 : 0) + (showCustom ? 1 : 0)", refresh, StringComparison.Ordinal);
     }
 
     // upstream 7f450d17 (#790) overlayToggleButton: disabled with no overlay, crossed out while one is
@@ -197,6 +198,56 @@ public sealed class TitleBarActionsSourceTests
         var selectionUpdate = window[window.IndexOf("_selection = snapshot;", StringComparison.Ordinal)..];
         selectionUpdate = selectionUpdate[..selectionUpdate.IndexOf("SubmitLayout();", StringComparison.Ordinal)];
         Assert.Contains("RefreshTitleBarActions(_settings);", selectionUpdate, StringComparison.Ordinal);
+    }
+
+    // upstream 28f79f17 (#582) and 68e17937 (#584) customCommandsButton: a menu of the keymap's commands, the
+    // most-used ones first past five, enabled with commands and an active session. A row runs the command
+    // the way the palette does, then focuses the terminal. The menu holds auto-follow while it is open.
+    [Fact]
+    public void Custom_commands_button_opens_the_keymap_commands()
+    {
+        var xaml = Source("MainWindow.xaml");
+        var start = xaml.IndexOf("<TitleBar.RightHeader>", StringComparison.Ordinal);
+        var header = xaml[start..xaml.IndexOf("</TitleBar.RightHeader>", start, StringComparison.Ordinal)];
+        var id = header.IndexOf("AutomationProperties.AutomationId=\"custom-commands-button\"", StringComparison.Ordinal);
+        Assert.True(id >= 0, "custom-commands-button not found");
+        var button = header[header.LastIndexOf("<Button", id, StringComparison.Ordinal)..header.IndexOf("</Button>", id, StringComparison.Ordinal)];
+        Assert.Contains("x:Name=\"CustomCommandsButton\"", button, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.Name=\"Custom commands\"", button, StringComparison.Ordinal);
+        Assert.Contains("<MenuFlyout x:Name=\"CustomCommandsFlyout\"", button, StringComparison.Ordinal);
+        Assert.Contains("Opening=\"OnCustomCommandsFlyoutOpening\"", button, StringComparison.Ordinal);
+
+        var window = Source("MainWindow.xaml.cs");
+        var refresh = MethodBody(window, "private void RefreshTitleBarActions(AppSettings settings)");
+        Assert.Contains("CustomCommandsButton.Visibility = VisibleIf(showCustom);", refresh, StringComparison.Ordinal);
+        Assert.Contains("CustomCommandsButton.IsEnabled = _keymap.Commands.Count > 0 && state.HasActiveSession;", refresh, StringComparison.Ordinal);
+        Assert.Contains("CustomCommandsFlyout.Hide();", refresh, StringComparison.Ordinal);
+        Assert.Contains("WindowsShortcutText.Hint(\"Custom commands\", _keymap, BuiltinAction.CustomCommandPalette)", refresh, StringComparison.Ordinal);
+
+        var opening = MethodBody(window, "private void OnCustomCommandsFlyoutOpening(");
+        Assert.Contains("_customCommandsOpen = true;", opening, StringComparison.Ordinal);
+        Assert.Contains("RefreshUiAutoFollowSuppression();", opening, StringComparison.Ordinal);
+        Assert.Contains("CustomCommandMenuGroups.From(_keymap.Commands, _applicationHost.CustomCommandUsage.Load())", opening, StringComparison.Ordinal);
+        Assert.Contains("new MenuFlyoutSeparator()", opening, StringComparison.Ordinal);
+        Assert.Contains("\"custom-command-top-row\"", opening, StringComparison.Ordinal);
+        Assert.Contains("\"custom-command-row\"", opening, StringComparison.Ordinal);
+        Assert.Contains("KeyboardAcceleratorTextOverride = command.Shortcut", window, StringComparison.Ordinal);
+        Assert.Contains("_customCommandsOpen = false;", window, StringComparison.Ordinal);
+        Assert.Contains("|| _customCommandsOpen", window, StringComparison.Ordinal);
+
+        var run = MethodBody(window, "private async Task RunCustomCommandFromMenuAsync(");
+        string[] steps =
+        [
+            "NoteUserActivity();",
+            "ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(commandId, CustomCommandSource.Palette))",
+            "FocusActiveTerminal();",
+        ];
+        var positions = steps.Select(step => run.IndexOf(step, StringComparison.Ordinal)).ToArray();
+        Assert.All(positions, position => Assert.True(position >= 0));
+        Assert.Equal(positions.Order(), positions);
+
+        // every window counts runs in the one store the menu reads
+        Assert.Contains("new CustomCommandProcessRunner(usage: _applicationHost.CustomCommandUsage)", window, StringComparison.Ordinal);
     }
 
     [Fact]

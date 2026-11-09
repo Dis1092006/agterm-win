@@ -352,7 +352,7 @@ public class AppSettingsTests : IDisposable
     {
         Assert.Equal(
             ["sidebarToggle", "workspaceName", "sessionName", "windowName", "sessionContext", "recentSessions",
-             "scratch", "split", "overlayToggle", "dashboard", "quickTerminal", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession",
+             "scratch", "split", "overlayToggle", "dashboard", "quickTerminal", "customCommands", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession",
              "workspaceIcons", "sessionIcons", "sessionFlags"],
             Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
     }
@@ -383,7 +383,7 @@ public class AppSettingsTests : IDisposable
     [Fact]
     public void Only_the_opt_in_elements_are_hidden_by_default()
     {
-        Assert.Equal([InterfaceElement.WorkspaceName, InterfaceElement.OverlayToggle],
+        Assert.Equal([InterfaceElement.WorkspaceName, InterfaceElement.OverlayToggle, InterfaceElement.CustomCommands],
             Enum.GetValues<InterfaceElement>().Where(e => e.HiddenByDefault()));
         Assert.All(Enum.GetValues<InterfaceElement>(),
             e => Assert.Equal(e.HiddenByDefault(), new AppSettings().IsInterfaceElementHidden(e)));

@@ -224,6 +224,23 @@ public sealed class LiveWindowRegistryTests : IDisposable
             $"{window.Id:D}.json")));
     }
 
+    // upstream keeps one CustomCommandUsageStore per app, under the state directory, for every window
+    [Fact]
+    public void Custom_command_usage_lives_in_the_state_directory()
+    {
+        using var application = new LiveApplicationHost(new LiveApplicationHostOptions
+        {
+            StateDir = _stateDir,
+            HomeDirectory = _stateDir,
+            PipeName = "agterm-window-registry-" + Guid.NewGuid().ToString("N"),
+        });
+
+        application.CustomCommandUsage.Record("Mark");
+
+        Assert.Same(application.CustomCommandUsage, application.CustomCommandUsage);
+        Assert.True(File.Exists(Path.Combine(_stateDir, "custom-command-usage.json")));
+    }
+
     [Fact]
     public void Persisted_open_windows_restore_distinct_stores_with_one_shared_ring()
     {

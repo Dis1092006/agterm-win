@@ -147,7 +147,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 - `agtermctl --json` prints the server line without re-encoding it #628. Port: not done. `agtermctl` encodes the reply again.
 - `agtermctl clipboard set [TEXT]`: a CLI subcommand; it is not in the protocol command list #722. Port: not done.
 - When the socket is taken, `agtermctl` tells "the app is not running" from "an owner exists but does not accept" #633. Port: not done. A failed connect answers `... is agterm running?` in both cases.
-- Workspace name in the window title #601; a custom-command button in the title bar #582. The list of shown elements is `shownInterfaceElements`. Port: partly (B11a). `shownInterfaceElements` and the workspace name are done. The custom-command button is not.
+- Workspace name in the window title #601; a custom-command button in the title bar #582, with the most-run commands on top #584 (`68e17937`). The list of shown elements is `shownInterfaceElements`. Port: done. `shownInterfaceElements` and the workspace name in B11a, the custom-command button as a menu, with its run counts in `custom-command-usage.json`, in B11b (PLATFORM-NOTES).
 - Font of palettes and the picker: `interfaceFontSize` #367. Cursor: `cursorStyle`, `cursorBlink` #487. Port: not done.
 - A welcome window on first launch: `welcomeShown` #353. Port: not done.
 

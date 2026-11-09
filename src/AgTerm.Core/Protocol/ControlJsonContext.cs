@@ -17,6 +17,7 @@ namespace AgTerm.Core.Protocol;
 [JsonSerializable(typeof(Snapshot))]
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(RecentClosedState))]
+[JsonSerializable(typeof(AgTerm.Core.Keymap.CustomCommandUsage))]
 [JsonSerializable(typeof(BackgroundWatermark))]
 [JsonSerializable(typeof(SidebarTint))]
 [JsonSerializable(typeof(AgentStatus))]

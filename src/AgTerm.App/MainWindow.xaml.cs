@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window
     private readonly WindowCloseCoordinator _closeCoordinator;
     private readonly PaletteTransitionCoordinator _paletteTransitions = new();
     private readonly ContentDialogCoordinator _contentDialogs = new();
-    private readonly CustomCommandProcessRunner _customCommandRunner = new();
+    private readonly CustomCommandProcessRunner _customCommandRunner;
     private readonly HotkeyGenerationRegistry _hotkeyStates = new();
     private readonly SemaphoreSlim _hotkeyManifestGate = new(1, 1);
     private readonly SettingsStore _settingsStore;
@@ -128,6 +128,7 @@ public sealed partial class MainWindow : Window
     private bool _sidebarRenaming;
     private bool _sidebarPopupOpen;
     private bool _recentSessionsOpen;
+    private bool _customCommandsOpen;
     private bool _editingText;
     private int _nativeDialogs;
     private readonly DeferredTerminalFocus _terminalFocus = new();
@@ -149,6 +150,7 @@ public sealed partial class MainWindow : Window
     public MainWindow(LiveApplicationHost applicationHost, Guid windowId)
     {
         _applicationHost = applicationHost;
+        _customCommandRunner = new CustomCommandProcessRunner(usage: _applicationHost.CustomCommandUsage);
         _windowId = windowId;
         _settingsStore = new SettingsStore();
         _settings = _applicationHost.Settings.State.Snapshot.Settings;
@@ -176,6 +178,11 @@ public sealed partial class MainWindow : Window
         RecentSessionsFlyout.Closed += (_, _) =>
         {
             _recentSessionsOpen = false;
+            RefreshUiAutoFollowSuppression();
+        };
+        CustomCommandsFlyout.Closed += (_, _) =>
+        {
+            _customCommandsOpen = false;
             RefreshUiAutoFollowSuppression();
         };
         Content.GettingFocus += (_, args) =>
@@ -2047,7 +2054,7 @@ public sealed partial class MainWindow : Window
         Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) is TextBox or PasswordBox or RichEditBox;
 
     private bool UiAutoFollowSuppressed =>
-        _sidebarRenaming || _sidebarPopupOpen || _recentSessionsOpen || _editingText
+        _sidebarRenaming || _sidebarPopupOpen || _recentSessionsOpen || _customCommandsOpen || _editingText
         || _nativeDialogs != 0 || _switcher.IsActive;
 
     private void RefreshUiAutoFollowSuppression()
@@ -3299,10 +3306,11 @@ public sealed partial class MainWindow : Window
         var showOverlay = !settings.IsInterfaceElementHidden(InterfaceElement.OverlayToggle);
         var showDashboard = !settings.IsInterfaceElementHidden(InterfaceElement.Dashboard);
         var showQuick = !settings.IsInterfaceElementHidden(InterfaceElement.QuickTerminal);
+        var showCustom = !settings.IsInterfaceElementHidden(InterfaceElement.CustomCommands);
         var dividers = InterfaceElementExtensions.TitlebarGroupDividers(
             (showRecent ? 1 : 0) + (showAttention ? 1 : 0),
             (showScratch ? 1 : 0) + (showSplit ? 1 : 0) + (showOverlay ? 1 : 0),
-            (showDashboard ? 1 : 0) + (showQuick ? 1 : 0));
+            (showDashboard ? 1 : 0) + (showQuick ? 1 : 0) + (showCustom ? 1 : 0));
 
         RecentSessionsButton.Visibility = VisibleIf(showRecent);
         RecentSessionsButton.IsEnabled = state.RecentSessions.Count > 0;
@@ -3360,6 +3368,13 @@ public sealed partial class MainWindow : Window
         QuickTerminalButton.Visibility = VisibleIf(showQuick);
         ShowOpen(QuickTerminalButton, QuickTerminalOpenIndicator, _selection.QuickVisible);
         ToolTipService.SetToolTip(QuickTerminalButton, WindowsShortcutText.Hint("Quick Terminal", _keymap, BuiltinAction.QuickTerminal));
+        CustomCommandsButton.Visibility = VisibleIf(showCustom);
+        CustomCommandsButton.IsEnabled = _keymap.Commands.Count > 0 && state.HasActiveSession;
+        // upstream closes the popover once the button turns disabled under it
+        if (!CustomCommandsButton.IsEnabled || !showCustom)
+            CustomCommandsFlyout.Hide();
+        ToolTipService.SetToolTip(CustomCommandsButton,
+            WindowsShortcutText.Hint("Custom commands", _keymap, BuiltinAction.CustomCommandPalette));
         ToolTipService.SetToolTip(TerminalZoomExitButton,
             WindowsShortcutText.Hint("Exit Terminal Zoom", _keymap, BuiltinAction.ToggleTerminalZoom));
     }
@@ -3553,6 +3568,39 @@ public sealed partial class MainWindow : Window
             item.Click += (_, _) => ObserveTaskFault(SelectRecentSessionAsync(sessionId), "Recent session select failed");
             RecentSessionsFlyout.Items.Add(item);
         }
+    }
+
+    // upstream's custom commands popover as a menu: the keymap's commands with their chords, the most-used
+    // ones first past five, rebuilt each time it opens so it reads the latest counts
+    private void OnCustomCommandsFlyoutOpening(object? sender, object e)
+    {
+        _customCommandsOpen = true;
+        RefreshUiAutoFollowSuppression();
+        CustomCommandsFlyout.Items.Clear();
+        var groups = CustomCommandMenuGroups.From(_keymap.Commands, _applicationHost.CustomCommandUsage.Load());
+        foreach (var command in groups.Leading)
+            CustomCommandsFlyout.Items.Add(CustomCommandMenuItem(command, "custom-command-top-row"));
+        if (groups.Leading.Count > 0)
+            CustomCommandsFlyout.Items.Add(new MenuFlyoutSeparator());
+        foreach (var command in groups.Rest)
+            CustomCommandsFlyout.Items.Add(CustomCommandMenuItem(command, "custom-command-row"));
+    }
+
+    private MenuFlyoutItem CustomCommandMenuItem(CustomCommand command, string automationId)
+    {
+        var item = new MenuFlyoutItem { Text = command.Name, KeyboardAcceleratorTextOverride = command.Shortcut };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(item, automationId);
+        var commandId = command.Id;
+        item.Click += (_, _) => ObserveTaskFault(RunCustomCommandFromMenuAsync(commandId), "Custom command failed");
+        return item;
+    }
+
+    // upstream runFromPopover: note activity, run the command the palette's way, focus the terminal
+    private async Task RunCustomCommandFromMenuAsync(Guid commandId)
+    {
+        NoteUserActivity();
+        await ExecuteCustomCommandAsync(new CustomCommandExecutionRequest(commandId, CustomCommandSource.Palette));
+        FocusActiveTerminal();
     }
 
     private void RefreshRecentSessionIndicators(AppSettings settings)

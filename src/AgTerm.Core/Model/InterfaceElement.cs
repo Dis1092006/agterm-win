@@ -20,6 +20,7 @@ public enum InterfaceElement
     OverlayToggle,
     Dashboard,
     QuickTerminal,
+    CustomCommands,
     // sidebar
     NewWorkspace,
     NewSession,
@@ -44,11 +45,11 @@ public static class InterfaceElementExtensions
     /// <summary>Whether the element starts hidden and shows only once it is in shownInterfaceElements.
     /// Upstream InterfaceElement.hiddenByDefault.</summary>
     public static bool HiddenByDefault(this InterfaceElement element) =>
-        element is InterfaceElement.WorkspaceName or InterfaceElement.OverlayToggle;
+        element is InterfaceElement.WorkspaceName or InterfaceElement.OverlayToggle or InterfaceElement.CustomCommands;
 
     /// <summary>Which of the two separators in the title bar's trailing button cluster to draw, given
     /// how many visible buttons each group has (A = recent sessions + attention, B = scratch + split,
-    /// C = dashboard + quick terminal). A separator sits only where two groups that each still show 2+
+    /// C = dashboard + quick terminal + custom commands). A separator sits only where two groups that each still show 2+
     /// buttons meet: AfterA between A and B, AfterB between B and C, or, when B is empty, directly
     /// between a full A and a full C. Upstream InterfaceElement.titlebarGroupDividers.</summary>
     public static (bool AfterA, bool AfterB) TitlebarGroupDividers(int countA, int countB, int countC)
