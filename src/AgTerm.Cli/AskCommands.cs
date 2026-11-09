@@ -44,6 +44,7 @@ internal static class AskCommands
         public IReadOnlyList<string> ChoiceSubtitles { get; init; } = Array.Empty<string>();
         public bool Multiple { get; init; }
         public IReadOnlyList<string> Checked { get; init; } = Array.Empty<string>();
+        public string? Other { get; init; }
         public string Style { get; init; } = "terminal";
         public string Align { get; init; } = "right";
         public string? Width { get; init; }
@@ -96,6 +97,7 @@ internal static class AskCommands
                 Choices = ParsedChoices(),
                 Multiple = Multiple ? true : null,
                 Checked = Checked.Count == 0 ? null : Checked.ToArray(),
+                Other = Other,
             }),
         };
 
@@ -146,6 +148,8 @@ internal static class AskCommands
             {
                 if (ChoiceSubtitles.Count > 0)
                     throw new CliValidationException("--choice-subtitle requires --choice");
+                if (Other is not null)
+                    throw new CliValidationException("--other requires --choice");
                 return null;
             }
             var items = Choices.Select(token =>
@@ -208,7 +212,7 @@ internal static class AskCommands
         var ask = new System.CommandLine.Command("ask",
             "Open, poll, or cancel a themed question dialog. Use ask open TITLE when the title is 'open', 'result', or 'cancel'.");
         var open = new System.CommandLine.Command("open",
-            "Ask a question and wait for its button answer. --input adds a text field and --choice a radio list (checkboxes with --multiple); either form defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text or the selected ids.");
+            "Ask a question and wait for its button answer. --input adds a text field and --choice a radio list (checkboxes with --multiple); either form defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text or the selected ids, plus the --other row's text when it is selected.");
         BindOpen(bindings, open);
         ask.Subcommands.Add(open);
         ask.Subcommands.Add(BuildIdCommand(bindings, "result", "Print a dialog's current or terminal result as JSON.",
@@ -259,6 +263,7 @@ internal static class AskCommands
             Description = "ID of an item selected at open. Repeat with --multiple.",
             DefaultValueFactory = _ => Array.Empty<string>(),
         };
+        var other = new Option<string?>("--other") { Description = "Add a free-form row after the --choice list, with this placeholder; its text answers as `text`." };
         var target = new Option<string?>("--target") { Description = "Session id, prefix, or 'active'. Default: selected session for terminal, window-centered for gui." };
         var pane = new Option<string?>("--pane") { Description = "Anchor to the session's left or right pane. GUI style requires --target." };
         var paneId = new Option<string?>("--pane-id") { Description = "Stable pane token; overrides --pane. GUI style requires --target." };
@@ -267,7 +272,7 @@ internal static class AskCommands
         var client = new ClientOptions.Binder();
         client.AddTo(command);
         command.Arguments.Add(title);
-        foreach (var option in new Option[] { message, buttons, hotkeys, defaultButton, style, align, width, destructive, cancelButton, input, value, placeholder, choices, choiceSubtitles, multiple, @checked, target, pane, paneId, follow, noBlock })
+        foreach (var option in new Option[] { message, buttons, hotkeys, defaultButton, style, align, width, destructive, cancelButton, input, value, placeholder, choices, choiceSubtitles, multiple, @checked, other, target, pane, paneId, follow, noBlock })
             command.Options.Add(option);
         bindings.Register(command, result => new Open
         {
@@ -288,6 +293,7 @@ internal static class AskCommands
             ChoiceSubtitles = result.GetValue(choiceSubtitles) ?? Array.Empty<string>(),
             Multiple = result.GetValue(multiple),
             Checked = result.GetValue(@checked) ?? Array.Empty<string>(),
+            Other = result.GetValue(other),
             Target = result.GetValue(target),
             Pane = result.GetValue(pane),
             PaneId = result.GetValue(paneId),

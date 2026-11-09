@@ -731,6 +731,10 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The `gui` markers are Segoe Fluent glyphs (Checkbox, CheckboxComposite, RadioBtnOff, RadioBtnOn) in place of upstream's SF Symbols. The cursor line takes the Windows accent color.
   - The cursor and the checked items live in the store draft with the field text, so a terminal question keeps them across a page reload.
   - Choice ids are compared after NFC normalization, as button ids are.
+- `ask.open` free-form row: `other` (upstream `9b60cdfe`). A choice list gets one line field after its items; while the row is selected, the answer adds its text as `text`.
+  - A click into the row's field sends the port's own `EditOther` list intent, which moves the cursor onto the row. Upstream moves the cursor by the row count.
+  - The `gui` panel with a free-form row takes the full width, as a panel with a field does. Upstream sizes it to its content. A WinUI TextBox widens with its text, so the panel would grow off center while the user types.
+  - Upstream also checks an answer that comes back from a remote presenter (`validatedAnswer`) and hands such an ask only to a presenter that lists `ask.other`. The port has no remote presenters, so neither applies.
 - `session.hud` (`session.hud.open`, `session.hud.update`, `session.hud.close`, session `hud`): a passive message panel that a script posts over a session through `agtermctl session hud` (upstream `d0bec154`, `1923906e`, `224321c5`, `094dc986`, `9247b96f`, `8e710a6e`, `3ac149e6`).
   - The panel is an HTML layer in the xterm page, drawn from rows the host wraps and sizes. Upstream runs a helper script in a terminal surface and passes it a body file. The port has neither, so `hud helper is not bundled in this build` and `could not write the hud message` never occur.
   - `sizePercent` and `heightPercent` in `tree` come from a cell the page measures in CSS pixels, in the terminal's font. For the same text they differ from the numbers macOS reports; the clamp rules are the same.

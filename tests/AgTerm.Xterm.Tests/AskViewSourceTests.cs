@@ -145,8 +145,11 @@ public sealed class AskViewSourceTests
         Assert.Matches(new Regex(
             @"private void FocusUnlessContentDialogOpen\(\)\s*\{(?:\s*//[^\n]*)*\s*if \(!IsContentDialogOpen\(\)\)\s*FocusTarget\.Focus\(FocusState\.Programmatic\);\s*\}"),
             code);
-        // the field takes the keys when there is one, as upstream focuses its editor
-        Assert.Contains("private Control FocusTarget => InputBox.Visibility == Visibility.Visible ? InputBox : this;", code, StringComparison.Ordinal);
+        // the field takes the keys when there is one, as upstream focuses its editor; a list's free-form
+        // row takes them only while the cursor is on it
+        Assert.Matches(new Regex(
+            @"private Control FocusTarget =>\s*InputBox\.Visibility == Visibility\.Visible \? InputBox\s*: _otherRow is \{ \} other && _draft\.CursorOnOther \? other\.Box\s*: this;"),
+            code);
         Assert.Matches(new Regex(
             @"private bool IsContentDialogOpen\(\) =>\s*OpenPopups\(\)\.Any\(popup => popup\.Child is ContentDialog\);"),
             code);
@@ -202,7 +205,11 @@ public sealed class AskViewSourceTests
             @"page\.AskFocusChanged \+= OnPageAskFocusChanged;\s*page\.AskDraftReceived \+= OnPageAskDraftReceived;"),
             source);
         Assert.Matches(new Regex(
-            @"if \(_terminalAsks\.UpdateDraft\(askId, text\) && _terminalAsks\.DraftSnapshot\(\) is \{ \} draft\)\s*SaveTerminalAskDraft\(askId, draft\);"),
+            @"if \(!_terminalAsks\.UpdateDraft\(askId, text\) \|\| _terminalAsks\.DraftSnapshot\(\) is not \{ \} draft\)\s*return;\s*SaveTerminalAskDraft\(askId, draft\);"),
+            source);
+        // an edit of a list's free-form row can select it, so the list redraws
+        Assert.Matches(new Regex(
+            @"if \(_terminalAsks\.ListRedraw\(\) is \{ \} view\)\s*ObserveTaskFault\(ApplyTerminalAskAsync\(view\), ""Apply terminal ask failed""\);"),
             source);
         // a list change saves the navigator's snapshot the same way
         Assert.Matches(new Regex(
@@ -241,6 +248,39 @@ public sealed class AskViewSourceTests
         Assert.Contains("CornerRadius = new CornerRadius(5)", code, StringComparison.Ordinal);
         Assert.Contains("TextTrimming = TextTrimming.CharacterEllipsis", code, StringComparison.Ordinal);
         Assert.Contains("Handle(new AskIntent.ToggleAt(", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_dialog_draws_a_free_form_row_after_the_list()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Contains("if (list.Other is { } placeholder)", code, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetAutomationId(line, \"ask-other\");", code, StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.SetAutomationId(box, \"ask-other-input\");", code, StringComparison.Ordinal);
+        // the marker toggles like an item and is dimmed until the text is not blank; the field edits without toggling
+        Assert.Contains("line.Tapped += (_, _) => Handle(new AskIntent.ToggleAt(index));", code, StringComparison.Ordinal);
+        Assert.Contains("other.Line.Opacity = _draft.OtherEnabled ? 1 : 0.4;", code, StringComparison.Ordinal);
+        Assert.Contains("var selected = _draft.OtherSelected;", code, StringComparison.Ordinal);
+        // a click into the field moves the cursor onto the row
+        Assert.Matches(new Regex(
+            @"private void OnOtherGotFocus\(object sender, RoutedEventArgs e\)\s*\{\s*if \(!_draft\.CursorOnOther\)\s*Handle\(new AskIntent\.EditOther\(\)\);\s*\}"),
+            code);
+        // the field holds the keys only while the cursor is on the row, and Up and Down go back to the list
+        Assert.Contains("routesVertical: ask.Form is AskForm.Choices", code, StringComparison.Ordinal);
+        Assert.Matches(new Regex(
+            @"if \(_draft\.Apply\(intent\)\)\s*\{\s*ApplyChoices\(\);\s*PublishDraft\(\);\s*BringCursorIntoView\(\);\s*HandFieldFocus\(\);"),
+            code);
+        Assert.Contains("if (!ReferenceEquals(focused, FocusTarget)) FocusTarget.Focus(FocusState.Programmatic);", code, StringComparison.Ordinal);
+        Assert.Contains("other.Row.StartBringIntoView(", code, StringComparison.Ordinal);
+        // the text set when the row is built comes back as TextChanged and must not select the row
+        Assert.Matches(new Regex(
+            @"var text = AskFieldText\.FromTextBox\(other\.Box\.Text, ControlAskInputMode\.Line\);\s*if \(text == _draft\.Text\) return false;\s*_draft\.Text = text;"),
+            code);
+        // Enter can come before the last TextChanged
+        Assert.Matches(new Regex(
+            @"case AskIntentOutcome\.Answer answer:(?:\s*//[^\n]*)*\s*TakeOtherText\(\);\s*PublishDraft\(\);"),
+            code);
+        Assert.Contains("if (ReferenceEquals(node, InputBox) || ReferenceEquals(node, _otherRow?.Box)) return true;", code, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -288,8 +328,8 @@ public sealed class AskViewSourceTests
         // a multiline field shows 5 to 15 lines, as upstream
         Assert.Contains("InputBox.MinHeight = 5 * line + chrome;", code, StringComparison.Ordinal);
         Assert.Contains("InputBox.MaxHeight = 15 * line + chrome;", code, StringComparison.Ordinal);
-        // a question with a field takes the full panel width
-        Assert.Contains("if (ask.Width is not null || ask.Form is AskForm.Input) Panel.Width = maxWidth;", code, StringComparison.Ordinal);
+        // a question with a field takes the full panel width, a list's free-form row too
+        Assert.Contains("if (ask.Width is not null || ask.Form is AskForm.Input || _otherRow is not null) Panel.Width = maxWidth;", code, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -297,10 +337,14 @@ public sealed class AskViewSourceTests
     {
         var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
         Assert.Matches(new Regex(
-            @"if \(_ask\?\.Form is AskForm\.Input input && !AskFieldText\.Accepts\(AskFieldText\.FromTextBox\(args\.NewText, input\.Field\.Mode\), input\.Field\.Mode\)\)\s*args\.Cancel = true;"),
+            @"if \(FieldMode\(sender\) is \{ \} mode && !AskFieldText\.Accepts\(AskFieldText\.FromTextBox\(args\.NewText, mode\), mode\)\)\s*args\.Cancel = true;"),
             code);
         Assert.Matches(new Regex(@"private async void OnInputPaste\(object sender, TextControlPasteEventArgs e\)\s*\{\s*e\.Handled = true;"), code);
-        Assert.Contains("AskFieldText.PasteInsertion(clipboard, input.Field.Mode)", code, StringComparison.Ordinal);
+        Assert.Contains("AskFieldText.PasteInsertion(clipboard, mode)", code, StringComparison.Ordinal);
+        // a choice list's free-form row is a line field
+        Assert.Matches(new Regex(
+            @"AskForm\.Input input when ReferenceEquals\(sender, InputBox\) => input\.Field\.Mode,\s*AskForm\.Choices when _otherRow is \{ \} other && ReferenceEquals\(sender, other\.Box\) => ControlAskInputMode\.Line,"),
+            code);
         Assert.Contains("DraftChanged?.Invoke(ask.Id, _draft.Copy());", code, StringComparison.Ordinal);
         Assert.Contains("_draft.Text = AskFieldText.FromTextBox(InputBox.Text, input.Field.Mode);", code, StringComparison.Ordinal);
     }

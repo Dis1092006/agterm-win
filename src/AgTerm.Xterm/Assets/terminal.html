@@ -241,6 +241,20 @@
         overflow-wrap: anywhere;
         white-space: pre-wrap;
       }
+      /* the list's scroll height drops the field's fractional height, so the last pixel keeps its
+         bottom border in view */
+      .ask-other {
+        display: flex;
+        flex: none;
+        align-items: center;
+        padding-bottom: 1px;
+        cursor: default;
+      }
+      .ask-other .ask-input {
+        flex: 1;
+        width: auto;
+        min-width: 0;
+      }
       /* above the overlay layer (20), under a pane question (60) and the search bar (70). Visible over
          a base pane a full-size scratch hides, because upstream draws the hud above the scratch */
       .hud-layer {

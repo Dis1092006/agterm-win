@@ -11,14 +11,19 @@ public sealed record TerminalAskInputView(string Mode, string Value, string? Pla
 
 public sealed record TerminalAskChoiceView(string Label, string? Subtitle, bool Checked);
 
-/// <summary>A question's list: radio items, or checkboxes when Multiple. Cursor is the row the
-/// keyboard acts on.</summary>
-public sealed record TerminalAskChoicesView(bool Multiple, IReadOnlyList<TerminalAskChoiceView> Items, int Cursor)
+/// <summary>A list's free-form row: a one-line field with Text, Selected while it answers, Enabled
+/// while Text is not blank.</summary>
+public sealed record TerminalAskOtherView(string Placeholder, string Text, bool Selected, bool Enabled);
+
+/// <summary>A question's list: radio items, or checkboxes when Multiple, and the free-form row
+/// when Other is set. Cursor is the row the keyboard acts on; Items.Count is the free-form row.</summary>
+public sealed record TerminalAskChoicesView(bool Multiple, IReadOnlyList<TerminalAskChoiceView> Items, int Cursor, TerminalAskOtherView? Other = null)
 {
     public bool Equals(TerminalAskChoicesView? other) =>
-        other is not null && Multiple == other.Multiple && Cursor == other.Cursor && Items.SequenceEqual(other.Items);
+        other is not null && Multiple == other.Multiple && Cursor == other.Cursor && Items.SequenceEqual(other.Items)
+        && Equals(Other, other.Other);
 
-    public override int GetHashCode() => HashCode.Combine(Multiple, Cursor, Items.Count);
+    public override int GetHashCode() => HashCode.Combine(Multiple, Cursor, Items.Count, Other);
 }
 
 /// <summary>What the page draws for the window's terminal question.</summary>
@@ -84,17 +89,28 @@ public sealed class TerminalAskNavigator
         return View();
     }
 
-    /// <summary>Takes the page's field text for the drawn question. Refuses a stale id, a question
-    /// without a field, a forbidden control and text over the cap, keeping the old text.</summary>
+    /// <summary>Takes the page's field text for the drawn question: the input field's, or the
+    /// free-form row's, which is a line field. Refuses a stale id, a question without a field, a
+    /// forbidden control and text over the cap, keeping the old text.</summary>
     public bool UpdateDraft(string askId, string text)
     {
-        if (_placement is not { Ask: { Form: AskForm.Input input } ask } || ask.Id != askId
-            || AskInputForm.HasForbiddenControls(text, input.Field.Mode)
+        var mode = _placement?.Ask.Form switch
+        {
+            AskForm.Input input => input.Field.Mode,
+            AskForm.Choices { List.Other: not null } => ControlAskInputMode.Line,
+            _ => (ControlAskInputMode?)null,
+        };
+        if (mode is null || _placement!.Ask.Id != askId
+            || AskInputForm.HasForbiddenControls(text, mode.Value)
             || Encoding.UTF8.GetByteCount(text) > AskInputForm.MaxTextBytes)
             return false;
         _draft.Text = text;
         return true;
     }
+
+/// <summary>The view to draw after a field edit: an edit of the free-form row can select it and
+    /// clear a radio pick, so a list redraws; an input field draws its own text. Null otherwise.</summary>
+    public TerminalAskView? ListRedraw() => _placement?.Ask.Form is AskForm.Choices ? View() : null;
 
     public TerminalAskResolution Apply(string askId, AskIntent intent)
     {
@@ -142,7 +158,10 @@ public sealed class TerminalAskNavigator
                 ? new TerminalAskChoicesView(
                     list.Multiple,
                     list.Items.Select((item, index) => new TerminalAskChoiceView(item.Label, item.Subtitle, _draft.IsChecked(index))).ToArray(),
-                    _draft.Cursor)
+                    _draft.Cursor,
+                    list.Other is { } placeholder
+                        ? new TerminalAskOtherView(placeholder, _draft.Text, _draft.OtherSelected, _draft.OtherEnabled)
+                        : null)
                 : null);
     }
 }

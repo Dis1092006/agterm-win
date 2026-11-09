@@ -47,6 +47,21 @@ public class SkillTextTests
     }
 
     [Fact]
+    public void Ask_documents_the_free_form_row_of_a_choice_list()
+    {
+        Assert.Contains("`--other PLACEHOLDER`", ReadSkill("SKILL.md"));
+        var reference = ReadSkill("reference.md");
+        var ask = reference[reference.IndexOf("## ask", StringComparison.Ordinal)..];
+        ask = ask[..ask.IndexOf("## quick", StringComparison.Ordinal)];
+        foreach (var text in new[]
+                 {
+                     "`--other PLACEHOLDER`", "`other requires choices`", "`ask other placeholder must not be blank`",
+                     "--other \"another environment\"", "\"text\":\"canary\",\"selected\":[]",
+                 })
+            Assert.Contains(text, ask);
+    }
+
+    [Fact]
     public void Active_workspace_rule_follows_the_foreground_create()
     {
         var reference = ReadSkill("reference.md");

@@ -35,8 +35,10 @@ public static class AskKeys
 
     /// <summary>A key in the dialog's text field; null leaves it to the field. Tab and Shift+Tab move
     /// the highlight, Esc escapes. Enter answers a line field; a multiline field takes Enter as a
-    /// newline and answers on Ctrl+Enter, upstream's Cmd-Return.</summary>
-    public static AskIntent? FieldIntent(int virtualKey, bool shift, bool control, bool alt, bool windows, ControlAskInputMode mode)
+    /// newline and answers on Ctrl+Enter, upstream's Cmd-Return. routesVertical is for a choice
+    /// list's free-form row: plain Up and Down go back to the list.</summary>
+    public static AskIntent? FieldIntent(int virtualKey, bool shift, bool control, bool alt, bool windows, ControlAskInputMode mode,
+        bool routesVertical = false)
     {
         if (alt || windows) return null;
         return virtualKey switch
@@ -45,6 +47,8 @@ public static class AskKeys
             Escape when !control => new AskIntent.Cancel(),
             Enter when mode == ControlAskInputMode.Line && !control => new AskIntent.Activate(),
             Enter when mode == ControlAskInputMode.Multiline && control && !shift => new AskIntent.Activate(),
+            Up when routesVertical && !control && !shift => new AskIntent.Up(),
+            Down when routesVertical && !control && !shift => new AskIntent.Down(),
             _ => null,
         };
     }

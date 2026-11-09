@@ -223,6 +223,68 @@ public sealed class TerminalAskNavigatorTests
         Assert.Equal("typed", snapshot.Text);
     }
 
+    private static PendingAsk OtherAsk(string id = "ASK", bool multiple = false) =>
+        ChoiceAsk(id, multiple) is var ask && ask.Form is AskForm.Choices { List: var list }
+            ? ask with { Form = new AskForm.Choices(list with { Other = "another" }) }
+            : throw new InvalidOperationException();
+
+    [Fact]
+    public void AnOtherRowIsDrawnAfterTheItems()
+    {
+        var navigator = new TerminalAskNavigator();
+
+        Assert.Equal(new TerminalAskOtherView("another", "", false, false), navigator.Present(Placement(OtherAsk()))!.Choices!.Other);
+        Assert.Null(new TerminalAskNavigator().Present(Placement(ChoiceAsk()))!.Choices!.Other);
+    }
+
+    [Fact]
+    public void TypingInTheOtherRowSelectsItAndClearsTheRadioPick()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(Placement(OtherAsk()));
+        navigator.Apply("ASK", new AskIntent.ToggleAt(1));
+
+        Assert.True(navigator.UpdateDraft("ASK", "qa"));
+
+        var list = navigator.ListRedraw()!.Choices!;
+        Assert.Equal(new TerminalAskOtherView("another", "qa", true, true), list.Other);
+        Assert.False(list.Items[1].Checked);
+        Assert.Equal(new TerminalAskResolution.Resolve(SessionId, "ASK", ControlAskResult.Answered("ok", "OK", 0) with { Text = "qa", Selected = [] }),
+            navigator.Apply("ASK", new AskIntent.Activate()));
+    }
+
+    [Fact]
+    public void TheOtherRowTakesLineTextOnly()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(Placement(OtherAsk()));
+
+        Assert.False(navigator.UpdateDraft("ASK", "a\nb"));
+        Assert.False(navigator.UpdateDraft("ASK", new string('x', AskInputForm.MaxTextBytes + 1)));
+        Assert.False(new TerminalAskNavigator().UpdateDraft("ASK", "x"));
+        Assert.False(ChoiceNavigated().UpdateDraft("ASK", "x"));
+        Assert.Equal("", navigator.ListRedraw()!.Choices!.Other!.Text);
+    }
+
+    [Fact]
+    public void OnlyAListRedrawsAfterAnEdit()
+    {
+        var navigator = new TerminalAskNavigator();
+        Assert.Null(navigator.ListRedraw());
+        navigator.Present(InputPlacement(InputAsk(), "prefill"));
+        Assert.Null(navigator.ListRedraw());
+    }
+
+    [Fact]
+    public void EditOtherMovesTheCursorToTheRow()
+    {
+        var navigator = new TerminalAskNavigator();
+        navigator.Present(Placement(OtherAsk()));
+
+        var moved = Assert.IsType<TerminalAskResolution.Drafted>(navigator.Apply("ASK", new AskIntent.EditOther()));
+        Assert.Equal(3, moved.View.Choices!.Cursor);
+        Assert.Equal(new TerminalAskResolution.None(), ChoiceNavigated().Apply("ASK", new AskIntent.EditOther()));
+    }
     private static TerminalAskNavigator ChoiceNavigated(bool multiple = false)
     {
         var navigator = new TerminalAskNavigator();

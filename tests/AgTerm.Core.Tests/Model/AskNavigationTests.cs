@@ -156,6 +156,7 @@ public class AskNavigationTests
         Assert.Equal(new AskIntentOutcome.Moved(0), navigation.Apply(new AskIntent.Up()));
         Assert.Equal(new AskIntentOutcome.None(), navigation.Apply(new AskIntent.Toggle()));
         Assert.Equal(new AskIntentOutcome.None(), navigation.Apply(new AskIntent.ToggleAt(0)));
+        Assert.Equal(new AskIntentOutcome.None(), navigation.Apply(new AskIntent.EditOther()));
         Assert.Equal(0, navigation.Highlighted);
     }
 

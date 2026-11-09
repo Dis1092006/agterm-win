@@ -484,9 +484,10 @@ is accepted and keeps its ask hidden and pending. A terminal ask leaves the rest
 button that cannot be the default. `--align left|center|right` aligns the buttons; `--width N` fixes the
 panel width to 10...100 percent of its region. `--input line|multiline` adds a text field, with
 `--value TEXT` as its initial text and `--placeholder TEXT` as its hint. `--choice ID=LABEL` (with
-`--multiple`, `--choice-subtitle`, `--checked`) adds a radio or checkbox list instead. Without `--button`
+`--multiple`, `--choice-subtitle`, `--checked`, and `--other PLACEHOLDER` for a free-form line) adds a
+radio or checkbox list instead. Without `--button`
 either form gets OK and Cancel, and the answer carries the field as `text` or the checked ids as
-`selected`. `--cancel ID` names a button that
+`selected`, plus `text` when the free-form line is selected. `--cancel ID` names a button that
 ends the ask like Esc. Exit 0 means answered, including No: inspect `.id`.
 Esc or the `close_session` chord (Alt+W by default) on the interactive ask return `escaped` with exit 3;
 cancellation returns `cancelled`

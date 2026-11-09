@@ -1783,10 +1783,23 @@ function focusAskLayer() {
   if (externalInputOwner) return;
   programmaticFocusPaneId = askState.paneId;
   try {
-    (askLayerEl.querySelector(".ask-input") ?? askLayerEl).focus();
+    askFocusTarget().focus();
   } finally {
     programmaticFocusPaneId = null;
   }
+}
+
+// Upstream editorActive: an input field always holds the keys, a list's free-form field only while
+// the cursor is on its row.
+function askFocusTarget() {
+  const other = askLayerEl.querySelector(".ask-other .ask-input");
+  if (other) return askCursorOnOther(askState.payload) ? other : askLayerEl;
+  return askLayerEl.querySelector(".ask-input") ?? askLayerEl;
+}
+
+function askCursorOnOther(payload) {
+  const list = payload?.choices;
+  return list?.other != null && list.cursor === list.items.length;
 }
 
 function askCovers(paneId) {
@@ -1869,13 +1882,17 @@ function onAskKeyDown(ev) {
 
 // Upstream AskTextEditor: Tab and Shift+Tab move the highlight with the caret kept in the field,
 // Esc escapes, and Return answers a line field; a multiline field takes Return as a newline and
-// answers on Cmd-Return, here Ctrl+Enter. Nothing resolves while an IME composes.
+// answers on Cmd-Return, here Ctrl+Enter. A list's free-form field sends Up and Down to the list.
+// Nothing resolves while an IME composes.
 function onAskInputKeyDown(ev) {
   if (ev.isComposing || ev.keyCode === 229) return;
   const multiline = ev.target.tagName === "TEXTAREA";
   const plain = !ev.ctrlKey && !ev.altKey && !ev.metaKey;
+  const other = ev.target.closest(".ask-other") !== null;
   let intent = null;
-  if (ev.key === "Tab" && plain) intent = ev.shiftKey ? "backward" : "forward";
+  if (other && plain && !ev.shiftKey && (ev.key === "ArrowUp" || ev.key === "ArrowDown"))
+    intent = ev.key === "ArrowUp" ? "up" : "down";
+  else if (ev.key === "Tab" && plain) intent = ev.shiftKey ? "backward" : "forward";
   else if (ev.key === "Escape" && plain) intent = "cancel";
   else if (
     ev.key === "Enter" &&
@@ -1956,14 +1973,18 @@ function growAskInput(field) {
 // refuses it; a composition is checked once it commits.
 function buildAskInput(payload, fg, cell) {
   const input = payload.input;
-  const multiline = input.mode === "multiline";
+  return buildAskField(payload.askId, input.mode, input.placeholder, input.value, fg, cell);
+}
+
+function buildAskField(askId, mode, placeholder, value, fg, cell) {
+  const multiline = mode === "multiline";
   const field = document.createElement(multiline ? "textarea" : "input");
   field.className = "ask-input";
   if (multiline) field.rows = 5;
   else field.type = "text";
   field.spellcheck = false;
-  field.placeholder = input.placeholder ?? "";
-  field.value = input.value;
+  field.placeholder = placeholder ?? "";
+  field.value = value;
   field.style.color = fg;
   field.style.caretColor = fg;
   field.style.borderColor = rgbaFromHex(fg, 0.2);
@@ -1976,14 +1997,14 @@ function buildAskInput(payload, fg, cell) {
   const commit = () => {
     const value = field.value;
     if (value === accepted) return;
-    if (askInputForbidden(value, input.mode) || !askInputFits(value)) {
+    if (askInputForbidden(value, mode) || !askInputFits(value)) {
       field.value = accepted;
       field.setSelectionRange(selection[0], selection[1]);
       return;
     }
     accepted = value;
     growAskInput(field);
-    post({ type: "askDraft", askId: payload.askId, text: value });
+    post({ type: "askDraft", askId, text: value });
   };
   field.addEventListener("beforeinput", (ev) => {
     if (composing || ev.inputType === "insertCompositionText") return;
@@ -1992,15 +2013,15 @@ function buildAskInput(payload, fg, cell) {
     const text =
       ev.inputType === "insertLineBreak" || ev.inputType === "insertParagraph"
         ? "\n"
-        : askInputInsertion(ev.data ?? ev.dataTransfer?.getData("text/plain") ?? "", input.mode);
-    if (askInputForbidden(text, input.mode) || !askInputFits(askInputAfterInsert(field, text)))
+        : askInputInsertion(ev.data ?? ev.dataTransfer?.getData("text/plain") ?? "", mode);
+    if (askInputForbidden(text, mode) || !askInputFits(askInputAfterInsert(field, text)))
       ev.preventDefault();
   });
   // the browser would drop the newlines of a paste into a line field; upstream refuses the paste
   field.addEventListener("paste", (ev) => {
     ev.preventDefault();
-    const text = askInputInsertion(ev.clipboardData?.getData("text/plain") ?? "", input.mode);
-    if (text === "" || askInputForbidden(text, input.mode)) return;
+    const text = askInputInsertion(ev.clipboardData?.getData("text/plain") ?? "", mode);
+    if (text === "" || askInputForbidden(text, mode)) return;
     if (!askInputFits(askInputAfterInsert(field, text))) return;
     document.execCommand("insertText", false, text);
   });
@@ -2026,8 +2047,10 @@ function askFontSize(paneId) {
 // Upstream AskChoiceList, terminal style: a "( )"/"(•)" or "[ ]"/"[x]" marker and a one-line label,
 // with the cursor row's marker and label filled in the foreground; a subtitle wraps under the
 // label, dimmed and never filled. A click on a row toggles it; the layer's pointerdown keeps the
-// focus on the question. The rows' state comes from applyAskChoices.
-function buildAskChoices(payload, cell) {
+// focus on the question. The rows' state comes from applyAskChoices. The free-form row follows the
+// items: its marker toggles it, its field edits the text without toggling, and focusing the field
+// moves the cursor onto the row.
+function buildAskChoices(payload, fg, cell) {
   const list = document.createElement("div");
   list.className = "ask-choices";
   list.style.gap = `${0.6 * cell}px`;
@@ -2059,6 +2082,27 @@ function buildAskChoices(payload, cell) {
     );
     list.appendChild(row);
   });
+  const other = payload.choices.other;
+  if (other) {
+    const index = payload.choices.items.length;
+    const row = document.createElement("div");
+    row.className = "ask-other";
+    row.setAttribute("role", payload.choices.multiple ? "checkbox" : "radio");
+    row.style.gap = `${cell}px`;
+    const marker = document.createElement("span");
+    marker.className = "ask-choice-marker";
+    marker.style.padding = `${0.15 * cell}px ${0.5 * cell}px`;
+    marker.addEventListener("click", () =>
+      post({ type: "askIntent", askId: payload.askId, intent: "toggleAt", index }),
+    );
+    const field = buildAskField(payload.askId, "line", other.placeholder, other.text, fg, cell);
+    field.addEventListener("focus", () => {
+      if (askState?.askId === payload.askId && !askCursorOnOther(askState.payload))
+        post({ type: "askIntent", askId: payload.askId, intent: "editOther" });
+    });
+    row.append(marker, field);
+    list.appendChild(row);
+  }
   return list;
 }
 
@@ -2086,6 +2130,18 @@ function applyAskChoices(payload) {
     const subtitle = row.querySelector(".ask-choice-subtitle");
     if (subtitle) subtitle.style.color = rgbaFromHex(fg, 0.7);
   });
+  const otherRow = askLayerEl.querySelector(".ask-other");
+  if (otherRow && payload.choices.other) {
+    const { selected, enabled } = payload.choices.other;
+    const current = cursor === items.length;
+    otherRow.classList.toggle("ask-choice-current", current);
+    otherRow.setAttribute("aria-checked", selected ? "true" : "false");
+    const marker = otherRow.querySelector(".ask-choice-marker");
+    marker.textContent = multiple ? (selected ? "[x]" : "[ ]") : selected ? "(•)" : "( )";
+    marker.style.background = current ? fg : "transparent";
+    marker.style.color = current ? bg : fg;
+    marker.style.opacity = enabled ? "1" : "0.4";
+  }
 }
 
 // the list scrolls the least that shows the cursor row, as upstream's scrollTo does
@@ -2154,7 +2210,7 @@ function buildAskLayer(payload) {
     panel.appendChild(message);
   }
   if (payload.input) panel.appendChild(buildAskInput(payload, fg, cell));
-  if (payload.choices) panel.appendChild(buildAskChoices(payload, cell));
+  if (payload.choices) panel.appendChild(buildAskChoices(payload, fg, cell));
 
   const row = document.createElement("div");
   row.className = "ask-buttons-row";
@@ -2253,6 +2309,7 @@ function applyAsk(payload) {
       paneId: payload.paneId,
       coveredPaneIds: payload.coveredPaneIds,
       releasedLayerPaneId: null,
+      payload,
     };
     askResizeObserver = new ResizeObserver(() => {
       if (askState && askState.payload) layoutAsk(askState.payload);
@@ -2260,13 +2317,16 @@ function applyAsk(payload) {
     askResizeObserver.observe(host);
     if (payload.coveredPaneIds.includes(coveredFocus)) focusAskLayer();
   } else {
+    askState.payload = payload;
     updateAskCoverage(payload.coveredPaneIds);
   }
   applyAskHighlight(payload);
   applyAskChoices(payload);
+  // the cursor crossing onto or off the free-form row hands the keys between its field and the layer
+  if (payload.choices?.other && askLayerEl.contains(document.activeElement) && document.activeElement !== askFocusTarget())
+    focusAskLayer();
   layoutAsk(payload);
   scrollAskCursorIntoView();
-  askState.payload = payload;
   return true;
 }
 

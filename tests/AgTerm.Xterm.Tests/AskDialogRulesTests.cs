@@ -97,6 +97,18 @@ public sealed class AskDialogRulesTests
     public void InTheFieldLettersArrowsAndSpaceStayWithTheText(int key) =>
         Assert.Null(AskKeys.FieldIntent(key, false, false, false, false, ControlAskInputMode.Line));
 
+    // a choice list's free-form row: plain Up and Down go back to the list, as upstream's moveUp/moveDown
+    [Fact]
+    public void InTheFreeFormRowUpAndDownGoToTheListAndSpaceStaysText()
+    {
+        Assert.Equal(new AskIntent.Up(), AskKeys.FieldIntent(Up, false, false, false, false, ControlAskInputMode.Line, routesVertical: true));
+        Assert.Equal(new AskIntent.Down(), AskKeys.FieldIntent(Down, false, false, false, false, ControlAskInputMode.Line, routesVertical: true));
+        Assert.Null(AskKeys.FieldIntent(Up, true, false, false, false, ControlAskInputMode.Line, routesVertical: true));
+        Assert.Null(AskKeys.FieldIntent(Down, false, true, false, false, ControlAskInputMode.Line, routesVertical: true));
+        Assert.Null(AskKeys.FieldIntent(0x20, false, false, false, false, ControlAskInputMode.Line, routesVertical: true));
+        Assert.Equal(new AskIntent.Activate(), AskKeys.FieldIntent(Enter, false, false, false, false, ControlAskInputMode.Line, routesVertical: true));
+    }
+
     [Theory]
     [InlineData(0x43)]
     [InlineData(0x56)]

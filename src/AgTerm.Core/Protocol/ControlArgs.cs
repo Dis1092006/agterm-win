@@ -292,6 +292,10 @@ public sealed record ControlArgs
     [JsonPropertyName("checked")]
     public string[]? Checked { get; init; }
 
+    /// <summary>ask.open placeholder of a free-form row after the choices; its text answers as text.</summary>
+    [JsonPropertyName("other")]
+    public string? Other { get; init; }
+
     /// <summary>Target window (id / prefix / "active" = frontmost) for session/workspace/tree/font
     /// commands.</summary>
     [JsonPropertyName("window")]

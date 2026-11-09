@@ -286,8 +286,9 @@ public sealed partial class ControlDispatcher
         {
             if (args.Checked is not null) return (null, "checked requires choices");
             if (args.Multiple is not null) return (null, "multiple requires choices");
+            if (args.Other is not null) return (null, "other requires choices");
         }
-        if (args.Choices is { } choices) return ParseAskChoices(choices, args.Checked ?? [], args.Multiple ?? false);
+        if (args.Choices is { } choices) return ParseAskChoices(choices, args.Checked ?? [], args.Multiple ?? false, args.Other);
         if (args.Input is not { } input) return (null, null);
         if (ControlAskInputModes.FromWire(input) is not { } mode)
             return (null, "unknown input");
@@ -299,7 +300,7 @@ public sealed partial class ControlDispatcher
         return (new AskForm.Input(new AskInputForm(mode, value, args.Placeholder)), null);
     }
 
-    private static (AskForm? Form, string? Error) ParseAskChoices(ControlAskChoice[] choices, string[] checkedIds, bool multiple)
+    private static (AskForm? Form, string? Error) ParseAskChoices(ControlAskChoice[] choices, string[] checkedIds, bool multiple, string? other)
     {
         if (choices.Length is < 1 or > ControlAskChoice.MaxChoices)
             return (null, $"ask choices must be 1 to {ControlAskChoice.MaxChoices}");
@@ -323,7 +324,12 @@ public sealed partial class ControlDispatcher
             return (null, $"unknown checked choice: {unknown}");
         if (!multiple && checkedIds.Length > 1)
             return (null, "radio choices accept one checked id");
-        return (new AskForm.Choices(new AskChoiceForm(choices, multiple, checkedIds)), null);
+        if (other is not null)
+        {
+            if (AskChoiceForm.IsBlank(other)) return (null, "ask other placeholder must not be blank");
+            if (CommandRestore.HasControlCharacter(other)) return (null, "ask text must not contain control characters");
+        }
+        return (new AskForm.Choices(new AskChoiceForm(choices, multiple, checkedIds, other)), null);
     }
 
     private static string? HotkeyRejection(IEnumerable<ControlAskButton> buttons)
