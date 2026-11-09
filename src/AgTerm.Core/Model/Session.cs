@@ -211,10 +211,16 @@ public sealed class Session
     /// split was SHOWN.</summary>
     public string? PendingSplitRestoreCommand { get; set; }
 
-    /// <summary>Whether an ephemeral overlay terminal is shown on top of this session. Never persisted.</summary>
+    /// <summary>Whether an ephemeral overlay terminal occupies this session's overlay slot, hidden or
+    /// not. Where focus, coverage or input is decided, ask OverlayVisible instead. Never persisted.</summary>
     public bool OverlayActive { get; set; }
 
-    /// <summary>The overlay's surface, torn down when its program exits or the control channel closes it.</summary>
+    /// <summary>Whether the overlay is hidden: its program keeps running, but it covers nothing.
+    /// Cleared when the overlay closes, so a new overlay starts shown. Never persisted.</summary>
+    public bool OverlayHidden { get; set; }
+
+    /// <summary>The overlay's surface, kept, hidden or not, until its program exits or the control
+    /// channel closes it.</summary>
     public ITerminalSurface? OverlaySurface { get; set; }
 
     /// <summary>The command the overlay runs as its process.</summary>
@@ -241,6 +247,23 @@ public sealed class Session
 
     /// <summary>Whether a FLOATING overlay is up: active WITH a size percent.</summary>
     public bool FloatingOverlayActive => OverlayActive && OverlaySizePercent is not null;
+
+    /// <summary>Whether an overlay covers the session now: active and not hidden.</summary>
+    public bool OverlayVisible => OverlayActive && !OverlayHidden;
+
+    /// <summary>FullOverlayActive minus a hidden overlay: whether the panes are covered.</summary>
+    public bool FullOverlayVisible => FullOverlayActive && !OverlayHidden;
+
+    /// <summary>FloatingOverlayActive minus a hidden overlay.</summary>
+    public bool FloatingOverlayVisible => FloatingOverlayActive && !OverlayHidden;
+
+    /// <summary>Whether a slot pane scopes holds an overlay that is not hidden: what a toggle hides.
+    /// The port has only the session-wide slot, so a pane scope never holds one.</summary>
+    public bool AnyOverlayShown(OverlayPane? pane) => pane is null && OverlayVisible;
+
+    /// <summary>The tree's hiddenOverlays: the hidden slots by name.</summary>
+    public IReadOnlyList<string> HiddenOverlayNames =>
+        OverlayActive && OverlayHidden ? ["session"] : [];
 
     /// <summary>Whether the scratch terminal is shown on top of this session. Never persisted.</summary>
     public bool ScratchActive { get; set; }
@@ -434,23 +457,23 @@ public sealed class Session
     /// </summary>
     public ITerminalSurface? AddressableSurface => Surface ?? SplitSurface;
 
-    /// <summary>The surface currently on top and owning keyboard focus: an active overlay, else the
+    /// <summary>The surface currently on top and owning keyboard focus: a visible overlay, else the
     /// scratch, else the active pane.</summary>
     public ITerminalSurface? TopmostSurface
     {
         get
         {
-            if (OverlayActive) return OverlaySurface;
+            if (OverlayVisible) return OverlaySurface;
             if (ScratchActive) return ScratchSurface;
             return ActiveSurface;
         }
     }
 
     /// <summary>The pane-or-scratch surface actually ON SCREEN: the scratch when it covers the panes
-    /// (and no overlay is up), else the focused pane — what session.text (no --pane) and
+    /// (and no visible overlay is up), else the focused pane — what session.text (no --pane) and
     /// session.search resolve through.</summary>
     public ITerminalSurface? OnScreenSurface =>
-        ScratchActive && !OverlayActive ? TopmostSurface : ActiveSurface;
+        ScratchActive && !OverlayVisible ? TopmostSurface : ActiveSurface;
 
     /// <summary>
     /// Resolves a surface's stable spawn token to the pane role of the slot it CURRENTLY occupies —

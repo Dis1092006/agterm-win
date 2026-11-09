@@ -108,6 +108,24 @@ public sealed class KeymapEditOverlayTests : IDisposable
     }
 
     [Fact]
+    public async Task A_refused_open_beeps_only_behind_a_hidden_overlay()
+    {
+        var beeps = 0;
+        using var overlay = new KeymapEditOverlay(_coordinator, () => Task.CompletedTask, beep: () => beeps++);
+        var id = Active.Id;
+        await _coordinator.MutateAsync(store => store.OpenOverlay(id, "lazygit"));
+
+        Assert.False(await overlay.OpenAsync(KeymapPath, "edit.exe keymap.conf"));
+        Assert.Equal(0, beeps);
+
+        await _coordinator.MutateAsync(store => store.SetOverlaysHidden(id, null, true));
+        Assert.False(await overlay.OpenAsync(KeymapPath, "edit.exe keymap.conf"));
+        Assert.Equal(1, beeps);
+        Assert.True(Active.OverlayHidden);
+        Assert.Equal("lazygit", Active.OverlayCommand);
+    }
+
+    [Fact]
     public async Task Open_does_nothing_without_an_active_session()
     {
         await _coordinator.MutateAsync(store => store.SelectedSessionId = null);

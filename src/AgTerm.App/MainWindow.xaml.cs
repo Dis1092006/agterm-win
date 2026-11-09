@@ -953,7 +953,7 @@ public sealed partial class MainWindow : Window
                 selectedSession?.ScratchSurface?.PaneToken,
                 selectedSession?.ScratchActive ?? false,
                 selectedSession?.OverlaySurface?.PaneToken,
-                selectedSession?.OverlayActive ?? false,
+                selectedSession?.OverlayVisible ?? false,
                 selectedSession?.OverlaySizePercent,
                 selectedSession?.OverlayBackgroundColor,
                 selectedSession?.SearchSurface?.PaneToken,
@@ -1005,11 +1005,15 @@ public sealed partial class MainWindow : Window
         _keymapEditOverlay = new KeymapEditOverlay(
             host.StoreCoordinator,
             () => _applicationHost.ReloadKeymapAsync(),
-            (context, ex) => System.Diagnostics.Debug.WriteLine($"{context}: {ex}"));
+            (context, ex) => System.Diagnostics.Debug.WriteLine($"{context}: {ex}"),
+            BeepHiddenOverlayRefusal);
         _hooksEditOverlay = new KeymapEditOverlay(
             host.StoreCoordinator,
             () => ReloadHooksReportingAsync(),
-            (context, ex) => System.Diagnostics.Debug.WriteLine($"{context}: {ex}"));
+            (context, ex) => System.Diagnostics.Debug.WriteLine($"{context}: {ex}"),
+            BeepHiddenOverlayRefusal);
+
+        void BeepHiddenOverlayRefusal() => _ = _notificationSounds.TryPlayAsync("default");
 
         static WindowCommandHandler Sync(Func<bool> canExecute, Action execute)
         {
@@ -1104,6 +1108,16 @@ public sealed partial class MainWindow : Window
             [BuiltinAction.ToggleTerminalZoom] = Async(
                 () => true,
                 () => host.ToggleTerminalZoomAsync()),
+            // upstream 7f450d17: listed only while the session has an overlay, shown or hidden
+            [BuiltinAction.ToggleOverlay] = Async(
+                () => _selection.OverlayActive,
+                () =>
+                {
+                    if (_selection.SessionId is not { } selectedSessionId)
+                        return Task.CompletedTask;
+
+                    return host.StoreCoordinator.MutateAsync(store => store.ToggleOverlaysHidden(selectedSessionId, null));
+                }),
             [BuiltinAction.ToggleSearch] = Async(
                 HasSelectedSession,
                 () =>
@@ -2610,7 +2624,7 @@ public sealed partial class MainWindow : Window
                 var closeNow = false;
                 await host.StoreCoordinator.MutateAsync(store =>
                 {
-                    if (store.ActiveSession is not { HasSplit: true } session || session.FullOverlayActive)
+                    if (store.ActiveSession is not { HasSplit: true } session || session.FullOverlayVisible)
                         return;
                     if (session.ScratchActive)
                         store.ToggleScratch(session.Id);

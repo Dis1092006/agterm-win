@@ -40,7 +40,7 @@ public static class TerminalAskVisibility
     private static string[] PaneQuestionCovers(Session session, OverlayPane pane, string paneId)
     {
         var focusedSide = !session.IsSplit || pane == (session.SplitFocused ? OverlayPane.Right : OverlayPane.Left);
-        var overlayId = session.OverlayActive ? session.OverlaySurface?.PaneToken : null;
+        var overlayId = session.OverlayVisible ? session.OverlaySurface?.PaneToken : null;
         return focusedSide && !string.IsNullOrWhiteSpace(overlayId) ? new[] { paneId, overlayId } : new[] { paneId };
     }
 

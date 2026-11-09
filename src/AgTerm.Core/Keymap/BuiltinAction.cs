@@ -5,7 +5,7 @@ namespace AgTerm.Core.Keymap;
 /// user writes after map in keymap.conf) and a default chord — the shortcut shipped out of the box.
 /// Parity pin: agterm 7df70fe, 41 actions; toggle_workspace_filter is adopted from upstream 6722755a,
 /// toggle_horizontal_split from eb29d556, which also moved dashboard from cmd+shift+d to cmd+shift+g;
-/// edit_flagged_sessions and edit_focused_workspaces (keyless) from a2552826.
+/// edit_flagged_sessions and edit_focused_workspaces (keyless) from a2552826; toggle_overlay from 7f450d17.
 /// </summary>
 public enum BuiltinAction
 {
@@ -14,7 +14,7 @@ public enum BuiltinAction
     NewSession, OpenDirectory, RenameSession, DuplicateSession,
     CloseSession, ReopenRecent, UndoClose, ClearStatus,
     IncreaseFontSize, DecreaseFontSize, ResetFontSize,
-    ToggleSplit, ToggleHorizontalSplit, ToggleScratch, ToggleTerminalZoom, ToggleSearch,
+    ToggleSplit, ToggleHorizontalSplit, ToggleScratch, ToggleTerminalZoom, ToggleOverlay, ToggleSearch,
     ToggleSidebar, SelectTheme, ToggleFullscreen,
     ToggleFlaggedView, ToggleFlag, FocusWorkspace, ToggleWorkspaceFilter,
     FocusLeftPane, FocusRightPane,
@@ -52,6 +52,7 @@ public static class BuiltinActions
         (BuiltinAction.ToggleHorizontalSplit, "toggle_horizontal_split"),
         (BuiltinAction.ToggleScratch, "toggle_scratch"),
         (BuiltinAction.ToggleTerminalZoom, "toggle_terminal_zoom"),
+        (BuiltinAction.ToggleOverlay, "toggle_overlay"),
         (BuiltinAction.ToggleSearch, "toggle_search"),
         (BuiltinAction.ToggleSidebar, "toggle_sidebar"),
         (BuiltinAction.SelectTheme, "select_theme"),
@@ -108,6 +109,7 @@ public static class BuiltinActions
         BuiltinAction.ToggleHorizontalSplit => new Chord(Modifiers.Command | Modifiers.Shift, "d"),
         BuiltinAction.ToggleScratch => new Chord(Modifiers.Command, "j"),
         BuiltinAction.ToggleTerminalZoom => new Chord(Modifiers.Command | Modifiers.Shift, "return"),
+        BuiltinAction.ToggleOverlay => new Chord(Modifiers.Command | Modifiers.Shift, "j"),
         BuiltinAction.ToggleSearch => new Chord(Modifiers.Command, "f"),
         BuiltinAction.ToggleSidebar => new Chord(Modifiers.Command | Modifiers.Control, "s"),
         BuiltinAction.ToggleFullscreen => new Chord(Modifiers.Command | Modifiers.Control, "f"),

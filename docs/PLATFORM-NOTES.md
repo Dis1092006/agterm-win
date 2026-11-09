@@ -264,6 +264,7 @@ On Windows, `cmd` maps to Ctrl when an upstream default chord is decoded. `keyle
 | `ToggleHorizontalSplit`    | `toggle_horizontal_split`    | `Implemented` | `cmd+shift+d`           | `cmd+shift+d`          | `ctrl+shift+d`         |
 | `ToggleScratch`            | `toggle_scratch`             | `Implemented` | `cmd+j`                 | `opt+j`                | `alt+j`                |
 | `ToggleTerminalZoom`       | `toggle_terminal_zoom`       | `Implemented` | `cmd+shift+return`      | `cmd+shift+return`     | `ctrl+shift+return`    |
+| `ToggleOverlay`            | `toggle_overlay`             | `Implemented` | `cmd+shift+j`           | `cmd+shift+j`          | `ctrl+shift+j`         |
 | `ToggleSearch`             | `toggle_search`              | `Implemented` | `cmd+f`                 | `opt+f`                | `alt+f`                |
 | `ToggleSidebar`            | `toggle_sidebar`             | `Implemented` | `ctrl+cmd+s`            | `opt+s`                | `alt+s`                |
 | `SelectTheme`              | `select_theme`               | `Implemented` | `keyless`               | `keyless`              | `keyless`              |
@@ -895,6 +896,15 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The sidebar is one WinUI list, so the port splits each row into zones itself: the top and bottom quarters of a row are the gaps above and below it, and the middle half is a drop on the row. The ordinary tree uses the same zones, so a drop on a session or workspace row works there too. Before, the tree took only gaps.
   - While a session drag moves, the sidebar draws a line for a gap and a frame for a drop on a row, in the accent color. It draws nothing, and refuses the drop, when the drop would change nothing on screen. A workspace drag always shows the line.
   - A drag that rests 0.65 s on a collapsed workspace opens it, as upstream (spring-loaded expansion). It works in the tree and the flagged tree, for a session drag and for an Explorer folder drop. The open is view-only and is not saved. A drag that moves to another workspace folds the first one back. Leaving the list, a cancelled drag and a refused drop fold it back too; a drop that lands keeps it open. A workspace drag springs nothing, and neither do the `flat` and `plain` layouts, which have no workspace rows. WinUI raises `DragLeave` each time the pointer crosses a row, so the port folds back only when the pointer is outside the list bounds.
+- Hiding overlays: `session.overlay.hide`, `session.overlay.show` and `session.overlay.toggle`, the session node field `hiddenOverlays`, and the action `toggle_overlay` on `cmd+shift+j`, which is Ctrl+Shift+J on Windows (upstream `7f450d17`, #790). The names are in `parity/adopted.json`.
+  - A hidden overlay keeps its program running and its surface mounted. Only the layer leaves the layout, so the terminal under it, or the scratch terminal, takes the keys. Show puts the same surface back.
+  - The slot stays taken while hidden: `session overlay open` and `session hud` answer `overlay hidden`. A HUD cannot be hidden and answers `no overlay`.
+  - The port has only the session-wide overlay slot, so `--pane left|right` always answers `no overlay`, and `hiddenOverlays` is `["session"]` or absent.
+  - A keymap that already binds Ctrl+Shift+J (`cmd+shift+j`) to another action or a custom command keeps it, and `toggle_overlay` then has no chord, as upstream does for `toggle_horizontal_split` and `dashboard`.
+  - The command palette lists Toggle Overlays only while the selected session has an overlay, shown or hidden. Upstream lists it always and disables it.
+  - Close Session (Alt+W) skips a hidden overlay and closes the next thing in front of the user. The close confirmation adds that the hidden overlays close with the session.
+  - Opening the keymap or hooks editor while the session's overlay is hidden plays the default notification sound, where upstream beeps.
+  - Upstream's title bar button and the Hide button on HTML pages are not ported. The port has no HTML page overlays.
 
 ## Windows-only extensions
 

@@ -389,7 +389,7 @@ public sealed class WindowPaletteProjectionTests
         }
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand(BuiltinAction.ToggleSplit.WireName()));
         Assert.Null(WindowPaletteProjection.ParseInstallerCommand("app:something-else"));
-        Assert.Equal(45, BuiltinActions.All.Count);
+        Assert.Equal(46, BuiltinActions.All.Count);
     }
 
     [Fact]
@@ -1331,7 +1331,7 @@ public sealed class WindowPaletteActionsTests
             ScratchPaneId: "scratch",
             ScratchActive: true,
             OverlayPaneId: "overlay",
-            OverlayActive: true,
+            OverlayVisible: true,
             QuickPaneId: "quick",
             QuickVisible: true);
 

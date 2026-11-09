@@ -88,6 +88,78 @@ public sealed class SidebarWorkflowTests : IDisposable
     }
 
     [Fact]
+    public async Task Close_confirmation_names_a_hidden_overlay_of_one_session()
+    {
+        var sessionId = await _coordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        await _coordinator.MutateAsync(store =>
+        {
+            store.OpenOverlay(sessionId, "lazygit");
+            store.SetOverlaysHidden(sessionId, null, true);
+        });
+        SidebarConfirmationRequest? seen = null;
+        using var controller = CreateController(request =>
+        {
+            seen = request;
+            return Task.FromResult(false);
+        });
+
+        await controller.CloseSessionsAsync(
+            new[] { sessionId },
+            new SidebarCloseOptions(Confirm: true, GraceUndo: false));
+
+        Assert.Equal(
+            "The session will close immediately and can be reopened from File > Open Recent. Its hidden overlays close with it.",
+            seen?.Message);
+    }
+
+    [Fact]
+    public async Task Close_confirmation_names_hidden_overlays_of_several_sessions()
+    {
+        var first = await _coordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        var second = Guid.Empty;
+        await _coordinator.MutateAsync(store =>
+            second = store.AddSession(store.Workspaces[0].Id, _stateDir)!.Id);
+        await _coordinator.MutateAsync(store =>
+        {
+            store.OpenOverlay(second, "lazygit");
+            store.SetOverlaysHidden(second, null, true);
+        });
+        SidebarConfirmationRequest? seen = null;
+        using var controller = CreateController(request =>
+        {
+            seen = request;
+            return Task.FromResult(false);
+        });
+
+        await controller.CloseSessionsAsync(
+            new[] { first, second },
+            new SidebarCloseOptions(Confirm: true, GraceUndo: true));
+
+        Assert.Equal(
+            "The sessions will close after a short undo window. Their hidden overlays close with them.",
+            seen?.Message);
+    }
+
+    [Fact]
+    public async Task Close_confirmation_skips_a_shown_overlay()
+    {
+        var sessionId = await _coordinator.ReadAsync(store => store.SelectedSessionId!.Value);
+        await _coordinator.MutateAsync(store => store.OpenOverlay(sessionId, "lazygit"));
+        SidebarConfirmationRequest? seen = null;
+        using var controller = CreateController(request =>
+        {
+            seen = request;
+            return Task.FromResult(false);
+        });
+
+        await controller.CloseSessionsAsync(
+            new[] { sessionId },
+            new SidebarCloseOptions(Confirm: true, GraceUndo: true));
+
+        Assert.Equal("The session will close after a short undo window.", seen?.Message);
+    }
+
+    [Fact]
     public async Task Cancelled_close_leaves_the_session_open()
     {
         var sessionId = await _coordinator.ReadAsync(store => store.SelectedSessionId!.Value);

@@ -159,6 +159,20 @@ public class TerminalAskVisibilityTests
         Assert.Equal(new[] { "left-token" }, placement.CoveredPaneIds);
     }
 
+    // upstream 7f450d17: focus asks the visible predicates, and a hidden overlay holds no focus to defer
+    [Fact]
+    public void APaneQuestionLeavesAHiddenOverlayUncovered()
+    {
+        var (store, session) = Selected();
+        OpenOverlay(session);
+        session.OverlayHidden = true;
+        session.SplitFocused = false;
+        store.OpenAsk(session.Id, Ask(), session.PaneIdentity, WindowId);
+
+        var placement = TerminalAskVisibility.For(store, false, false, false)!;
+        Assert.Equal(new[] { "left-token" }, placement.CoveredPaneIds);
+    }
+
     [Fact]
     public void ZoomAndTheDashboardHideEveryQuestion()
     {

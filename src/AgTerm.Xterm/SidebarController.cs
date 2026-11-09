@@ -281,7 +281,8 @@ public sealed class SidebarController : IDisposable
             .Distinct()
             .Select(store.SessionWithId)
             .OfType<Session>()
-            .Select(session => new SessionCloseSnapshot(session.Id, session.DisplayName))
+            .Select(session => new SessionCloseSnapshot(
+                session.Id, session.DisplayName, session.HiddenOverlayNames.Count > 0))
             .ToArray(), cancellationToken);
         if (sessions.Length == 0) return;
 
@@ -509,23 +510,27 @@ public sealed class SidebarController : IDisposable
     private static SidebarConfirmationRequest CloseConfirmation(
         IReadOnlyList<SessionCloseSnapshot> sessions, bool graceUndo)
     {
+        // a hidden overlay is out of sight, so the alert is the last place it can be noticed
+        var hidden = sessions.Any(session => session.HasHiddenOverlay);
         if (sessions.Count == 1)
         {
             return new SidebarConfirmationRequest(
                 SidebarConfirmationKind.CloseSession,
                 $"Close “{sessions[0].DisplayName}”?",
-                graceUndo
+                (graceUndo
                     ? "The session will close after a short undo window."
-                    : "The session will close immediately and can be reopened from File > Open Recent.",
+                    : "The session will close immediately and can be reopened from File > Open Recent.")
+                + (hidden ? " Its hidden overlays close with it." : ""),
                 "Close");
         }
 
         return new SidebarConfirmationRequest(
             SidebarConfirmationKind.CloseSessions,
             $"Close {sessions.Count} Sessions?",
-            graceUndo
+            (graceUndo
                 ? "The sessions will close after a short undo window."
-                : "The sessions will close immediately and can be reopened from File > Open Recent.",
+                : "The sessions will close immediately and can be reopened from File > Open Recent.")
+            + (hidden ? " Their hidden overlays close with them." : ""),
             "Close");
     }
 
@@ -546,7 +551,7 @@ public sealed class SidebarController : IDisposable
             "Delete");
     }
 
-    private sealed record SessionCloseSnapshot(Guid Id, string DisplayName);
+    private sealed record SessionCloseSnapshot(Guid Id, string DisplayName, bool HasHiddenOverlay);
 
     private sealed record WorkspaceDeleteSnapshot(
         Guid Id,

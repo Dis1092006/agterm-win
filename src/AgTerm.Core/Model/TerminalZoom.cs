@@ -44,14 +44,15 @@ public static class TerminalZoomSurfaces
         _ => null,
     };
 
-    /// <summary>Whether the surface slot is addressable in this session (hidden-but-alive included).</summary>
+    /// <summary>Whether the surface slot is addressable in this session (a hidden scratch or split
+    /// included). A hidden overlay is not, so hiding a zoomed one ends the zoom.</summary>
     public static bool IsAvailable(this TerminalZoomSurface surface, Session session) => surface switch
     {
         TerminalZoomSurface.Primary =>
             !(session.Surface is null && session.SplitSurface is not null && session.SplitFocused),
         TerminalZoomSurface.Split => session.HasSplit || session.SplitSurface is not null,
         TerminalZoomSurface.Scratch => session.ScratchActive || session.ScratchSurface is not null,
-        TerminalZoomSurface.Overlay => session.OverlayActive,
+        TerminalZoomSurface.Overlay => session.OverlayVisible,
         _ => throw new ArgumentOutOfRangeException(nameof(surface)),
     };
 
@@ -60,11 +61,11 @@ public static class TerminalZoomSurfaces
     public static bool IsActive(this TerminalZoomSurface surface, Session session) => surface switch
     {
         TerminalZoomSurface.Primary =>
-            !session.OverlayActive && !session.ScratchActive && !session.SplitFocused,
+            !session.OverlayVisible && !session.ScratchActive && !session.SplitFocused,
         TerminalZoomSurface.Split =>
-            !session.OverlayActive && !session.ScratchActive && session.SplitFocused,
-        TerminalZoomSurface.Scratch => !session.OverlayActive && session.ScratchActive,
-        TerminalZoomSurface.Overlay => session.OverlayActive,
+            !session.OverlayVisible && !session.ScratchActive && session.SplitFocused,
+        TerminalZoomSurface.Scratch => !session.OverlayVisible && session.ScratchActive,
+        TerminalZoomSurface.Overlay => session.OverlayVisible,
         _ => throw new ArgumentOutOfRangeException(nameof(surface)),
     };
 
@@ -72,11 +73,11 @@ public static class TerminalZoomSurfaces
     public static bool IsVisible(this TerminalZoomSurface surface, Session session) => surface switch
     {
         TerminalZoomSurface.Primary =>
-            !session.OverlayActive && !session.ScratchActive && (!session.SplitFocused || session.IsSplit),
+            !session.OverlayVisible && !session.ScratchActive && (!session.SplitFocused || session.IsSplit),
         TerminalZoomSurface.Split =>
-            !session.OverlayActive && !session.ScratchActive && (session.IsSplit || session.SplitFocused),
-        TerminalZoomSurface.Scratch => !session.OverlayActive && session.ScratchActive,
-        TerminalZoomSurface.Overlay => session.OverlayActive,
+            !session.OverlayVisible && !session.ScratchActive && (session.IsSplit || session.SplitFocused),
+        TerminalZoomSurface.Scratch => !session.OverlayVisible && session.ScratchActive,
+        TerminalZoomSurface.Overlay => session.OverlayVisible,
         _ => throw new ArgumentOutOfRangeException(nameof(surface)),
     };
 }

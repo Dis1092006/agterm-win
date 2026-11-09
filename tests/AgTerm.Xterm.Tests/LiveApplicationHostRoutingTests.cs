@@ -13,4 +13,13 @@ public class LiveApplicationHostRoutingTests
     {
         Assert.True(LiveApplicationHost.UsesWorkspaceTarget(command));
     }
+
+    [Theory]
+    [InlineData(Command.SessionOverlayHide)]
+    [InlineData(Command.SessionOverlayShow)]
+    [InlineData(Command.SessionOverlayToggle)]
+    public void OverlayVisibilityCommandsRouteByTheirSessionTarget(Command command)
+    {
+        Assert.True(LiveApplicationHost.UsesSingleSessionTarget(command));
+    }
 }

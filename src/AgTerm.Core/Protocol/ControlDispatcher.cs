@@ -41,6 +41,7 @@ public sealed partial class ControlDispatcher
                 or Command.SessionCopy or Command.SessionPaste or Command.SessionSelectAll
                 or Command.SessionSearch or Command.SessionOverlayOpen or Command.SessionOverlayClose
                 or Command.SessionOverlayResize or Command.SessionOverlayResult
+                or Command.SessionOverlayHide or Command.SessionOverlayShow or Command.SessionOverlayToggle
                 or Command.SessionBackground or Command.SessionText:
                 return await DispatchSessionSurfaceCommand(request);
             case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
@@ -927,6 +928,19 @@ public sealed partial class ControlDispatcher
             }
             case Command.SessionOverlayResult:
                 return _actions.SessionOverlayResult(request.Target, request.Args?.Window);
+            case Command.SessionOverlayHide or Command.SessionOverlayShow or Command.SessionOverlayToggle:
+            {
+                var mode = request.Cmd switch
+                {
+                    Command.SessionOverlayHide => OverlayVisibilityMode.Hide,
+                    Command.SessionOverlayShow => OverlayVisibilityMode.Show,
+                    _ => OverlayVisibilityMode.Toggle,
+                };
+                OverlayPane? pane = null;
+                if (request.Args?.Pane is { } rawPane && (pane = OverlayPanes.FromControlName(rawPane)) is null)
+                    return Err(PaneOverlayError.InvalidPane);
+                return _actions.SetSessionOverlayVisibility(request.Target, request.Args?.Window, pane, mode);
+            }
             case Command.SessionBackground:
                 return DispatchSessionBackground(request);
             case Command.SessionText:

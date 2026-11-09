@@ -112,4 +112,34 @@ public class KeymapCompatTests
 
         Assert.DoesNotContain(diagnostics, d => d.Message.Contains("conflicts with a built-in"));
     }
+
+    // upstream 7f450d17: toggle_overlay ships on cmd+shift+j, a chord older files may already use
+    private static readonly Chord CmdShiftJ = new(Modifiers.Command | Modifiers.Shift, "j");
+
+    [Fact]
+    public void ToggleOverlayShipsOnCmdShiftJAndCanBeRemapped()
+    {
+        Assert.Equal(CmdShiftJ, AgTerm.Core.Keymap.Keymap.Empty.EquivalentFor(BuiltinAction.ToggleOverlay));
+
+        var (keymap, diagnostics) = Parse("map ctrl+shift+y toggle_overlay\n");
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(new Chord(Modifiers.Control | Modifiers.Shift, "y"), keymap.EquivalentFor(BuiltinAction.ToggleOverlay));
+    }
+
+    [Theory]
+    [InlineData("map cmd+shift+j toggle_workspace_filter\n")]
+    [InlineData("command \"Old binding\" cmd+shift+j echo ok\n")]
+    public void AnExistingCmdShiftJBindingIsNotBrokenByTheToggleOverlayDefault(string text)
+    {
+        var (keymap, diagnostics) = Parse(text);
+
+        Assert.Empty(diagnostics);
+        Assert.Null(keymap.EquivalentFor(BuiltinAction.ToggleOverlay));
+        Assert.Contains(BuiltinAction.ToggleOverlay, keymap.UnboundDefaults);
+        if (text.StartsWith("map", StringComparison.Ordinal))
+            Assert.Equal(CmdShiftJ, keymap.EquivalentFor(BuiltinAction.ToggleWorkspaceFilter));
+        else
+            Assert.Equal("cmd+shift+j", Assert.Single(keymap.Commands).Shortcut);
+    }
 }

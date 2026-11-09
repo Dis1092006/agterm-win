@@ -1982,6 +1982,9 @@ public sealed partial class HeadlessControlActions : IControlActions
     {
         return ResolveSession(target, window, (store, id) =>
         {
+            // a hidden overlay still holds the slot; name it so the caller knows to show or close it
+            if (store.SessionWithId(id) is { OverlayHidden: true })
+                return Err(OverlayVisibilityError.Hidden);
             if (!store.OpenOverlay(id, options.Command, options.Cwd, options.Wait,
                     options.SizePercent, options.BackgroundColor))
                 return Err("overlay already open");
@@ -2039,12 +2042,26 @@ public sealed partial class HeadlessControlActions : IControlActions
         });
     }
 
+    public ControlResponse SetSessionOverlayVisibility(string? target, string? window, OverlayPane? pane,
+                                                      OverlayVisibilityMode mode) =>
+        ResolveSession(target, window, (store, id) =>
+        {
+            if (store.ApplyOverlayVisibility(id, pane, mode) is { } failure)
+                return Err(OverlayVisibilityError.Message(failure));
+            var shown = store.SessionWithId(id)!.AnyOverlayShown(pane);
+            return new ControlResponse
+            {
+                Ok = true, Result = new ControlResult { Id = Uuid(id), Text = shown ? "shown" : "hidden" },
+            };
+        });
+
     // MARK: - hud
 
     public ControlResponse OpenHud(string? target, string? window, HudSpec spec, ControlHudPlacement placement) =>
         ResolveSession(target, window, (store, id) =>
         {
             if (store.SessionWithId(id) is not { } session) return Err("no such session");
+            if (session.OverlayHidden) return Err(OverlayVisibilityError.Hidden);
             if (!PanePlacement.TryResolve(placement.Pane, placement.PaneId, session, requireVisible: true,
                     HudErrors.InvalidPane, out var resolved, out var error))
                 return Err(error!);

@@ -261,7 +261,7 @@ public sealed class LiveSelectionSnapshotLayoutTests
             SplitFocused: true,
             SplitRatio: 0.4,
             OverlayPaneId: "overlay-token",
-            OverlayActive: true,
+            OverlayVisible: true,
             OverlaySizePercent: 70,
             OverlayBackgroundColor: "#123456");
 
@@ -281,7 +281,7 @@ public sealed class LiveSelectionSnapshotLayoutTests
             ScratchPaneId: "scratch-token",
             ScratchActive: true,
             OverlayPaneId: "overlay-token",
-            OverlayActive: true);
+            OverlayVisible: true);
         var overlay = Assert.IsType<TerminalLayout.Layered>(withOverlay.ToTerminalLayout(1));
         Assert.Equal("overlay-token", overlay.Layer.PaneId);
 
@@ -315,7 +315,7 @@ public sealed class LiveSelectionSnapshotLayoutTests
             ScratchPaneId: "scratch-token",
             ScratchActive: true,
             OverlayPaneId: "overlay-token",
-            OverlayActive: true,
+            OverlayVisible: true,
             OverlaySizePercent: 70,
             QuickPaneId: "quick-token",
             QuickVisible: true);

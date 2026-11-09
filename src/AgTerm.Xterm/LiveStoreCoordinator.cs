@@ -15,7 +15,7 @@ public sealed record LiveSelectionSnapshot(
     string? ScratchPaneId = null,
     bool ScratchActive = false,
     string? OverlayPaneId = null,
-    bool OverlayActive = false,
+    bool OverlayVisible = false,
     int? OverlaySizePercent = null,
     string? OverlayBackgroundColor = null,
     string? SearchOwnerPaneId = null,
@@ -35,7 +35,8 @@ public sealed record LiveSelectionSnapshot(
     TerminalHudPlacement? Hud = null,
     PaneThemeTable? PaneThemes = null,
     bool QuickHoldsKey = false,
-    SplitAxis? SplitAxis = null)
+    SplitAxis? SplitAxis = null,
+    bool OverlayActive = false)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -90,7 +91,7 @@ public sealed record LiveSelectionSnapshot(
             return baseLayout;
         }
 
-        if (OverlayActive && !string.IsNullOrWhiteSpace(OverlayPaneId))
+        if (OverlayVisible && !string.IsNullOrWhiteSpace(OverlayPaneId))
         {
             return new TerminalLayout.Layered(
                 generation,
@@ -418,7 +419,7 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             selectedSession?.ScratchSurface?.PaneToken,
             selectedSession?.ScratchActive ?? false,
             selectedSession?.OverlaySurface?.PaneToken,
-            selectedSession?.OverlayActive ?? false,
+            selectedSession?.OverlayVisible ?? false,
             selectedSession?.OverlaySizePercent,
             selectedSession?.OverlayBackgroundColor,
             selectedSession?.SearchSurface?.PaneToken,
@@ -438,7 +439,8 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             Hud: hud,
             PaneThemes: PaneThemeAssignment.For(_host.Store),
             QuickHoldsKey: _host.Actions.Quick.HoldsKey,
-            SplitAxis: selectedSession?.SplitAxis);
+            SplitAxis: selectedSession?.SplitAxis,
+            OverlayActive: selectedSession?.OverlayActive ?? false);
     }
 
     private bool QuickTerminalShown() =>

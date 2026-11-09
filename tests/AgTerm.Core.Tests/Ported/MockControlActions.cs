@@ -109,6 +109,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record OverlayClose(string? Target, string? Window) : Call;
         public sealed record OverlayResize(string? Target, string? Window, int? SizePercent) : Call;
         public sealed record OverlayResult(string? Target, string? Window) : Call;
+    public sealed record OverlayVisibility(string? Target, string? Window, OverlayPane? Pane, OverlayVisibilityMode Mode) : Call;
         public sealed record SessionBackground(string? Target, string? Window, ControlSessionBackgroundOptions Options) : Call;
         public sealed record SessionText(string? Target, string? Window, ControlSessionTextOptions Options) : Call;
         public sealed record WindowNew(string? Name) : Call;
@@ -182,6 +183,7 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextOverlayCloseResponse = new() { Ok = true };
     public ControlResponse NextOverlayResizeResponse = new() { Ok = true };
     public ControlResponse NextOverlayResultResponse = new() { Ok = true };
+    public ControlResponse NextOverlayVisibilityResponse = new() { Ok = true };
     public ControlResponse NextSessionBackgroundResponse = new() { Ok = true };
     public ControlResponse NextSessionTextResponse = new() { Ok = true };
     public ControlResponse NextSurfaceZoomResponse = new() { Ok = true };
@@ -670,6 +672,12 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.OverlayResult(target, window));
         return NextOverlayResultResponse;
+    }
+
+    public ControlResponse SetSessionOverlayVisibility(string? target, string? window, OverlayPane? pane, OverlayVisibilityMode mode)
+    {
+        Calls.Add(new Call.OverlayVisibility(target, window, pane, mode));
+        return NextOverlayVisibilityResponse;
     }
 
     public ControlResponse SetSessionBackground(string? target, string? window, ControlSessionBackgroundOptions options)

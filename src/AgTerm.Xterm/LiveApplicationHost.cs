@@ -1920,7 +1920,7 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.WindowFullscreen
         or Command.WindowGo;
 
-    private static bool UsesSingleSessionTarget(Command command) => command is
+    internal static bool UsesSingleSessionTarget(Command command) => command is
         Command.SessionDuplicate
         or Command.KeymapRun
         or Command.AskOpen
@@ -1955,6 +1955,9 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.SessionOverlayClose
         or Command.SessionOverlayResize
         or Command.SessionOverlayResult
+        or Command.SessionOverlayHide
+        or Command.SessionOverlayShow
+        or Command.SessionOverlayToggle
         or Command.SessionBackground
         or Command.SessionText
         or Command.FontInc

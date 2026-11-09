@@ -253,7 +253,9 @@ internal static class ClientOutput
             {
                 var smark = session.Active ? "*" : " ";
                 var tags = (session.Split ? " (split)" : session.HasSplit == true ? " (split hidden)" : "")
-                    + (session.Overlay ? " (overlay)" : "")
+                    + (session.Overlay
+                        ? session.HiddenOverlays?.Contains("session") == true ? " (overlay hidden)" : " (overlay)"
+                        : "")
                     + (session.Scratch ? " (scratch)" : "");
                 var titleSuffix = session.Title is { } title ? $"  title: {title}" : "";
                 lines.Add($"  {smark} {session.Name}{tags}  [{session.Id}]  {session.Cwd}{titleSuffix}");
