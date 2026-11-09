@@ -86,6 +86,7 @@ public sealed partial class LiveApplicationHost : IDisposable
         _installedExecutablePath = options.InstalledExecutablePath ?? Environment.ProcessPath;
         _agentEnvironment = options.AgentEnvironment;
         _recentClosedStore = new RecentClosedStore(_stateDirectory);
+        CustomCommandUsage = new CustomCommandUsageStore(_stateDirectory);
         Ring = new ControlEventRing();
         if (options.HookLauncher is { } hookLauncher)
         {
@@ -365,6 +366,10 @@ public sealed partial class LiveApplicationHost : IDisposable
 
     public ControlEventRing Ring { get; }
     public SettingsCoordinator Settings { get; }
+
+    /// <summary>The run counts behind the title bar custom commands menu: one store for every window, so its
+    /// lock covers each window's runner (upstream keeps one CustomCommandRunner per app).</summary>
+    public CustomCommandUsageStore CustomCommandUsage { get; }
 
     /// <summary>The selection buffer every window and the quick terminal share; memory only.</summary>
     public SelectionBuffer SelectionBuffer { get; } = new();

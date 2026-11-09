@@ -597,6 +597,55 @@ public sealed class CustomCommandInvocationTests
         Assert.Equal($"session directory {missing} no longer exists", error.Message);
     }
 
+    // upstream 68e17937: the runner counts a run right after the process starts, so every way of running
+    // a command (hotkey, palette, title bar menu, keymap.run) feeds the menu's most-used group
+    [Fact]
+    public async Task ProcessRunner_counts_a_started_command_by_name()
+    {
+        var directory = Directory.CreateTempSubdirectory("agterm-usage-");
+        try
+        {
+            var usage = new CustomCommandUsageStore(directory.FullName);
+            var runner = new CustomCommandProcessRunner(which: _ => null,
+                env: key => key == "COMSPEC" ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : null,
+                usage: usage);
+            var invocation = new CustomCommandInvocation(Guid.NewGuid(), "Mark", "exit 0", directory.FullName,
+                new Dictionary<string, string>());
+
+            var handle = await runner.StartAsync(invocation);
+            await handle.Exited.WaitAsync(ChildBudget);
+
+            Assert.Equal(new Dictionary<string, int> { ["Mark"] = 1 }, usage.Load().Counts);
+        }
+        finally
+        {
+            try { directory.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task ProcessRunner_does_not_count_a_command_that_never_started()
+    {
+        var directory = Directory.CreateTempSubdirectory("agterm-usage-");
+        try
+        {
+            var usage = new CustomCommandUsageStore(directory.FullName);
+            var runner = new CustomCommandProcessRunner(which: _ => null,
+                env: key => key == "COMSPEC" ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : null,
+                usage: usage);
+            var invocation = new CustomCommandInvocation(Guid.NewGuid(), "Mark", "exit 0",
+                Path.Combine(directory.FullName, "gone"), new Dictionary<string, string>());
+
+            await Assert.ThrowsAsync<CustomCommandNotStartedException>(() => runner.StartAsync(invocation));
+
+            Assert.Empty(usage.Load().Counts);
+        }
+        finally
+        {
+            try { directory.Delete(recursive: true); } catch (IOException) { }
+        }
+    }
+
     [Fact]
     public void Not_started_notice_names_the_command_and_the_reason()
     {

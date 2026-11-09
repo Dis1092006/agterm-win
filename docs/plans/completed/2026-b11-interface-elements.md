@@ -12,13 +12,13 @@ Upstream v0.40.0 has three title bar elements that are off until the user turns 
 - The overlay button sits in the second button group, after split, and counts toward that group for the dividers. It toggles the active session's overlay like `toggle_overlay`. It is disabled when the session has no overlay, and also while the terminal zoom or the dashboard is open. Its glyph is crossed out while the overlay is hidden. Its tooltip is "Hide Overlays" or "Show Overlays" with the `toggle_overlay` chord.
 - Not in B11a: `remoteHost` (the port has no remote sessions) and `customCommands` (B11b).
 
-Status: in progress.
+Status: done (#82).
 
 ## B11b: the custom-commands button
 
 - `InterfaceElement` gets `customCommands`, hidden by default.
 - The button sits last in the third group and opens a menu of the keymap's `command` lines, each with its chord. It is disabled when the keymap has no command or no session is active. A click runs the command the way the palette does and returns focus to the terminal.
 - When the keymap has more than 5 commands, the 5 most run ones lead the menu above a separator. Both groups keep keymap order.
-- Run counts are kept in `custom-command-usage.json` in the state directory, as upstream `CustomCommandUsageStore`. A run from a chord, the palette or the menu counts.
+- Run counts are kept in `custom-command-usage.json` in the state directory, as upstream `CustomCommandUsageStore`. A run from a chord, the palette, the menu or `keymap.run` counts: the runner counts a command once its process starts.
 
-Status: not started.
+Status: done.

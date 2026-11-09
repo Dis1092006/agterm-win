@@ -253,7 +253,21 @@
                                 <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE756;" FontSize="14" />
                                 <Rectangle x:Name="QuickTerminalOpenIndicator" Style="{StaticResource TitleBarOpenIndicatorStyle}" />
                             </Grid>
+                        </Button>                        <!-- upstream customCommandsButton (ellipsis.circle): the keymap's commands as a menu,
+                             rebuilt each time it opens; hidden by default -->
+                        <Button x:Name="CustomCommandsButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                AutomationProperties.Name="Custom commands"
+                                AutomationProperties.AutomationId="custom-commands-button"
+                                ToolTipService.ToolTip="Custom commands">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE712;" FontSize="14" />
+                            <Button.Flyout>
+                                <MenuFlyout x:Name="CustomCommandsFlyout"
+                                            Placement="BottomEdgeAlignedRight"
+                                            Opening="OnCustomCommandsFlyoutOpening" />
+                            </Button.Flyout>
                         </Button>
+
                         <Button Style="{StaticResource TitleBarActionButtonStyle}"
                                 AutomationProperties.Name="Settings"
                                 AutomationProperties.AutomationId="settings-button"
