@@ -43,6 +43,42 @@ public class ControlAskTests
     }
 
     [Fact]
+    public void AChoiceAnswerCarriesItsSelectedIdsAfterTheIndex()
+    {
+        var result = ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["b", "a"] };
+        var json = "{\"result\":\"answered\",\"id\":\"ok\",\"label\":\"OK\",\"index\":0,\"selected\":[\"b\",\"a\"]}";
+        Assert.Equal(json, ControlJson.Serialize(result));
+        Assert.Equal(result, ControlJson.Deserialize<ControlAskResult>(json));
+    }
+
+    [Fact]
+    public void AnEmptyChoiceAnswerKeepsItsEmptySelectedList() =>
+        Assert.Equal("{\"result\":\"answered\",\"id\":\"ok\",\"label\":\"OK\",\"index\":0,\"selected\":[]}",
+            ControlJson.Serialize(ControlAskResult.Answered("ok", "OK", 0) with { Selected = [] }));
+
+    [Fact]
+    public void ResultsWithDifferentSelectedListsAreNotEqual()
+    {
+        Assert.Equal(ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["a"] },
+            ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["a"] });
+        Assert.NotEqual(ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["a"] },
+            ControlAskResult.Answered("ok", "OK", 0) with { Selected = ["b"] });
+        Assert.NotEqual(ControlAskResult.Answered("ok", "OK", 0) with { Selected = [] },
+            ControlAskResult.Answered("ok", "OK", 0));
+    }
+
+    [Fact]
+    public void AChoiceItemOmitsAMissingSubtitle()
+    {
+        Assert.Equal("{\"id\":\"a\",\"label\":\"A\"}", ControlJson.Serialize(new ControlAskChoice { Id = "a", Label = "A" }));
+        var full = new ControlAskChoice { Id = "a", Label = "A", Subtitle = "line\nline" };
+        var json = "{\"id\":\"a\",\"label\":\"A\",\"subtitle\":\"line\\nline\"}";
+        Assert.Equal(json, ControlJson.Serialize(full));
+        Assert.Equal(full, ControlJson.Deserialize<ControlAskChoice>(json));
+        Assert.Equal(50, ControlAskChoice.MaxChoices);
+    }
+
+    [Fact]
     public void AnEmptyInputAnswerKeepsItsEmptyText() =>
         Assert.Equal("{\"result\":\"answered\",\"id\":\"ok\",\"label\":\"OK\",\"index\":0,\"text\":\"\"}",
             ControlJson.Serialize(ControlAskResult.Answered("ok", "OK", 0) with { Text = "" }));

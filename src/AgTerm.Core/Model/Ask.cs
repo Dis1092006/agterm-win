@@ -38,6 +38,7 @@ public sealed record PendingAsk(
         return Form switch
         {
             AskForm.Input => answered with { Text = (draft ?? new AskDraft(Form)).Text },
+            AskForm.Choices => answered with { Selected = (draft ?? new AskDraft(Form)).Selected },
             _ => answered,
         };
     }
@@ -51,6 +52,20 @@ public abstract record AskForm
     }
 
     public sealed record Input(AskInputForm Field) : AskForm;
+
+    public sealed record Choices(AskChoiceForm List) : AskForm;
+}
+
+/// <summary>An ask's radio or checkbox list. Checked lists the ids selected on open; a radio
+/// list holds at most one.</summary>
+public sealed record AskChoiceForm(IReadOnlyList<ControlAskChoice> Items, bool Multiple = false, IReadOnlyList<string>? Checked = null)
+{
+    public IReadOnlyList<string> Checked { get; init; } = Checked ?? [];
+
+    public bool Equals(AskChoiceForm? other) =>
+        other is not null && Multiple == other.Multiple && Items.SequenceEqual(other.Items) && Checked.SequenceEqual(other.Checked);
+
+    public override int GetHashCode() => HashCode.Combine(Multiple, Items.Count, Checked.Count);
 }
 
 /// <summary>An ask's text field: its mode, initial text and the hint shown while it is empty.</summary>
@@ -109,11 +124,30 @@ public static class AskFieldText
 public sealed class AskDraft
 {
     private string _text;
+    private readonly string[] _ids;
+    private readonly string[] _keys;
+    private readonly bool _multiple;
+    private readonly HashSet<string> _checked = new(StringComparer.Ordinal);
 
-    /// <summary>Starts from the form's prefill.</summary>
+    /// <summary>Starts from the form's initial values: the prefill, the checked ids, and a radio
+    /// list's first item when nothing is checked. The cursor starts on the first checked item in
+    /// caller order. Ids are compared in NFC, as Swift compares strings.</summary>
     public AskDraft(AskForm? form)
     {
         _text = form is AskForm.Input input ? AskInputForm.Clamped(input.Field.Value) : "";
+        if (form is not AskForm.Choices { List: var list })
+        {
+            _ids = [];
+            _keys = [];
+            return;
+        }
+        _ids = list.Items.Select(item => item.Id).ToArray();
+        _keys = _ids.Select(Key).ToArray();
+        _multiple = list.Multiple;
+        var initial = list.Multiple ? list.Checked : list.Checked.Take(1).DefaultIfEmpty(_ids.FirstOrDefault());
+        foreach (var id in initial)
+            if (id is not null) _checked.Add(Key(id));
+        Cursor = Math.Max(0, Array.FindIndex(_keys, _checked.Contains));
     }
 
     /// <summary>The input field content, held within AskInputForm.MaxTextBytes.</summary>
@@ -122,6 +156,92 @@ public sealed class AskDraft
         get => _text;
         set => _text = AskInputForm.Clamped(value ?? "");
     }
+
+    /// <summary>The index of the list item keyboard actions apply to.</summary>
+    public int Cursor { get; private set; }
+
+    /// <summary>The checked ids in caller order, as the caller spelled them in the list.</summary>
+    public IReadOnlyList<string> Selected => _ids.Where((_, index) => _checked.Contains(_keys[index])).ToArray();
+
+    /// <summary>Steps the cursor by offset, stopping at the list ends.</summary>
+    public void MoveCursor(int offset)
+    {
+        if (_keys.Length == 0) return;
+        Cursor = Math.Clamp(Cursor + offset, 0, _keys.Length - 1);
+    }
+
+    /// <summary>Moves the cursor to index, then picks a radio item or flips a checkbox. An index
+    /// outside the list changes nothing.</summary>
+    public void Toggle(int index)
+    {
+        if (index < 0 || index >= _keys.Length) return;
+        Cursor = index;
+        var key = _keys[index];
+        if (!_multiple)
+        {
+            _checked.Clear();
+            _checked.Add(key);
+            return;
+        }
+        if (!_checked.Remove(key)) _checked.Add(key);
+    }
+
+    public void ToggleCursor() => Toggle(Cursor);
+
+    public bool IsChecked(int index) => index >= 0 && index < _keys.Length && _checked.Contains(_keys[index]);
+
+    /// <summary>Applies a list intent: Up and Down move the cursor, Toggle flips the cursor's
+    /// item and ToggleAt the clicked one. False for any other intent, for a row outside the list
+    /// and for a draft without a list, so the buttons take it.</summary>
+    public bool Apply(AskIntent intent)
+    {
+        if (_keys.Length == 0) return false;
+        switch (intent)
+        {
+            case AskIntent.Up:
+                MoveCursor(-1);
+                return true;
+            case AskIntent.Down:
+                MoveCursor(1);
+                return true;
+            case AskIntent.Toggle:
+                ToggleCursor();
+                return true;
+            case AskIntent.ToggleAt at when at.Index >= 0 && at.Index < _keys.Length:
+                Toggle(at.Index);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>A snapshot another thread can read while this draft keeps changing.</summary>
+    public AskDraft Copy()
+    {
+        var copy = new AskDraft(_ids, _keys, _multiple) { _text = _text, Cursor = Cursor };
+        copy._checked.UnionWith(_checked);
+        return copy;
+    }
+
+    /// <summary>Takes the text, cursor and checked items of a draft of the same form.</summary>
+    public void CopyFrom(AskDraft source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        _text = source._text;
+        Cursor = source.Cursor;
+        _checked.Clear();
+        _checked.UnionWith(source._checked);
+    }
+
+    private AskDraft(string[] ids, string[] keys, bool multiple)
+    {
+        _text = "";
+        _ids = ids;
+        _keys = keys;
+        _multiple = multiple;
+    }
+
+    private static string Key(string id) => id.Normalize(NormalizationForm.FormC);
 }
 
 public static class AskIds
@@ -142,6 +262,13 @@ public abstract record AskIntent
     public sealed record Cancel : AskIntent;
     public sealed record Hotkey(string Letter) : AskIntent;
     public sealed record Press(int Index) : AskIntent;
+    /// <summary>Up and Down move a list's cursor, or the button highlight when there is no list.</summary>
+    public sealed record Up : AskIntent;
+    public sealed record Down : AskIntent;
+    /// <summary>Space: toggles the list item under the cursor.</summary>
+    public sealed record Toggle : AskIntent;
+    /// <summary>A click on the list row at Index.</summary>
+    public sealed record ToggleAt(int Index) : AskIntent;
 }
 
 public abstract record AskIntentOutcome
@@ -195,12 +322,14 @@ public sealed class AskNavigation
     {
         switch (intent)
         {
-            case AskIntent.Forward:
+            case AskIntent.Forward or AskIntent.Down:
                 MoveForward();
                 return Moved();
-            case AskIntent.Backward:
+            case AskIntent.Backward or AskIntent.Up:
                 MoveBackward();
                 return Moved();
+            case AskIntent.Toggle or AskIntent.ToggleAt:
+                return new AskIntentOutcome.None();
             case AskIntent.Activate:
                 return Answered(Activate());
             case AskIntent.Hotkey hotkey:

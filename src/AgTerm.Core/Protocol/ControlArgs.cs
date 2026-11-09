@@ -280,6 +280,18 @@ public sealed record ControlArgs
     [JsonPropertyName("placeholder")]
     public string? Placeholder { get; init; }
 
+    /// <summary>ask.open list items, shown as radio buttons or, with multiple, checkboxes (1...50).</summary>
+    [JsonPropertyName("choices")]
+    public ControlAskChoice[]? Choices { get; init; }
+
+    /// <summary>ask.open makes the choices checkboxes instead of radio buttons.</summary>
+    [JsonPropertyName("multiple")]
+    public bool? Multiple { get; init; }
+
+    /// <summary>ask.open choice ids selected on open; a radio list takes at most one.</summary>
+    [JsonPropertyName("checked")]
+    public string[]? Checked { get; init; }
+
     /// <summary>Target window (id / prefix / "active" = frontmost) for session/workspace/tree/font
     /// commands.</summary>
     [JsonPropertyName("window")]

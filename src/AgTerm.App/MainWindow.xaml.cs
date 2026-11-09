@@ -102,7 +102,7 @@ public sealed partial class MainWindow : Window
     private bool _systemDark; // UI-thread confined
     private readonly TerminalAskNavigator _terminalAsks = new TerminalAskNavigator(); // UI-thread confined
     private string? _focusedAskId; // UI-thread confined
-    private (Guid SessionId, string AskId, string Text)? _pendingAskDraft; // UI-thread confined
+    private (Guid SessionId, string AskId, AskDraft Draft)? _pendingAskDraft; // UI-thread confined
     private bool _askDraftWriterRunning; // UI-thread confined
     private TerminalHudPlacement? _presentedHud; // UI-thread confined
     private LiveControlHost? _host;
@@ -226,7 +226,7 @@ public sealed partial class MainWindow : Window
             _paletteTransitions.RunAsync(() => CloseKeybindingsAsync()), "Keyboard shortcuts close failed");
         AskOverlay.Answered += (askId, index) => ObserveTaskFault(HandleAskAnsweredAsync(askId, index), "Ask answer failed");
         AskOverlay.Escaped += askId => ObserveTaskFault(HandleAskEscapedAsync(askId), "Ask dismissal failed");
-        AskOverlay.DraftChanged += (askId, text) => _host?.Host.Actions.Pick.UpdateAskDraft(askId, draft => draft.Text = text);
+        AskOverlay.DraftChanged += (askId, draft) => _host?.Host.Actions.Pick.UpdateAskDraft(askId, saved => saved.CopyFrom(draft));
         _contentDialogs.DialogClosed += FocusModalAfterContentDialog;
         TerminalView.SizeChanged += OnTerminalViewSizeChanged;
         _settingsReloadCoordinator = new SettingsReloadCoordinator(
@@ -1731,18 +1731,24 @@ public sealed partial class MainWindow : Window
     private void OnPageAskFocusChanged(string? askId) =>
         DispatcherQueue.TryEnqueue(() => _focusedAskId = askId);
 
-    // The navigator keeps the text the answer reads. The store copy is for a dialog shown again
+    // The navigator keeps the draft the answer reads. The store copy is for a dialog shown again
     // after a session switch; separate MutateAsync calls are not ordered, so one writer sends the
-    // latest text at a time.
+    // latest snapshot at a time.
     private void OnPageAskDraftReceived(string askId, string text) =>
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (!_terminalAsks.UpdateDraft(askId, text) || _terminalAsks.CurrentSessionId is not { } sessionId)
-                return;
-            _pendingAskDraft = (sessionId, askId, text);
-            if (!_askDraftWriterRunning)
-                ObserveTaskFault(WriteAskDraftsAsync(), "Ask draft write failed");
+            if (_terminalAsks.UpdateDraft(askId, text) && _terminalAsks.DraftSnapshot() is { } draft)
+                SaveTerminalAskDraft(askId, draft);
         });
+
+    private void SaveTerminalAskDraft(string askId, AskDraft draft)
+    {
+        if (_terminalAsks.CurrentSessionId is not { } sessionId)
+            return;
+        _pendingAskDraft = (sessionId, askId, draft);
+        if (!_askDraftWriterRunning)
+            ObserveTaskFault(WriteAskDraftsAsync(), "Ask draft write failed");
+    }
 
     private async Task WriteAskDraftsAsync()
     {
@@ -1753,7 +1759,7 @@ public sealed partial class MainWindow : Window
             {
                 _pendingAskDraft = null;
                 await host.StoreCoordinator.MutateAsync(store =>
-                    store.UpdateAskDraft(draft.SessionId, draft.AskId, saved => saved.Text = draft.Text));
+                    store.UpdateAskDraft(draft.SessionId, draft.AskId, saved => saved.CopyFrom(draft.Draft)));
             }
         }
         finally
@@ -1787,6 +1793,10 @@ public sealed partial class MainWindow : Window
         {
             case TerminalAskResolution.Redraw redraw:
                 await ApplyTerminalAskAsync(redraw.View);
+                break;
+            case TerminalAskResolution.Drafted drafted:
+                SaveTerminalAskDraft(askId, drafted.Draft);
+                await ApplyTerminalAskAsync(drafted.View);
                 break;
             case TerminalAskResolution.Resolve resolve when _host is { } host:
                 // the store raises AsksChanged, and the republished snapshot clears the page

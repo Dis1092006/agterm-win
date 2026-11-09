@@ -372,7 +372,78 @@ public class ControlDispatcherAskTests
         { new ControlArgs { Title = "T", Value = "a\nb", Input = "line" }, "ask text must not contain control characters" },
         { new ControlArgs { Title = "T", Value = "a\u0007b", Input = "multiline" }, "ask text must not contain control characters" },
         { new ControlArgs { Title = "T", Input = "multiline", Placeholder = "a\nb" }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Input = "line", Choices = Items("a") }, "input and choices are exclusive" },
+        { new ControlArgs { Title = "T", Value = "x", Choices = Items("a") }, "value requires input" },
+        { new ControlArgs { Title = "T", Placeholder = "x", Choices = Items("a") }, "placeholder requires input" },
+        { new ControlArgs { Title = "T", Input = "line", Checked = ["a"] }, "checked requires choices" },
+        { new ControlArgs { Title = "T", Input = "line", Multiple = true }, "multiple requires choices" },
+        { new ControlArgs { Title = "T", Buttons = Ok, Checked = [] }, "checked requires choices" },
+        { new ControlArgs { Title = "T", Buttons = Ok, Multiple = false }, "multiple requires choices" },
+        { new ControlArgs { Title = "T", Buttons = Ok, Checked = ["a"], Multiple = true }, "checked requires choices" },
+        { new ControlArgs { Title = "T", Choices = [] }, "ask choices must be 1 to 50" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "")] }, "ask choice label must not be empty" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "A"), Choice("a", "B")] }, "ask choice ids must be unique" },
+        { new ControlArgs { Title = "T", Choices = [Choice("caf\u00E9", "A"), Choice("cafe\u0301", "B")] }, "ask choice ids must be unique" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Checked = ["b"] }, "unknown checked choice: b" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Multiple = true, Checked = ["a", "a"] }, "ask checked ids must be unique" },
+        { new ControlArgs { Title = "T", Choices = Items("a", "b"), Checked = ["a", "b"] }, "radio choices accept one checked id" },
+        { new ControlArgs { Title = "T", Choices = Items("a", "b"), Multiple = false, Checked = ["a", "b"] }, "radio choices accept one checked id" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "A\nB")] }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "A", "x\ty")] }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "A", "x\r\ny")] }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "A\u001B[1m")] }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Checked = ["b"], Multiple = false }, "unknown checked choice: b" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "")], Checked = ["a", "a"] }, "ask choice label must not be empty" },
+        { new ControlArgs { Title = "T", Choices = [Choice("a", "A\n")], Checked = ["b"] }, "ask text must not contain control characters" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Checked = ["b", "b"] }, "ask checked ids must be unique" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Checked = ["b", "a", "c"], Multiple = false }, "unknown checked choice: b" },
+        { new ControlArgs { Title = "T", Choices = [null!] }, "invalid request: ask choice requires id and label" },
+        { new ControlArgs { Title = "T", Choices = [new ControlAskChoice { Id = null!, Label = "A" }] }, "invalid request: ask choice requires id and label" },
+        { new ControlArgs { Title = "T", Choices = [new ControlAskChoice { Id = "a", Label = null! }] }, "invalid request: ask choice requires id and label" },
+        { new ControlArgs { Title = "T", Choices = Items("a"), Checked = [null!] }, "invalid request: ask checked id must be a string" },
     };
+
+    private static ControlAskChoice Choice(string id, string label, string? subtitle = null) =>
+        new() { Id = id, Label = label, Subtitle = subtitle };
+
+    private static ControlAskChoice[] Items(params string[] ids) => ids.Select(id => Choice(id, id.ToUpperInvariant())).ToArray();
+
+    [Fact]
+    public async Task ChoicesReachTheHostWithSubtitlesAndCheckedIds()
+    {
+        var choices = new[] { Choice("398", "issue #398", "waits on you\nhttps://example.com/398"), Choice("395", "PR #395") };
+        var ask = await Opened(new ControlArgs { Title = "Pick", Choices = choices, Multiple = true, Checked = ["395"] });
+        Assert.Equal(new AskForm.Choices(new AskChoiceForm(choices, true, ["395"])), ask.Form);
+        Assert.Equal(new[] { Button("ok", "OK"), Button("cancel", "Cancel") }, ask.Buttons);
+        Assert.Equal("ok", ask.DefaultId);
+        Assert.Equal("cancel", ask.CancelId);
+    }
+
+    [Fact]
+    public async Task ARadioListWithoutCheckedIdsReachesTheHostAsRadio() =>
+        Assert.Equal(new AskForm.Choices(new AskChoiceForm(Items("a", "b"), false, [])),
+            (await Opened(new ControlArgs { Title = "T", Choices = Items("a", "b") })).Form);
+
+    [Fact]
+    public async Task AChoiceListTakesButtonHotkeys() =>
+        Assert.NotNull((await Opened(new ControlArgs { Title = "T", Choices = Items("a"), Buttons = [Button("ok", "OK", "o")] })).Form);
+
+    [Fact]
+    public async Task ACheckedIdMatchesACanonicallyEquivalentChoiceId() =>
+        Assert.NotNull((await Opened(new ControlArgs { Title = "T", Choices = Items("caf\u00E9"), Checked = ["cafe\u0301"] })).Form);
+
+    [Fact]
+    public async Task FiftyChoicesAreAcceptedAndFiftyOneRejected()
+    {
+        var fifty = Enumerable.Range(0, 50).Select(i => Choice($"{i}", $"item {i}")).ToArray();
+        await Opened(new ControlArgs { Title = "T", Choices = fifty });
+        AssertRejected("ask choices must be 1 to 50", await Open(new ControlArgs { Title = "T", Choices = [.. fifty, Choice("x", "x")] }));
+    }
+
+    [Fact]
+    public async Task ASubtitleKeepsItsNewlines() =>
+        Assert.Equal(new AskForm.Choices(new AskChoiceForm([Choice("a", "A", "x\ny")], false, [])),
+            (await Opened(new ControlArgs { Title = "T", Choices = [Choice("a", "A", "x\ny")] })).Form);
 
     [Theory]
     [MemberData(nameof(InvalidForms))]

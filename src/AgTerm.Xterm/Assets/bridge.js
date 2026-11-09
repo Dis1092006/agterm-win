@@ -1754,11 +1754,16 @@ function askIntentFromKey(ev) {
     case "Tab":
       return { intent: ev.shiftKey ? "backward" : "forward" };
     case "ArrowRight":
-    case "ArrowDown":
       return { intent: "forward" };
     case "ArrowLeft":
-    case "ArrowUp":
       return { intent: "backward" };
+    // upstream AskKey: Up and Down move a list's cursor, or the highlight when there is no list
+    case "ArrowDown":
+      return { intent: "down" };
+    case "ArrowUp":
+      return { intent: "up" };
+    case " ":
+      return { intent: "toggle" };
     case "Enter":
       return { intent: "activate" };
     case "Escape":
@@ -2018,6 +2023,82 @@ function askFontSize(paneId) {
   return pane ? pane.term.options.fontSize : rendererSettings.fontSize;
 }
 
+// Upstream AskChoiceList, terminal style: a "( )"/"(•)" or "[ ]"/"[x]" marker and a one-line label,
+// with the cursor row's marker and label filled in the foreground; a subtitle wraps under the
+// label, dimmed and never filled. A click on a row toggles it; the layer's pointerdown keeps the
+// focus on the question. The rows' state comes from applyAskChoices.
+function buildAskChoices(payload, cell) {
+  const list = document.createElement("div");
+  list.className = "ask-choices";
+  list.style.gap = `${0.6 * cell}px`;
+  payload.choices.items.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "ask-choice";
+    row.setAttribute("role", payload.choices.multiple ? "checkbox" : "radio");
+    row.style.gap = `${0.2 * cell}px`;
+    const line = document.createElement("div");
+    line.className = "ask-choice-line";
+    line.style.gap = `${cell}px`;
+    line.style.padding = `${0.15 * cell}px ${0.5 * cell}px`;
+    const marker = document.createElement("span");
+    marker.className = "ask-choice-marker";
+    const label = document.createElement("span");
+    label.className = "ask-choice-label";
+    label.textContent = item.label;
+    line.append(marker, label);
+    row.appendChild(line);
+    if (item.subtitle) {
+      const subtitle = document.createElement("div");
+      subtitle.className = "ask-choice-subtitle";
+      subtitle.style.paddingLeft = `calc(${1.5 * cell}px + 3ch)`;
+      subtitle.textContent = item.subtitle;
+      row.appendChild(subtitle);
+    }
+    row.addEventListener("click", () =>
+      post({ type: "askIntent", askId: payload.askId, intent: "toggleAt", index }),
+    );
+    list.appendChild(row);
+  });
+  return list;
+}
+
+function applyAskChoices(payload) {
+  if (!askLayerEl || !payload.choices) return;
+  const colors = colorsForPane(payload.paneId);
+  const fg = colors.foregroundColor;
+  const bg = colors.backgroundColor;
+  const { multiple, cursor, items } = payload.choices;
+  askLayerEl.querySelectorAll(".ask-choice").forEach((row, index) => {
+    const checked = items[index]?.checked === true;
+    const current = index === cursor;
+    row.classList.toggle("ask-choice-current", current);
+    row.setAttribute("aria-checked", checked ? "true" : "false");
+    row.querySelector(".ask-choice-marker").textContent = multiple
+      ? checked
+        ? "[x]"
+        : "[ ]"
+      : checked
+        ? "(•)"
+        : "( )";
+    const line = row.querySelector(".ask-choice-line");
+    line.style.background = current ? fg : "transparent";
+    line.style.color = current ? bg : fg;
+    const subtitle = row.querySelector(".ask-choice-subtitle");
+    if (subtitle) subtitle.style.color = rgbaFromHex(fg, 0.7);
+  });
+}
+
+// the list scrolls the least that shows the cursor row, as upstream's scrollTo does
+function scrollAskCursorIntoView() {
+  const list = askLayerEl?.querySelector(".ask-choices");
+  const row = list?.querySelector(".ask-choice-current");
+  if (!row) return;
+  const area = list.getBoundingClientRect();
+  const box = row.getBoundingClientRect();
+  if (box.top < area.top) list.scrollTop -= area.top - box.top;
+  else if (box.bottom > area.bottom) list.scrollTop += Math.min(box.bottom - area.bottom, box.top - area.top);
+}
+
 function buildAskLayer(payload) {
   const layer = document.createElement("div");
   layer.className = payload.paneId ? "ask-layer" : "ask-layer ask-session";
@@ -2073,6 +2154,7 @@ function buildAskLayer(payload) {
     panel.appendChild(message);
   }
   if (payload.input) panel.appendChild(buildAskInput(payload, fg, cell));
+  if (payload.choices) panel.appendChild(buildAskChoices(payload, cell));
 
   const row = document.createElement("div");
   row.className = "ask-buttons-row";
@@ -2181,7 +2263,9 @@ function applyAsk(payload) {
     updateAskCoverage(payload.coveredPaneIds);
   }
   applyAskHighlight(payload);
+  applyAskChoices(payload);
   layoutAsk(payload);
+  scrollAskCursorIntoView();
   askState.payload = payload;
   return true;
 }

@@ -40,6 +40,10 @@ internal static class AskCommands
         public string? Input { get; init; }
         public string? Value { get; init; }
         public string? Placeholder { get; init; }
+        public IReadOnlyList<string> Choices { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> ChoiceSubtitles { get; init; } = Array.Empty<string>();
+        public bool Multiple { get; init; }
+        public IReadOnlyList<string> Checked { get; init; } = Array.Empty<string>();
         public string Style { get; init; } = "terminal";
         public string Align { get; init; } = "right";
         public string? Width { get; init; }
@@ -65,6 +69,7 @@ internal static class AskCommands
                 throw new CliValidationException("unknown align");
             _ = ParsedWidth();
             _ = ParsedButtons();
+            _ = ParsedChoices();
         }
 
         public ControlRequest MakeRequest() => new()
@@ -88,6 +93,9 @@ internal static class AskCommands
                 CancelButton = CancelButton,
                 Input = Input,
                 Placeholder = Placeholder,
+                Choices = ParsedChoices(),
+                Multiple = Multiple ? true : null,
+                Checked = Checked.Count == 0 ? null : Checked.ToArray(),
             }),
         };
 
@@ -103,12 +111,12 @@ internal static class AskCommands
             return value;
         }
 
-        /// <summary>A form (--input) defaults its buttons on the server, so it may send none.</summary>
+        /// <summary>A form (--input or --choice) defaults its buttons on the server, so it may send none.</summary>
         private ControlAskButton[]? ParsedButtons()
         {
             if (Buttons.Count == 0)
             {
-                if (Input is null)
+                if (Input is null && Choices.Count == 0)
                     throw new CliValidationException("ask requires at least one --button");
                 if (Hotkeys.Count > 0)
                     throw new CliValidationException("--hotkey requires --button");
@@ -130,6 +138,38 @@ internal static class AskCommands
                 choices[index] = choices[index] with { Hotkey = token[(equals + 1)..] };
             }
             return choices;
+        }
+
+        private ControlAskChoice[]? ParsedChoices()
+        {
+            if (Choices.Count == 0)
+            {
+                if (ChoiceSubtitles.Count > 0)
+                    throw new CliValidationException("--choice-subtitle requires --choice");
+                return null;
+            }
+            var items = Choices.Select(token =>
+            {
+                var equals = token.IndexOf('=');
+                return equals < 0
+                    ? new ControlAskChoice { Id = token, Label = token }
+                    : new ControlAskChoice { Id = token[..equals], Label = token[(equals + 1)..] };
+            }).ToArray();
+            var assigned = new HashSet<int>();
+            foreach (var token in ChoiceSubtitles)
+            {
+                var equals = token.IndexOf('=');
+                if (equals < 0)
+                    throw new CliValidationException("--choice-subtitle requires ID=TEXT");
+                var id = token[..equals];
+                var index = Array.FindIndex(items, item => AskIds.Same(item.Id, id));
+                if (index < 0)
+                    throw new CliValidationException($"unknown subtitle choice: {id}");
+                if (!assigned.Add(index))
+                    throw new CliValidationException($"subtitle already set for choice: {id}");
+                items[index] = items[index] with { Subtitle = token[(equals + 1)..] };
+            }
+            return items;
         }
 
         private static ControlAskButton ParseButton(string token)
@@ -168,7 +208,7 @@ internal static class AskCommands
         var ask = new System.CommandLine.Command("ask",
             "Open, poll, or cancel a themed question dialog. Use ask open TITLE when the title is 'open', 'result', or 'cancel'.");
         var open = new System.CommandLine.Command("open",
-            "Ask a question and wait for its button answer. --input adds a text field; it defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text.");
+            "Ask a question and wait for its button answer. --input adds a text field and --choice a radio list (checkboxes with --multiple); either form defaults its buttons to ok=OK and cancel=Cancel, Cancel ending like Esc. The answer carries the field's text or the selected ids.");
         BindOpen(bindings, open);
         ask.Subcommands.Add(open);
         ask.Subcommands.Add(BuildIdCommand(bindings, "result", "Print a dialog's current or terminal result as JSON.",
@@ -203,6 +243,22 @@ internal static class AskCommands
         var input = new Option<string?>("--input") { Description = "Add a text field: line or multiline." };
         var value = new Option<string?>("--value") { Description = "Initial text of the --input field." };
         var placeholder = new Option<string?>("--placeholder") { Description = "Hint shown while the --input field is empty." };
+        var choices = new Option<string[]>("--choice")
+        {
+            Description = "List item ID=LABEL, or one token for both. Repeat for each item (max 50).",
+            DefaultValueFactory = _ => Array.Empty<string>(),
+        };
+        var choiceSubtitles = new Option<string[]>("--choice-subtitle")
+        {
+            Description = "Item description ID=TEXT, drawn dimmed under its label.",
+            DefaultValueFactory = _ => Array.Empty<string>(),
+        };
+        var multiple = new Option<bool>("--multiple") { Description = "Make the --choice list checkboxes instead of radio buttons." };
+        var @checked = new Option<string[]>("--checked")
+        {
+            Description = "ID of an item selected at open. Repeat with --multiple.",
+            DefaultValueFactory = _ => Array.Empty<string>(),
+        };
         var target = new Option<string?>("--target") { Description = "Session id, prefix, or 'active'. Default: selected session for terminal, window-centered for gui." };
         var pane = new Option<string?>("--pane") { Description = "Anchor to the session's left or right pane. GUI style requires --target." };
         var paneId = new Option<string?>("--pane-id") { Description = "Stable pane token; overrides --pane. GUI style requires --target." };
@@ -211,7 +267,7 @@ internal static class AskCommands
         var client = new ClientOptions.Binder();
         client.AddTo(command);
         command.Arguments.Add(title);
-        foreach (var option in new Option[] { message, buttons, hotkeys, defaultButton, style, align, width, destructive, cancelButton, input, value, placeholder, target, pane, paneId, follow, noBlock })
+        foreach (var option in new Option[] { message, buttons, hotkeys, defaultButton, style, align, width, destructive, cancelButton, input, value, placeholder, choices, choiceSubtitles, multiple, @checked, target, pane, paneId, follow, noBlock })
             command.Options.Add(option);
         bindings.Register(command, result => new Open
         {
@@ -228,6 +284,10 @@ internal static class AskCommands
             Input = result.GetValue(input),
             Value = result.GetValue(value),
             Placeholder = result.GetValue(placeholder),
+            Choices = result.GetValue(choices) ?? Array.Empty<string>(),
+            ChoiceSubtitles = result.GetValue(choiceSubtitles) ?? Array.Empty<string>(),
+            Multiple = result.GetValue(multiple),
+            Checked = result.GetValue(@checked) ?? Array.Empty<string>(),
             Target = result.GetValue(target),
             Pane = result.GetValue(pane),
             PaneId = result.GetValue(paneId),

@@ -53,29 +53,37 @@ public class TerminalAskVisibilityTests
         Assert.Equal(new[] { "right-token" }, placement.CoveredPaneIds);
     }
 
-    // a dialog shown again, after a session switch, starts from what the user typed before
+    // a dialog shown again, after a session switch, starts from what the user typed or checked before
     [Fact]
-    public void APlacementCarriesTheSessionDraftWithoutComparingIt()
+    public void APlacementCarriesACopyOfTheSessionDraftWithoutComparingIt()
     {
         var (store, session) = Selected();
         var ask = Ask() with { Form = new AskForm.Input(new AskInputForm(ControlAskInputMode.Line, "prefill")) };
         store.OpenAsk(session.Id, ask, null, WindowId);
         var before = TerminalAskVisibility.For(store, false, false, false)!;
-        Assert.Equal("prefill", before.DraftText);
+        Assert.Equal("prefill", before.Draft!.Text);
 
         store.UpdateAskDraft(session.Id, "ASK", draft => draft.Text = "typed");
 
         var after = TerminalAskVisibility.For(store, false, false, false)!;
-        Assert.Equal("typed", after.DraftText);
+        Assert.Equal("typed", after.Draft!.Text);
+        Assert.Equal("prefill", before.Draft.Text);
+        Assert.NotSame(session.AskDraft, after.Draft);
         Assert.Equal(before, after);
     }
 
     [Fact]
-    public void APlainQuestionHasNoDraftText()
+    public void APlacementCarriesTheSessionSelection()
     {
         var (store, session) = Selected();
-        store.OpenAsk(session.Id, Ask(), null, WindowId);
-        Assert.Null(TerminalAskVisibility.For(store, false, false, false)!.DraftText);
+        var items = new[] { new ControlAskChoice { Id = "a", Label = "A" }, new ControlAskChoice { Id = "b", Label = "B" } };
+        store.OpenAsk(session.Id, Ask() with { Form = new AskForm.Choices(new AskChoiceForm(items, Multiple: true)) }, null, WindowId);
+
+        store.UpdateAskDraft(session.Id, "ASK", draft => draft.Toggle(1));
+
+        var draft = TerminalAskVisibility.For(store, false, false, false)!.Draft!;
+        Assert.Equal(["b"], draft.Selected);
+        Assert.Equal(1, draft.Cursor);
     }
 
     private static void OpenOverlay(Session session)

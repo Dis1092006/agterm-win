@@ -27,7 +27,7 @@ public sealed class XtermPageAskTests
 
         var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyAsk"));
         Assert.Contains(
-            """{"askId":"ASK","paneId":"right-token","coveredPaneIds":["right-token"],"title":"Delete?","message":null,"buttons":[{"runs":[{"text":"! ","underline":false},{"text":"D","underline":true},{"text":"elete","underline":false}],"destructive":true}],"highlighted":0,"align":"right","width":null,"input":null}""",
+            """{"askId":"ASK","paneId":"right-token","coveredPaneIds":["right-token"],"title":"Delete?","message":null,"buttons":[{"runs":[{"text":"! ","underline":false},{"text":"D","underline":true},{"text":"elete","underline":false}],"destructive":true}],"highlighted":0,"align":"right","width":null,"input":null,"choices":null}""",
             script);
     }
 
@@ -41,7 +41,21 @@ public sealed class XtermPageAskTests
             0, "right", null, new TerminalAskInputView("multiline", "typed", "hint")));
 
         var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyAsk"));
-        Assert.Contains(""","input":{"mode":"multiline","value":"typed","placeholder":"hint"}}""", script);
+        Assert.Contains(""","input":{"mode":"multiline","value":"typed","placeholder":"hint"},"choices":null}""", script);
+    }
+
+    [Fact]
+    public async Task ApplyAsk_serializes_the_choice_list()
+    {
+        var page = await InitializedAsync();
+
+        await page.ApplyAskAsync(new TerminalAskView("ASK", null, new[] { "left-token" }, "Pick", null,
+            new[] { new TerminalAskButtonView(new[] { new AskLabelRun("OK", false) }, false) },
+            0, "right", null, null,
+            new TerminalAskChoicesView(true, new[] { new TerminalAskChoiceView("Alpha", "first", true), new TerminalAskChoiceView("Beta", null, false) }, 1)));
+
+        var script = Assert.Single(_host.Scripts, item => item.Contains("agterm.applyAsk"));
+        Assert.Contains(""","input":null,"choices":{"multiple":true,"cursor":1,"items":[{"label":"Alpha","subtitle":"first","checked":true},{"label":"Beta","subtitle":null,"checked":false}]}}""", script);
     }
 
     [Fact]
@@ -74,6 +88,10 @@ public sealed class XtermPageAskTests
     [InlineData("""{"type":"askIntent","askId":"A","intent":"cancel"}""", "cancel")]
     [InlineData("""{"type":"askIntent","askId":"A","intent":"hotkey","letter":"y"}""", "hotkey:y")]
     [InlineData("""{"type":"askIntent","askId":"A","intent":"press","index":2}""", "press:2")]
+    [InlineData("""{"type":"askIntent","askId":"A","intent":"up"}""", "up")]
+    [InlineData("""{"type":"askIntent","askId":"A","intent":"down"}""", "down")]
+    [InlineData("""{"type":"askIntent","askId":"A","intent":"toggle"}""", "toggle")]
+    [InlineData("""{"type":"askIntent","askId":"A","intent":"toggleAt","index":3}""", "toggleAt:3")]
     public async Task Ask_intents_reach_the_host(string json, string expected)
     {
         var page = await InitializedAsync();
@@ -86,6 +104,10 @@ public sealed class XtermPageAskTests
             AskIntent.Cancel => "cancel",
             AskIntent.Hotkey hotkey => "hotkey:" + hotkey.Letter,
             AskIntent.Press press => "press:" + press.Index,
+            AskIntent.Up => "up",
+            AskIntent.Down => "down",
+            AskIntent.Toggle => "toggle",
+            AskIntent.ToggleAt at => "toggleAt:" + at.Index,
             _ => "?",
         };
 
@@ -98,6 +120,7 @@ public sealed class XtermPageAskTests
     [InlineData("""{"type":"askIntent","askId":"A","intent":"bogus"}""")]
     [InlineData("""{"type":"askIntent","askId":"A","intent":"hotkey"}""")]
     [InlineData("""{"type":"askIntent","askId":"A","intent":"press"}""")]
+    [InlineData("""{"type":"askIntent","askId":"A","intent":"toggleAt"}""")]
     [InlineData("""{"type":"askIntent","intent":"activate"}""")]
     public async Task Malformed_ask_intents_are_dropped(string json)
     {

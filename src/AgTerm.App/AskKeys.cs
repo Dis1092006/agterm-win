@@ -5,7 +5,7 @@ namespace AgTerm.App;
 
 public static class AskKeys
 {
-    private const int Tab = 0x09, Enter = 0x0D, Escape = 0x1B, Left = 0x25, Up = 0x26, Right = 0x27, Down = 0x28;
+    private const int Tab = 0x09, Enter = 0x0D, Escape = 0x1B, Space = 0x20, Left = 0x25, Up = 0x26, Right = 0x27, Down = 0x28;
     private const int A = 0x41, Z = 0x5A;
 
     /// <summary>Upstream ignores every key with Command, Control or Option; here Ctrl, Alt and Win.
@@ -17,8 +17,12 @@ public static class AskKeys
         return virtualKey switch
         {
             Tab => shift ? new AskIntent.Backward() : new AskIntent.Forward(),
-            Right or Down => new AskIntent.Forward(),
-            Left or Up => new AskIntent.Backward(),
+            Right => new AskIntent.Forward(),
+            Left => new AskIntent.Backward(),
+            // the list keys; AskNavigation turns Up and Down into button moves when there is no list
+            Up => new AskIntent.Up(),
+            Down => new AskIntent.Down(),
+            Space => new AskIntent.Toggle(),
             Enter => new AskIntent.Activate(),
             Escape => new AskIntent.Cancel(),
             >= A and <= Z => new AskIntent.Hotkey(((char)('a' + (virtualKey - A))).ToString()),

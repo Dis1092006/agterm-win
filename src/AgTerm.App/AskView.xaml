@@ -44,6 +44,14 @@
                              BeforeTextChanging="OnInputBeforeTextChanging"
                              Paste="OnInputPaste"
                              TextChanged="OnInputTextChanged" />
+                    <ScrollViewer x:Name="ChoiceScroll"
+                                  Visibility="Collapsed"
+                                  HorizontalScrollMode="Disabled"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  IsTabStop="False">
+                        <StackPanel x:Name="ChoiceHost" Spacing="4.8" AutomationProperties.AutomationId="ask-choices" />
+                    </ScrollViewer>
                     <Grid x:Name="ButtonHost" />
                 </StackPanel>
             </ScrollViewer>

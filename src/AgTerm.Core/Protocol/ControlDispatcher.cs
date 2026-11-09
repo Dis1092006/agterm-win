@@ -272,16 +272,23 @@ public sealed partial class ControlDispatcher
         new() { Id = "cancel", Label = "Cancel" },
     };
 
-    /// <summary>Port of upstream parseAskForm: the optional text field, refusing its arguments
-    /// without it. Returns no form and no error for a plain button ask.</summary>
+    /// <summary>Port of upstream parseAskForm: the optional text field or choice list, refusing
+    /// the arguments of the other form. Returns no form and no error for a plain button ask.</summary>
     private static (AskForm? Form, string? Error) ParseAskForm(ControlArgs args)
     {
-        if (args.Input is not { } input)
+        if (args.Input is not null && args.Choices is not null) return (null, "input and choices are exclusive");
+        if (args.Input is null)
         {
             if (args.Value is not null) return (null, "value requires input");
             if (args.Placeholder is not null) return (null, "placeholder requires input");
-            return (null, null);
         }
+        if (args.Choices is null)
+        {
+            if (args.Checked is not null) return (null, "checked requires choices");
+            if (args.Multiple is not null) return (null, "multiple requires choices");
+        }
+        if (args.Choices is { } choices) return ParseAskChoices(choices, args.Checked ?? [], args.Multiple ?? false);
+        if (args.Input is not { } input) return (null, null);
         if (ControlAskInputModes.FromWire(input) is not { } mode)
             return (null, "unknown input");
         var value = args.Value ?? "";
@@ -290,6 +297,33 @@ public sealed partial class ControlDispatcher
         if (CommandRestore.HasControlCharacter(args.Placeholder ?? "") || AskInputForm.HasForbiddenControls(value, mode))
             return (null, "ask text must not contain control characters");
         return (new AskForm.Input(new AskInputForm(mode, value, args.Placeholder)), null);
+    }
+
+    private static (AskForm? Form, string? Error) ParseAskChoices(ControlAskChoice[] choices, string[] checkedIds, bool multiple)
+    {
+        if (choices.Length is < 1 or > ControlAskChoice.MaxChoices)
+            return (null, $"ask choices must be 1 to {ControlAskChoice.MaxChoices}");
+        // System.Text.Json binds an explicit null to a required string; Swift fails the decode
+        if (choices.Any(choice => choice is null || choice.Id is null || choice.Label is null))
+            return (null, "invalid request: ask choice requires id and label");
+        if (choices.Any(choice => choice.Label.Length == 0))
+            return (null, "ask choice label must not be empty");
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (!choices.All(choice => ids.Add(choice.Id.Normalize(NormalizationForm.FormC))))
+            return (null, "ask choice ids must be unique");
+        if (choices.Any(choice => CommandRestore.HasControlCharacter(choice.Label)
+                || CommandRestore.HasControlCharacter((choice.Subtitle ?? "").Replace("\n", ""))))
+            return (null, "ask text must not contain control characters");
+        if (checkedIds.Any(id => id is null))
+            return (null, "invalid request: ask checked id must be a string");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        if (!checkedIds.All(id => seen.Add(id.Normalize(NormalizationForm.FormC))))
+            return (null, "ask checked ids must be unique");
+        if (checkedIds.FirstOrDefault(id => !ids.Contains(id.Normalize(NormalizationForm.FormC))) is { } unknown)
+            return (null, $"unknown checked choice: {unknown}");
+        if (!multiple && checkedIds.Length > 1)
+            return (null, "radio choices accept one checked id");
+        return (new AskForm.Choices(new AskChoiceForm(choices, multiple, checkedIds)), null);
     }
 
     private static string? HotkeyRejection(IEnumerable<ControlAskButton> buttons)

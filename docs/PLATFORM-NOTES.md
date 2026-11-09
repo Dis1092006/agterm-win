@@ -726,6 +726,11 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - A paste with a line break into a line field is refused whole, as upstream does. A browser input and a WinUI TextBox would cut the text at the break instead.
   - In the field, a Ctrl edit chord (copy, paste, cut, undo, redo, select all, Insert, Backspace, Delete, arrows, Home, End) stays with the field even when the keymap binds it. Any other chord still goes where it goes over a question without a field.
   - The `gui` field is a WinUI TextBox, which keeps a line break as `\r`. The draft and the answer get `\n`.
+- `ask.open` choice list: `choices`, `multiple` and `checked` (upstream `96b0a6c6`). A question shows a radio list, or a checkbox list with `multiple`, and the answer carries the checked ids as `selected`.
+  - A choice decoded with a null `id` or `label` is refused with `invalid request: ask choice requires id and label`. A `checked` entry that is not a string is refused with `invalid request: ask checked id must be a string`. Upstream fails the Swift decode with its own message.
+  - The `gui` markers are Segoe Fluent glyphs (Checkbox, CheckboxComposite, RadioBtnOff, RadioBtnOn) in place of upstream's SF Symbols. The cursor line takes the Windows accent color.
+  - The cursor and the checked items live in the store draft with the field text, so a terminal question keeps them across a page reload.
+  - Choice ids are compared after NFC normalization, as button ids are.
 - `session.hud` (`session.hud.open`, `session.hud.update`, `session.hud.close`, session `hud`): a passive message panel that a script posts over a session through `agtermctl session hud` (upstream `d0bec154`, `1923906e`, `224321c5`, `094dc986`, `9247b96f`, `8e710a6e`, `3ac149e6`).
   - The panel is an HTML layer in the xterm page, drawn from rows the host wraps and sizes. Upstream runs a helper script in a terminal surface and passes it a body file. The port has neither, so `hud helper is not bundled in this build` and `could not write the hud message` never occur.
   - `sizePercent` and `heightPercent` in `tree` come from a cell the page measures in CSS pixels, in the terminal's font. For the same text they differ from the numbers macOS reports; the clamp rules are the same.

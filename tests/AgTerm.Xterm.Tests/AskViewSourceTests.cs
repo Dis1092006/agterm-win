@@ -202,11 +202,15 @@ public sealed class AskViewSourceTests
             @"page\.AskFocusChanged \+= OnPageAskFocusChanged;\s*page\.AskDraftReceived \+= OnPageAskDraftReceived;"),
             source);
         Assert.Matches(new Regex(
-            @"if \(!_terminalAsks\.UpdateDraft\(askId, text\) \|\| _terminalAsks\.CurrentSessionId is not \{ \} sessionId\)\s*return;"),
+            @"if \(_terminalAsks\.UpdateDraft\(askId, text\) && _terminalAsks\.DraftSnapshot\(\) is \{ \} draft\)\s*SaveTerminalAskDraft\(askId, draft\);"),
+            source);
+        // a list change saves the navigator's snapshot the same way
+        Assert.Matches(new Regex(
+            @"case TerminalAskResolution\.Drafted drafted:\s*SaveTerminalAskDraft\(askId, drafted\.Draft\);\s*await ApplyTerminalAskAsync\(drafted\.View\);\s*break;"),
             source);
         // one writer at a time: separate MutateAsync calls are not ordered
         Assert.Matches(new Regex(
-            @"while \(_pendingAskDraft is \{ \} draft && _host is \{ \} host\)\s*\{\s*_pendingAskDraft = null;\s*await host\.StoreCoordinator\.MutateAsync\(store =>\s*store\.UpdateAskDraft\(draft\.SessionId, draft\.AskId, saved => saved\.Text = draft\.Text\)\);\s*\}"),
+            @"while \(_pendingAskDraft is \{ \} draft && _host is \{ \} host\)\s*\{\s*_pendingAskDraft = null;\s*await host\.StoreCoordinator\.MutateAsync\(store =>\s*store\.UpdateAskDraft\(draft\.SessionId, draft\.AskId, saved => saved\.CopyFrom\(draft\.Draft\)\)\);\s*\}"),
             source);
     }
 
@@ -217,7 +221,47 @@ public sealed class AskViewSourceTests
         Assert.Contains("host.Host.Actions.Pick.AnswerAsk(askId, index);", source, StringComparison.Ordinal);
         Assert.DoesNotContain("ControlAskResult.Answered(", source, StringComparison.Ordinal);
         Assert.Contains("AskOverlay.Open(pending, host.Host.Actions.Pick.AskDraft, _rendererSettings.FontSize, takeFocus: _windowIsActive);", source, StringComparison.Ordinal);
-        Assert.Contains("AskOverlay.DraftChanged += (askId, text) => _host?.Host.Actions.Pick.UpdateAskDraft(askId, draft => draft.Text = text);", source, StringComparison.Ordinal);
+        Assert.Contains("AskOverlay.DraftChanged += (askId, draft) => _host?.Host.Actions.Pick.UpdateAskDraft(askId, saved => saved.CopyFrom(draft));", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_dialog_draws_a_choice_list_between_the_field_and_the_buttons()
+    {
+        var xaml = Source("src", "AgTerm.App", "AskView.xaml");
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Matches(new Regex(
+            @"<TextBox x:Name=""InputBox""[^>]*/>\s*<ScrollViewer x:Name=""ChoiceScroll""[^>]*>\s*<StackPanel x:Name=""ChoiceHost""[^>]*/>\s*</ScrollViewer>\s*<Grid x:Name=""ButtonHost"" />"),
+            xaml);
+        Assert.Contains("AutomationProperties.AutomationId=\"ask-choices\"", xaml, StringComparison.Ordinal);
+        // Segoe Fluent glyphs for upstream's checkbox and radio symbols
+        foreach (var glyph in new[] { "\\uE739", "\\uE73A", "\\uECCA", "\\uECCB" })
+            Assert.Contains(glyph, code, StringComparison.Ordinal);
+        // the cursor row gets upstream's accent fill at 0.25 with rounded corners
+        Assert.Contains("Opacity = 0.25", code, StringComparison.Ordinal);
+        Assert.Contains("CornerRadius = new CornerRadius(5)", code, StringComparison.Ordinal);
+        Assert.Contains("TextTrimming = TextTrimming.CharacterEllipsis", code, StringComparison.Ordinal);
+        Assert.Contains("Handle(new AskIntent.ToggleAt(", code, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_dialog_keeps_a_draft_copy_and_publishes_each_change()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Contains("_draft = draft?.Copy() ?? new AskDraft(ask.Form);", code, StringComparison.Ordinal);
+        Assert.Contains("public event Action<string, AskDraft>? DraftChanged;", code, StringComparison.Ordinal);
+        Assert.Contains("DraftChanged?.Invoke(ask.Id, _draft.Copy());", code, StringComparison.Ordinal);
+        // a list intent goes to the draft first; what it leaves goes to the buttons
+        Assert.Matches(new Regex(
+            @"if \(_draft\.Apply\(intent\)\)\s*\{\s*ApplyChoices\(\);\s*PublishDraft\(\);"),
+            code);
+    }
+
+    [Fact]
+    public void The_dialog_list_scrolls_in_its_own_region_and_follows_the_cursor()
+    {
+        var code = Source("src", "AgTerm.App", "AskView.xaml.cs");
+        Assert.Contains("ChoiceScroll.MaxHeight = ", code, StringComparison.Ordinal);
+        Assert.Contains("_choiceRows[_draft.Cursor].Row.StartBringIntoView(", code, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -257,7 +301,8 @@ public sealed class AskViewSourceTests
             code);
         Assert.Matches(new Regex(@"private async void OnInputPaste\(object sender, TextControlPasteEventArgs e\)\s*\{\s*e\.Handled = true;"), code);
         Assert.Contains("AskFieldText.PasteInsertion(clipboard, input.Field.Mode)", code, StringComparison.Ordinal);
-        Assert.Contains("DraftChanged?.Invoke(ask.Id, AskFieldText.FromTextBox(InputBox.Text, input.Field.Mode));", code, StringComparison.Ordinal);
+        Assert.Contains("DraftChanged?.Invoke(ask.Id, _draft.Copy());", code, StringComparison.Ordinal);
+        Assert.Contains("_draft.Text = AskFieldText.FromTextBox(InputBox.Text, input.Field.Mode);", code, StringComparison.Ordinal);
     }
 
     [Fact]
