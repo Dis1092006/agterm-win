@@ -56,9 +56,9 @@ public sealed class CustomCommandFailureReporterTests
     public void A_command_that_never_started_gives_the_reason_as_the_message()
     {
         var panel = CustomCommandFailureReporter.ForNotStarted(
-            Invocation(sessionId: Guid.NewGuid()), @"session directory C:\gone no longer exists");
+            Invocation(sessionId: Guid.NewGuid()), "The system cannot find the file specified.");
 
-        Assert.Equal(@"Build: session directory C:\gone no longer exists", panel!.Spec.Message);
+        Assert.Equal("Build: The system cannot find the file specified.", panel!.Spec.Message);
         Assert.Null(panel.Spec.Detail);
         Assert.Equal(10, panel.Spec.HideAfter);
     }

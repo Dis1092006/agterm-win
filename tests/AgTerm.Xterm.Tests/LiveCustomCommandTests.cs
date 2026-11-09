@@ -584,17 +584,38 @@ public sealed class CustomCommandInvocationTests
         Assert.Equal($"/d /c \"{invocation.ShellLine}\"", startInfo.Arguments);
     }
 
+    // upstream e6fadf08 (#740): a session whose directory is not a directory here (deleted, or a file)
+    // runs the command in the user profile, and AGT_SESSION_PWD keeps the reported path
     [Fact]
-    public async Task ProcessRunner_names_the_missing_session_directory_before_launch()
+    public async Task ProcessRunner_runs_in_the_user_profile_when_the_session_directory_is_not_there()
     {
-        var missing = Path.Combine(Path.GetTempPath(), "agterm-missing-" + Guid.NewGuid().ToString("N"));
-        var invocation = new CustomCommandInvocation(Guid.NewGuid(), "Mark", "echo ok", missing,
-            new Dictionary<string, string>());
-        var runner = new CustomCommandProcessRunner(which: _ => null,
-            env: key => key == "COMSPEC" ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : null);
+        var directory = Directory.CreateTempSubdirectory("agterm-gone-");
+        try
+        {
+            var file = Path.Combine(directory.FullName, "plain.txt");
+            File.WriteAllText(file, "");
+            var output = Path.Combine(directory.FullName, "out.txt");
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var runner = new CustomCommandProcessRunner(which: _ => null,
+                env: key => key == "COMSPEC" ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : null);
 
-        var error = await Assert.ThrowsAsync<CustomCommandNotStartedException>(() => runner.StartAsync(invocation));
-        Assert.Equal($"session directory {missing} no longer exists", error.Message);
+            foreach (var reported in new[] { Path.Combine(directory.FullName, "deleted"), file })
+            {
+                var invocation = new CustomCommandInvocation(Guid.NewGuid(), "Mark",
+                    $"cd>{output}&echo %AGT_SESSION_PWD%>>{output}", reported,
+                    new Dictionary<string, string> { ["AGT_SESSION_PWD"] = reported });
+
+                var handle = await runner.StartAsync(invocation);
+                await handle.Exited.WaitAsync(ChildBudget);
+
+                var lines = File.ReadAllLines(output).Select(line => line.Trim()).ToArray();
+                Assert.Equal([home, reported], lines);
+            }
+        }
+        finally
+        {
+            try { directory.Delete(recursive: true); } catch (IOException) { }
+        }
     }
 
     // upstream 68e17937: the runner counts a run right after the process starts, so every way of running
@@ -631,10 +652,10 @@ public sealed class CustomCommandInvocationTests
         {
             var usage = new CustomCommandUsageStore(directory.FullName);
             var runner = new CustomCommandProcessRunner(which: _ => null,
-                env: key => key == "COMSPEC" ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe" : null,
+                env: key => key == "COMSPEC" ? Path.Combine(directory.FullName, "no-shell.exe") : null,
                 usage: usage);
-            var invocation = new CustomCommandInvocation(Guid.NewGuid(), "Mark", "exit 0",
-                Path.Combine(directory.FullName, "gone"), new Dictionary<string, string>());
+            var invocation = new CustomCommandInvocation(Guid.NewGuid(), "Mark", "exit 0", directory.FullName,
+                new Dictionary<string, string>());
 
             await Assert.ThrowsAsync<CustomCommandNotStartedException>(() => runner.StartAsync(invocation));
 
@@ -649,9 +670,9 @@ public sealed class CustomCommandInvocationTests
     [Fact]
     public void Not_started_notice_names_the_command_and_the_reason()
     {
-        var notice = CustomCommandFailureNotice.NotStarted("Mark", @"session directory C:\gone no longer exists");
+        var notice = CustomCommandFailureNotice.NotStarted("Mark", "The system cannot find the file specified.");
         Assert.Equal("Command failed", notice.Title);
-        Assert.Equal(@"Mark (session directory C:\gone no longer exists)", notice.Message);
+        Assert.Equal("Mark (The system cannot find the file specified.)", notice.Message);
     }
 
     /// <summary>How long a spawned child is given. The shell line below ends in `ping -n 3`, which

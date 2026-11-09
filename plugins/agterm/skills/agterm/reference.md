@@ -1340,8 +1340,8 @@ The reply means the process started. Its exit status and output are not reported
 `--error-hud` still shows its failure panel in the window. Errors:
 `keymap.run requires a command name`, `no custom command named NAME`, `custom commands are not available`
 (the headless host cannot run them), `no such session: TARGET` and `ambiguous session prefix 'TARGET' → …` for a
-bad `--target`, and `NAME did not start: REASON`, for example `session directory <path> no longer exists` or
-`session is no longer available`. A start failure also shows the `Command failed` bar in the window.
+bad `--target`, and `NAME did not start: REASON`, for example `session is no longer available`, or the Windows error when
+the shell does not start. A session directory that is gone does not stop the command. A start failure also shows the `Command failed` bar in the window.
 A command cannot run from the session of an HTML page, because agterm-win has no HTML overlays.
 
 A second `command` line with a name that is already taken is skipped with the diagnostic
@@ -1406,7 +1406,7 @@ environment form for any of them:
 
 - `{AGT_SESSION_NAME}` / `$env:AGT_SESSION_NAME` — the session's display name (its custom name, else the
   focused pane's terminal title, settable via OSC, else the folder name of its working directory).
-- `{AGT_SESSION_PWD}` / `$env:AGT_SESSION_PWD` — the focused pane's working directory.
+- `{AGT_SESSION_PWD}` / `$env:AGT_SESSION_PWD` — the focused pane's working directory. The command itself starts in that directory only when it is a directory here, else in the user profile directory, so a deleted directory does not stop it; the variable keeps the reported path either way.
 - `{AGT_SELECTION}` / `$env:AGT_SELECTION` — the current selection.
 - `{AGT_PANE}` / `$env:AGT_PANE` — the pane the command fired from: `left` (main), `right` (split), or
   `scratch` (the session's scratch terminal). Feed it back as `session type --pane $env:AGT_PANE` to type

@@ -152,7 +152,7 @@ Nothing is removed or renamed.
 These items change what agterm-win already does. They do not depend on new features. Each adopted change is recorded in PLATFORM-NOTES "Upstream behavior adopted beyond the pin" with its upstream sha.
 
 - A mouse selection no longer replaces the system clipboard; `session.selectall` writes the selection buffer #792. Port: done in agterm-win #24 (upstream `bca6ad8b`). The Windows-only `copyOnSelect` plays the role of Ghostty's `copy-on-select`; see PLATFORM-NOTES "Selection buffer and middle-click paste".
-- A custom command in a session whose directory was removed now runs in HOME instead of being refused #740 (`e6fadf08`). `AGT_SESSION_PWD` still carries the path the session reported. This reverses upstream `312987af`, which the port adopted in `1668561`: the port refuses with `session directory <path> no longer exists`. Port: not done. See Open questions.
+- A custom command in a session whose directory was removed now runs in HOME instead of being refused #740 (`e6fadf08`). `AGT_SESSION_PWD` still carries the path the session reported. This reverses upstream `312987af`, which the port adopted in `1668561`. Port: done. The command starts in the user profile directory (PLATFORM-NOTES).
 - **Behavior change:** `session scratch on --target A` shows the scratch on A without switching to A; `--follow` selects A #730 (`da375b93`). Port: done (B1).
 - `session scratch on --command CMD` against a scratch already shown answered ok and never ran CMD #730. Port: done since `5dd02cf`: the port already closed the shown scratch and started it again with CMD, which is what upstream now does.
 - A second instance on a state directory in use exits with status 1 before it reads or writes anything #749. Port: done in a Windows form in port PR 53 (`fa75507`): a second launch hands its activation to the running app and exits. See PLATFORM-NOTES "One instance per state directory".
@@ -167,7 +167,6 @@ These items change what agterm-win already does. They do not depend on new featu
 
 ## Open questions
 
-- #740 reverses the refusal the port adopted from `312987af` (section 12). Either the port follows upstream and runs the command in the user profile directory, or it keeps the refusal and records the difference in PLATFORM-NOTES.
 - `session.overlay.page.serve` and `session.companion.page.attach` are used only between two agterm apps (section 9), like `session.overlay.job.run` in the first catalog. Decide whether such commands go into parity with the remote feature.
 
 ## How to recompute
