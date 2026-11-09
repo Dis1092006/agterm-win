@@ -40,6 +40,69 @@ public sealed class TitleBarTextTests
         Assert.Equal("dev — agterm-win", TitleBarText.OsTitle("", "dev"));
     }
 
+    // upstream 78000ae2 (#598) TitlebarComposition: the workspace of the active session leads the
+    // identity once workspaceName is shown, and every absent part collapses
+    [Theory]
+    [InlineData("work", "alpha", "main", "work — alpha — main")]
+    [InlineData("work", "alpha", null, "work — alpha")]
+    [InlineData("work", null, "main", "work — main")]
+    [InlineData("work", null, null, "work")]
+    [InlineData(null, "alpha", "main", "alpha — main")]
+    [InlineData(null, "alpha", null, "alpha")]
+    [InlineData(null, null, "main", "main")]
+    [InlineData(null, null, null, "")]
+    public void A_shown_workspace_name_leads_the_identity(string? workspace, string? session, string? window, string title)
+    {
+        foreach (var mode in new[] { "normal", "compact" })
+            Assert.Equal(title, TitleBarText.Visible(workspace, session, window, null,
+                new AppSettings { ToolbarMode = mode, ShownInterfaceElements = ["workspaceName"] }));
+    }
+
+    [Fact]
+    public void The_workspace_name_is_off_by_default()
+    {
+        Assert.Equal("alpha — main", TitleBarText.Visible("work", "alpha", "main", null, new AppSettings()));
+    }
+
+    [Fact]
+    public void The_workspace_stays_ahead_of_the_compact_context()
+    {
+        var settings = new AppSettings { ToolbarMode = "compact", ShownInterfaceElements = ["workspaceName"] };
+
+        Assert.Equal("work — alpha — main · PR #517", TitleBarText.Visible("work", "alpha", "main", "PR #517", settings));
+    }
+
+    [Fact]
+    public void The_workspace_name_is_capped_at_24_characters_with_an_ellipsis()
+    {
+        var settings = new AppSettings { ShownInterfaceElements = ["workspaceName"] };
+        var exact = new string('w', 24);
+
+        Assert.Equal(exact + " — alpha", TitleBarText.Visible(exact, "alpha", null, null, settings));
+        Assert.Equal(exact + "… — alpha", TitleBarText.Visible(exact + "x", "alpha", null, null, settings));
+    }
+
+    [Fact]
+    public void The_workspace_cap_counts_characters_and_keeps_a_composed_one_whole()
+    {
+        var settings = new AppSettings { ShownInterfaceElements = ["workspaceName"] };
+        var cyrillic = string.Concat(Enumerable.Repeat("ж", 24));
+        var family = string.Concat(Enumerable.Repeat("👨‍👩‍👧‍👦", 24));
+
+        Assert.Equal(cyrillic + "… — alpha", TitleBarText.Visible(cyrillic + "ж", "alpha", null, null, settings));
+        Assert.Equal(family + " — alpha", TitleBarText.Visible(family, "alpha", null, null, settings));
+        Assert.Equal(family + "… — alpha", TitleBarText.Visible(family + "x", "alpha", null, null, settings));
+    }
+
+    [Fact]
+    public void A_blank_workspace_name_collapses_and_a_padded_one_is_trimmed()
+    {
+        var settings = new AppSettings { ShownInterfaceElements = ["workspaceName"] };
+
+        Assert.Equal("alpha — main", TitleBarText.Visible("   ", "alpha", "main", null, settings));
+        Assert.Equal("work — alpha", TitleBarText.Visible("  work  ", "alpha", null, null, settings));
+    }
+
     [Fact]
     public void Os_title_always_carries_both_parts_and_the_product_name()
     {

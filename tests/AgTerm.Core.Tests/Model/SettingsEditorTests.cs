@@ -16,7 +16,8 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        var deferred = new[] { "compactToolbar" };
+        // shownInterfaceElements has no row of its own: the hiddenInterfaceElements control edits both lists
+        var deferred = new[] { "compactToolbar", "shownInterfaceElements" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
                 .OfType<System.Text.Json.Serialization.JsonPropertyNameAttribute>().SingleOrDefault()?.Name)
@@ -407,6 +408,29 @@ public sealed class SettingsEditorTests : IDisposable
         Assert.True(editor.Draft.AutoFollowStayOnActive);
         Assert.Equal("default", editor.Draft.NotificationSoundName);
         Assert.Equal(19, editor.Draft.FontSize);
+    }
+
+    // upstream SettingsModel.setInterfaceElementVisible: an element hidden by default is toggled in the
+    // shown list, written sorted and dropped when empty; the hidden list is left alone
+    [Fact]
+    public async Task An_opt_in_element_is_toggled_in_the_shown_list()
+    {
+        Store.Save(new AppSettings { HiddenInterfaceElements = ["scratch"], ShownInterfaceElements = ["zfuture"] });
+        var editor = new SettingsEditor(new SettingsCoordinator(Store));
+
+        await editor.SetInterfaceVisibleAsync(InterfaceElement.WorkspaceName, true);
+        await editor.SetInterfaceVisibleAsync(InterfaceElement.OverlayToggle, true);
+        Assert.Equal(["overlayToggle", "workspaceName", "zfuture"], editor.Draft.ShownInterfaceElements);
+        Assert.Equal(["scratch"], editor.Draft.HiddenInterfaceElements);
+
+        await editor.SetInterfaceVisibleAsync(InterfaceElement.OverlayToggle, false);
+        Assert.Equal(["workspaceName", "zfuture"], editor.Draft.ShownInterfaceElements);
+
+        Store.Save(new AppSettings { ShownInterfaceElements = ["workspaceName"] });
+        editor = new SettingsEditor(new SettingsCoordinator(Store));
+        await editor.SetInterfaceVisibleAsync(InterfaceElement.WorkspaceName, false);
+        Assert.Null(editor.Draft.ShownInterfaceElements);
+        Assert.True(editor.Draft.IsInterfaceElementHidden(InterfaceElement.WorkspaceName));
     }
 
     [Fact]

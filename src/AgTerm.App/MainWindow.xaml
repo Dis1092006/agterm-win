@@ -221,6 +221,16 @@
                                 <Path x:Name="SplitOutlineHorizontal" Style="{StaticResource TitleBarGlyphStyle}" Visibility="Collapsed" Data="M0.5,2.5 H15.5 V12.5 H0.5 Z M0.5,7.5 H15.5" />
                             </Grid>
                         </Button>
+                        <Button x:Name="OverlayButton"
+                                Style="{StaticResource TitleBarActionButtonStyle}"
+                                Click="OnOverlayClick"
+                                AutomationProperties.Name="Overlays"
+                                AutomationProperties.AutomationId="overlay-toggle">
+                            <Grid>
+                                <Path Style="{StaticResource TitleBarGlyphStyle}" Data="M4.5,5.5 V1.5 H15.5 V9.5 H11.5 M0.5,5.5 H11.5 V13.5 H0.5 Z" />
+                                <Path x:Name="OverlaySlash" Style="{StaticResource TitleBarGlyphStyle}" Visibility="Collapsed" Data="M1,0.5 L15,14" />
+                            </Grid>
+                        </Button>
                         <Rectangle x:Name="DividerAfterB" Style="{StaticResource TitleBarDividerStyle}" />
                         <Button x:Name="DashboardButton"
                                 Style="{StaticResource TitleBarActionButtonStyle}"

@@ -114,6 +114,15 @@ public sealed class SettingsUpdateTests : IDisposable
     }
 
     [Fact]
+    public void The_snapshot_interface_lists_cannot_be_cast_back_and_edited()
+    {
+        Store.Save(new AppSettings { HiddenInterfaceElements = ["scratch"], ShownInterfaceElements = ["workspaceName"] });
+        var settings = Store.ReadStrict().Settings;
+        Assert.True(settings.HiddenInterfaceElements is ICollection<string> { IsReadOnly: true });
+        Assert.True(settings.ShownInterfaceElements is ICollection<string> { IsReadOnly: true });
+    }
+
+    [Fact]
     public void The_snapshot_cannot_be_used_to_edit_another_settings_file()
     {
         var other = Path.Combine(directory, "other");

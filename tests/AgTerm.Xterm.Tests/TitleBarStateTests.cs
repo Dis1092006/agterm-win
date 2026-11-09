@@ -166,6 +166,39 @@ public sealed class TitleBarStateTests
         Assert.True(state.ScratchActive);
     }
 
+    // upstream 78000ae2: the title's workspace is the active session's, never the current workspace,
+    // which an empty workspace can hold while the old session stays selected
+    [Fact]
+    public void Workspace_name_is_the_active_sessions_workspace()
+    {
+        Assert.Null(TitleBarState.Project(_store).WorkspaceName);
+
+        Add(@"C:\a");
+        var empty = new Workspace("empty");
+        _store.Workspaces.Add(empty);
+        _store.SelectWorkspace(empty.Id);
+        Assert.Equal(empty.Id, _store.CurrentWorkspaceId);
+
+        Assert.Equal("main", TitleBarState.Project(_store).WorkspaceName);
+    }
+
+    // upstream 7f450d17 (#790) overlayToggleButton: disabled with nothing to hide, crossed out while
+    // an overlay is hidden
+    [Fact]
+    public void Overlay_follows_the_active_sessions_overlay()
+    {
+        Assert.Equal(TitleBarOverlay.None, TitleBarState.Project(_store).Overlay);
+
+        var session = Add(@"C:\a");
+        Assert.Equal(TitleBarOverlay.None, TitleBarState.Project(_store).Overlay);
+
+        session.OverlayActive = true;
+        Assert.Equal(TitleBarOverlay.Shown, TitleBarState.Project(_store).Overlay);
+
+        session.OverlayHidden = true;
+        Assert.Equal(TitleBarOverlay.Hidden, TitleBarState.Project(_store).Overlay);
+    }
+
     [Fact]
     public void Split_reports_which_panes_are_up()
     {
