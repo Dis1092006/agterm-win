@@ -258,12 +258,15 @@ public sealed class CustomCommandProcessRunner
         return handle;
     }
 
+    /// <summary>A session directory that is not a directory here (deleted, or a file) starts the command in
+    /// the user profile; AGT_SESSION_PWD keeps the reported path (upstream e6fadf08, #740).</summary>
     private CustomCommandProcessHandle Spawn(CustomCommandInvocation invocation)
     {
-        // Process.Start would refuse it too, with "The directory name is invalid" and no path.
-        if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory) && !Path.Exists(invocation.WorkingDirectory))
-            throw new CustomCommandNotStartedException(
-                $"session directory {TerminalText.Sanitized(invocation.WorkingDirectory)} no longer exists");
+        if (!string.IsNullOrWhiteSpace(invocation.WorkingDirectory) && !Directory.Exists(invocation.WorkingDirectory))
+            invocation = invocation with
+            {
+                WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            };
         var startInfo = CreateStartInfo(invocation, _which, _env);
         try
         {
