@@ -42,6 +42,7 @@ public sealed partial class ControlDispatcher
                 or Command.SessionSearch or Command.SessionOverlayOpen or Command.SessionOverlayClose
                 or Command.SessionOverlayResize or Command.SessionOverlayResult
                 or Command.SessionOverlayHide or Command.SessionOverlayShow or Command.SessionOverlayToggle
+                or Command.SessionOverlayReload or Command.SessionOverlayNavigate
                 or Command.SessionBackground or Command.SessionText:
                 return await DispatchSessionSurfaceCommand(request);
             case Command.WorkspaceNew or Command.WorkspaceSelect or Command.WorkspaceRename
@@ -898,8 +899,24 @@ public sealed partial class ControlDispatcher
                     request.Args?.Text, request.Args?.To);
             case Command.SessionOverlayOpen:
             {
-                if (request.Args?.Command is not { Length: > 0 } command)
-                    return Err("session.overlay.open requires a command");
+                var html = request.Args?.Html;
+                var command = request.Args?.Command ?? "";
+                if (html is null)
+                {
+                    if (request.Args?.Navigation == true) return Err(OverlayHtmlError.NavigationWithoutPage);
+                    if (request.Args?.Javascript == true) return Err(OverlayHtmlError.JavascriptWithoutPage);
+                    if (command.Length == 0) return Err("session.overlay.open requires a command");
+                }
+                HtmlSource? page = null;
+                if (html is not null)
+                {
+                    if (command.Length > 0) return Err(OverlayHtmlError.CommandAndHtml);
+                    if (request.Args?.Wait == true) return Err(OverlayHtmlError.WaitWithHtml);
+                    var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                    if (HtmlOverlay.GrantError(html, request.Args?.Cwd, home) is { } grantError)
+                        return Err("session.overlay.open: " + grantError);
+                    page = new HtmlSource.File(html, request.Args?.Cwd);
+                }
                 if (request.Args?.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
                     return Err($"invalid color: {color} (#rrggbb)");
                 if (request.Args?.SizePercent is < 1 or > 100)
@@ -908,13 +925,33 @@ public sealed partial class ControlDispatcher
                 if (openPoints.Width is <= 0 || openPoints.Height is <= 0) return Err(OverlayPointError.NotPositive);
                 if (!openPoints.IsEmpty && request.Args?.SizePercent is null) return Err(OverlayPointError.NeedsPercent);
                 return _actions.OpenSessionOverlay(request.Target, request.Args?.Window,
-                    new ControlSessionOverlayOpenOptions(command,
-                        Cwd: request.Args?.Cwd,
+                    new ControlSessionOverlayOpenOptions(page is null ? command : "",
+                        Cwd: page is null ? request.Args?.Cwd : null,
                         Wait: request.Args?.Wait ?? false,
                         SizePercent: request.Args?.SizePercent,
                         BackgroundColor: request.Args?.Color,
                         Follow: request.Args?.Follow ?? false,
-                        Points: openPoints));
+                        Points: openPoints,
+                        Page: page,
+                        Navigation: page is not null && request.Args?.Navigation == true,
+                        Javascript: page is not null && request.Args?.Javascript == true));
+            }
+            case Command.SessionOverlayReload:
+            {
+                OverlayPane? pane = null;
+                if (request.Args?.Pane is { } rawPane && (pane = OverlayPanes.FromControlName(rawPane)) is null)
+                    return Err(PaneOverlayError.InvalidPane);
+                return _actions.ReloadSessionOverlay(request.Target, request.Args?.Window, pane,
+                    request.Args?.Current ?? false);
+            }
+            case Command.SessionOverlayNavigate:
+            {
+                if (HtmlNavigations.Parse(request.Args?.To) is not { } navigation)
+                    return Err(OverlayHtmlError.Navigation);
+                OverlayPane? pane = null;
+                if (request.Args?.Pane is { } rawPane && (pane = OverlayPanes.FromControlName(rawPane)) is null)
+                    return Err(PaneOverlayError.InvalidPane);
+                return _actions.NavigateSessionOverlay(request.Target, request.Args?.Window, pane, navigation);
             }
             case Command.SessionOverlayClose:
                 return _actions.CloseSessionOverlay(request.Target, request.Args?.Window);

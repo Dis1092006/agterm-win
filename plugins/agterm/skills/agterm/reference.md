@@ -146,7 +146,8 @@ floating panel's percent of the pane, 1–100; omitted = a full-pane overlay or 
 to restore the exact size of a percent-only panel), `overlayWidth`/`overlayHeight` (a floating overlay's
 content size in points as last laid out, after `--width`/`--height` and their cap; omitted for a full
 overlay, a HUD, or a session not laid out yet), `hiddenOverlays` (the hidden overlay slots, `["session"]` on agterm-win;
-omitted when none is hidden; the read side of `session overlay hide`), `hud` (the open HUD message
+omitted when none is hidden; the read side of `session overlay hide`), `htmlOverlays` (the page in the
+overlay slot, see `session overlay open --html`; omitted when none), `hud` (the open HUD message
 panel, see `session hud`; omitted when none),
 `ask` (`{id, pane}` of a pending terminal-style question on this session, see `ask`; omitted when none;
 a gui-style question is reported by the top-level `askPending` instead), `scratch` (scratch shown),
@@ -707,7 +708,36 @@ All are read-only projections of GUI state.
   user's chord is `toggle_overlay` (Ctrl+Shift+J). Read it back as `hiddenOverlays` on `tree`.
 - `session overlay result [--target] [--window W]` — returns `result.exitCode` once the overlay has
   closed. Wire: `session.overlay.result`. Errors `overlay still running` while up, `no overlay result`
-  if none ran.
+  if none ran, `no overlay result: the slot holds an html page` over a page.
+- `session overlay open --html FILE [--cwd DIR] [--navigation] [--js] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--target] [--window W]`
+  — show a local HTML file in the overlay slot instead of running a program. Wire: `session.overlay.open`
+  with `html` (and `navigation`, `javascript`). **The agterm-win app does not draw pages yet: it answers
+  `html overlays are not supported yet`.** The protocol, the CLI and the headless host take pages already.
+  agtermctl makes `FILE` and `--cwd` absolute against the caller's directory. `--cwd DIR` grants the page
+  read access inside `DIR`; it must contain `FILE` and must not be a drive root or the user profile.
+  Without `--cwd` the page has no file access. `--js` lets the page run its own JavaScript (off by
+  default); `--navigation` adds the back, forward, reload, open in browser and Show in Explorer buttons.
+  A page takes no `COMMAND`, `--wait` or `--block`. Returns the session id and `result.pageID`, the page's
+  own id. A page holds the slot like a program: `overlay open` over it fails with `overlay already open`,
+  `overlay close` releases it, `overlay hide` hides it. It shows on `tree` as `htmlOverlays` (`file`,
+  `cwd`, `state` = `loading`|`loaded`|`failed`, `error`, `title`, `page`, `canGoBack`/`canGoForward`,
+  `navigation`, `javascript`, `hidden`, `id`). Errors: `session.overlay.open takes a command or --html, not both`,
+  `session.overlay.open: --wait cannot be combined with --html`,
+  `session.overlay.open: --navigation requires --html or --url`,
+  `session.overlay.open: --js requires --html or --url`, and `session.overlay.open: ` followed by
+  `html file must be an absolute path`, `cwd must be an absolute path`,
+  `cwd must not be / or the home directory`, `cwd must be a directory containing the html file` or
+  `html file is outside cwd`.
+- `session overlay reload [--current] [--pane left|right] [--target] [--window W]` — reload the page in the
+  overlay slot: the file it opened with, or with `--current` the page shown now. Wire:
+  `session.overlay.reload` (`current`). Returns the session id. Errors `no overlay` when the slot is empty
+  (and always with `--pane`, since agterm-win has no pane overlays), `the overlay is not an html page`
+  over a program or a HUD.
+- `session overlay navigate back|forward|browser|finder [--pane left|right] [--target] [--window W]` — step
+  the page's history, open it in the default browser, or reveal its current file in Explorer (`finder`,
+  file pages only). Wire: `session.overlay.navigate` (`to`). Errors as `reload`, plus
+  `session.overlay.navigate requires back, forward, browser or finder` and `html overlay not realized`
+  while no web view shows the page (always, until the app draws pages).
 
 - `session hud [open] <message>|--file FILE [--markdown] [--font-size PT] [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID] [--target] [--window W]`
   — post a PASSIVE message panel over the session and return its id. Wire: `session.hud.open`.

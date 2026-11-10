@@ -1980,11 +1980,25 @@ public sealed partial class HeadlessControlActions : IControlActions
     public ControlResponse OpenSessionOverlay(string? target, string? window,
                                               ControlSessionOverlayOpenOptions options)
     {
+        if (options.Page is not null && !HtmlOverlaysSupported)
+            return Err(OverlayHtmlError.Unsupported);
         return ResolveSession(target, window, (store, id) =>
         {
             // a hidden overlay still holds the slot; name it so the caller knows to show or close it
             if (store.SessionWithId(id) is { OverlayHidden: true })
                 return Err(OverlayVisibilityError.Hidden);
+            if (options.Page is { } source)
+            {
+                var page = new HtmlOverlay(source) { Navigation = options.Navigation, Javascript = options.Javascript };
+                if (store.OpenHtmlOverlay(id, page, options.SizePercent, options.Points, options.BackgroundColor)
+                    is { } failure)
+                    return Err(failure.Message());
+                if (options.Follow) store.SelectSession(id);
+                return new ControlResponse
+                {
+                    Ok = true, Result = new ControlResult { Id = Uuid(id), PageId = Uuid(page.Id) },
+                };
+            }
             if (!store.OpenOverlay(id, options.Command, options.Cwd, options.Wait,
                     options.SizePercent, options.BackgroundColor, options.Points))
                 return Err("overlay already open");
@@ -1993,6 +2007,22 @@ public sealed partial class HeadlessControlActions : IControlActions
             return OkId(id);
         });
     }
+
+    /// <summary>Whether session.overlay.open takes --html. The live app clears it until it renders pages.</summary>
+    public bool HtmlOverlaysSupported { get; set; } = true;
+
+    public ControlResponse ReloadSessionOverlay(string? target, string? window, OverlayPane? pane, bool current) =>
+        ResolveSession(target, window, (store, id) =>
+            store.ReloadHtmlOverlay(id, pane, current ? HtmlReloadTarget.Current : HtmlReloadTarget.Original)
+                is { } failure
+                ? Err(failure.Message())
+                : OkId(id));
+
+    // there is no web view to step or to open in a browser
+    public ControlResponse NavigateSessionOverlay(string? target, string? window, OverlayPane? pane,
+                                                  HtmlNavigation navigation) =>
+        ResolveSession(target, window, (store, id) =>
+            Err(store.HtmlOverlayCommandFailure(id, pane)?.Message() ?? OverlayHtmlError.NotRealized));
 
     public ControlResponse CloseSessionOverlay(string? target, string? window)
     {
@@ -2036,6 +2066,9 @@ public sealed partial class HeadlessControlActions : IControlActions
         {
             if (store.SessionWithId(id) is not { } session)
                 return Err("no such session");
+            // a page reports no status, and reading it would wait forever
+            if (session.HtmlCovers(null))
+                return Err(OverlayHtmlError.NoResult);
             if (session.OverlayActive)
                 return Err(OverlayResultError.StillRunning);
             // the slot holds a message, not a program that could report a status

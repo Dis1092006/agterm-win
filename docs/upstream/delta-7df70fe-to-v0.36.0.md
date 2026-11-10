@@ -64,15 +64,15 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 ## 3. HTML overlays (WebView)
 
-- `session overlay open --html FILE | --url URL` in the session, floating and pane slots #659. Port: not done.
-- Flags: `--js`, `--navigation`, `--cwd DIR` (file access), `--chromeless` #678, `--persistent` (shared cookies, localStorage and IndexedDB) #689, `--browse` (navigation to other sites) #708, `--block` #672. Port: not done.
-- `session.overlay.reload`, `session.overlay.navigate back|forward|browser|finder` #663, `session.overlay.submit`, `session overlay result --page ID`. Port: not done.
+- `session overlay open --html FILE | --url URL` in the session, floating and pane slots #659. Port: `--html` in the session slot, full and floating, in the core, the protocol, the CLI and the headless host; the live app refuses it until it draws pages. `--url` and pane slots: not done.
+- Flags: `--js`, `--navigation`, `--cwd DIR` (file access), `--chromeless` #678, `--persistent` (shared cookies, localStorage and IndexedDB) #689, `--browse` (navigation to other sites) #708, `--block` #672. Port: `--js`, `--navigation` and `--cwd` are taken with `--html`; the rest is not done.
+- `session.overlay.reload`, `session.overlay.navigate back|forward|browser|finder` #663, `session.overlay.submit`, `session overlay result --page ID`. Port: reload and navigate are taken, and navigate answers `html overlay not realized` until the live app draws pages; submit and `--page` are not done.
 - Bridge to the control API: `data-agterm="<cmd>"` without JS, `agterm.request(cmd, {target, args})` with `--js`. Commands without a target act on their own session, window or pane. Streaming commands are refused #672. Port: not done.
 - `window.close()` on a `--js` page closes the overlay with the result `dismissed` #704. Port: not done.
 - Page zoom with Cmd+/Cmd-/Cmd+0 and `font inc|dec|reset`, one value for the app: the setting `htmlOverlayZoom` #670. Port: not done.
 - `browser.clear`, `browser.links [browser|overlay]`, the setting `linkOpenMode`: a link from the terminal opens in the browser or in an overlay #708. Port: not done.
 - The page gets the terminal theme through CSS variables. Port: not done.
-- In `tree`: `htmlOverlays[]` with `id`, `page`, `zoom`, `persistent`, `browse`. In the reply: `pageID`, `pageOutcome`. Port: not done.
+- In `tree`: `htmlOverlays[]` with `id`, `page`, `zoom`, `persistent`, `browse`. In the reply: `pageID`, `pageOutcome`. Port: `htmlOverlays[]` without `zoom` and `pageID` are taken; `pageOutcome` is not done.
 
 **Windows:** WebView2 is already in `AgTerm.Xterm`.
 

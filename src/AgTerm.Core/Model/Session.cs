@@ -274,6 +274,28 @@ public sealed class Session
     /// The port has only the session-wide slot, so a pane scope never holds one.</summary>
     public bool AnyOverlayShown(OverlayPane? pane) => pane is null && OverlayVisible;
 
+    /// <summary>The page in the overlay slot instead of a program; null for a program, a HUD and an
+    /// empty slot. Never persisted.</summary>
+    public HtmlOverlay? HtmlOverlay { get; set; }
+
+    /// <summary>Whether a page occupies the overlay slot, hidden or not.</summary>
+    public bool HtmlOverlayActive => OverlayActive && HtmlOverlay is not null;
+
+    /// <summary>HtmlOverlayActive minus a hidden page.</summary>
+    public bool HtmlOverlayVisible => HtmlOverlayActive && !OverlayHidden;
+
+    /// <summary>Whether a program occupies the overlay slot: an overlay that is not a page.</summary>
+    public bool ProgramOverlayActive => OverlayActive && HtmlOverlay is null;
+
+    /// <summary>ProgramOverlayActive minus a hidden program: the overlay terminal on screen.</summary>
+    public bool ProgramOverlayVisible => ProgramOverlayActive && !OverlayHidden;
+
+    /// <summary>Whether a program or a page occupies the overlay slot.</summary>
+    public bool CoverOverlayActive => ProgramOverlayActive || HtmlOverlayActive;
+
+    /// <summary>Whether the slot pane scopes holds a page. The port has only the session-wide slot.</summary>
+    public bool HtmlCovers(OverlayPane? pane) => pane is null && HtmlOverlayActive;
+
     /// <summary>The tree's hiddenOverlays: the hidden slots by name.</summary>
     public IReadOnlyList<string> HiddenOverlayNames =>
         OverlayActive && OverlayHidden ? ["session"] : [];
@@ -470,12 +492,13 @@ public sealed class Session
     /// </summary>
     public ITerminalSurface? AddressableSurface => Surface ?? SplitSurface;
 
-    /// <summary>The surface currently on top and owning keyboard focus: a visible overlay, else the
-    /// scratch, else the active pane.</summary>
+    /// <summary>The surface currently on top and owning keyboard focus: none under a shown page, else a
+    /// visible overlay, else the scratch, else the active pane.</summary>
     public ITerminalSurface? TopmostSurface
     {
         get
         {
+            if (HtmlOverlayVisible) return null;
             if (OverlayVisible) return OverlaySurface;
             if (ScratchActive) return ScratchSurface;
             return ActiveSurface;

@@ -1826,7 +1826,10 @@ internal static class SessionCommands
     {
         internal sealed class Open : IRequestCommand
         {
-            public required string Command { get; init; }
+            public string? Command { get; init; }
+            public string? Html { get; init; }
+            public bool Navigation { get; init; }
+            public bool Javascript { get; init; }
             public string? Cwd { get; init; }
             public bool Wait { get; init; }
             public bool Block { get; init; }
@@ -1845,6 +1848,14 @@ internal static class SessionCommands
             {
                 if (Block && Wait)
                     throw new CliValidationException("--block cannot be combined with --wait");
+                if ((Command is null) == (Html is null))
+                    throw new CliValidationException("provide exactly one of COMMAND or --html");
+                if (Command is null && (Wait || Block))
+                    throw new CliValidationException("a page cannot be combined with --wait or --block");
+                if (Navigation && Command is not null)
+                    throw new CliValidationException("--navigation requires --html or --url");
+                if (Javascript && Command is not null)
+                    throw new CliValidationException("--js requires --html or --url");
                 if (BackgroundColor is { } backgroundColor && !WatermarkConfig.IsValidColorHex(backgroundColor))
                     throw new CliValidationException("background-color must be a #rrggbb hex value");
                 ValidateSizePercent(SizePercent);
@@ -1853,16 +1864,21 @@ internal static class SessionCommands
                     throw new CliValidationException("--width/--height need --size-percent");
             }
 
+            // the app never learns the caller's directory, so a page and its grant go absolute here
             public ControlRequest MakeRequest() => new()
             {
                 Cmd = WireCommand.SessionOverlayOpen,
                 Target = Target.Target,
                 Args = Client.WithWindow(new ControlArgs
                 {
-                    Cwd = Cwd, Command = Command, Wait = Wait ? true : null,
+                    Cwd = Html is null || Cwd is null ? Cwd : Path.GetFullPath(Cwd),
+                    Command = Command, Wait = Wait ? true : null,
                     SizePercent = SizePercent, Follow = Follow ? true : null,
                     Width = Width, Height = Height,
                     Color = BackgroundColor,
+                    Html = Html is null ? null : Path.GetFullPath(Html),
+                    Navigation = Navigation ? true : null,
+                    Javascript = Javascript ? true : null,
                 }),
             };
 
@@ -1999,6 +2015,49 @@ internal static class SessionCommands
                 Args = Client.WithWindow(Pane is null ? null : new ControlArgs { Pane = Pane }),
             };
         }
+
+        internal sealed class Reload : IRequestCommand
+        {
+            public bool Current { get; init; }
+            public string? Pane { get; init; }
+            public required TargetOptions Target { get; init; }
+            public required ClientOptions Client { get; init; }
+            public IConnectionOptions Options => Client;
+
+            public void Validate() => ValidateOverlayPane(Pane);
+
+            public ControlRequest MakeRequest() => new()
+            {
+                Cmd = WireCommand.SessionOverlayReload,
+                Target = Target.Target,
+                Args = Client.WithWindow(Pane is null && !Current
+                    ? null
+                    : new ControlArgs { Pane = Pane, Current = Current ? true : null }),
+            };
+        }
+
+        internal sealed class Navigate : IRequestCommand
+        {
+            public required string Step { get; init; }
+            public string? Pane { get; init; }
+            public required TargetOptions Target { get; init; }
+            public required ClientOptions Client { get; init; }
+            public IConnectionOptions Options => Client;
+
+            public void Validate()
+            {
+                if (HtmlNavigations.Parse(Step) is null)
+                    throw new CliValidationException("step must be back, forward, browser, or finder");
+                ValidateOverlayPane(Pane);
+            }
+
+            public ControlRequest MakeRequest() => new()
+            {
+                Cmd = WireCommand.SessionOverlayNavigate,
+                Target = Target.Target,
+                Args = Client.WithWindow(new ControlArgs { Pane = Pane, To = Step }),
+            };
+        }
     }
 
     private const string OverlayVisibilityScope =
@@ -2020,8 +2079,66 @@ internal static class SessionCommands
             "Hide the session's overlays if any is shown, otherwise show them all.\n\n"
             + "Prints the state left behind, hidden or shown. " + OverlayVisibilityScope));
         overlay.Subcommands.Add(BuildOverlayResize(bindings));
+        overlay.Subcommands.Add(BuildOverlayReload(bindings));
+        overlay.Subcommands.Add(BuildOverlayNavigate(bindings));
         overlay.Subcommands.Add(BuildOverlayResult(bindings));
         return overlay;
+    }
+
+    private static System.CommandLine.Command BuildOverlayReload(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("reload",
+            "Reload an HTML overlay: the file or URL it was opened with, or with --current the page shown now.");
+        var current = new Option<bool>("--current")
+        {
+            Description = "Reload the page the overlay shows now instead of the original file or URL.",
+        };
+        var pane = new Option<string?>("--pane")
+        {
+            Description = "Reload that split pane's page (primary/left/top or split/right/bottom); omit for the session-wide overlay.",
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Options.Add(current);
+        cmd.Options.Add(pane);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Overlay.Reload
+        {
+            Current = result.GetValue(current),
+            Pane = result.GetValue(pane),
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
+    }
+
+    private static System.CommandLine.Command BuildOverlayNavigate(CommandBindings bindings)
+    {
+        var cmd = new System.CommandLine.Command("navigate",
+            "Step an HTML overlay's history, open it in the browser, or reveal its current file in Explorer.");
+        var step = new Argument<string>("step")
+        {
+            Description = "back, forward, browser, or finder (file pages only; reveals the file in Explorer).",
+        };
+        var pane = new Option<string?>("--pane")
+        {
+            Description = "Navigate that split pane's page (primary/left/top or split/right/bottom); omit for the session-wide overlay.",
+        };
+        var target = new TargetOptions.Binder();
+        var options = new ClientOptions.Binder();
+        cmd.Arguments.Add(step);
+        cmd.Options.Add(pane);
+        target.AddTo(cmd);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Overlay.Navigate
+        {
+            Step = result.GetValue(step)!,
+            Pane = result.GetValue(pane),
+            Target = target.Read(result),
+            Client = options.Read(result),
+        });
+        return cmd;
     }
 
     private static System.CommandLine.Command BuildOverlayVisibility(
@@ -2050,14 +2167,28 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildOverlayOpen(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("open",
-            "Open an overlay running COMMAND; it closes when COMMAND exits.");
-        var command = new Argument<string>("command")
+            "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html.");
+        var command = new Argument<string?>("command")
         {
-            Description = "Program to run in the overlay (e.g. revdiff).",
+            Description = "Program to run in the overlay (e.g. revdiff); omit with --html.",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var html = new Option<string?>("--html")
+        {
+            Description = "Show this local HTML file instead of running COMMAND.",
+        };
+        var navigation = new Option<bool>("--navigation")
+        {
+            Description = "With --html, add back, forward, reload, open in browser, and Show in Explorer buttons.",
+        };
+        var javascript = new Option<bool>("--js")
+        {
+            Description = "With --html, let the page run its own JavaScript (off by default).",
         };
         var cwd = new Option<string?>("--cwd")
         {
-            Description = "Working directory (default: the session's current directory).",
+            Description = "Working directory (default: the session's current directory). With --html, grants read access "
+                + "inside this directory; relative links resolve beside FILE. Without --cwd, the page has no file access.",
         };
         var wait = new Option<bool>("--wait")
         {
@@ -2084,6 +2215,9 @@ internal static class SessionCommands
         var target = new TargetOptions.Binder();
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(command);
+        cmd.Options.Add(html);
+        cmd.Options.Add(navigation);
+        cmd.Options.Add(javascript);
         cmd.Options.Add(cwd);
         cmd.Options.Add(wait);
         cmd.Options.Add(block);
@@ -2096,7 +2230,10 @@ internal static class SessionCommands
         options.AddTo(cmd);
         bindings.Register(cmd, result => new Overlay.Open
         {
-            Command = result.GetValue(command)!,
+            Command = result.GetValue(command),
+            Html = result.GetValue(html),
+            Navigation = result.GetValue(navigation),
+            Javascript = result.GetValue(javascript),
             Cwd = result.GetValue(cwd),
             Wait = result.GetValue(wait),
             Block = result.GetValue(block),
@@ -2111,7 +2248,7 @@ internal static class SessionCommands
         return cmd;
     }
 
-    // upstream's height help adds "a page's title strip is added on top"; the port has no pages
+    // upstream's height help adds "a page's title strip is added on top"; the port does not draw pages yet
     private static Option<int?> OverlayWidthOption() => new("--width")
     {
         Description = "Panel content width in points, in place of --size-percent's width (at most 80% of the session).",

@@ -111,6 +111,8 @@ public sealed class MockControlActions : IControlActions
         public sealed record OverlayPointResize(string? Target, string? Window, int? SizePercent, OverlayPointSize Points) : Call;
         public sealed record OverlayResult(string? Target, string? Window) : Call;
     public sealed record OverlayVisibility(string? Target, string? Window, OverlayPane? Pane, OverlayVisibilityMode Mode) : Call;
+        public sealed record OverlayReload(string? Target, string? Window, OverlayPane? Pane, bool Current) : Call;
+        public sealed record OverlayNavigate(string? Target, string? Window, OverlayPane? Pane, HtmlNavigation Navigation) : Call;
         public sealed record SessionBackground(string? Target, string? Window, ControlSessionBackgroundOptions Options) : Call;
         public sealed record SessionText(string? Target, string? Window, ControlSessionTextOptions Options) : Call;
         public sealed record WindowNew(string? Name, bool Minimized) : Call;
@@ -186,6 +188,8 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextOverlayResizeResponse = new() { Ok = true };
     public ControlResponse NextOverlayResultResponse = new() { Ok = true };
     public ControlResponse NextOverlayVisibilityResponse = new() { Ok = true };
+    public ControlResponse NextOverlayReloadResponse = new() { Ok = true };
+    public ControlResponse NextOverlayNavigateResponse = new() { Ok = true };
     public ControlResponse NextSessionBackgroundResponse = new() { Ok = true };
     public ControlResponse NextSessionTextResponse = new() { Ok = true };
     public ControlResponse NextSurfaceZoomResponse = new() { Ok = true };
@@ -687,6 +691,18 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.OverlayVisibility(target, window, pane, mode));
         return NextOverlayVisibilityResponse;
+    }
+
+    public ControlResponse ReloadSessionOverlay(string? target, string? window, OverlayPane? pane, bool current)
+    {
+        Calls.Add(new Call.OverlayReload(target, window, pane, current));
+        return NextOverlayReloadResponse;
+    }
+
+    public ControlResponse NavigateSessionOverlay(string? target, string? window, OverlayPane? pane, HtmlNavigation navigation)
+    {
+        Calls.Add(new Call.OverlayNavigate(target, window, pane, navigation));
+        return NextOverlayNavigateResponse;
     }
 
     public ControlResponse SetSessionBackground(string? target, string? window, ControlSessionBackgroundOptions options)

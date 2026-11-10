@@ -430,6 +430,7 @@ public sealed partial class AppStore
         session.OverlayHidden = false;
         session.OverlaySurface?.Teardown();
         session.OverlaySurface = null;
+        ReleaseHtmlOverlayOf(session);
         session.OverlayCommand = null;
         session.OverlayCwd = null;
         session.OverlayWait = false;

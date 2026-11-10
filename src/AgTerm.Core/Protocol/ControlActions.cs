@@ -162,6 +162,10 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse SessionOverlayResult(string? target, string? window);
     /// <summary>Hides, shows or toggles the session's overlays, or one pane's; a hidden overlay keeps running.</summary>
     ControlResponse SetSessionOverlayVisibility(string? target, string? window, OverlayPane? pane, OverlayVisibilityMode mode);
+    /// <summary>Reloads the page in the overlay slot: the source it opened with, or with current the page shown now.</summary>
+    ControlResponse ReloadSessionOverlay(string? target, string? window, OverlayPane? pane, bool current);
+    /// <summary>Steps the page's history, opens it in the browser, or reveals its file.</summary>
+    ControlResponse NavigateSessionOverlay(string? target, string? window, OverlayPane? pane, HtmlNavigation navigation);
     ControlResponse SetSessionBackground(string? target, string? window, ControlSessionBackgroundOptions options);
     ControlResponse ReadSessionText(string? target, string? window, ControlSessionTextOptions options);
     ControlResponse WindowNew(string? name, bool minimized);
@@ -213,10 +217,12 @@ public sealed record ControlAskPlacement(OverlayPane? Pane = null, string? PaneI
 /// target session: PaneId is a live pane token that overrides Pane.</summary>
 public sealed record ControlHudPlacement(OverlayPane? Pane = null, string? PaneId = null);
 
-/// <summary>Points overrides SizePercent per axis; the dispatcher passes it only beside a percent.</summary>
+/// <summary>Points overrides SizePercent per axis; the dispatcher passes it only beside a percent.
+/// Page is set for --html: Command is then empty and Cwd null (the grant root lives in Page).</summary>
 public sealed record ControlSessionOverlayOpenOptions(
     string Command, string? Cwd, bool Wait, int? SizePercent, string? BackgroundColor,
-    bool Follow = false, OverlayPointSize Points = default);
+    bool Follow = false, OverlayPointSize Points = default,
+    HtmlSource? Page = null, bool Navigation = false, bool Javascript = false);
 
 public sealed record ControlSessionBackgroundOptions(BackgroundWatermark? Watermark);
 

@@ -351,6 +351,7 @@ public sealed partial class AppStore
                     OverlaySizePercent = session.OverlayActive ? session.OverlaySizePercent : null,
             OverlayWidth = session.OverlayContentSize?.Width,
             OverlayHeight = session.OverlayContentSize?.Height,
+                    HtmlOverlays = HtmlOverlayNodes(session),
                     HiddenOverlays = session.HiddenOverlayNames is { Count: > 0 } hidden ? [.. hidden] : null,
                     Hud = HudNode(session),
                     Ask = session.AskPending is { } ask
@@ -676,6 +677,7 @@ public sealed partial class AppStore
         removed.Surface?.Teardown();
         removed.SplitSurface?.Teardown();
         removed.OverlaySurface?.Teardown();
+        ReleaseHtmlOverlayOf(removed);
         removed.ScratchSurface?.Teardown();
         WatermarkStorage.RemoveRenderedText(sessionId, _stateDirectory); // drop any rendered .text PNG; the session is gone
         ScrollbackStorage.Remove(sessionId, _stateDirectory);
@@ -727,6 +729,7 @@ public sealed partial class AppStore
             session.Surface?.Teardown();
             session.SplitSurface?.Teardown();
             session.OverlaySurface?.Teardown();
+            ReleaseHtmlOverlayOf(session);
             session.ScratchSurface?.Teardown();
             WatermarkStorage.RemoveRenderedText(session.Id, _stateDirectory); // drop any rendered .text PNG; the session is gone
             ScrollbackStorage.Remove(session.Id, _stateDirectory);

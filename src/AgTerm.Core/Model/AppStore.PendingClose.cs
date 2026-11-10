@@ -388,6 +388,15 @@ public sealed partial class AppStore
         return (folded, focusMember);
     }
 
+    /// <summary>The live session objects pending closes still hold.</summary>
+    internal IEnumerable<Session> PendingCloseMemberSessions() =>
+        PendingCloseRecords.Values.SelectMany(record => record switch
+        {
+            PendingCloseRecord.Sessions sessions => sessions.Close.Sessions.Select(c => c.Session),
+            PendingCloseRecord.Workspace workspace => workspace.Close.Workspace.Sessions,
+            _ => [],
+        });
+
     /// <summary>Session ids a pending close still holds. They are absent from the tree, but their
     /// live objects are intact and an undo reinserts them, so a restore that rebuilt one from a
     /// snapshot would put two objects under a single id. Callers union this with the tree's ids to
@@ -516,6 +525,7 @@ public sealed partial class AppStore
         // can reach it any more
         CloseHudOf(session);
         ClearInfoOf(session);
+        ReleaseHtmlOverlayOf(session);
         if (teardownSurfaces)
         {
             session.Surface?.Teardown();

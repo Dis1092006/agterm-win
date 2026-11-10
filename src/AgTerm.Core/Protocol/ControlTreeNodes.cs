@@ -211,10 +211,87 @@ public sealed record ControlSessionNode
     [JsonPropertyName("realized")]
     public bool? Realized { get; init; }
 
+    /// <summary>The pages in this session's overlay slots; null when none holds one (upstream 11fe64eb).
+    /// The port has only the session-wide slot.</summary>
+    [JsonPropertyName("htmlOverlays")]
+    public ControlHtmlOverlayNode[]? HtmlOverlays { get; init; }
+
     /// <summary>The hidden overlay slots by name ("session"); null when none is hidden. A hidden
     /// overlay still counts in overlay, which reports occupancy.</summary>
     [JsonPropertyName("hiddenOverlays")]
     public string[]? HiddenOverlays { get; init; }
+}
+
+/// <summary>A page in an overlay slot as projected into the tree (upstream ControlHtmlOverlayNode).
+/// state, javascript, chromeless, persistent and browse are always written; navigation and hidden
+/// only when true; the rest only when known.</summary>
+public sealed record ControlHtmlOverlayNode
+{
+    [JsonPropertyName("pane")]
+    public string? Pane { get; init; }
+
+    [JsonPropertyName("file")]
+    public string? File { get; init; }
+
+    [JsonPropertyName("cwd")]
+    public string? Cwd { get; init; }
+
+    [JsonPropertyName("url")]
+    public string? Url { get; init; }
+
+    [JsonPropertyName("image")]
+    public string? Image { get; init; }
+
+    [JsonPropertyName("markdown")]
+    public string? Markdown { get; init; }
+
+    [JsonPropertyName("state")]
+    public required string State { get; init; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; init; }
+
+    [JsonPropertyName("page")]
+    public string? Page { get; init; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
+
+    [JsonPropertyName("canGoBack")]
+    public bool? CanGoBack { get; init; }
+
+    [JsonPropertyName("canGoForward")]
+    public bool? CanGoForward { get; init; }
+
+    [JsonPropertyName("navigation")]
+    public bool? Navigation { get; init; }
+
+    [JsonPropertyName("javascript")]
+    public bool Javascript { get; init; }
+
+    [JsonPropertyName("chromeless")]
+    public bool Chromeless { get; init; }
+
+    [JsonPropertyName("persistent")]
+    public bool Persistent { get; init; }
+
+    [JsonPropertyName("browse")]
+    public bool Browse { get; init; }
+
+    [JsonPropertyName("zoom")]
+    public double? Zoom { get; init; }
+
+    [JsonPropertyName("id")]
+    public string? Id { get; init; }
+
+    [JsonPropertyName("hidden")]
+    public bool? Hidden { get; init; }
+
+    [JsonPropertyName("remote")]
+    public bool? Remote { get; init; }
+
+    [JsonPropertyName("replica")]
+    public bool? Replica { get; init; }
 }
 
 /// <summary>A workspace and its sessions as projected into the tree response.</summary>

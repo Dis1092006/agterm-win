@@ -37,7 +37,9 @@
     { "wire": "session.overlay.hide", "upstream": "7f450d17" },
     { "wire": "session.overlay.show", "upstream": "7f450d17" },
     { "wire": "session.overlay.toggle", "upstream": "7f450d17" },
-    { "wire": "window.minimize", "upstream": "28cad2c1" }
+    { "wire": "window.minimize", "upstream": "28cad2c1" },
+    { "wire": "session.overlay.reload", "upstream": "11fe64eb" },
+    { "wire": "session.overlay.navigate", "upstream": "11fe64eb" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -75,7 +77,11 @@
     { "name": "ids", "upstream": "b0839692" },
     { "name": "tint", "upstream": "f3fea57b" },
     { "name": "tintOn", "upstream": "f3fea57b" },
-    { "name": "minimized", "upstream": "28cad2c1" }
+    { "name": "minimized", "upstream": "28cad2c1" },
+    { "name": "html", "upstream": "11fe64eb" },
+    { "name": "current", "upstream": "11fe64eb" },
+    { "name": "navigation", "upstream": "11fe64eb" },
+    { "name": "javascript", "upstream": "11fe64eb" }
   ],
   "result": [
     { "name": "sidebarWidth", "upstream": "7977f202" },
@@ -97,7 +103,8 @@
     { "name": "remaining", "upstream": "b0839692" },
     { "name": "acked", "upstream": "b0839692" },
     { "name": "width", "upstream": "d5a7fc2d" },
-    { "name": "height", "upstream": "d5a7fc2d" }
+    { "name": "height", "upstream": "d5a7fc2d" },
+    { "name": "pageID", "upstream": "11fe64eb" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },
@@ -126,7 +133,8 @@
     { "name": "infoHideAfter", "upstream": "80f822bf" },
     { "name": "hiddenOverlays", "upstream": "7f450d17" },
     { "name": "overlayWidth", "upstream": "9bbb3408" },
-    { "name": "overlayHeight", "upstream": "9bbb3408" }
+    { "name": "overlayHeight", "upstream": "9bbb3408" },
+    { "name": "htmlOverlays", "upstream": "11fe64eb" }
   ],
   "workspaceNode": [
     { "name": "tint", "upstream": "f3fea57b" },
