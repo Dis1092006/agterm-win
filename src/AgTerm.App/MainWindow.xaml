@@ -301,6 +301,10 @@
                                     <MenuFlyoutItem x:Name="InstallAgentStatusHooksItem"
                                                     AutomationProperties.AutomationId="install-agent-status-hooks"
                                                     Click="OnInstallAgentStatusHooksClick" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Text="About agterm-win"
+                                                    AutomationProperties.AutomationId="about"
+                                                    Click="OnAboutClick" />
                                 </MenuFlyout>
                             </Button.Flyout>
                         </Button>
