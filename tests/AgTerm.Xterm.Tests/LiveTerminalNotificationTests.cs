@@ -44,6 +44,25 @@ public sealed class LiveTerminalNotificationTests
     }
 
     [Fact]
+    public void CLI_notify_takes_its_own_banner_slot_so_a_main_pane_banner_does_not_replace_it()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Host.RunLocked(() => Assert.True(fixture.Host.Actions.SendNotification(
+            fixture.Session.Id.ToString("D"), null, "CLI", "body").Ok));
+        Assert.True(fixture.Host.ReportTerminalNotification(fixture.Main, new(9, "osc", false)));
+        fixture.Drain();
+
+        Assert.Equal(2, fixture.Banners.Count);
+        var note = fixture.Banners[0].Target!;
+        var osc = fixture.Banners[1].Target!;
+        Assert.True(note.Control);
+        Assert.False(osc.Control);
+        Assert.Equal(NotificationPane.Main, note.Pane);
+        Assert.NotEqual(osc.ToastTag, note.ToastTag);
+        Assert.Equal(osc.ToastGroup, note.ToastGroup);
+    }
+
+    [Fact]
     public void Banner_and_badge_toggles_do_not_gate_event_or_taskbar_attention()
     {
         using var fixture = new Fixture(settings: new AppSettings

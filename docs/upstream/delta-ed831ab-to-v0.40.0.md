@@ -156,7 +156,7 @@ These items change what agterm-win already does. They do not depend on new featu
 - **Behavior change:** `session scratch on --target A` shows the scratch on A without switching to A; `--follow` selects A #730 (`da375b93`). Port: done (B1).
 - `session scratch on --command CMD` against a scratch already shown answered ok and never ran CMD #730. Port: done since `5dd02cf`: the port already closed the shown scratch and started it again with CMD, which is what upstream now does.
 - A second instance on a state directory in use exits with status 1 before it reads or writes anything #749. Port: done in a Windows form in port PR 53 (`fa75507`): a second launch hands its activation to the running app and exits. See PLATFORM-NOTES "One instance per state directory".
-- `agtermctl notify` no longer shares a notification slot with the session's OSC 9/777 banners, so the next terminal banner does not replace the note #772. Port: not done. In the port, an explicit `notify` and an OSC banner from the main pane get the same toast Tag and Group, so the banner replaces the note.
+- `agtermctl notify` no longer shares a notification slot with the session's OSC 9/777 banners, so the next terminal banner does not replace the note #772. Port: done, following upstream `5a7c6a89`. A `notify` toast has the Tag `<window>:notify` in the session's Group.
 - A custom `command` cmd chord matches through the layout's Command table, as the menu does #796. Port: not applicable: Windows layouts have no separate Command table.
 
 ## 13. Outside parity

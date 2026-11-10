@@ -1155,7 +1155,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     }
 
     private bool QueueNotificationRequested(LiveNotificationRequest request) =>
-        QueueNotificationRequested(request, new(WindowId, request.SessionId, NotificationPane.Main));
+        QueueNotificationRequested(request, new(WindowId, request.SessionId, NotificationPane.Main, Control: true));
 
     private bool QueueNotificationRequested(LiveNotificationRequest request, LiveNotificationTarget? target)
     {
