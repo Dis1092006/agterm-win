@@ -442,7 +442,9 @@ omitted when expanded).
 `zoom <id>` (maximize/restore toggle) ·
 `fullscreen <id>` (toggle full screen, the `toggle_fullscreen` action, Alt+Enter by default). `select`
 makes the window frontmost for routing; Windows may refuse to raise it, and then its taskbar button
-flashes. `resize` is clamped to the display's work area, and `move` keeps part of the window on screen.
+flashes. `resize` is clamped to the display's work area and prints the applied size as `W H` (JSON:
+`result.width` and `result.height` in integer points, like `window list` geometry). `move` keeps part
+of the window on screen.
 Closing the last window ends the app; the next launch opens it again.
 
 **surface** — `zoom [show|hide|toggle] [--target SURFACE_ID|active|quick] [--window W]` zooms a session surface inside its window. Omit `--target` to use that window's active session surface, never quick. Explicit `--target quick` independently expands the visible detached panel to its monitor's work area; it ignores `--window` and refuses a hidden panel with `surface not available: quick`, even for `hide`. While quick is zoomed, every tree reports `zoomedSurface: "quick"`; hiding or unzooming it restores the window's own zoom readback.

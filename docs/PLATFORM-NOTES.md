@@ -921,6 +921,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - A point is a CSS pixel of the terminal page. The page draws a point axis as `min(N px, 80%)` of the panes area, and the core reads back the same size from the session area the page last measured. With no measure yet, `overlayWidth` and `overlayHeight` are absent.
   - The size is the area inside the panel's 1 px border, which is the area the program gets. Upstream subtracts the page strip of an HTML overlay; the port has no HTML overlays, so nothing is subtracted, and the `--height` help leaves out upstream's sentence about the strip.
   - The port has no remote overlays, so upstream's error for an overlay shown on another Mac does not exist here.
+- `window.resize` answers with the size it applied: the result fields `width` and `height` (upstream `d5a7fc2d`, #566), in `parity/adopted.json`. The CLI prints them as `W H`. The window reads its frame back after the resize and converts it to points the way `window list` geometry does. The clamp is the port's own, `[320×240, the display's work area]`. A window that closes between the target check and the resize answers `window not open — window.select it first`, as upstream does.
 
 ## Windows-only extensions
 

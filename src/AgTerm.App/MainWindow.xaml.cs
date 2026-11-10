@@ -413,7 +413,7 @@ public sealed partial class MainWindow : Window
                 && presenter.State == OverlappedPresenterState.Maximized);
     }
 
-    internal void ResizeWindow(int width, int height)
+    internal LiveWindowSize ResizeWindow(int width, int height)
     {
         var display = DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary);
         var scale = DisplayScale(display);
@@ -424,6 +424,11 @@ public sealed partial class MainWindow : Window
         _appWindow.Resize(new SizeInt32(
             LiveWindowGeometry.ToPixels(Math.Clamp(width, minimumWidth, maximumWidth), scale),
             LiveWindowGeometry.ToPixels(Math.Clamp(height, minimumHeight, maximumHeight), scale)));
+        // read the frame back, rounded the way window.list geometry is
+        var applied = _appWindow.Size;
+        return new LiveWindowSize(
+            LiveWindowGeometry.ToPoints(applied.Width, scale),
+            LiveWindowGeometry.ToPoints(applied.Height, scale));
     }
 
     internal LiveWindowMoveResult MoveWindow(int x, int y, int? display)

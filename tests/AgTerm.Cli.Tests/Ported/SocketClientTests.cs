@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AgTerm.Cli;
 using AgTerm.ControlServer;
 using AgTerm.Core.Protocol;
@@ -357,6 +358,17 @@ public class SocketClientTests
             Ok = true, Result = new ControlResult { Id = "9f3c", Ratio = 0.85 },
         };
         Assert.Equal("0.850", ClientOutput.FormatResponse(response, json: false));
+    }
+
+    [Fact]
+    public void FormatWindowResizeReportsAppliedWidthAndHeight()
+    {
+        var response = ControlJson.Deserialize<ControlResponse>("""{"ok":true,"result":{"id":"w","width":1200,"height":800}}""")!;
+        Assert.Equal("1200 800", ClientOutput.FormatResponse(response, json: false));
+        using var encoded = JsonDocument.Parse(ClientOutput.FormatResponse(response, json: true));
+        var result = encoded.RootElement.GetProperty("result");
+        Assert.Equal(1200, result.GetProperty("width").GetInt32());
+        Assert.Equal(800, result.GetProperty("height").GetInt32());
     }
 
     [Fact]
