@@ -56,9 +56,9 @@ function global:prompt {
 # with the private OSC 7777, when PSReadLine reads input and which key runs its Paste function. While
 # it does, the terminal sends that key to PSReadLine instead of typing the clipboard in: PSReadLine
 # then inserts the text as one edit, so one Ctrl+Z undoes the paste and a newline does not run the
-# line. Ctrl+letter keys on a non-Latin layout are then sent with the Latin letter, so PSReadLine's
-# bindings such as Ctrl+z run. Without PSReadLine (a screen reader session) the function does not
-# exist and nothing changes.
+# line. Ctrl+letter keys are then sent with the Latin letter on every layout, so PSReadLine's
+# bindings such as Ctrl+z run also in a shell that started on a non-Latin layout. Without
+# PSReadLine (a screen reader session) the function does not exist and nothing changes.
 if (Test-Path Function:\PSConsoleHostReadLine) {
     # Captured as a value, the same as the prompt above.
     $global:__AgTermState.OriginalReadLine = $function:PSConsoleHostReadLine
