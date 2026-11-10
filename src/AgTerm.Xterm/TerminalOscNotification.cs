@@ -7,9 +7,12 @@ public sealed record TerminalOscReport(int Identifier, string Data, bool Focused
 
 public enum NotificationPane { Main, Split }
 
-public sealed record LiveNotificationTarget(Guid WindowId, Guid SessionId, NotificationPane Pane)
+public sealed record LiveNotificationTarget(Guid WindowId, Guid SessionId, NotificationPane Pane, bool Control = false)
 {
-    private string Role => Pane == NotificationPane.Split ? "split" : "main";
+    // A control notify takes its own slot, apart from every pane's, so a terminal banner never replaces a
+    // note posted on purpose; a click on it opens the main pane (upstream 5a7c6a89).
+    private const string ControlRole = "notify";
+    private string Role => Control ? ControlRole : Pane == NotificationPane.Split ? "split" : "main";
     public string Identity => $"{WindowId:D}:{SessionId:D}:".ToUpperInvariant() + Role;
     public string ToastGroup => SessionId.ToString("D").ToUpperInvariant();
     public string ToastTag => WindowId.ToString("D").ToUpperInvariant() + ":" + Role;
@@ -19,9 +22,10 @@ public sealed record LiveNotificationTarget(Guid WindowId, Guid SessionId, Notif
         var parts = identity.Split(':');
         if (parts.Length != 3 || !Guid.TryParseExact(parts[0], "D", out var window)
             || !Guid.TryParseExact(parts[1], "D", out var session)
-            || parts[2] is not ("main" or "split"))
+            || parts[2] is not ("main" or "split" or ControlRole))
             return null;
-        return new(window, session, parts[2] == "split" ? NotificationPane.Split : NotificationPane.Main);
+        return new(window, session, parts[2] == "split" ? NotificationPane.Split : NotificationPane.Main,
+            Control: parts[2] == ControlRole);
     }
 }
 

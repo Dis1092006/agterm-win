@@ -1179,8 +1179,9 @@ line with the agtermctl executable that ran, as a diagnostic for a stale agtermc
 `agtermctl notify <body> [--title T] [--target] [--window W]` — post a Windows desktop notification
 attributed to a session (default: the active session of the frontmost window). Wire: `notify`.
 `--title` defaults to
-the session name. agterm-win does not handle a click on the banner, so the click does not select the
-session. This is the only way to post a banner. Control-native (no GUI/menu equivalent). The banner is a
+the session name. Clicking the banner reveals that session. A session keeps one such banner: a newer
+`notify` replaces it, the session's OSC 9/777 banners do not, and focusing the session removes it.
+This is the only way to post a banner. Control-native (no GUI/menu equivalent). The banner is a
 Windows App SDK app notification; when the app runs elevated, system notifications are disabled by
 policy, or registration fails, an InfoBar in the session's window shows it instead. The session's window
 must be open (`session's window is not open` otherwise).
@@ -1205,7 +1206,7 @@ The renderer budget is app-wide: at most one OSC notification each second; the s
 
 Windows safety differences: payloads over 2,047 UTF-8 bytes are dropped instead of using a partial payload. Titles (including the session-name fallback) and bodies are capped at 63/255 UTF-8 bytes without splitting Unicode characters. Control and bidi-formatting characters are stripped; body LF and TAB remain. Toasts are plain text. Rejection diagnostics contain no payload and are limited to one per second per window.
 
-Delivered toasts replace by window/session/pane identity. Clicking activates the owning window, exits zoom/dashboard, and selects the firing pane. A saved closed window is reopened; a missing split falls back to main, a moved session uses its current owner, and stale targets do not recreate sessions or unknown windows. Actual terminal focus/refocus clears unseen and removes that session's delivered pane toasts. Background selection and `session seen` keep their badge-only behavior.
+Delivered toasts replace by window/session/pane identity; an explicit `notify` has its own slot per session, so a pane's OSC toast does not replace it. Clicking activates the owning window, exits zoom/dashboard, and selects the firing pane (the main pane for `notify`). A saved closed window is reopened; a missing split falls back to main, a moved session uses its current owner, and stale targets do not recreate sessions or unknown windows. Actual terminal focus/refocus clears unseen and removes that session's delivered toasts, including the `notify` one. Background selection and `session seen` keep their badge-only behavior.
 
 Returning to a window applies the same badge policy as `window select`, even when no other agterm-win window was activated in between. The policy clears the badge of the session whose main or split pane has accepted focus, without a session switch. An overlay, scratch, or quick pane clears no session badge. Zoom and dashboard panes follow the same owner check even when their session is not selected.
 
