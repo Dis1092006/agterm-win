@@ -364,6 +364,17 @@ public class XtermPageReadlineLiveTests
         Assert.Equal("\u001b[66;48;120;0;8;1_", await KeysAsync(pane, Up("x", "KeyB", 66, ctrl: true)));
     }
 
+    [Fact]
+    public async Task On_a_latin_layout_the_ctrl_c_exception_follows_the_typed_letter()
+    {
+        // Dvorak types j on the QWERTY C key: Ctrl+J is a Ctrl+letter rewrite like any other
+        var pane = await OpenAsync("rl-dvorak-j");
+        await FeedAsync(pane, NoPasteKey);
+
+        Assert.Equal("\u001b[67;46;106;1;8;1_", await KeysAsync(pane, Down("j", "KeyC", 67, ctrl: true)));
+        Assert.Equal("\u001b[67;46;106;0;8;1_", await KeysAsync(pane, Up("j", "KeyC", 67, ctrl: true)));
+    }
+
     /// <summary>What a pane without the readline marker sends for the keys: today's encoding.</summary>
     private async Task<string> TodayAsync(Pane reference, params Key[] keys) => await KeysAsync(reference, keys);
 
@@ -403,6 +414,7 @@ public class XtermPageReadlineLiveTests
     {
         { "ctrl+c without a selection", "с", "KeyC", 67, true, false, false },
         { "latin ctrl+c without a selection", "c", "KeyC", 67, true, false, false },
+        { "dvorak ctrl+c without a selection", "c", "KeyI", 73, true, false, false },
         { "latin ctrl+shift+z", "Z", "KeyZ", 90, true, true, false },
         { "latin ctrl+alt+letter", "z", "KeyZ", 90, true, false, true },
         { "ctrl+alt+letter", "я", "KeyZ", 90, true, false, true },

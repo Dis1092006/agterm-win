@@ -1494,19 +1494,23 @@ const LETTER_SCAN_CODES = {
   N: 49, O: 24, P: 25, Q: 16, R: 19, S: 31, T: 20, U: 22, V: 47, W: 17, X: 45, Y: 21, Z: 44,
 };
 
+// The lowercase Latin letter of a letter key ("KeyZ"): the typed one when the layout types a
+// Latin letter (Dvorak), else the key's own
+function latinLetterOf(code, typed) {
+  return /^[a-zA-Z]$/.test(typed || "") ? typed.toLowerCase() : code.slice(3).toLowerCase();
+}
+
 // A win32-input-mode record (ESC [ Vk ; Sc ; Uc ; Kd ; Cs ; Rc _) for Ctrl and a letter key
-// ("KeyZ"), with a lowercase Latin letter as the character: the typed one when the layout types
-// a Latin letter (Dvorak), else the key's own. PSReadLine names a key whose character is a
-// control character through the layout of the console window, which under ConPTY stays the one
-// active when the shell started: in a shell started on Russian 0x1a becomes Ctrl+я. With the
-// letter it is Ctrl+z on any layout. The other fields copy xterm's own encoder: Vk and Sc follow
-// the key position, Cs is LEFT_CTRL (xterm sets RIGHT_CTRL only for the ControlRight key itself,
-// and PowerShell sees Control either way), and no lock flags.
+// ("KeyZ"), with its Latin letter (see latinLetterOf) as the character. PSReadLine names a key
+// whose character is a control character through the layout of the console window, which under
+// ConPTY stays the one active when the shell started: in a shell started on Russian 0x1a becomes
+// Ctrl+я. With the letter it is Ctrl+z on any layout. The other fields copy xterm's own encoder:
+// Vk and Sc follow the key position, Cs is LEFT_CTRL (xterm sets RIGHT_CTRL only for the
+// ControlRight key itself, and PowerShell sees Control either way), and no lock flags.
 function win32CtrlLetter(code, keyDown, typed) {
   const position = code.slice(3);
-  const letter = /^[a-zA-Z]$/.test(typed || "") ? typed.toLowerCase() : position.toLowerCase();
   return `\x1b[${position.charCodeAt(0)};${LETTER_SCAN_CODES[position]};`
-    + `${letter.charCodeAt(0)};${keyDown ? 1 : 0};8;1_`;
+    + `${latinLetterOf(code, typed).charCodeAt(0)};${keyDown ? 1 : 0};8;1_`;
 }
 
 // the event.code a physical key reports, for the keys tests drive (letters/digits are positional
@@ -3326,8 +3330,9 @@ function openPane(paneId, opts) {
   const rewriteCtrlLetter = (ev) => {
     if (!pane.readline || !win32Encodes()) return false;
     if (!ev.ctrlKey || ev.shiftKey || ev.altKey || ev.metaKey) return false;
-    if (!/^Key[A-Z]$/.test(ev.code || "") || ev.code === "KeyC") return false;
+    if (!/^Key[A-Z]$/.test(ev.code || "")) return false;
     if (typeof ev.key !== "string" || ev.key.length !== 1) return false;
+    if (latinLetterOf(ev.code, ev.key) === "c") return false;
     pane.term.input(win32CtrlLetter(ev.code, true, ev.key), true);
     pane.rewrittenKeys.set(ev.code, win32CtrlLetter(ev.code, false, ev.key));
     return true;
