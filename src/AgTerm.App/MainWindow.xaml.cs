@@ -1357,6 +1357,8 @@ public sealed partial class MainWindow : Window
 
     private async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)
     {
+        // a ContentDialog opens in a popup and does not inherit RootGrid's theme on its own
+        dialog.RequestedTheme = RootGrid.RequestedTheme;
         // tunnelling, so a repeat never reaches the focused button or the dialog's own Enter handling
         dialog.PreviewKeyDown += (_, e) =>
         {
@@ -3551,6 +3553,16 @@ public sealed partial class MainWindow : Window
 
     private void OnInstallAgentStatusHooksClick(object sender, RoutedEventArgs e) =>
         ObserveTaskFault(RunInstallerAsync(InstallerCommands.InstallAgentStatusHooksId), "Install agent status hooks failed");
+
+    private void OnAboutClick(object sender, RoutedEventArgs e) =>
+        ObserveTaskFault(ShowAboutAsync(), "About failed");
+
+    private Task ShowAboutAsync() => _contentDialogs.RunAsync(async () =>
+    {
+        var dialog = await AboutDialog.CreateAsync(Content.XamlRoot, RootGrid.RequestedTheme == ElementTheme.Dark);
+        await ShowDialogAsync(dialog);
+        return true;
+    });
 
     /// <summary>Runs an installer off the UI thread, since the Path change broadcast can wait on other
     /// windows, and shows the result like upstream's alert.</summary>

@@ -76,6 +76,33 @@ public sealed class TitleBarActionsSourceTests
     }
 
     [Fact]
+    public void Help_menu_ends_with_about_after_a_separator()
+    {
+        // upstream's app menu "About Agterm"; the port has no app menu, so it closes the Help menu
+        var xaml = Source("MainWindow.xaml");
+        var help = xaml.IndexOf("AutomationProperties.AutomationId=\"help-button\"", StringComparison.Ordinal);
+        Assert.True(help >= 0, "help-button not found");
+        var flyout = xaml[help..xaml.IndexOf("</MenuFlyout>", help, StringComparison.Ordinal)];
+        var hooks = flyout.IndexOf("install-agent-status-hooks", StringComparison.Ordinal);
+        var about = flyout.IndexOf("AutomationProperties.AutomationId=\"about\"", StringComparison.Ordinal);
+        Assert.True(about > hooks && hooks > 0, "About must follow the installer items");
+        Assert.Contains("<MenuFlyoutSeparator />", flyout[hooks..about], StringComparison.Ordinal);
+        Assert.Contains("Text=\"About agterm-win\"", flyout[flyout.LastIndexOf("<MenuFlyoutItem", about, StringComparison.Ordinal)..], StringComparison.Ordinal);
+        Assert.Contains("Click=\"OnAboutClick\"", flyout[about..], StringComparison.Ordinal);
+
+        var body = MethodBody(Source("MainWindow.xaml.cs"), "private void OnAboutClick(");
+        Assert.Contains("ShowAboutAsync()", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_dialog_takes_the_theme_of_the_window_chrome()
+    {
+        // a ContentDialog opens in a popup and does not inherit RootGrid's theme on its own
+        var body = MethodBody(Source("MainWindow.xaml.cs"), "private async Task<ContentDialogResult> ShowDialogAsync(");
+        Assert.Contains("dialog.RequestedTheme = RootGrid.RequestedTheme;", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Palette_app_rows_reach_the_same_paths_as_the_sidebar_and_the_wire()
     {
         var window = Source("MainWindow.xaml.cs");

@@ -3338,6 +3338,18 @@ function openPane(paneId, opts) {
     return true;
   };
 
+  // A Windows console gives Ctrl+Shift+minus (Ctrl+_) the character 0x1f on the US and Russian
+  // layouts, and a program reads 0x1f as Ctrl+_: Claude Code's undo. xterm's record carries the
+  // typed '_', which a program reads as a plain '_', so the page sends the record with 0x1f. The
+  // other fields are xterm's: VK_OEM_MINUS, its scan code, and Shift with LEFT_CTRL.
+  const rewriteCtrlUnderscore = (ev) => {
+    if (!win32Encodes() || ev.code !== "Minus") return false;
+    if (!ev.ctrlKey || !ev.shiftKey || ev.altKey || ev.metaKey) return false;
+    pane.term.input("\x1b[189;12;31;1;24;1_", true);
+    pane.rewrittenKeys.set(ev.code, "\x1b[189;12;31;0;24;1_");
+    return true;
+  };
+
   // xterm.js has no modifyOtherKeys, so a program that turned it on (Copilot CLI sends
   // CSI > 4 ; 2 m and gets no kitty answer through ConPTY) would get Shift+Enter as plain Enter
   // and submit instead of inserting a newline. The page sends xterm's form for that one key.
@@ -3492,7 +3504,7 @@ function openPane(paneId, opts) {
       if (ev.preventDefault) ev.preventDefault();
       return false;
     }
-    if (!handled && rewriteCtrlLetter(ev)) {
+    if (!handled && (rewriteCtrlLetter(ev) || rewriteCtrlUnderscore(ev))) {
       forwardUserKeystroke(ev);
       if (ev.preventDefault) ev.preventDefault();
       return false;
