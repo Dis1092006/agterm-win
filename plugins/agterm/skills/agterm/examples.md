@@ -491,8 +491,9 @@ agtermctl events --json --kind status |
   head -n 1
 ```
 
-The pipeline ends after the match. A transport or cursor failure makes `agtermctl events` exit
-non-zero; preserve pipeline status in automation that must distinguish a match from a failed stream.
+The pipeline ends after the match. A cursor failure, or a transport failure the CLI does not retry,
+makes `agtermctl events` exit non-zero; preserve pipeline status in automation that must distinguish a
+match from a failed stream.
 
 `session wait` does the same in one command, and it also returns at once when the session already has
 the status:

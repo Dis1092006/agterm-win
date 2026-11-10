@@ -43,7 +43,7 @@ public class KeymapCommandTests
     public void Run_success_prints_ok()
     {
         var response = new ControlResponse { Ok = true, Result = new ControlResult { Id = "9f3c" } };
-        Assert.Equal("ok", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("ok", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
@@ -130,6 +130,6 @@ public class KeymapCommandTests
     {
         var keymap = new ControlKeymap { Path = "p", Actions = [], Commands = [], Diagnostics = [] };
         var response = new ControlResponse { Ok = true, Result = new ControlResult { Keymap = keymap, Text = "t" } };
-        Assert.Equal("keymap: p\n\nactions:", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("keymap: p\n\nactions:", ClientOutput.FormatResponse(response));
     }
 }

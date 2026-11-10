@@ -28,7 +28,7 @@ public class VersionWidthGoCommandsTests
     }
 
     private static string Format(ControlResult result) =>
-        ClientOutput.FormatResponse(new ControlResponse { Ok = true, Result = result }, json: false);
+        ClientOutput.FormatResponse(new ControlResponse { Ok = true, Result = result });
 
     [Fact]
     public void Version()
@@ -169,7 +169,7 @@ public class VersionWidthGoCommandsTests
         CliEnvironment Env(StringWriter output) => new()
         {
             Out = output,
-            Send = (_, _) => response,
+            Send = TestReply.Replying((_, _) => response),
             ClientPath = () => @"C:\tools\agtermctl.exe",
         };
 
@@ -187,11 +187,11 @@ public class VersionWidthGoCommandsTests
         var env = new CliEnvironment
         {
             Out = output,
-            Send = (_, _) => new ControlResponse
+            Send = TestReply.Replying((_, _) => new ControlResponse
             {
                 Ok = true,
                 Result = new ControlResult { App = new ControlAppIdentity { Version = "0.34.0" } },
-            },
+            }),
             ClientPath = () => null,
         };
 

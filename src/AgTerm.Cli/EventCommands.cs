@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Globalization;
+using AgTerm.ControlServer;
 using AgTerm.Core.Protocol;
 using WireCommand = AgTerm.Core.Protocol.Command;
 
@@ -15,7 +16,17 @@ namespace AgTerm.Cli;
 /// batch's {run, next}.</summary>
 internal sealed class EventStreamState
 {
+    public const double FirstRetryDelay = 0.25;
+    public const double MaxRetryDelay = 4;
+
+    /// <summary>Seconds of refused connects in a row before the stream gives up, so it never waits
+    /// forever on an app that is gone.</summary>
+    public const double RetryBudget = 30;
+
     public ControlEventCursor? Cursor { get; private set; }
+
+    private double _nextRetryDelay = FirstRetryDelay;
+    private double? _refusedSince;
 
     public IReadOnlySet<ControlEventKind>? Kinds { get; }
 
@@ -51,10 +62,29 @@ internal sealed class EventStreamState
         };
     }
 
+    /// <summary>The wait in seconds before reading again after <paramref name="error"/>, null when
+    /// the error ends the stream. Only a busy pipe is retried: the owner is there and not accepting,
+    /// while a missing pipe means the app quit, and a relaunch is a new run the cursor cannot
+    /// resume. Without a cursor there is nothing to keep, so the first read still fails fast. The
+    /// budget is wall-clock time from the first refusal in a row: on Windows a connect to a busy pipe
+    /// itself waits out the connect timeout.</summary>
+    public double? RetryDelay(Exception error, double now)
+    {
+        if (Cursor is null || error is not PipeClientException { ConnectFailure: PipeConnectFailure.Busy })
+            return null;
+        _refusedSince ??= now;
+        if (now - _refusedSince.Value >= RetryBudget) return null;
+        var delay = _nextRetryDelay;
+        _nextRetryDelay = Math.Min(delay * 2, MaxRetryDelay);
+        return delay;
+    }
+
     /// <summary>Take one response: fail loudly on a control error or a missing batch, otherwise
     /// advance the cursor to the batch's {run, next} and return its items.</summary>
     public ControlEvent[] Consume(ControlResponse response)
     {
+        _nextRetryDelay = FirstRetryDelay;
+        _refusedSince = null;
         if (!response.Ok)
             throw new CliValidationException(response.Error ?? "events.read failed");
         var batch = response.Result?.Events
@@ -236,7 +266,16 @@ internal static class EventCommands
 
         public void Poll(EventStreamState state, CliEnvironment env)
         {
-            var response = env.Send(Options.PipeName(env.GetEnv), state.MakeRequest());
+            ControlResponse response;
+            try
+            {
+                response = env.Send(Options.PipeName(env.GetEnv), state.MakeRequest()).Response;
+            }
+            catch (Exception error) when (state.RetryDelay(error, env.Now()) is { } delay)
+            {
+                env.Sleep(TimeSpan.FromSeconds(delay));
+                return;
+            }
             var events = state.Consume(response);
             foreach (var @event in events)
             {

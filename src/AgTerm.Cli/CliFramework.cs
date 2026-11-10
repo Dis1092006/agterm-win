@@ -66,9 +66,10 @@ public sealed class CliEnvironment
     public Func<string?> ClientPath { get; init; } = () => Environment.ProcessPath;
 
     /// <summary>Sends one request over one connection — the transport seam. The default connects a
-    /// real ControlPipeClient; tests substitute a canned responder.</summary>
-    public Func<string, ControlRequest, ControlResponse> Send { get; init; } =
-        (pipeName, request) => new ControlPipeClient(pipeName).Send(request);
+    /// real ControlPipeClient; tests substitute a canned responder. The reply keeps the line the
+    /// server wrote, which --json prints unchanged.</summary>
+    public Func<string, ControlRequest, ControlReply> Send { get; init; } =
+        (pipeName, request) => new ControlPipeClient(pipeName).SendReply(request);
 
     /// <summary>Sleep between polls (overlay --block, events --follow); injectable for tests.</summary>
     public Action<TimeSpan> Sleep { get; init; } = delay => Thread.Sleep(delay);
@@ -371,8 +372,8 @@ internal static class RequestCommandExtensions
     public static int DefaultRun(this IRequestCommand command, CliEnvironment env)
     {
         var request = command.MakeRequest();
-        var response = env.Send(command.Options.PipeName(env.GetEnv), request);
-        ClientOutput.PrintResponse(env, response, command.Options.Json, command.EchoesResultId);
-        return response.Ok ? 0 : 1;
+        var reply = env.Send(command.Options.PipeName(env.GetEnv), request);
+        ClientOutput.PrintResponse(env, reply, command.Options.Json, command.EchoesResultId);
+        return reply.Response.Ok ? 0 : 1;
     }
 }

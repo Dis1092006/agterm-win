@@ -99,11 +99,11 @@ public class CliFrameworkTests
         {
             GetEnv = key => key == "AGTERM_CONTROL_SOCKET" ? "test-pipe" : null,
             Out = output,
-            Send = (pipe, request) =>
+            Send = TestReply.Replying((pipe, request) =>
             {
                 seen.Add((pipe, request));
                 return new ControlResponse { Ok = true };
-            },
+            }),
         };
 
         var exit = Agtermctl.Run(new[] { "workspace", "delete", "--target", "9f3c" }, env);
@@ -124,10 +124,10 @@ public class CliFrameworkTests
         {
             GetEnv = _ => "test-pipe",
             Out = output,
-            Send = (_, _) => new ControlResponse
+            Send = TestReply.Replying((_, _) => new ControlResponse
             {
                 Ok = true, Result = new ControlResult { Id = "NEW-ID" },
-            },
+            }),
         };
 
         Assert.Equal(0, Agtermctl.Run(new[] { "workspace", "new", "Work" }, env));
@@ -148,7 +148,7 @@ public class CliFrameworkTests
             GetEnv = _ => "test-pipe",
             Out = output,
             Error = error,
-            Send = (_, _) => new ControlResponse { Ok = false, Error = "no such workspace: x" },
+            Send = TestReply.Replying((_, _) => new ControlResponse { Ok = false, Error = "no such workspace: x" }),
         };
 
         var exit = Agtermctl.Run(new[] { "workspace", "delete", "--target", "x" }, env);

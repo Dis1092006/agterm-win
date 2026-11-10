@@ -1,3 +1,4 @@
+using AgTerm.ControlServer;
 using AgTerm.Core.Protocol;
 
 namespace AgTerm.Cli;
@@ -5,32 +6,34 @@ namespace AgTerm.Cli;
 /// <summary>
 /// Response rendering — the port of the upstream SocketClient print/format helpers (the transport
 /// itself lives in AgTerm.ControlServer.ControlPipeClient). Human-readable output is byte-for-byte
-/// the upstream format; --json prints the raw response line.
+/// the upstream format; --json prints the response line exactly as the server wrote it.
 /// </summary>
 internal static class ClientOutput
 {
-    /// <summary>Print a response: the raw JSON line with json: true, otherwise a human-readable
-    /// summary. An error response (ok == false, non---json) goes to stderr; everything else to stdout.</summary>
-    public static void PrintResponse(CliEnvironment env, ControlResponse response, bool json,
+    /// <summary>Print a reply: with json: true the server's line, unchanged, so a field this build
+    /// does not model still reaches the caller; otherwise a human-readable summary. An error
+    /// response (ok == false, non---json) goes to stderr; everything else to stdout.</summary>
+    public static void PrintResponse(CliEnvironment env, ControlReply reply, bool json,
                                      bool echoId = false)
-    {
-        if (!json && !response.Ok)
-        {
-            env.Error.WriteLine(FormatResponse(response, json: false));
-            return;
-        }
-        env.Out.WriteLine(FormatResponse(response, json, echoId));
-    }
-
-    /// <summary>Render a response to a single string (no trailing newline): the raw JSON line with
-    /// json: true, otherwise a human-readable summary — an error: line, the tree listing, the
-    /// selected text, the affected id (only when echoId, i.e. for the create commands), or a bare ok.</summary>
-    public static string FormatResponse(ControlResponse response, bool json, bool echoId = false)
     {
         if (json)
         {
-            return ControlJson.Serialize(response);
+            env.Out.WriteLine(reply.Line);
+            return;
         }
+        if (!reply.Response.Ok)
+        {
+            env.Error.WriteLine(FormatResponse(reply.Response));
+            return;
+        }
+        env.Out.WriteLine(FormatResponse(reply.Response, echoId));
+    }
+
+    /// <summary>Render a response as a human-readable summary (no trailing newline): an error:
+    /// line, the tree listing, the selected text, the affected id (only when echoId, i.e. for the
+    /// create commands), or a bare ok.</summary>
+    public static string FormatResponse(ControlResponse response, bool echoId = false)
+    {
         if (!response.Ok)
         {
             return "error: " + (response.Error ?? "unknown error");

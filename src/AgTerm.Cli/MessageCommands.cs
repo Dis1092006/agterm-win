@@ -1,4 +1,5 @@
 using System.CommandLine;
+using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 using WireCommand = AgTerm.Core.Protocol.Command;
@@ -13,7 +14,7 @@ namespace AgTerm.Cli;
 internal sealed record MessageOutput(string Stdout = "", string Stderr = "", bool Failed = false);
 
 /// <summary>The reply a read ended on, or the --timeout deadline passing first.</summary>
-internal readonly record struct MessageReadOutcome(ControlResponse? Reply, bool TimedOut)
+internal readonly record struct MessageReadOutcome(ControlReply? Reply, bool TimedOut)
 {
     public static readonly MessageReadOutcome Expired = new(null, true);
 }
@@ -64,9 +65,9 @@ internal static class MessageCommands
     }
 
     /// <summary>The output of a reply whose ok is false.</summary>
-    private static MessageOutput Refused(ControlResponse response, bool json) => json
-        ? new MessageOutput(Stdout: ControlJson.Serialize(response) + "\n", Failed: true)
-        : new MessageOutput(Stderr: $"error: {response.Error ?? "unknown error"}\n", Failed: true);
+    private static MessageOutput Refused(ControlReply reply, bool json) => json
+        ? new MessageOutput(Stdout: reply.Line + "\n", Failed: true)
+        : new MessageOutput(Stderr: $"error: {reply.Response.Error ?? "unknown error"}\n", Failed: true);
 
     internal sealed record Send : IRequestCommand
     {
@@ -111,11 +112,12 @@ internal static class MessageCommands
 
         private string Body() => Text ?? TypedStdin.Decode(TypedStdin.ReadAll(StdinStream()));
 
-        public static MessageOutput Output(ControlResponse response, bool json)
+        public static MessageOutput Output(ControlReply reply, bool json)
         {
-            if (!response.Ok) return Refused(response, json);
+            var response = reply.Response;
+            if (!response.Ok) return Refused(reply, json);
             var rejected = response.Result?.Rejected ?? Array.Empty<MessageRejection>();
-            if (json) return new MessageOutput(Stdout: ControlJson.Serialize(response) + "\n", Failed: rejected.Count > 0);
+            if (json) return new MessageOutput(Stdout: reply.Line + "\n", Failed: rejected.Count > 0);
             return new MessageOutput(
                 Stdout: (response.Result?.MessageId ?? "") + "\n",
                 Stderr: string.Concat(rejected.Select(r => $"rejected {r.Address}: {r.Reason.ToWire()}\n")),
@@ -214,8 +216,8 @@ internal static class MessageCommands
             while (true)
             {
                 var reply = env.Send(pipeName, request);
-                var result = reply.Result;
-                var keepWaiting = Wait && reply.Ok && (result?.Messages is not { Count: > 0 })
+                var result = reply.Response.Result;
+                var keepWaiting = Wait && reply.Response.Ok && (result?.Messages is not { Count: > 0 })
                     && (!Ack || AckConfirmed(result));
                 if (!keepWaiting) return new MessageReadOutcome(reply, false);
                 if (deadline is not { } limit)
@@ -229,16 +231,17 @@ internal static class MessageCommands
             }
         }
 
-        public MessageOutput Output(ControlResponse response)
+        public MessageOutput Output(ControlReply reply)
         {
-            if (!response.Ok) return Refused(response, Basic.Json);
+            var response = reply.Response;
+            if (!response.Ok) return Refused(reply, Basic.Json);
             var result = response.Result;
             if (Ack && !AckConfirmed(result))
             {
                 return new MessageOutput(
                     Stderr: "error: the app did not confirm which messages it removed; nothing was printed\n", Failed: true);
             }
-            if (Basic.Json) return new MessageOutput(Stdout: ControlJson.Serialize(response) + "\n");
+            if (Basic.Json) return new MessageOutput(Stdout: reply.Line + "\n");
             var remaining = result?.Remaining ?? 0;
             return new MessageOutput(
                 Stdout: string.Concat((result?.Messages ?? Array.Empty<BusMessage>()).Select(Render)),
@@ -312,10 +315,11 @@ internal static class MessageCommands
             return Emit(env, Output(env.Send(Options.PipeName(env.GetEnv), request), Basic.Json));
         }
 
-        public static MessageOutput Output(ControlResponse response, bool json)
+        public static MessageOutput Output(ControlReply reply, bool json)
         {
-            if (!response.Ok) return Refused(response, json);
-            if (json) return new MessageOutput(Stdout: ControlJson.Serialize(response) + "\n");
+            var response = reply.Response;
+            if (!response.Ok) return Refused(reply, json);
+            if (json) return new MessageOutput(Stdout: reply.Line + "\n");
             return new MessageOutput(Stdout: $"acked {response.Result?.Acked?.Count ?? 0}\n");
         }
     }

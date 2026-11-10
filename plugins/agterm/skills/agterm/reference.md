@@ -12,7 +12,8 @@ request) as "Wire: `name`.".
 - **Socket resolution** (when `--socket` is omitted): agtermctl uses the state directory's
   socket, `~\.agterm-win\agterm.sock` by default. It does not read `AGTERM_SOCKET` itself. Passing
   `--socket "$AGTERM_SOCKET"` is the safe explicit form when the variable is set.
-- **`--json`**: prints the raw response object. Without it, ordinary mutations print `ok`, batch
+- **`--json`**: prints the server's response line unchanged, so a field this agtermctl build does not
+  know still reaches you. Without it, ordinary mutations print `ok`, batch
   close/move prints the affected session count, and `tree`/`window list` print a human listing. Use
   `--json` when you need to read ids or values back.
 - **Response shape**: `{"ok": true, "result": {…}}` or `{"ok": false, "error": "<message>"}`.
@@ -97,7 +98,11 @@ Cursor failures return `ok: false`, one of `event run changed`, `event cursor ex
 `event cursor is ahead of the current sequence`, plus the current empty anchor under
 `result.events`. Treat them as data-loss boundaries. Do not silently use the supplied anchor unless
 the caller explicitly accepts dropping the missing interval. `agtermctl events` exits non-zero on a
-cursor, transport, or server error and does not retry forever while the app is absent.
+cursor, transport, or server error. The one exception is a busy pipe once the stream holds a cursor: the
+app is there but does not take the connection. The CLI retries with the same cursor, waiting 250 ms and
+doubling up to 4 s, and exits non-zero about 30 s after the first refusal in a row, so it never waits
+forever on an app that does not answer. A missing pipe means the app quit and exits at once.
+`agtermctl session wait` retries the same way.
 
 ## Addressing
 

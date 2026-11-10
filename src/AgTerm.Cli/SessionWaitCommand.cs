@@ -152,7 +152,7 @@ internal static class SessionWaitCommands
             var statuses = Statuses;
             var deadline = Timeout is { } timeout ? env.Now() + timeout : (double?)null;
             var stream = NewStream();
-            stream.Consume(env.Send(pipeName, stream.MakeRequest()));
+            stream.Consume(env.Send(pipeName, stream.MakeRequest()).Response);
             var (id, current) = ResolveSession(env, pipeName);
             if (statuses.Contains(current)) return SessionWaitOutcome.Matched(id, current);
 
@@ -170,7 +170,17 @@ internal static class SessionWaitCommands
             while (true)
             {
                 if (deadline is { } limit && env.Now() >= limit) return SessionWaitOutcome.TimedOut;
-                var events = stream.Consume(env.Send(pipeName, stream.MakeRequest()));
+                ControlResponse response;
+                try
+                {
+                    response = env.Send(pipeName, stream.MakeRequest()).Response;
+                }
+                catch (Exception error) when (stream.RetryDelay(error, env.Now()) is { } delay)
+                {
+                    Pause(TimeSpan.FromSeconds(delay));
+                    continue;
+                }
+                var events = stream.Consume(response);
                 foreach (var @event in events)
                 {
                     if (!Guid.TryParse(@event.Session, out var eventSession) || eventSession != id) continue;
@@ -190,7 +200,7 @@ internal static class SessionWaitCommands
         /// window. An absent status reads as idle.</summary>
         private (Guid Id, AgentStatus Status) ResolveSession(CliEnvironment env, string pipeName)
         {
-            var list = env.Send(pipeName, new ControlRequest { Cmd = WireCommand.WindowList });
+            var list = env.Send(pipeName, new ControlRequest { Cmd = WireCommand.WindowList }).Response;
             if (!list.Ok || list.Result?.Windows is not { } windows)
                 throw new CliValidationException(list.Error ?? "window.list response missing windows");
             var sessions = new List<ControlSessionNode>();
@@ -201,7 +211,7 @@ internal static class SessionWaitCommands
                 {
                     Cmd = WireCommand.Tree,
                     Args = new ControlArgs { Window = window.Id },
-                });
+                }).Response;
                 if (!reply.Ok || reply.Result?.Tree is not { } tree)
                     throw new CliValidationException(reply.Error ?? "tree response missing tree");
                 var nodes = tree.Workspaces.SelectMany(workspace => workspace.Sessions).ToArray();

@@ -108,7 +108,7 @@ public class OverlayVisibilityCommandsTests
         var lines = ClientOutput.FormatResponse(new ControlResponse
         {
             Ok = true, Result = new ControlResult { Tree = tree },
-        }, json: false).Split('\n');
+        }).Split('\n');
         Assert.Equal($"  * shell{tag}  [s1]  /tmp", lines[1]);
     }
 }

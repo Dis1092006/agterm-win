@@ -253,7 +253,9 @@ given. Use `--json` for one bare event object per line; filter with repeatable o
 (`message`: mail queued for a pane; carries `paneID`, `from` and `messageID`, never the body); resume with paired
 `--run RUN --after SEQ`; and set page size with `--limit 1...1000`. The app retains 4,096 events for
 one process run. Cursor run changes, expiry, and ahead-of-tail errors are fatal and are never silently
-rebaselined. There is no terminal-output event stream. `session.selected`, `pane.split` and `pane.scratch` are new
+rebaselined. Once the stream holds a cursor, a busy pipe (the app is there but does not take the
+connection) is retried with that cursor for about 30 s before the stream exits. Without a cursor, a busy
+pipe exits at once. There is no terminal-output event stream. `session.selected`, `pane.split` and `pane.scratch` are new
 kinds; `remote.opened` and `remote.closed` are accepted by `--kind` but agterm-win has no remote sessions, so they never fire.
 
 **hooks** — `hooks reload` (re-read and apply `hooks.conf`; prints the parse-diagnostic count) · `hooks list [--json]` (every

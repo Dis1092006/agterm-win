@@ -129,7 +129,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 - `hooks.conf` (`on <kind> <command>`), the event JSON on stdin, `AGT_*` in the environment; `hooks.list`, `hooks.reload` #607. Port: done (B7). The shell is cmd.exe; see PLATFORM-NOTES "Event hooks".
 - New events: `pane.split`, `pane.scratch` #607, `session.selected` with `previous` #694, `remote.opened`, `remote.closed` #610. `status` got `previous`. Port: done (B7). `remote.opened` and `remote.closed` parse but never fire: the port has no remote sessions.
-- `agtermctl events` retries after a refused connection (250 ms to 4 s) from the same cursor and exits after about 30 s #716. Socket backlog 128 instead of 8 #717. Port: not done. `agtermctl events` does not retry. The control pipe has one server instance, and a second client waits in its connect call until the current connection closes; there is no listen backlog to raise.
+- `agtermctl events` retries after a refused connection (250 ms to 4 s) from the same cursor and exits after about 30 s #716. Socket backlog 128 instead of 8 #717. Port: #716 done. A busy pipe is retried, a missing pipe is fatal, and the 30 s budget is counted by the clock (PLATFORM-NOTES). #717 has no analogue: the control pipe has one server instance, and a second client waits in its connect call until the current connection closes.
 
 ## 9. Agent status
 
@@ -144,9 +144,9 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 - `version` #476. Port: done (without `tree.app`).
 - `session.context`: a line about the session's purpose in the title and in `tree`; it survives a restart, and `session.duplicate` does not copy it #522. Port: done in agterm-win A3. The title bar has `sessionContext`; the remote `effectiveContext` is not ported.
 - `realized` in `tree` #417, `splitCwd` #566, `splitCommandWait`. Port: `realized` and `splitCwd` done in agterm-win A3; `splitCommandWait` not done (no split `--command`).
-- `agtermctl --json` prints the server line without re-encoding it #628. Port: not done. `agtermctl` encodes the reply again.
-- `agtermctl clipboard set [TEXT]`: a CLI subcommand; it is not in the protocol command list #722. Port: not done.
-- When the socket is taken, `agtermctl` tells "the app is not running" from "an owner exists but does not accept" #633. Port: not done. A failed connect answers `... is agterm running?` in both cases.
+- `agtermctl --json` prints the server line without re-encoding it #628. Port: done (PLATFORM-NOTES).
+- `agtermctl clipboard set [TEXT]`: a CLI subcommand; it is not in the protocol command list #722. Port: done. It writes the Windows clipboard; the zmx and OSC 52 paths are not ported (PLATFORM-NOTES).
+- When the socket is taken, `agtermctl` tells "the app is not running" from "an owner exists but does not accept" #633. Port: done. The port asks the pipe with `WaitNamedPipe` instead of reading a lock file (PLATFORM-NOTES).
 - Workspace name in the window title #601; a custom-command button in the title bar #582, with the most-run commands on top #584 (`68e17937`). The list of shown elements is `shownInterfaceElements`. Port: done. `shownInterfaceElements` and the workspace name in B11a, the custom-command button as a menu, with its run counts in `custom-command-usage.json`, in B11b (PLATFORM-NOTES).
 - Font of palettes and the picker: `interfaceFontSize` #367. Cursor: `cursorStyle`, `cursorBlink` #487. Port: not done.
 - A welcome window on first launch: `welcomeShown` #353. Port: not done.
@@ -155,7 +155,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 - `Snapshot`: `focusedWorkspaceID` is replaced by `focusedWorkspaceIDs` and `focusEnabled`. Old `workspaces.json` files have to be migrated on read. Port: done in agterm-win A5.
 - `SessionSnapshot`, new fields: `paneIdentity`, `splitPaneIdentity`, `hasSplit`, `splitAxis`, `context`, `splitInitialCommand`, `splitCommandWait`, `paneBackgrounds`. Port: `context` done in agterm-win A3; the others not done.
-- An unknown value of an optional field in `workspaces.json` becomes nil instead of failing the whole snapshot #363. Port: not done.
+- An unknown value of an optional field in `workspaces.json` becomes nil instead of failing the whole snapshot #363. Port: done with focus as a set of workspaces (PLATFORM-NOTES).
 - `AppSettings`, new fields: `cursorBlink`, `cursorStyle`, `flaggedViewLayout`, `htmlOverlayZoom`, `interfaceFontSize`, `linkOpenMode`, `newSessionPlacement`, `quickTerminalSizePercent`, `restoreMode`, `shownInterfaceElements`, `statusReset`, `welcomeShown`, `workspaceRowClickExpands`. Port: partly: `flaggedViewLayout` (B5a), `statusReset` and `shownInterfaceElements` (B11a) are done.
 
 ## 12. Behavior changes in commands already implemented

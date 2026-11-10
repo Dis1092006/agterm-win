@@ -25,7 +25,7 @@ public class PickRunnerTests
             Error = Error,
             GetEnv = _ => null,
             Sleep = Sleeps.Add,
-            Send = (_, request) => { Sent.Add(request); return _replies.Count > 0 ? _replies.Dequeue()(request) : new ControlResponse { Ok = true }; },
+            Send = TestReply.Replying((_, request) => { Sent.Add(request); return _replies.Count > 0 ? _replies.Dequeue()(request) : new ControlResponse { Ok = true }; }),
         };
     }
 

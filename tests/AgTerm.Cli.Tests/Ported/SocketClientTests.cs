@@ -144,7 +144,41 @@ public class SocketClientTests
             connectTimeoutMs: 250);
         var error = Assert.Throws<PipeClientException>(
             () => client.Send(new ControlRequest { Cmd = WireCommand.Tree }));
-        Assert.Contains("— is agterm running?", error.Message);
+        Assert.Contains("connect(", error.Message);
+    }
+
+    [Fact]
+    public void AMissingSocketWithNoOwnershipLockStaysUncertainAndKeepsItsErrno()
+    {
+        // the pipe name is the whole ownership signal on Windows: no instance means no owner seen.
+        var client = new ControlPipeClient("agterm-absent-" + Guid.NewGuid().ToString("N")[..8],
+            connectTimeoutMs: 250);
+        var error = Assert.Throws<PipeClientException>(
+            () => client.Send(new ControlRequest { Cmd = WireCommand.Tree }));
+        Assert.Contains("agterm may be stopped or unable to accept connections", error.Message);
+        Assert.DoesNotContain("is agterm running?", error.Message);
+        Assert.Equal(PipeConnectFailure.Missing, error.ConnectFailure);
+    }
+
+    [Fact]
+    public async Task RefusedConnectWithAHeldOwnershipLockReportsThePresentOwner()
+    {
+        // a single-instance pipe already serving one client: the name exists and refuses the next
+        // one, the Windows shape of a live listener that does not accept.
+        var name = TestPipeName();
+        using var server = new System.IO.Pipes.NamedPipeServerStream(name, System.IO.Pipes.PipeDirection.InOut,
+            maxNumberOfServerInstances: 1, System.IO.Pipes.PipeTransmissionMode.Byte,
+            System.IO.Pipes.PipeOptions.Asynchronous | System.IO.Pipes.PipeOptions.CurrentUserOnly);
+        var accepted = server.WaitForConnectionAsync();
+        using var holder = new System.IO.Pipes.NamedPipeClientStream(".", name, System.IO.Pipes.PipeDirection.InOut);
+        await holder.ConnectAsync(5000);
+        await accepted;
+
+        var client = new ControlPipeClient(name, connectTimeoutMs: 250);
+        var error = await Task.Run(() => Assert.Throws<PipeClientException>(
+            () => client.Send(new ControlRequest { Cmd = WireCommand.Tree })));
+        Assert.Contains("the socket owner is present but not accepting connections", error.Message);
+        Assert.Equal(PipeConnectFailure.Busy, error.ConnectFailure);
     }
 
     [Fact(Skip = "PORT-GAP: sockaddr_un.sun_path capacity is Unix-socket-only; Windows uses named pipes.")]
@@ -273,21 +307,21 @@ public class SocketClientTests
     [Fact]
     public void FormatResponseBareOk()
     {
-        Assert.Equal("ok", ClientOutput.FormatResponse(new ControlResponse { Ok = true }, json: false));
+        Assert.Equal("ok", ClientOutput.FormatResponse(new ControlResponse { Ok = true }));
     }
 
     [Fact]
     public void FormatResponseEchoesIdWhenRequested()
     {
         var response = new ControlResponse { Ok = true, Result = new ControlResult { Id = "9f3c" } };
-        Assert.Equal("9f3c", ClientOutput.FormatResponse(response, json: false, echoId: true));
+        Assert.Equal("9f3c", ClientOutput.FormatResponse(response, echoId: true));
     }
 
     [Fact]
     public void FormatResponseSuppressesIdByDefault()
     {
         var response = new ControlResponse { Ok = true, Result = new ControlResult { Id = "9f3c" } };
-        Assert.Equal("ok", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("ok", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
@@ -297,7 +331,7 @@ public class SocketClientTests
         {
             Ok = true, Result = new ControlResult { Text = "selected\nlines" },
         };
-        Assert.Equal("selected\nlines", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("selected\nlines", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
@@ -305,14 +339,14 @@ public class SocketClientTests
     {
         // keymap.reload reports a parse-diagnostic count; 0 reads as a clean reload.
         var response = new ControlResponse { Ok = true, Result = new ControlResult { Count = 0 } };
-        Assert.Equal("ok", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("ok", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
     public void FormatResponseNonZeroCountPluralizes()
     {
         var response = new ControlResponse { Ok = true, Result = new ControlResult { Count = 3 } };
-        Assert.Equal("3 diagnostic(s)", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("3 diagnostic(s)", ClientOutput.FormatResponse(response));
     }
 
     [Theory]
@@ -326,7 +360,7 @@ public class SocketClientTests
         {
             Ok = true, Result = new ControlResult { Id = id, Affected = affected, Undoable = undoable },
         };
-        Assert.Equal(expected, ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal(expected, ClientOutput.FormatResponse(response));
     }
 
     [Theory] // @Test(arguments:) — the one parameterized test in the Swift suite
@@ -339,14 +373,14 @@ public class SocketClientTests
         {
             Ok = true, Result = new ControlResult { Affected = affected },
         };
-        Assert.Equal(expected, ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal(expected, ClientOutput.FormatResponse(response));
     }
 
     [Fact]
     public void FormatResponseError()
     {
         Assert.Equal("error: boom",
-            ClientOutput.FormatResponse(new ControlResponse { Ok = false, Error = "boom" }, json: false));
+            ClientOutput.FormatResponse(new ControlResponse { Ok = false, Error = "boom" }));
     }
 
     [Fact]
@@ -357,18 +391,14 @@ public class SocketClientTests
         {
             Ok = true, Result = new ControlResult { Id = "9f3c", Ratio = 0.85 },
         };
-        Assert.Equal("0.850", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("0.850", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
     public void FormatWindowResizeReportsAppliedWidthAndHeight()
     {
         var response = ControlJson.Deserialize<ControlResponse>("""{"ok":true,"result":{"id":"w","width":1200,"height":800}}""")!;
-        Assert.Equal("1200 800", ClientOutput.FormatResponse(response, json: false));
-        using var encoded = JsonDocument.Parse(ClientOutput.FormatResponse(response, json: true));
-        var result = encoded.RootElement.GetProperty("result");
-        Assert.Equal(1200, result.GetProperty("width").GetInt32());
-        Assert.Equal(800, result.GetProperty("height").GetInt32());
+        Assert.Equal("1200 800", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
@@ -379,7 +409,7 @@ public class SocketClientTests
             Ok = true,
             Result = new ControlResult { Id = "surface:X:left", Cursor = new ControlCursor { Column = 12 } },
         };
-        Assert.Equal("12", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("12", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
@@ -387,19 +417,7 @@ public class SocketClientTests
     {
         // an error response with no message falls back to a generic line.
         Assert.Equal("error: unknown error",
-            ClientOutput.FormatResponse(new ControlResponse { Ok = false }, json: false));
-    }
-
-    [Fact]
-    public void FormatResponseJSONIsRaw()
-    {
-        var response = new ControlResponse { Ok = true, Result = new ControlResult { Id = "9f3c" } };
-        // the raw line's key order differs from the Swift encoder's, so (like the Swift test) the
-        // comparison decodes the line back instead of matching bytes.
-        var line = ClientOutput.FormatResponse(response, json: true);
-        var decoded = ControlJson.Deserialize<ControlResponse>(line);
-        Assert.True(decoded?.Ok);
-        Assert.Equal("9f3c", decoded?.Result?.Id);
+            ClientOutput.FormatResponse(new ControlResponse { Ok = false }));
     }
 
     [Fact]
@@ -417,7 +435,7 @@ public class SocketClientTests
         var @out = ClientOutput.FormatResponse(new ControlResponse
         {
             Ok = true, Result = new ControlResult { Tree = tree },
-        }, json: false);
+        });
         var lines = @out.Split('\n');
         Assert.Equal(2, lines.Length);
         Assert.Equal("* work  [w1]", lines[0]);
@@ -442,7 +460,7 @@ public class SocketClientTests
                     Workspaces = new[] { new ControlWorkspaceNode { Id = "w4", Name = "work", Active = true, Sessions = new[] { session } } },
                 },
             },
-        }, json: false).Split('\n')[1];
+        }).Split('\n')[1];
 
         Assert.Equal("  * shell (split hidden)  [s4]  /tmp", Line(Node(split: false, hasSplit: true)));
         Assert.Equal("  * shell (split)  [s4]  /tmp", Line(Node(split: true, hasSplit: true)));
@@ -465,7 +483,7 @@ public class SocketClientTests
         var @out = ClientOutput.FormatResponse(new ControlResponse
         {
             Ok = true, Result = new ControlResult { Tree = tree },
-        }, json: false);
+        });
         var lines = @out.Split('\n');
         Assert.Equal("  * shell (scratch)  [s3]  /tmp", lines[1]);
     }
@@ -485,7 +503,7 @@ public class SocketClientTests
         var @out = ClientOutput.FormatResponse(new ControlResponse
         {
             Ok = true, Result = new ControlResult { Tree = tree },
-        }, json: false);
+        });
         var lines = @out.Split('\n');
         Assert.Equal("  other  [w2]", lines[0]);
         Assert.Equal("    logs  [s2]  /var", lines[1]);
@@ -506,7 +524,7 @@ public class SocketClientTests
         var @out = ClientOutput.FormatResponse(new ControlResponse
         {
             Ok = true, Result = new ControlResult { Windows = windows },
-        }, json: false);
+        });
         var lines = @out.Split('\n');
         Assert.Equal(4, lines.Length);
         Assert.Equal("w1  work [open] [active]", lines[0]);
@@ -521,7 +539,7 @@ public class SocketClientTests
         var @out = ClientOutput.FormatResponse(new ControlResponse
         {
             Ok = true, Result = new ControlResult { Windows = Array.Empty<ControlWindowNode>() },
-        }, json: false);
+        });
         // an empty window list renders an empty string (no per-window lines), not the bare ok line —
         // a present-but-empty `windows` payload still takes the windows branch.
         Assert.Equal("", @out);
@@ -537,7 +555,7 @@ public class SocketClientTests
                 Theme = "Nord", Themes = new[] { "Dracula", "Nord" },
             },
         };
-        var @out = ClientOutput.FormatResponse(response, json: false);
+        var @out = ClientOutput.FormatResponse(response);
         Assert.Equal(new[] { "  default terminal", "  Dracula", "* Nord" }, @out.Split('\n'));
     }
 
@@ -549,7 +567,7 @@ public class SocketClientTests
         {
             Ok = true, Result = new ControlResult { Theme = null, Themes = new[] { "Dracula" } },
         };
-        var @out = ClientOutput.FormatResponse(response, json: false);
+        var @out = ClientOutput.FormatResponse(response);
         Assert.Equal(new[] { "* default terminal", "  Dracula" }, @out.Split('\n'));
     }
 
@@ -561,7 +579,7 @@ public class SocketClientTests
         {
             Ok = true, Result = new ControlResult { Theme = "Dracula" },
         };
-        Assert.Equal("ok", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("ok", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
@@ -576,7 +594,7 @@ public class SocketClientTests
                 Sync = true, Light = "Builtin Light", Dark = "agterm",
             },
         };
-        var @out = ClientOutput.FormatResponse(response, json: false);
+        var @out = ClientOutput.FormatResponse(response);
         var lines = @out.Split('\n');
         Assert.Equal("syncing with Windows appearance — light: Builtin Light, dark: agterm", lines.First());
         Assert.Contains("* agterm", lines);
@@ -587,6 +605,64 @@ public class SocketClientTests
 
     /// <summary>Records every request and answers events.read with an empty page whose cursor
     /// advances (7, then 8) — the port of the Swift EventReadScript.</summary>
+    /// <summary>Fields this build does not model, at both levels, plus spelling the encoder would
+    /// never produce: boundary and separator spaces, a `\u0020` escape and a decomposed é. #625: a
+    /// re-encode drops the fields and rewrites the rest.</summary>
+    private const string UnmodeledLine =
+        " {\"ok\": true, \"result\": {\"tree\": {\"idleMs\": 1, \"sidebarMode\": \"tree\", \"workspaces\": []}, "
+        + "\"futureField\": {\"a\": 1}}, \"warning\": \"deprecated\\u0020flag e\u0301\"} ";
+
+    private static CliEnvironment RawEnv(string pipe, StringWriter output) => new()
+    {
+        GetEnv = key => key == "AGTERM_CONTROL_SOCKET" ? pipe : null,
+        Out = output,
+        Error = new StringWriter(),
+        Sleep = _ => { },
+        ClientPath = () => @"C:\tools\agtermctl.exe",
+    };
+
+    [Fact]
+    public async Task JsonPrintsTheServerLineUnchanged()
+    {
+        var pipe = TestPipeName();
+        var server = RawLineServer.Start(pipe, UnmodeledLine);
+        var output = NewOutput();
+
+        Assert.Equal(0, await Task.Run(() => Agtermctl.ParseAsRoot(new[] { "tree", "--json" }).Execute(RawEnv(pipe, output))));
+
+        await server;
+        Assert.Equal(UnmodeledLine + "\n", output.ToString());
+    }
+
+    [Fact]
+    public async Task JsonPrintsAnErrorLineUnchangedBeforeFailing()
+    {
+        const string line = "{\"ok\": false, \"error\": \"boom\", \"hint\": \"unmodeled e\u0301\"} ";
+        var pipe = TestPipeName();
+        var server = RawLineServer.Start(pipe, line);
+        var output = NewOutput();
+
+        Assert.Equal(1, await Task.Run(() => Agtermctl.ParseAsRoot(new[] { "tree", "--json" }).Execute(RawEnv(pipe, output))));
+
+        await server;
+        Assert.Equal(line + "\n", output.ToString());
+    }
+
+    [Fact]
+    public async Task VersionJsonCarriesTheRawResponseWithoutTheClientPath()
+    {
+        const string line = "{\"ok\": true, \"result\": {\"app\": {\"version\": \"0.24.0\", \"commit\": \"a1b2c3d\\u0020\"}}} ";
+        var pipe = TestPipeName();
+        var server = RawLineServer.Start(pipe, line);
+        var output = NewOutput();
+
+        Assert.Equal(0, await Task.Run(() => Agtermctl.ParseAsRoot(new[] { "version", "--json" }).Execute(RawEnv(pipe, output))));
+
+        await server;
+        Assert.Equal(line + "\n", output.ToString());
+        Assert.DoesNotContain("client", output.ToString());
+    }
+
     private sealed class EventReadScript
     {
         private readonly object _lock = new();

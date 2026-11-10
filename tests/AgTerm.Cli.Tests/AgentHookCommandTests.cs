@@ -36,11 +36,11 @@ public sealed class AgentHookCommandTests
             Out = output,
             Error = error,
             In = new StringReader(stdin),
-            Send = (pipe, request) =>
+            Send = TestReply.Replying((pipe, request) =>
             {
                 sent.Add((pipe, request));
                 return respond?.Invoke(request) ?? new ControlResponse { Ok = true };
-            },
+            }),
         };
         var exit = Agtermctl.Run(["agent-hook", "resume", .. argv], env);
         return new Run(exit, output.ToString(), error.ToString(), sent);
@@ -246,7 +246,7 @@ public sealed class AgentHookCommandTests
             Out = output,
             Error = error,
             In = new StringReader(Start(Id)),
-            Send = (_, _) => throw new PipeClientException("connect(x) failed: timeout — is agterm running?"),
+            Send = TestReply.Replying((_, _) => throw new PipeClientException("connect(x) failed: timeout — is agterm running?")),
         };
 
         Assert.Equal(0, Agtermctl.Run(["agent-hook", "resume", "claude", "start"], env));

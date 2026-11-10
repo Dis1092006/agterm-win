@@ -1,6 +1,7 @@
 using System.Text;
 using AgTerm.Cli;
 using AgTerm.Cli.Tests.TestSupport;
+using AgTerm.ControlServer;
 using AgTerm.Core.Protocol;
 using Xunit;
 using WireCommand = AgTerm.Core.Protocol.Command;
@@ -144,11 +145,11 @@ public class EventCommandsTests
         var env = new CliEnvironment
         {
             GetEnv = _ => null,
-            Send = (_, request) =>
+            Send = TestReply.Replying((_, request) =>
             {
                 requests.Add(request);
                 return responses.Dequeue();
-            },
+            }),
             Sleep = delay => sleeps.Add(delay),
             Out = lines,
         };
@@ -178,11 +179,11 @@ public class EventCommandsTests
             command.Poll(transportState, new CliEnvironment
             {
                 GetEnv = _ => null,
-                Send = (_, _) =>
+                Send = TestReply.Replying((_, _) =>
                 {
                     transportSends += 1;
                     throw new CliValidationException("transport failed");
-                },
+                }),
                 Sleep = _ => { },
                 Out = new LineWriter(),
             }));
@@ -194,14 +195,14 @@ public class EventCommandsTests
             command.Poll(serverState, new CliEnvironment
             {
                 GetEnv = _ => null,
-                Send = (_, _) =>
+                Send = TestReply.Replying((_, _) =>
                 {
                     serverSends += 1;
                     return new ControlResponse
                     {
                         Ok = false, Error = ControlEventReadError.CursorExpired.Message(),
                     };
-                },
+                }),
                 Sleep = _ => { },
                 Out = new LineWriter(),
             }));
@@ -213,7 +214,7 @@ public class EventCommandsTests
             command.Poll(outputState, new CliEnvironment
             {
                 GetEnv = _ => null,
-                Send = (_, _) =>
+                Send = TestReply.Replying((_, _) =>
                 {
                     outputSends += 1;
                     var @event = new ControlEvent { Seq = 1, Ts = 0, Kind = ControlEventKind.TreeChanged };
@@ -224,11 +225,164 @@ public class EventCommandsTests
                             Events = new ControlEventBatch { Run = Run, Next = 1, Items = new[] { @event } },
                         },
                     };
-                },
+                }),
                 Sleep = _ => { },
                 Out = new ThrowingLineWriter(),
             }));
         Assert.Equal(1, outputSends);
+    }
+
+    [Fact]
+    public void ARefusedConnectBacksOffAndResumesFromTheSameCursor()
+    {
+        var outcomes = new Queue<ControlResponse?>(Enumerable.Repeat<ControlResponse?>(null, 6).Concat(new ControlResponse?[]
+        {
+            new ControlResponse
+            {
+                Ok = true, Result = new ControlResult { Events = new ControlEventBatch { Run = Run, Next = 9, Items = [] } },
+            },
+            null,
+        }));
+        var requests = new List<ControlRequest>();
+        var clock = new FakeClock();
+        var env = clock.Environment(request =>
+        {
+            requests.Add(request);
+            return outcomes.Dequeue() ?? throw Refused();
+        });
+        var command = Parse("--run", RunUuidString, "--after", "9");
+        var state = command.MakeState();
+
+        for (var i = 0; i < 8; i++) command.Poll(state, env);
+
+        Assert.Equal(new[] { 0.25, 0.5, 1, 2, 4, 4, 0.25, 0.25 }, clock.Sleeps);
+        Assert.All(requests, request =>
+        {
+            Assert.Equal(RunUuidString, request.Args?.Run);
+            Assert.Equal("9", request.Args?.After);
+        });
+    }
+
+    [Fact]
+    public void ARefusedConnectGivesUpOnceTheRetryBudgetIsSpent()
+    {
+        var clock = new FakeClock();
+        var env = clock.Environment(_ => throw Refused());
+        var command = Parse("--run", RunUuidString, "--after", "9");
+        var state = command.MakeState();
+
+        var error = Assert.Throws<PipeClientException>(() =>
+        {
+            for (var i = 0; i < 100; i++) command.Poll(state, env);
+        });
+
+        Assert.Equal(PipeConnectFailure.Busy, error.ConnectFailure);
+        var waited = clock.Sleeps.Sum();
+        Assert.True(waited >= EventStreamState.RetryBudget, $"waited {waited}");
+        Assert.True(waited < EventStreamState.RetryBudget + EventStreamState.MaxRetryDelay, $"waited {waited}");
+    }
+
+    [Fact]
+    public void ARefusedConnectCountsTheTimeTheConnectTookAgainstTheBudget()
+    {
+        // Windows: a connect to a busy pipe waits its whole timeout before it fails, so the budget is
+        // wall-clock time from the first refusal, not the sum of the sleeps between attempts.
+        var clock = new FakeClock();
+        var env = clock.Environment(_ =>
+        {
+            clock.Now += 5;
+            throw Refused();
+        });
+        var command = Parse("--run", RunUuidString, "--after", "9");
+        var state = command.MakeState();
+
+        Assert.Throws<PipeClientException>(() =>
+        {
+            for (var i = 0; i < 100; i++) command.Poll(state, env);
+        });
+
+        var firstRefusal = 5.0;
+        var elapsed = clock.Now - firstRefusal;
+        Assert.True(elapsed >= EventStreamState.RetryBudget, $"elapsed {elapsed}");
+        Assert.True(elapsed < EventStreamState.RetryBudget + EventStreamState.MaxRetryDelay + 5, $"elapsed {elapsed}");
+        Assert.True(clock.Sleeps.Sum() < EventStreamState.RetryBudget, $"slept {clock.Sleeps.Sum()}");
+    }
+
+    [Fact]
+    public void AResponseRenewsTheRetryBudget()
+    {
+        const int nearlySpent = 9;
+        var outcomes = new Queue<ControlResponse?>(Enumerable.Repeat<ControlResponse?>(null, nearlySpent)
+            .Append(new ControlResponse
+            {
+                Ok = true, Result = new ControlResult { Events = new ControlEventBatch { Run = Run, Next = 9, Items = [] } },
+            })
+            .Concat(Enumerable.Repeat<ControlResponse?>(null, nearlySpent)));
+        var clock = new FakeClock();
+        var env = clock.Environment(_ => outcomes.Dequeue() ?? throw Refused());
+        var command = Parse("--run", RunUuidString, "--after", "9");
+        var state = command.MakeState();
+
+        for (var i = 0; i < 2 * nearlySpent + 1; i++) command.Poll(state, env);
+
+        var episode = clock.Sleeps.Take(nearlySpent).ToArray();
+        Assert.True(episode.Sum() < EventStreamState.RetryBudget);
+        Assert.True(clock.Sleeps.Sum() > EventStreamState.RetryBudget + EventStreamState.MaxRetryDelay);
+        Assert.Equal(episode, clock.Sleeps.TakeLast(nearlySpent));
+    }
+
+    [Fact]
+    public void OnlyARefusedConnectWithACursorIsRetried()
+    {
+        var cursored = Parse("--run", RunUuidString, "--after", "9");
+        var fatal = new (EventCommands.Events Command, Exception Failure)[]
+        {
+            (Parse(), Refused()),
+            (cursored, new PipeClientException("connect failed", PipeConnectFailure.Missing)),
+            (cursored, new PipeClientException("connect failed", PipeConnectFailure.Unknown)),
+            (cursored, new PipeClientException("connect failed", PipeConnectFailure.Other)),
+            (cursored, new PipeClientException("no response from agterm")),
+            (cursored, new CliValidationException("transport failed")),
+        };
+        foreach (var (command, failure) in fatal)
+        {
+            var state = command.MakeState();
+            var sends = 0;
+            var clock = new FakeClock();
+            var env = clock.Environment(_ =>
+            {
+                sends += 1;
+                throw failure;
+            });
+            Assert.ThrowsAny<Exception>(() => command.Poll(state, env));
+            Assert.Equal(1, sends);
+        }
+    }
+
+    private static PipeClientException Refused() =>
+        new("connect(agterm) failed: The operation has timed out. — the socket owner is present but not accepting connections",
+            PipeConnectFailure.Busy);
+
+    /// <summary>A clock that only moves when the stream sleeps (or a test moves it), so the retry
+    /// budget runs out after a known number of attempts.</summary>
+    private sealed class FakeClock
+    {
+        public double Now { get; set; }
+
+        public List<double> Sleeps { get; } = new();
+
+        public CliEnvironment Environment(Func<ControlRequest, ControlResponse> send) => new()
+        {
+            GetEnv = _ => null,
+            Send = TestReply.Replying((_, request) => send(request)),
+            Sleep = delay =>
+            {
+                Sleeps.Add(delay.TotalSeconds);
+                Now += delay.TotalSeconds;
+            },
+            Now = () => Now,
+            Out = new LineWriter(),
+        };
     }
 
     [Fact]

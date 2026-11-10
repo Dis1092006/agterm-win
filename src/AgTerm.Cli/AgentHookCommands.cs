@@ -77,7 +77,7 @@ internal static class AgentHookCommands
                         Pane = pane,
                         PaneId = paneId,
                     },
-                });
+                }).Response;
                 if (!response.Ok) env.Error.WriteLine("error: " + response.Error);
             }
             catch (PipeClientException e)
@@ -100,7 +100,7 @@ internal static class AgentHookCommands
                 {
                     Cmd = WireCommand.Tree,
                     Args = candidate is null ? null : new ControlArgs { Window = candidate },
-                });
+                }).Response;
                 if (!response.Ok || response.Result?.Tree is not { } tree) continue;
                 var found = AgentResumeHook.PaneRestoreCommand(tree, session, paneId, pane);
                 if (found.Found) return found;

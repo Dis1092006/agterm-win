@@ -256,7 +256,7 @@ public class ControlPipeServerTests
         var error = Assert.Throws<PipeClientException>(
             () => client.Send(new ControlRequest { Cmd = Command.Tree }));
 
-        Assert.Contains("is agterm running?", error.Message);
+        Assert.Contains("agterm may be stopped or unable to accept connections", error.Message);
     }
 
     [Fact]
@@ -272,6 +272,26 @@ public class ControlPipeServerTests
         var afterStop = new ControlPipeClient(pipe, connectTimeoutMs: 300);
         await Assert.ThrowsAsync<PipeClientException>(
             () => SendAsync(afterStop, new ControlRequest { Cmd = Command.Tree }));
+    }
+
+    /// <summary>Fields this build does not model, at both levels, plus spelling the encoder would
+    /// never produce: boundary and separator spaces, a `\u0020` escape and a decomposed é.
+    /// Upstream #625: a re-encode drops the fields and rewrites the rest.</summary>
+    internal const string UnmodeledLine =
+        " {\"ok\": true, \"result\": {\"tree\": {\"idleMs\": 1, \"sidebarMode\": \"tree\", \"workspaces\": []}, "
+        + "\"futureField\": {\"a\": 1}}, \"warning\": \"deprecated\\u0020flag e\u0301\"} ";
+
+    [Fact]
+    public async Task SendReplyKeepsTheServerLineByteForByte()
+    {
+        var pipe = FreshPipe();
+        var server = RawLineServer.Start(pipe, UnmodeledLine);
+
+        var reply = await Task.Run(() => new ControlPipeClient(pipe).SendReply(new ControlRequest { Cmd = Command.Tree }));
+
+        await server;
+        Assert.Equal(Encoding.UTF8.GetBytes(UnmodeledLine), Encoding.UTF8.GetBytes(reply.Line));
+        Assert.Equal(1, reply.Response.Result?.Tree?.IdleMs);
     }
 
     /// <summary>Writes raw bytes over a fresh pipe connection and reads the single response line.
