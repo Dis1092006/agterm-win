@@ -202,5 +202,7 @@ public sealed class LiveMessagesControlTests : IDisposable
             Task.FromResult(new LiveWindowMoveResult(true, 1));
         public Task ToggleZoomAsync(Guid windowId, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task ToggleFullscreenAsync(Guid windowId, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<LiveWindowMinimizeResult> MinimizeWindowAsync(Guid windowId, ControlToggleMode mode, CancellationToken cancellationToken) =>
+            Task.FromResult(new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.Applied, mode == ControlToggleMode.On));
     }
 }

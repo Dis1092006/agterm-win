@@ -121,6 +121,31 @@ public class ControlWindowTests : ControlApiTestCase
         Assert.Equal(WindowManagementUnavailable, exited["error"]?.GetValue<string>());
     }
 
+    // Upstream: window.minimize on parks the window (minimized:true on window.list, geometry kept),
+    // a repeated on is a no-op, and off restores it. window.new --minimized creates a parked window
+    // that does not take frontmost. Headless: no compositor, so every arm answers the pinned refusal,
+    // after the target resolves and the mode parses.
+    [Fact]
+    public void WindowMinimize()
+    {
+        var minimized = SendCommand("""{"cmd":"window.minimize","args":{"mode":"on"}}""");
+        Assert.False(minimized["ok"]?.GetValue<bool>(), $"headless window.minimize must refuse: {minimized.ToJsonString()}");
+        Assert.Equal(WindowManagementUnavailable, minimized["error"]?.GetValue<string>());
+
+        var badMode = SendCommand("""{"cmd":"window.minimize","args":{"mode":"hide"}}""");
+        Assert.Equal("invalid window minimize mode: hide", badMode["error"]?.GetValue<string>());
+
+        var unknown = SendCommand("""{"cmd":"window.minimize","target":"nope"}""");
+        Assert.Equal("no such window: nope", unknown["error"]?.GetValue<string>());
+
+        var parked = SendCommand("""{"cmd":"window.new","args":{"name":"parked","minimized":true}}""");
+        Assert.False(parked["ok"]?.GetValue<bool>(), $"headless window.new must refuse: {parked.ToJsonString()}");
+        Assert.Equal(WindowManagementUnavailable, parked["error"]?.GetValue<string>());
+
+        // no frame headless: minimized stays absent, like the other live flags.
+        Assert.Null(WindowList()[0]!["minimized"]);
+    }
+
     // MARK: - Title-bar gestures (PORT-GAP: no cursor, no on-screen window headless)
 
     // PORT-GAP: the double-click-header GESTURE (a real mouse event zooming the window) needs an

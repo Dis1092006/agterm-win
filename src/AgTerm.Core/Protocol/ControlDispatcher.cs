@@ -62,7 +62,8 @@ public sealed partial class ControlDispatcher
                 return await DispatchQuickCommand(request);
             case Command.WindowNew or Command.WindowList or Command.WindowSelect or Command.WindowClose
                 or Command.WindowRename or Command.WindowDelete or Command.WindowResize
-                or Command.WindowMove or Command.WindowZoom or Command.WindowFullscreen or Command.WindowGo:
+                or Command.WindowMove or Command.WindowZoom or Command.WindowFullscreen or Command.WindowGo
+                or Command.WindowMinimize:
                 return await DispatchWindowCommand(request);
             case Command.Dashboard:
                 return DispatchDashboard(request);
@@ -1159,7 +1160,7 @@ public sealed partial class ControlDispatcher
         switch (request.Cmd)
         {
             case Command.WindowNew:
-                return _actions.WindowNew(request.Args?.Name);
+                return _actions.WindowNew(request.Args?.Name, request.Args?.Minimized ?? false);
             case Command.WindowList:
                 return _actions.WindowList();
             case Command.WindowSelect:
@@ -1191,6 +1192,12 @@ public sealed partial class ControlDispatcher
                 return _actions.WindowZoom(request.Target);
             case Command.WindowFullscreen:
                 return _actions.WindowFullscreen(request.Target);
+            case Command.WindowMinimize:
+            {
+                if (ControlToggleModes.Parse(request.Args?.Mode) is not { } mode)
+                    return Err($"invalid window minimize mode: {request.Args?.Mode ?? "toggle"}");
+                return _actions.WindowMinimize(request.Target, mode);
+            }
             case Command.WindowGo:
             {
                 if (WorkspaceNavigations.FromWire(request.Args?.To) is not { } direction)

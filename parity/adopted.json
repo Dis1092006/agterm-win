@@ -36,7 +36,8 @@
     { "wire": "workspace.flag", "upstream": "14afbfd5" },
     { "wire": "session.overlay.hide", "upstream": "7f450d17" },
     { "wire": "session.overlay.show", "upstream": "7f450d17" },
-    { "wire": "session.overlay.toggle", "upstream": "7f450d17" }
+    { "wire": "session.overlay.toggle", "upstream": "7f450d17" },
+    { "wire": "window.minimize", "upstream": "28cad2c1" }
   ],
   "args": [
     { "name": "items", "upstream": "6b6323ed" },
@@ -73,7 +74,8 @@
     { "name": "ack", "upstream": "b0839692" },
     { "name": "ids", "upstream": "b0839692" },
     { "name": "tint", "upstream": "f3fea57b" },
-    { "name": "tintOn", "upstream": "f3fea57b" }
+    { "name": "tintOn", "upstream": "f3fea57b" },
+    { "name": "minimized", "upstream": "28cad2c1" }
   ],
   "result": [
     { "name": "sidebarWidth", "upstream": "7977f202" },
@@ -129,6 +131,9 @@
   "workspaceNode": [
     { "name": "tint", "upstream": "f3fea57b" },
     { "name": "tintOn", "upstream": "f3fea57b" }
+  ],
+  "windowNode": [
+    { "name": "minimized", "upstream": "28cad2c1" }
   ],
   "snapshot": [
     { "name": "flaggedOrder", "upstream": "8088e146" }

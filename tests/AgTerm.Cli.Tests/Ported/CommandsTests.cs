@@ -2444,6 +2444,18 @@ public class CommandsTests
     }
 
     [Fact]
+    public void WindowNewMinimized()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowNew, Args = new ControlArgs { Name = "Work", Minimized = true } },
+            Request("window", "new", "Work", "--minimized"));
+        // omitted rather than false, so an un-flagged create stays byte-identical on the wire
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowNew, Args = new ControlArgs { Name = "Work" } },
+            Request("window", "new", "Work"));
+    }
+
+    [Fact]
     public void WindowList()
     {
         CanonicalJson.AssertEqual(
@@ -2573,6 +2585,42 @@ public class CommandsTests
         CanonicalJson.AssertEqual(
             new ControlRequest { Cmd = WireCommand.WindowFullscreen, Target = "active" },
             Request("window", "fullscreen"));
+    }
+
+    [Fact]
+    public void WindowMinimize()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowMinimize, Target = "9f3c", Args = new ControlArgs { Mode = "on" } },
+            Request("window", "minimize", "9f3c", "on"));
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowMinimize, Target = "9f3c", Args = new ControlArgs { Mode = "off" } },
+            Request("window", "minimize", "9f3c", "off"));
+    }
+
+    [Fact]
+    public void WindowMinimizeDefaultsActiveAndToggle()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowMinimize, Target = "active", Args = new ControlArgs { Mode = "toggle" } },
+            Request("window", "minimize"));
+    }
+
+    [Fact]
+    public void WindowMinimizeBareModeTargetsActive()
+    {
+        // both positionals are optional, so a bare mode word would otherwise bind to the id. A window
+        // address is a hex UUID prefix or `active`, never a mode word, so the recovery can't misfire.
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowMinimize, Target = "active", Args = new ControlArgs { Mode = "on" } },
+            Request("window", "minimize", "on"));
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowMinimize, Target = "active", Args = new ControlArgs { Mode = "toggle" } },
+            Request("window", "minimize", "toggle"));
+        // an id that merely looks like a mode word is still an id (hex `0ff`, not the word `off`)
+        CanonicalJson.AssertEqual(
+            new ControlRequest { Cmd = WireCommand.WindowMinimize, Target = "0ff", Args = new ControlArgs { Mode = "toggle" } },
+            Request("window", "minimize", "0ff"));
     }
 
     [Fact]

@@ -113,7 +113,7 @@ public sealed class MockControlActions : IControlActions
     public sealed record OverlayVisibility(string? Target, string? Window, OverlayPane? Pane, OverlayVisibilityMode Mode) : Call;
         public sealed record SessionBackground(string? Target, string? Window, ControlSessionBackgroundOptions Options) : Call;
         public sealed record SessionText(string? Target, string? Window, ControlSessionTextOptions Options) : Call;
-        public sealed record WindowNew(string? Name) : Call;
+        public sealed record WindowNew(string? Name, bool Minimized) : Call;
         public sealed record WindowList : Call;
         public sealed record WindowSelect(string? Target) : Call;
         public sealed record WindowClose(string? Target) : Call;
@@ -123,6 +123,7 @@ public sealed class MockControlActions : IControlActions
         public sealed record WindowMove(string? Target, int X, int Y, int? Display) : Call;
         public sealed record WindowZoom(string? Target) : Call;
         public sealed record WindowFullscreen(string? Target) : Call;
+        public sealed record WindowMinimize(string? Target, ControlToggleMode Mode) : Call;
         public sealed record RestoreClear : Call;
         public sealed record PickOpen(PendingPick Pick, string? Window, bool Follow) : Call;
         public sealed record PickResult(string Target, string? Window) : Call;
@@ -200,6 +201,7 @@ public sealed class MockControlActions : IControlActions
     public ControlResponse NextWindowMoveResponse = new() { Ok = true };
     public ControlResponse NextWindowZoomResponse = new() { Ok = true };
     public ControlResponse NextWindowFullscreenResponse = new() { Ok = true };
+    public ControlResponse NextWindowMinimizeResponse = new() { Ok = true };
     public ControlResponse NextRestoreClearResponse = new() { Ok = true };
     public ControlResponse NextPickOpenResponse = new() { Ok = true };
     public ControlResponse NextPickResultResponse = new() { Ok = true };
@@ -699,9 +701,9 @@ public sealed class MockControlActions : IControlActions
         return NextSessionTextResponse;
     }
 
-    public ControlResponse WindowNew(string? name)
+    public ControlResponse WindowNew(string? name, bool minimized)
     {
-        Calls.Add(new Call.WindowNew(name));
+        Calls.Add(new Call.WindowNew(name, minimized));
         return NextWindowNewResponse;
     }
 
@@ -757,6 +759,12 @@ public sealed class MockControlActions : IControlActions
     {
         Calls.Add(new Call.WindowFullscreen(target));
         return NextWindowFullscreenResponse;
+    }
+
+    public ControlResponse WindowMinimize(string? target, ControlToggleMode mode)
+    {
+        Calls.Add(new Call.WindowMinimize(target, mode));
+        return NextWindowMinimizeResponse;
     }
 
     public ControlResponse ClearRestoreCommands()

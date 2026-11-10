@@ -2560,5 +2560,7 @@ public sealed class LivePhase5E2ETests
 
         public Task ToggleFullscreenAsync(Guid windowId, CancellationToken cancellationToken) =>
             Task.CompletedTask;
+        public Task<LiveWindowMinimizeResult> MinimizeWindowAsync(Guid windowId, ControlToggleMode mode, CancellationToken cancellationToken) =>
+            Task.FromResult(new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.Applied, mode == ControlToggleMode.On));
     }
 }

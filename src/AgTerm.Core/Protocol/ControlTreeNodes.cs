@@ -400,4 +400,8 @@ public sealed record ControlWindowNode
     /// <summary>Zoomed (maximized-to-screen) state; null for a closed window.</summary>
     [JsonPropertyName("zoomed")]
     public bool? Zoomed { get; init; }
+
+    /// <summary>Minimized state; null for a closed window.</summary>
+    [JsonPropertyName("minimized")]
+    public bool? Minimized { get; init; }
 }

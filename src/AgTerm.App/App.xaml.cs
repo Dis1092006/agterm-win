@@ -267,6 +267,16 @@ public partial class App : Application, ILiveWindowController
             return Task.CompletedTask;
         }, cancellationToken);
 
+    public Task<LiveWindowMinimizeResult> MinimizeWindowAsync(
+        Guid windowId,
+        ControlToggleMode mode,
+        CancellationToken cancellationToken) =>
+        RunOnUiAsync(
+            () => Task.FromResult(_windows.TryGetValue(windowId, out var window)
+                ? window.MinimizeWindow(mode)
+                : new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.NotOpen, false)),
+            cancellationToken);
+
     private MainWindow CreateWindow(Guid windowId)
     {
         if (_windows.TryGetValue(windowId, out var existing))

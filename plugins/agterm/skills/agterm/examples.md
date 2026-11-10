@@ -889,11 +889,14 @@ agtermctl workspace go --to next          # step to the next workspace, wrapping
 agtermctl window go --to prev             # raise the previous open window, wrapping
 agtermctl version                         # which agterm-win answers on the pipe
 w=$(agtermctl window new "scratch" --json | jq -r '.result.id')
+# or minimize one to the taskbar right after creating it (it shows briefly on its way there):
+# p=$(agtermctl window new "proj-b" --minimized --json | jq -r '.result.id')
 agtermctl window resize "$w" --width 1200 --height 800
 agtermctl window move "$w" --x 100 --y 100 --display 0
 agtermctl window zoom "$w"                 # maximize-to-screen toggle (call again to restore)
 agtermctl window fullscreen "$w"           # native full screen toggle (Alt+Enter)
-agtermctl window select "$w"
+agtermctl window minimize "$w" on          # minimize to the taskbar (off restores, toggle flips)
+agtermctl window select "$w"               # raise it, restoring it if it was minimized
 ```
 
 ## Reload the keymap after editing it

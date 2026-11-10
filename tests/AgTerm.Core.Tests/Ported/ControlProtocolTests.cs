@@ -1303,6 +1303,9 @@ public class ControlProtocolTests
             new ControlRequest { Cmd = Command.WindowDelete, Target = "9f3c" },
             new ControlRequest { Cmd = Command.WindowZoom, Target = "9f3c" },
             new ControlRequest { Cmd = Command.WindowFullscreen, Target = "9f3c" },
+            new ControlRequest { Cmd = Command.WindowNew, Args = new ControlArgs { Name = "parked", Minimized = true } },
+            new ControlRequest { Cmd = Command.WindowMinimize, Target = "9f3c", Args = new ControlArgs { Mode = "on" } },
+            new ControlRequest { Cmd = Command.WindowMinimize, Target = "active" },
         };
         foreach (var request in cases) RoundTrip(request);
     }

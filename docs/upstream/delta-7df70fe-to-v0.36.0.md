@@ -99,7 +99,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 ## 6. Navigation, windows, sidebar
 
 - `window.go --to next|prev`, actions `previous_window` and `next_window` (no chord) #591. Port: the command `window.go` is done (`window go`); the actions are not.
-- `window.minimize on|off|toggle`, `window new --minimized`, `minimized` in `window list` #294. `window resize` returns the size it applied #566. Port: the resize echo is done in agterm-win (`width` and `height` in the result, `W H` in the CLI); minimize is not done.
+- `window.minimize on|off|toggle`, `window new --minimized`, `minimized` in `window list` #294. `window resize` returns the size it applied #566. Port: done in agterm-win. The resize echo puts `width` and `height` in the result and prints `W H` in the CLI; minimize follows upstream `28cad2c1`.
 - `workspace.go --to next|prev`, actions `previous_workspace`, `next_workspace`, `toggle_workspace_collapse` (no chord) #436. Port: the command `workspace.go` is done (`workspace go`); the actions are not.
 - Focus as a set of workspaces: `workspace.filter`, `workspace focus add`, the action `toggle_workspace_filter` #297. Port: done in agterm-win A5.
 - Flagged view layout: `sidebar.flagged-layout flat|tree|plain|toggle`, the setting `flaggedViewLayout` #621, #718. Port: done (B5a).
@@ -171,7 +171,7 @@ These items change what agterm-win already does at the pin. They do not depend o
 - The dispatcher reports `invalid pane: X` for `session.type`, `session.text` and `font` (#530). The aliases `primary`, `split`, `top`, `bottom` came with horizontal splits (#427) and are not part of this change. Port: done in `c7582f8` (upstream `b3ef1baf`); the aliases are done in A4b.
 - `session.type` on the main pane without `--select` answers `session not realized` instead of `session not realized; use select`, and `--select` selects the session only when the surface is not ready (#351). Port: done in `ae922d8` (upstream `22d7e1c1`).
 - A new workspace becomes the target before the selected session changes; `workspace select` always retargets #329. Port: done in `7791760` (upstream `0106275a`). agterm-win #31 keeps this workspace open on `sidebar.collapse`.
-- `window new` answers after the window is attached; `window list` does not return a stale cache; a minimized window stops being frontmost; `window select` works when the app is not active #294. Port: partly. `window select` is done in `9d0ba24` (upstream `28cad2c1`). The other three are not done.
+- `window new` answers after the window is attached; `window list` does not return a stale cache; a minimized window stops being frontmost; `window select` works when the app is not active #294. Port: done. `window select` is done in `9d0ba24` (upstream `28cad2c1`), and the frontmost handoff with `window.minimize`. `window new` already waited until the window is ready, and `window list` reads open windows live, so the port has no stale cache.
 - The error of a custom command in a removed directory: `session directory <path> no longer exists`. Port: done in `1668561` (upstream `312987af`).
 - Values with a line break in names and `--cwd` are sanitized before they reach `{AGT_*}` #354. Port: done in `4af1bf6` (upstream `97d4e6af`).
 - A custom command from the right pane gets the right pane's cwd in `AGT_SESSION_PWD` #482. Port: done in `70162b9` (upstream `67d65657`).

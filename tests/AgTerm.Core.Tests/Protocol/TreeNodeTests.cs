@@ -7,13 +7,6 @@ namespace AgTerm.Core.Tests.Protocol;
 
 public class TreeNodeTests
 {
-    private static List<string> SurfaceFieldNames(string section)
-    {
-        using var doc = JsonDocument.Parse(File.ReadAllText(Repo.File("parity/surface.json")));
-        return doc.RootElement.GetProperty("control").GetProperty(section)
-            .EnumerateArray().Select(f => f.GetProperty("name").GetString()!).ToList();
-    }
-
     private static List<string> PropertyNames(string json) =>
         JsonDocument.Parse(json).RootElement.EnumerateObject().Select(p => p.Name).ToList();
 
@@ -113,16 +106,24 @@ public class TreeNodeTests
     }
 
     [Fact]
-    public void WindowNodeFieldNamesMatchParitySurfaceInOrder()
+    public void WindowNodeFieldNamesMatchPinPlusAdoptedInOrder()
     {
         var node = new ControlWindowNode
         {
             Id = "i", Name = "n", Open = true, Active = false, AutoFollowMs = 500,
             SidebarVisible = true,
             Geometry = new ControlWindowFrame { X = 0, Y = 0, Width = 800, Height = 600, Display = 0 },
-            Fullscreen = false, Zoomed = false,
+            Fullscreen = false, Zoomed = false, Minimized = true,
         };
-        Assert.Equal(SurfaceFieldNames("windowNode"), PropertyNames(ControlJson.Serialize(node)));
+        Assert.All(ParitySurface.Adopted("windowNode"), name => Assert.Contains(name, ParitySurface.Upstream("windowNode")));
+        Assert.Equal(ParitySurface.Expected("windowNode", "windowNode"), PropertyNames(ControlJson.Serialize(node)));
+    }
+
+    [Fact]
+    public void WindowNodeOmitsMinimizedForAClosedWindow()
+    {
+        var node = new ControlWindowNode { Id = "i", Name = "n", Open = false, Active = false };
+        Assert.DoesNotContain("minimized", PropertyNames(ControlJson.Serialize(node)));
     }
 
     [Fact]

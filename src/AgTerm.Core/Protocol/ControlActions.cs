@@ -164,7 +164,7 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse SetSessionOverlayVisibility(string? target, string? window, OverlayPane? pane, OverlayVisibilityMode mode);
     ControlResponse SetSessionBackground(string? target, string? window, ControlSessionBackgroundOptions options);
     ControlResponse ReadSessionText(string? target, string? window, ControlSessionTextOptions options);
-    ControlResponse WindowNew(string? name);
+    ControlResponse WindowNew(string? name, bool minimized);
     ControlResponse WindowList();
     Task<ControlResponse> WindowSelect(string? target);
     Task<ControlResponse> WindowClose(string? target);
@@ -174,6 +174,8 @@ public interface IControlActions : IMessagePaneHost
     ControlResponse WindowMove(string? target, int x, int y, int? display);
     ControlResponse WindowZoom(string? target);
     ControlResponse WindowFullscreen(string? target);
+    /// <summary>Minimizes the window, restores it, or toggles between the two.</summary>
+    ControlResponse WindowMinimize(string? target, ControlToggleMode mode);
     ControlResponse ClearRestoreCommands();
     ControlResponse OpenPick(PendingPick pick, string? window, bool follow);
     ControlResponse PickResult(string target, string? window);

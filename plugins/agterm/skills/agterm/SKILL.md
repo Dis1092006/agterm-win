@@ -16,7 +16,7 @@ when_to_use: >
   Trigger on: agterm, agterm-win, agtermctl, agterm control socket, session.new, session.close, session.type,
   session.split, session.split.close, session.swap, session.scratch, session.focus, session.resize, surface.zoom, surface.cursor, dashboard, session.go, session.copy, session.paste, session.selectall, session.text, session.search, session.status,
   session.flag, session.context, session.info, show status or activity under a session in the sidebar, session.tint, session.seen, session.reveal, session.duplicate, session.background, session.overlay, workspace.new, workspace.select, workspace.go, workspace.move, workspace.focus, workspace.filter, workspace.flag, flag every session in a workspace, workspace.tint, tint a session or workspace row a color, window.new, window.list,
-  window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, quick terminal, sidebar, sidebar.mode, sidebar.flagged-layout, flagged view layout, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
+  window.select, window.go, window.resize, window.move, window.zoom, window.fullscreen, window.minimize, quick terminal, sidebar, sidebar.mode, sidebar.flagged-layout, flagged view layout, sidebar.expand, sidebar.collapse, sidebar.width, version, flagged, notify, font.inc, keymap.reload, keymap.list, keymap.run, config.reload,
   theme.set, theme.list, events, events.read, event subscription, pane.focused, app.launched, session wait, wait for session status,
   recent.list, recent.open, recent.clear, recently closed sessions, reopen closed session, clipboard set, select theme, edit keymap,
   msg.send, msg.read, msg.ack, message bus, send a message to the other pane or another agent, read my messages, wait for a message,
@@ -157,9 +157,10 @@ sidebar is currently shown — the read side of the write-only `sidebar` command
 `agtermctl window list --json`; each window also reports `autoFollowMs`, `sidebarVisible`, `geometry`
 (the live frame `{x, y, width, height, display}` in the units `window move`/`window resize` take — the
 read side, so record it then restore the exact frame; logical points relative to the display, `y`
-grows downward), and `fullscreen`/`zoomed` (the read side of
-`window fullscreen`/`window zoom`, so a script can make those toggles idempotent) — all omitted for a
-closed window, but not the live `idleMs`, which is `tree`-only.
+grows downward), and `fullscreen`/`zoomed`/`minimized` (the read side of
+`window fullscreen`/`window zoom`/`window minimize`, so a script can act idempotently) — all omitted for a
+closed window, but not the live `idleMs`, which is `tree`-only. A minimized window still reports its
+`geometry`: the frame it comes back to.
 
 Settings > Agent Status can auto-follow the oldest blocked session after 5, 10, 30, or 60 seconds, or 5 minutes idle. It is Disabled by default. "Auto-follow away from a running session" is on by default; turn it off to stay on an `active` session. A followed block is consumed until its status leaves and re-enters `blocked`. User input and attention changes restart the interval. Editors and modal UI suppress auto-follow; closing them alone does not restart it. A background window may change selection but does not raise itself or reveal the status pane; only the foreground window reveals it, and not while zoomed. `tree.autoFollowMs` and `window list` report the applied timeout.
 
@@ -437,11 +438,14 @@ omitted when expanded).
 
 **agent-hook** — `resume <claude|copilot|codex> <start|end>`: Windows-only. The command an agent's session start and session end hooks run, with the hook JSON on standard input. It pins the agent's resume command on the hook's pane, so the agent session comes back after a relaunch, and clears it when the user leaves the agent. Always exits 0. The `resumeAgentSessions` setting installs these hooks. See reference.md.
 
-**window** — `new [name]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
+**window** — `new [name] [--minimized]` · `list` · `select <id>` · `close <id>` · `rename <id> <name>` ·
 `delete <id>` · `resize <id> --width W --height H` · `move <id> --x X --y Y [--display N]` ·
 `zoom <id>` (maximize/restore toggle) ·
-`fullscreen <id>` (toggle full screen, the `toggle_fullscreen` action, Alt+Enter by default). `select`
-makes the window frontmost for routing; Windows may refuse to raise it, and then its taskbar button
+`fullscreen <id>` (toggle full screen, the `toggle_fullscreen` action, Alt+Enter by default) ·
+`minimize <id> [on|off|toggle]` (minimize to the taskbar or restore; default `toggle`, the id may be
+omitted so `window minimize on` targets the active window; errors on a full-screen window; read back as
+`minimized` on `window list`). `select`
+makes the window frontmost for routing and restores it when it is minimized; Windows may refuse to raise it, and then its taskbar button
 flashes. `resize` is clamped to the display's work area and prints the applied size as `W H` (JSON:
 `result.width` and `result.height` in integer points, like `window list` geometry). `move` keeps part
 of the window on screen.
