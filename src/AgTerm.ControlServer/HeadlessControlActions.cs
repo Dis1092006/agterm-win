@@ -2633,10 +2633,10 @@ public sealed partial class HeadlessControlActions : IControlActions
     // window IDENTITY keep full upstream semantics: list, select (the one window is already
     // frontmost), rename, delete (pinned "cannot delete last window" — exactly what upstream answers
     // for the last window). Arms that need a real compositor window (new/close/resize/move/zoom/
-    // fullscreen) resolve the target first (so the pinned "no such window: …" errors stay intact)
-    // and then answer the documented headless refusal. Each divergence goes to PLATFORM-NOTES.
+    // fullscreen/minimize) resolve the target first (so the pinned "no such window: …" errors stay
+    // intact) and then answer the documented headless refusal. Each divergence goes to PLATFORM-NOTES.
 
-    public ControlResponse WindowNew(string? name) =>
+    public ControlResponse WindowNew(string? name, bool minimized) =>
         // upstream opens a second on-screen window; the headless host is single-window by design.
         Err(WindowManagementUnavailable);
 
@@ -2652,8 +2652,8 @@ public sealed partial class HeadlessControlActions : IControlActions
             // window.list reads off the store).
             AutoFollowMs = _store.ControlTree().AutoFollowMs,
             SidebarVisible = _store.SidebarVisible,
-            // no on-screen frame headless: geometry/fullscreen/zoomed stay null, the same shape an
-            // upstream CLOSED window reports (documented adaptation).
+            // no on-screen frame headless: geometry/fullscreen/zoomed/minimized stay null, the same
+            // shape an upstream CLOSED window reports (documented adaptation).
         };
         return new ControlResponse { Ok = true, Result = new ControlResult { Windows = new[] { node } } };
     }
@@ -2691,6 +2691,9 @@ public sealed partial class HeadlessControlActions : IControlActions
         ResolveWindowId(target, _ => Err(WindowManagementUnavailable));
 
     public ControlResponse WindowFullscreen(string? target) =>
+        ResolveWindowId(target, _ => Err(WindowManagementUnavailable));
+
+    public ControlResponse WindowMinimize(string? target, ControlToggleMode mode) =>
         ResolveWindowId(target, _ => Err(WindowManagementUnavailable));
 }
 

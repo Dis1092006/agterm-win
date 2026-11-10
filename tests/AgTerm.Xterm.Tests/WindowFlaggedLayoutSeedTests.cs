@@ -1,4 +1,5 @@
 using AgTerm.Core.Model;
+using AgTerm.Core.Protocol;
 
 namespace AgTerm.Xterm.Tests;
 
@@ -54,5 +55,7 @@ public sealed class WindowFlaggedLayoutSeedTests : IDisposable
         public Task<LiveWindowMoveResult> MoveWindowAsync(Guid id, int x, int y, int? display, CancellationToken ct) => Task.FromResult(new LiveWindowMoveResult(true, 1));
         public Task ToggleZoomAsync(Guid id, CancellationToken ct) => Task.CompletedTask;
         public Task ToggleFullscreenAsync(Guid id, CancellationToken ct) => Task.CompletedTask;
+        public Task<LiveWindowMinimizeResult> MinimizeWindowAsync(Guid id, ControlToggleMode mode, CancellationToken ct) =>
+            Task.FromResult(new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.Applied, mode == ControlToggleMode.On));
     }
 }

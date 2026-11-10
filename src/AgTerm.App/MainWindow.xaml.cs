@@ -46,6 +46,7 @@ public sealed partial class MainWindow : Window
     private bool _activationShieldCaptured;
     private readonly WindowFrameStore _frames = new();
     private readonly WindowFrameTracker _frameTracker = new();
+    private RectInt32? _shownFrame;
     private readonly CancellationTokenSource _bootstrapCancellation = new();
     private CancellationTokenSource? _notificationBannerCancellation;
     private readonly TaskCompletionSource<LiveControlHost> _hostReady =
@@ -369,11 +370,22 @@ public sealed partial class MainWindow : Window
 
     internal void ActivateWindow()
     {
+        RestoreIfMinimized();
         Activate();
         WindowForeground.Raise(WinRT.Interop.WindowNative.GetWindowHandle(this));
         ((App)Application.Current).NoteTaskbarWindowRaised(
             WinRT.Interop.WindowNative.GetWindowHandle(this));
     }
+
+    // SetForegroundWindow leaves a minimized window in the taskbar
+    private void RestoreIfMinimized()
+    {
+        if (_appWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter)
+            presenter.Restore(activateWindow: true);
+    }
+
+    private bool IsMinimized =>
+        _appWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized };
 
     internal Task RequestManagedCloseAsync()
     {
@@ -390,27 +402,50 @@ public sealed partial class MainWindow : Window
 
     internal LiveWindowPresentation CaptureWindowPresentation()
     {
+        var position = _appWindow.Position;
+        var size = _appWindow.Size;
+        var frame = new RectInt32(position.X, position.Y, size.Width, size.Height);
+        // a minimized window sits at -32000; report the frame it comes back to
+        var minimized = IsMinimized;
+        if (minimized && _shownFrame is { } shown)
+            frame = shown;
         var displays = DisplayArea.FindAll();
-        var currentDisplay = DisplayArea.GetFromWindowId(
-            _appWindow.Id,
-            DisplayAreaFallback.Primary);
+        var currentDisplay = minimized
+            ? DisplayArea.GetFromRect(frame, DisplayAreaFallback.Nearest)
+            : DisplayArea.GetFromWindowId(_appWindow.Id, DisplayAreaFallback.Primary);
         var displayIndex = Enumerable.Range(0, displays.Count)
             .FirstOrDefault(index => displays[index].DisplayId.Equals(currentDisplay.DisplayId));
         var scale = DisplayScale(currentDisplay);
         var displayBounds = currentDisplay.OuterBounds;
-        var position = _appWindow.Position;
-        var size = _appWindow.Size;
         return new LiveWindowPresentation(
             LiveWindowGeometry.Capture(
-                position.X,
-                position.Y,
-                size.Width,
-                size.Height,
+                frame.X,
+                frame.Y,
+                frame.Width,
+                frame.Height,
                 displayIndex,
                 DisplayMetrics(displayBounds, scale)),
             Fullscreen: _appWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen,
             Zoomed: _appWindow.Presenter is OverlappedPresenter presenter
-                && presenter.State == OverlappedPresenterState.Maximized);
+                && presenter.State == OverlappedPresenterState.Maximized,
+            Minimized: IsMinimized);
+    }
+
+    /// <summary>Minimizes to the taskbar or restores without activating. Windows has no minimize for a
+    /// full screen presenter, so that answers FullScreen, after the already-in-state check.</summary>
+    internal LiveWindowMinimizeResult MinimizeWindow(ControlToggleMode mode)
+    {
+        var minimized = IsMinimized;
+        var desired = mode.DesiredValue(minimized);
+        if (desired == minimized)
+            return new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.Applied, desired);
+        if (_appWindow.Presenter is not OverlappedPresenter presenter)
+            return new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.FullScreen, desired);
+        if (desired)
+            presenter.Minimize();
+        else
+            presenter.Restore(activateWindow: false);
+        return new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.Applied, desired);
     }
 
     internal LiveWindowSize ResizeWindow(int width, int height)
@@ -514,6 +549,8 @@ public sealed partial class MainWindow : Window
         };
         var position = _appWindow.Position;
         var size = _appWindow.Size;
+        if (state != WindowShowState.Minimized)
+            _shownFrame = new RectInt32(position.X, position.Y, size.Width, size.Height);
         _frameTracker.Observe(state, new PixelRect(position.X, position.Y, size.Width, size.Height));
     }
 

@@ -3160,6 +3160,10 @@ public class ControlDispatcherTests
         {
             Cmd = Command.WindowNew, Args = new ControlArgs { Name = "Build" },
         });
+        var parked = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WindowNew, Args = new ControlArgs { Name = "Parked", Minimized = true },
+        });
         var listed = await dispatcher.Dispatch(new ControlRequest { Cmd = Command.WindowList });
         var selected = await dispatcher.Dispatch(new ControlRequest
         {
@@ -3175,13 +3179,15 @@ public class ControlDispatcherTests
         });
 
         ExpectResponse(Ok(new ControlResult { Id = "win-b" }), created);
+        ExpectResponse(Ok(new ControlResult { Id = "win-b" }), parked);
         ExpectResponse(Ok(new ControlResult { Windows = windows }), listed);
         ExpectResponse(Ok(new ControlResult { Id = "win-b" }), selected);
         ExpectResponse(Ok(new ControlResult { Id = "win-b" }), closed);
         ExpectResponse(Err("cannot delete last window"), deleted);
         Assert.Equal(new MockControlActions.Call[]
         {
-            new MockControlActions.Call.WindowNew("Build"),
+            new MockControlActions.Call.WindowNew("Build", false),
+            new MockControlActions.Call.WindowNew("Parked", true),
             new MockControlActions.Call.WindowList(),
             new MockControlActions.Call.WindowSelect("win-b"),
             new MockControlActions.Call.WindowClose("win-b"),
@@ -3220,12 +3226,24 @@ public class ControlDispatcherTests
         {
             Cmd = Command.WindowFullscreen, Target = "9f3c",
         });
+        actions.NextWindowMinimizeResponse = Ok(new ControlResult { Id = "win" });
+        var minimized = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize, Target = "9f3c", Args = new ControlArgs { Mode = "on" },
+        });
+        // an omitted mode is the toggle default, like the other mode-bearing commands
+        var toggled = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize, Target = "9f3c",
+        });
 
         ExpectResponse(Ok(new ControlResult { Id = "win" }), renamed);
         ExpectResponse(Ok(new ControlResult { Id = "win" }), resized);
         ExpectResponse(Ok(new ControlResult { Id = "win" }), moved);
         ExpectResponse(Err("window not open — window.select it first"), zoomed);
         ExpectResponse(Ok(new ControlResult { Id = "win" }), fullscreen);
+        ExpectResponse(Ok(new ControlResult { Id = "win" }), minimized);
+        ExpectResponse(Ok(new ControlResult { Id = "win" }), toggled);
         Assert.Equal(new MockControlActions.Call[]
         {
             new MockControlActions.Call.WindowRename("9f3c", "Renamed"),
@@ -3233,6 +3251,8 @@ public class ControlDispatcherTests
             new MockControlActions.Call.WindowMove("9f3c", 100, 50, 1),
             new MockControlActions.Call.WindowZoom("9f3c"),
             new MockControlActions.Call.WindowFullscreen("9f3c"),
+            new MockControlActions.Call.WindowMinimize("9f3c", ControlToggleMode.On),
+            new MockControlActions.Call.WindowMinimize("9f3c", ControlToggleMode.Toggle),
         }, actions.Calls);
     }
 
@@ -3262,12 +3282,17 @@ public class ControlDispatcherTests
         {
             Cmd = Command.WindowMove, Target = "win", Args = new ControlArgs { X = 100 },
         });
+        var badMinimizeMode = await dispatcher.Dispatch(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize, Target = "win", Args = new ControlArgs { Mode = "hide" },
+        });
 
         ExpectResponse(Err("window.rename requires a name"), missingName);
         ExpectResponse(Err("window.rename requires a name"), blankName);
         ExpectResponse(Err("window.resize requires positive width and height"), missingResize);
         ExpectResponse(Err("window.resize requires positive width and height"), badResize);
         ExpectResponse(Err("window.move requires x and y"), missingMoveY);
+        ExpectResponse(Err("invalid window minimize mode: hide"), badMinimizeMode);
         Assert.Empty(actions.Calls);
     }
 

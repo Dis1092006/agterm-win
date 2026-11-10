@@ -24,6 +24,7 @@ internal static class WindowCommands
         window.Subcommands.Add(BuildMove(bindings));
         window.Subcommands.Add(BuildZoom(bindings));
         window.Subcommands.Add(BuildFullscreen(bindings));
+        window.Subcommands.Add(BuildMinimize(bindings));
         return window;
     }
 
@@ -39,15 +40,17 @@ internal static class WindowCommands
     internal sealed class New : IRequestCommand
     {
         public string? Name { get; init; }
+        public bool Minimized { get; init; }
         public required BasicOptions Basic { get; init; }
         public IConnectionOptions Options => Basic;
         public bool EchoesResultId => true;
 
         // The Swift always builds ControlArgs(name:) here, so args encodes even when name is nil.
+        // minimized is omitted rather than false, so an un-flagged create stays the same on the wire.
         public ControlRequest MakeRequest() => new()
         {
             Cmd = WireCommand.WindowNew,
-            Args = new ControlArgs { Name = Name },
+            Args = new ControlArgs { Name = Name, Minimized = Minimized ? true : null },
         };
     }
 
@@ -59,12 +62,19 @@ internal static class WindowCommands
             Description = "Window name (defaults to the auto-generated name).",
             Arity = ArgumentArity.ZeroOrOne,
         };
+        // Upstream says "Park it in the Dock"; the Windows analogue is the taskbar (PLATFORM-NOTES).
+        var minimized = new Option<bool>("--minimized")
+        {
+            Description = "Park it in the taskbar once created, leaving frontmost on a visible window.",
+        };
         var options = new BasicOptions.Binder();
         cmd.Arguments.Add(name);
+        cmd.Options.Add(minimized);
         options.AddTo(cmd);
         bindings.Register(cmd, result => new New
         {
             Name = result.GetValue(name),
+            Minimized = result.GetValue(minimized),
             Basic = options.Read(result),
         });
         return cmd;
@@ -363,6 +373,52 @@ internal static class WindowCommands
         bindings.Register(cmd, result => new Fullscreen
         {
             Id = result.GetValue(id) ?? "active",
+            Basic = options.Read(result),
+        });
+        return cmd;
+    }
+
+    internal sealed class Minimize : IRequestCommand
+    {
+        public string Id { get; init; } = "active";
+        public string? Mode { get; init; }
+        public required BasicOptions Basic { get; init; }
+        public IConnectionOptions Options => Basic;
+
+        public ControlRequest MakeRequest()
+        {
+            // both positionals are optional, so a bare `window minimize on` binds the mode word to the id.
+            // A window address is a UUID prefix (hex only) or `active`, so it can never be a mode word.
+            if (Mode is null && ControlToggleModes.Parse(Id) is not null)
+                return new ControlRequest
+                {
+                    Cmd = WireCommand.WindowMinimize, Target = "active", Args = new ControlArgs { Mode = Id },
+                };
+            return new ControlRequest
+            {
+                Cmd = WireCommand.WindowMinimize, Target = Id, Args = new ControlArgs { Mode = Mode ?? "toggle" },
+            };
+        }
+    }
+
+    private static System.CommandLine.Command BuildMinimize(CommandBindings bindings)
+    {
+        // Upstream says "to the Dock"; the Windows analogue is the taskbar (PLATFORM-NOTES).
+        var cmd = new System.CommandLine.Command("minimize", "Minimize a window to the taskbar, or restore it.");
+        var id = OptionalIdArgument();
+        var mode = new Argument<string?>("mode")
+        {
+            Description = "on, off, or toggle (default: toggle).",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
+        var options = new BasicOptions.Binder();
+        cmd.Arguments.Add(id);
+        cmd.Arguments.Add(mode);
+        options.AddTo(cmd);
+        bindings.Register(cmd, result => new Minimize
+        {
+            Id = result.GetValue(id) ?? "active",
+            Mode = result.GetValue(mode),
             Basic = options.Read(result),
         });
         return cmd;

@@ -922,6 +922,14 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The size is the area inside the panel's 1 px border, which is the area the program gets. Upstream subtracts the page strip of an HTML overlay; the port has no HTML overlays, so nothing is subtracted, and the `--height` help leaves out upstream's sentence about the strip.
   - The port has no remote overlays, so upstream's error for an overlay shown on another Mac does not exist here.
 - `window.resize` answers with the size it applied: the result fields `width` and `height` (upstream `d5a7fc2d`, #566), in `parity/adopted.json`. The CLI prints them as `W H`. The window reads its frame back after the resize and converts it to points the way `window list` geometry does. The clamp is the port's own, `[320×240, the display's work area]`. A window that closes between the target check and the resize answers `window not open — window.select it first`, as upstream does.
+- `window.minimize` with `mode`, the arg `minimized` on `window.new`, and the window node field `minimized` (upstream `28cad2c1`, #294), in `parity/adopted.json`. `agtermctl window minimize [id] [on|off|toggle]` and `window new --minimized` follow upstream's arguments and error strings.
+  - The help and the skill say "taskbar" where upstream says "Dock".
+  - The window minimizes with the title bar's minimize, so Windows activates the next window in the z-order. When that is another agterm-win window, its activation moves frontmost. When it is not, the host moves frontmost to the first open window that is not minimized, as upstream does.
+  - Restore does not activate the window. `window select` restores a minimized window and raises it.
+  - A full-screen window answers `cannot minimize a full-screen window — window.fullscreen it first`, as upstream. Windows has no minimize for the full-screen presenter.
+  - Windows moves a minimized window to (-32000, -32000). `window list` reports the frame it had before it was minimized, which is the frame it comes back to.
+  - Upstream waits 50 ms before it minimizes a new window, because AppKit shows it a second time on the next main-queue turn. The port opens the window and waits until it is ready, so it minimizes at once.
+  - The headless host answers `window management is not available in the headless host`, as for the other window commands.
 
 ## Windows-only extensions
 

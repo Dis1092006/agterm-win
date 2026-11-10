@@ -819,20 +819,25 @@ All are read-only projections of GUI state.
 
 ## window
 
-- `window new [name]` — create and open a window; returns its id. Wire: `window.new`.
+- `window new [name] [--minimized]` — create and open a window; returns its id. Wire: `window.new`.
+  `--minimized` (wire `minimized: true`) minimizes it to the taskbar once it is open, and leaves frontmost
+  on a window you can still see — for building a set of project windows and ending up on one you are
+  looking at. The window shows briefly on its way to the taskbar. When no other open window is visible,
+  frontmost stays on the new window.
 - `window list` — `result.windows`, each with `id`, `name`, `open`, `active`, `autoFollowMs` (the
   window's applied Auto-follow timeout in milliseconds, omitted when Auto-follow is disabled), and
   `sidebarVisible` (whether that window's sidebar is shown, read from the open window's store — omitted
   for a closed window with no live store), and `geometry` (the open window's live frame `{x, y, width,
   height, display}` in the SAME units `window move`/`window resize` take — `x`/`y` top-left relative to
   `display`, y down — omitted for a closed window; the read side of `window move`/`window resize`, so
-  record it, move/resize, then restore the exact frame), plus `fullscreen` and `zoomed` (whether the
-  window is full screen / maximized — the read side of `window fullscreen` / `window
-  zoom`, so a script can make those toggles idempotent; both omitted for a closed window). Wire:
-  `window.list`. The
-  `geometry`/`fullscreen`/`zoomed` fields come only from open windows, so a hand-drag or a GUI toggle is
-  reflected without needing another command. Unlike `tree`, `window.list` does NOT carry `idleMs`.
-- `window select <id>` — raise it if open, else open it. Wire: `window.select`. Windows may refuse to bring the window to the foreground for a background caller; then the taskbar button flashes, and the window still counts as frontmost for routing. Activation clears the unseen count of the session whose main or split pane has accepted focus, including a zoomed pane or highlighted dashboard cell. That session need not be selected. Other sessions keep their counts. The command waits for this policy before replying.
+  record it, move/resize, then restore the exact frame), plus `fullscreen`, `zoomed` and `minimized`
+  (whether the window is full screen / maximized / minimized to the taskbar — the read side of
+  `window fullscreen` / `window zoom` / `window minimize`, so a script can act idempotently; all omitted
+  for a closed window). A minimized window still reports its `geometry`: the frame it comes back to.
+  Wire: `window.list`. The
+  `geometry`/`fullscreen`/`zoomed`/`minimized` fields come only from open windows, so a hand-drag or a GUI
+  toggle is reflected without needing another command. Unlike `tree`, `window.list` does NOT carry `idleMs`.
+- `window select <id>` — raise it if open, else open it. A minimized window is restored. Wire: `window.select`. Windows may refuse to bring the window to the foreground for a background caller; then the taskbar button flashes, and the window still counts as frontmost for routing. Activation clears the unseen count of the session whose main or split pane has accepted focus, including a zoomed pane or highlighted dashboard cell. That session need not be selected. Other sessions keep their counts. The command waits for this policy before replying.
 - `window go --to next|prev` — raise the next or previous OPEN window in library order, wrapping, starting from the active one; answers `{"id":...}` with the window now active. A closed entry is never a step candidate: `window select` is the verb that opens one. Relative to the active window, so it takes no id. Errors: `window.go requires --to next|prev` for a missing or unknown direction; `no other open window to navigate to` with fewer than two open windows (always, in the headless host). Raising the window follows the same activation policy as `window select`. Wire: `window.go`.
 - `window close <id>` — close the on-screen window (the record is kept; reopen with select). Wire:
   `window.close`. Closing the last open window exits agterm-win after it answers; the record is kept as
@@ -854,6 +859,18 @@ All are read-only projections of GUI state.
 - `window fullscreen <id>` — toggle full screen (no title bar, no taskbar). Wire: `window.fullscreen`. A
   second call exits. The window must be open. This is the control half of the `toggle_fullscreen`
   built-in action (Alt+Return, rebindable) — distinct from `zoom`, which only maximizes the frame.
+- `window minimize <id> [on|off|toggle]` — minimize the window to the taskbar, or restore it. Wire:
+  `window.minimize` with `mode`. The mode resolves against the window's current state, so `on` and `off`
+  are idempotent and only `toggle` (the default) flips. Both positionals are optional, and a window
+  address is always a hex id prefix or `active`, so `window minimize on` targets the active window.
+  Errors: `invalid window minimize mode: <mode>`; `window not open — window.select it first` for a closed
+  window; `cannot minimize a full-screen window — window.fullscreen it first` for a full-screen window
+  that is not minimized. Restoring puts the window back on screen without activating it — use
+  `window select` to restore and raise in one step. Minimizing the frontmost window moves frontmost to
+  the first open window that is not minimized; with none, frontmost stays. This is the control half of
+  the title bar's minimize button. Read back as `minimized` on `window list`. The state is live only: it
+  is not saved, so every window reopens restored after a restart. The headless host answers
+  `window management is not available in the headless host`.
 
 `window resize`/`move` are control-native (no GUI equivalent — the title bar already drags-to-resize).
 

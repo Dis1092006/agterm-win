@@ -53,6 +53,10 @@ public sealed record ControlArgs
     [JsonPropertyName("tintOn")]
     public string[]? TintOn { get; init; }
 
+    /// <summary>For window.new: minimize the window once it is created.</summary>
+    [JsonPropertyName("minimized")]
+    public bool? Minimized { get; init; }
+
     /// <summary>For session.new: create in the background without selecting or focusing.</summary>
     [JsonPropertyName("noSelect")]
     public bool? NoSelect { get; init; }

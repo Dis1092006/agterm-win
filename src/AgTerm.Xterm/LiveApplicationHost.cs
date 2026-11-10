@@ -631,7 +631,7 @@ public sealed partial class LiveApplicationHost : IDisposable
                 Ok = false,
                 Error = HeadlessControlActions.WindowManagementUnavailable,
             })
-            : NewWindowAsync(name, cancellationToken);
+            : NewWindowAsync(name, minimized: false, cancellationToken);
 
     public ControlResponse RenameWindow(Guid windowId, string name) =>
         RenameWindow(windowId.ToString("D"), name);
@@ -1040,7 +1040,10 @@ public sealed partial class LiveApplicationHost : IDisposable
         if (request.Cmd == Command.WindowList)
             return await ListWindowsAsync(cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowNew && _windowController is not null)
-            return await NewWindowAsync(request.Args?.Name, cancellationToken).ConfigureAwait(false);
+            return await NewWindowAsync(
+                request.Args?.Name,
+                request.Args?.Minimized ?? false,
+                cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowSelect && _windowController is not null)
             return await SelectWindowAsync(request.Target, cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowGo && _windowController is not null)
@@ -1059,6 +1062,8 @@ public sealed partial class LiveApplicationHost : IDisposable
             return await ToggleWindowZoomAsync(request.Target, cancellationToken).ConfigureAwait(false);
         if (request.Cmd == Command.WindowFullscreen && _windowController is not null)
             return await ToggleWindowFullscreenAsync(request.Target, cancellationToken).ConfigureAwait(false);
+        if (request.Cmd == Command.WindowMinimize && _windowController is not null)
+            return await MinimizeWindowAsync(request, cancellationToken).ConfigureAwait(false);
         if (IsWindowCommand(request.Cmd))
             return await DispatchActiveWindowAdapterAsync(request, cancellationToken).ConfigureAwait(false);
         if (IsAppGlobalMutation(request.Cmd))
@@ -1284,6 +1289,7 @@ public sealed partial class LiveApplicationHost : IDisposable
 
     private async Task<ControlResponse> NewWindowAsync(
         string? requestedName,
+        bool minimized,
         CancellationToken cancellationToken)
     {
         Guid windowId;
@@ -1324,6 +1330,8 @@ public sealed partial class LiveApplicationHost : IDisposable
             windowId,
             window.CaptureLifecycleSessions(),
             ControlEventKind.SessionCreated);
+        if (minimized)
+            await ParkAsync(windowId, cancellationToken).ConfigureAwait(false);
         return new ControlResponse
         {
             Ok = true,
@@ -1332,6 +1340,17 @@ public sealed partial class LiveApplicationHost : IDisposable
                 Id = windowId.ToString("D").ToUpperInvariant(),
             },
         };
+    }
+
+    // a window that did not minimize is still on screen and keeps frontmost
+    private async Task ParkAsync(Guid windowId, CancellationToken cancellationToken)
+    {
+        var result = await _windowController!.MinimizeWindowAsync(
+            windowId,
+            ControlToggleMode.On,
+            cancellationToken).ConfigureAwait(false);
+        if (result.Status == LiveWindowMinimizeStatus.Applied)
+            await HandOffFrontmostAsync(windowId, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<ControlResponse> SelectWindowAsync(
@@ -1764,6 +1783,83 @@ public sealed partial class LiveApplicationHost : IDisposable
         return OkWindowId(windowId);
     }
 
+    private async Task<ControlResponse> MinimizeWindowAsync(
+        ControlRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (ControlToggleModes.Parse(request.Args?.Mode) is not { } mode)
+        {
+            return new ControlResponse
+            {
+                Ok = false,
+                Error = $"invalid window minimize mode: {request.Args?.Mode ?? "toggle"}",
+            };
+        }
+        var resolution = ResolveOpenWindow(request.Target);
+        if (resolution.Error is not null)
+            return resolution.Error;
+        var windowId = resolution.WindowId!.Value;
+        var result = await _windowController!.MinimizeWindowAsync(windowId, mode, cancellationToken)
+            .ConfigureAwait(false);
+        switch (result.Status)
+        {
+            case LiveWindowMinimizeStatus.NotOpen:
+                return new ControlResponse { Ok = false, Error = LiveWindowHost.WindowNotOpenError };
+            case LiveWindowMinimizeStatus.FullScreen:
+                return new ControlResponse
+                {
+                    Ok = false,
+                    Error = "cannot minimize a full-screen window — window.fullscreen it first",
+                };
+        }
+        if (result.Minimized)
+            await HandOffFrontmostAsync(windowId, cancellationToken).ConfigureAwait(false);
+        return OkWindowId(windowId);
+    }
+
+    // A minimized window keeps its store, so untargeted commands would keep routing into the taskbar.
+    // Windows activates another window on a minimize, and its Activated event already moved frontmost;
+    // a script running in the background gets no such event. With nothing visible, frontmost stays put.
+    private async Task HandOffFrontmostAsync(Guid windowId, CancellationToken cancellationToken)
+    {
+        Guid[] candidates;
+        lock (_gate)
+        {
+            if (_disposed || ActiveWindowIdLocked() != windowId)
+                return;
+            candidates = _windows
+                .Where(entry => entry.Id != windowId && _openWindows.ContainsKey(entry.Id))
+                .Select(entry => entry.Id)
+                .ToArray();
+        }
+        foreach (var candidate in candidates)
+        {
+            var presentation = await _windowController!.CaptureWindowAsync(candidate, cancellationToken)
+                .ConfigureAwait(false);
+            if (presentation is { Minimized: true })
+                continue;
+            await TakeFrontmostAsync(candidate).ConfigureAwait(false);
+            return;
+        }
+    }
+
+    // the control half of an activation: no unseen clearing, since the window was not raised
+    private Task TakeFrontmostAsync(Guid windowId)
+    {
+        lock (_gate)
+        {
+            if (_disposed || !_openWindows.ContainsKey(windowId) || _frontmostWindowId == windowId)
+                return Task.CompletedTask;
+            _frontmostWindowId = windowId;
+            SaveIndexLocked();
+        }
+        return Task.Run(() =>
+        {
+            lock (_sidebarGate)
+                ReconcileInactiveSidebarsLocked();
+        });
+    }
+
     private async Task<ControlResponse> ListWindowsAsync(CancellationToken cancellationToken)
     {
         LiveWindowEntry[] entries;
@@ -1796,6 +1892,7 @@ public sealed partial class LiveApplicationHost : IDisposable
                 Geometry = presentation?.Geometry,
                 Fullscreen = presentation?.Fullscreen,
                 Zoomed = presentation?.Zoomed,
+                Minimized = presentation?.Minimized,
             });
         }
         return new ControlResponse
@@ -1941,6 +2038,7 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.WindowMove
         or Command.WindowZoom
         or Command.WindowFullscreen
+        or Command.WindowMinimize
         or Command.WindowGo;
 
     internal static bool UsesSingleSessionTarget(Command command) => command is

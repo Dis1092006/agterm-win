@@ -1120,6 +1120,208 @@ public sealed class LiveWindowControlE2ETests : IDisposable
     }
 
     [Fact]
+    public void Window_minimize_applies_the_mode_reports_minimized_and_hands_off_frontmost()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        var windows = new FakeWindowController();
+        windows.Presentations[firstId] = NormalPresentation();
+        windows.Presentations[secondId] = NormalPresentation();
+
+        using var application = CreateApplication(windows);
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+
+        var minimized = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize,
+            Args = new ControlArgs { Mode = "on" },
+        });
+        Assert.True(minimized.Ok, minimized.Error);
+        Assert.Equal(firstId.ToString("D").ToUpperInvariant(), minimized.Result!.Id);
+        var listed = client.Send(new ControlRequest { Cmd = Command.WindowList }).Result!.Windows!;
+        Assert.True(listed[0].Minimized);
+        Assert.False(listed[0].Active);
+        Assert.False(listed[1].Minimized);
+        Assert.True(listed[1].Active);
+        Assert.Equal(secondId, application.ActiveWindowId);
+
+        var restored = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize,
+            Target = firstId.ToString("D"),
+        });
+        Assert.True(restored.Ok, restored.Error);
+        listed = client.Send(new ControlRequest { Cmd = Command.WindowList }).Result!.Windows!;
+        Assert.False(listed[0].Minimized);
+        Assert.Equal(secondId, application.ActiveWindowId);
+
+        var unchanged = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize,
+            Target = firstId.ToString("D"),
+            Args = new ControlArgs { Mode = "off" },
+        });
+        Assert.True(unchanged.Ok, unchanged.Error);
+        Assert.Equal(
+            new[]
+            {
+                (firstId, ControlToggleMode.On),
+                (firstId, ControlToggleMode.Toggle),
+                (firstId, ControlToggleMode.Off),
+            },
+            windows.MinimizeRequests);
+        Assert.False(windows.Presentations[firstId].Minimized);
+    }
+
+    [Fact]
+    public void Window_minimize_keeps_frontmost_when_no_visible_window_is_left()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteWindowSnapshot(secondId, "beta");
+        WriteIndex(firstId,
+            new IndexEntry(firstId, "first", IsOpen: true),
+            new IndexEntry(secondId, "second", IsOpen: true));
+        var windows = new FakeWindowController();
+        windows.Presentations[firstId] = NormalPresentation();
+        windows.Presentations[secondId] = NormalPresentation() with { Minimized = true };
+
+        using var application = CreateApplication(windows);
+        application.Start();
+        var response = new ControlPipeClient(application.PipeName).Send(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize,
+            Args = new ControlArgs { Mode = "on" },
+        });
+
+        Assert.True(response.Ok, response.Error);
+        Assert.True(windows.Presentations[firstId].Minimized);
+        Assert.Equal(firstId, application.ActiveWindowId);
+    }
+
+    [Fact]
+    public void Window_minimize_preserves_exact_errors()
+    {
+        var openId = Guid.NewGuid();
+        var fullscreenId = Guid.NewGuid();
+        var closedId = Guid.NewGuid();
+        WriteWindowSnapshot(openId, "alpha");
+        WriteWindowSnapshot(fullscreenId, "beta");
+        WriteWindowSnapshot(closedId, "gamma");
+        WriteIndex(openId,
+            new IndexEntry(openId, "first", IsOpen: true),
+            new IndexEntry(fullscreenId, "second", IsOpen: true),
+            new IndexEntry(closedId, "closed", IsOpen: false));
+        var windows = new FakeWindowController();
+        windows.Presentations[fullscreenId] = NormalPresentation() with { Fullscreen = true };
+
+        using var application = CreateApplication(windows);
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        ControlResponse Minimize(Guid? target, string? mode) => client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize,
+            Target = target?.ToString("D"),
+            Args = mode is null ? null : new ControlArgs { Mode = mode },
+        });
+
+        Assert.Equal("invalid window minimize mode: hide", Minimize(openId, "hide").Error);
+        Assert.Equal("no such window: nope", client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowMinimize,
+            Target = "nope",
+        }).Error);
+        Assert.Equal("window not open — window.select it first", Minimize(closedId, null).Error);
+        Assert.Equal("window not open — window.select it first", Minimize(openId, "on").Error);
+        Assert.Equal(
+            "cannot minimize a full-screen window — window.fullscreen it first",
+            Minimize(fullscreenId, "on").Error);
+        var alreadyRestored = Minimize(fullscreenId, "off");
+        Assert.True(alreadyRestored.Ok, alreadyRestored.Error);
+        Assert.Empty(windows.MinimizeRequests.Where(request => request.WindowId == closedId));
+    }
+
+    [Fact]
+    public void Window_new_minimized_parks_the_new_window_and_leaves_the_previous_one_frontmost()
+    {
+        var firstId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
+        var windows = new FakeWindowController { PresentOnOpen = true };
+        windows.Presentations[firstId] = NormalPresentation();
+
+        using var application = CreateApplication(windows);
+        windows.Activated = application.ReportActivatedAsync;
+        application.Start();
+        var client = new ControlPipeClient(application.PipeName);
+        var created = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowNew,
+            Args = new ControlArgs { Name = "parked", Minimized = true },
+        });
+
+        Assert.True(created.Ok, created.Error);
+        var newId = Guid.Parse(created.Result!.Id!);
+        Assert.Equal(new[] { (newId, ControlToggleMode.On) }, windows.MinimizeRequests);
+        Assert.True(windows.Presentations[newId].Minimized);
+        Assert.Equal(firstId, application.ActiveWindowId);
+        var listed = client.Send(new ControlRequest { Cmd = Command.WindowList }).Result!.Windows!;
+        Assert.True(listed.Single(window => window.Name == "parked").Minimized);
+    }
+
+    [Fact]
+    public void Window_new_minimized_leaves_an_unattached_window_frontmost()
+    {
+        var firstId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
+        var windows = new FakeWindowController();
+
+        using var application = CreateApplication(windows);
+        windows.Activated = application.ReportActivatedAsync;
+        application.Start();
+        var created = new ControlPipeClient(application.PipeName).Send(new ControlRequest
+        {
+            Cmd = Command.WindowNew,
+            Args = new ControlArgs { Minimized = true },
+        });
+
+        Assert.True(created.Ok, created.Error);
+        var newId = Guid.Parse(created.Result!.Id!);
+        Assert.Equal(new[] { (newId, ControlToggleMode.On) }, windows.MinimizeRequests);
+        Assert.Equal(newId, application.ActiveWindowId);
+    }
+
+    [Fact]
+    public void Window_new_without_minimized_does_not_minimize()
+    {
+        var firstId = Guid.NewGuid();
+        WriteWindowSnapshot(firstId, "alpha");
+        WriteIndex(firstId, new IndexEntry(firstId, "first", IsOpen: true));
+        var windows = new FakeWindowController { PresentOnOpen = true };
+
+        using var application = CreateApplication(windows);
+        application.Start();
+        var created = new ControlPipeClient(application.PipeName).Send(
+            new ControlRequest { Cmd = Command.WindowNew });
+
+        Assert.True(created.Ok, created.Error);
+        Assert.Empty(windows.MinimizeRequests);
+    }
+
+    private static LiveWindowPresentation NormalPresentation() => new(
+        new ControlWindowFrame { X = 0, Y = 0, Width = 800, Height = 600, Display = 0 },
+        Fullscreen: false,
+        Zoomed: false);
+
+    [Fact]
     public void Winui_application_binds_the_live_controller_and_all_window_router_actions()
     {
         Assert.True(WindowCommandRouter.ActionImplementations[BuiltinAction.NewWindow]);
@@ -1144,6 +1346,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Contains("Task<LiveWindowMoveResult> MoveWindowAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task ToggleZoomAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task ToggleFullscreenAsync(", app, StringComparison.Ordinal);
+        Assert.Contains("Task<LiveWindowMinimizeResult> MinimizeWindowAsync(", app, StringComparison.Ordinal);
         Assert.DoesNotContain("applicationHost.Dispose();", app, StringComparison.Ordinal);
         Assert.DoesNotContain("_applicationHost?.Dispose()", app, StringComparison.Ordinal);
         Assert.Contains("[BuiltinAction.NewWindow]", mainWindow, StringComparison.Ordinal);
@@ -1153,6 +1356,9 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Contains("return _closedCompletion.Task;", mainWindow, StringComparison.Ordinal);
         Assert.Contains("CloseFailedOpenAsync", mainWindow, StringComparison.Ordinal);
         Assert.Contains("internal LiveWindowSize ResizeWindow(", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("internal LiveWindowMinimizeResult MinimizeWindow(", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("RestoreIfMinimized();", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("Minimized: IsMinimized", mainWindow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2442,7 +2648,9 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public List<(Guid WindowId, int X, int Y, int? Display)> MoveRequests { get; } = new();
         public List<Guid> ZoomRequests { get; } = new();
         public List<Guid> FullscreenRequests { get; } = new();
+        public List<(Guid WindowId, ControlToggleMode Mode)> MinimizeRequests { get; } = new();
         public Dictionary<Guid, LiveWindowPresentation> Presentations { get; } = new();
+        public bool PresentOnOpen { get; set; }
         public int DisplayCount { get; set; } = 1;
         public (int Width, int Height)? ResizeLimit { get; set; }
         public Exception? OpenError { get; set; }
@@ -2455,6 +2663,8 @@ public sealed class LiveWindowControlE2ETests : IDisposable
             Opened.Add(windowId);
             if (OpenError is not null)
                 return Task.FromException(OpenError);
+            if (PresentOnOpen)
+                Presentations.TryAdd(windowId, NormalPresentation());
             return Activated?.Invoke(windowId) ?? Task.CompletedTask;
         }
 
@@ -2539,6 +2749,21 @@ public sealed class LiveWindowControlE2ETests : IDisposable
             var presentation = Presentations[windowId];
             Presentations[windowId] = presentation with { Fullscreen = !presentation.Fullscreen };
             return Task.CompletedTask;
+        }
+
+        public Task<LiveWindowMinimizeResult> MinimizeWindowAsync(
+            Guid windowId,
+            ControlToggleMode mode,
+            CancellationToken cancellationToken)
+        {
+            MinimizeRequests.Add((windowId, mode));
+            if (!Presentations.TryGetValue(windowId, out var presentation))
+                return Task.FromResult(new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.NotOpen, false));
+            var desired = mode.DesiredValue(presentation.Minimized);
+            if (desired != presentation.Minimized && presentation.Fullscreen)
+                return Task.FromResult(new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.FullScreen, desired));
+            Presentations[windowId] = presentation with { Minimized = desired };
+            return Task.FromResult(new LiveWindowMinimizeResult(LiveWindowMinimizeStatus.Applied, desired));
         }
     }
 
