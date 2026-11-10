@@ -1,4 +1,5 @@
 using AgTerm.Cli;
+using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 using Xunit;
@@ -7,10 +8,8 @@ using WireCommand = AgTerm.Core.Protocol.Command;
 namespace AgTerm.Cli.Tests.Ported;
 
 // Port of agtermctlKitTests/SessionWaitCommandsTests.swift (upstream fff13ef2, #765). The Swift
-// SessionWaitDependencies (send / sleep / now) map onto CliEnvironment (Send / Sleep / Now). The
-// refused-connect retry tests are not ported: the port's events poller does not retry (the control
-// pipe has one server instance; see the 716/717 note in the upstream delta) and a failed read ends
-// the wait.
+// SessionWaitDependencies (send / sleep / now) map onto CliEnvironment (Send / Sleep / Now). A
+// refused connect (ECONNREFUSED) maps onto a busy pipe, a missing socket (ENOENT) onto a missing one.
 public class SessionWaitCommandsTests
 {
     private static readonly Guid Run = Guid.Parse("CBB5E3D0-7A9B-4C96-9EA2-18B14380DDB1");
@@ -41,7 +40,7 @@ public class SessionWaitCommandsTests
             GetEnv = _ => null,
             Out = Out,
             Error = Error,
-            Send = (_, request) =>
+            Send = TestReply.Replying((_, request) =>
             {
                 Requests.Add(request);
                 switch (request.Cmd)
@@ -58,7 +57,7 @@ public class SessionWaitCommandsTests
                         EventPages.RemoveAt(0);
                         return next();
                 }
-            },
+            }),
             Sleep = delay =>
             {
                 Sleeps.Add(delay);
@@ -214,6 +213,29 @@ public class SessionWaitCommandsTests
         var error = Assert.Throws<CliValidationException>(
             () => Command("--target", Worker.ToString(), "--until", "completed").Wait(app.Environment));
         Assert.Equal("event run changed", error.Message);
+    }
+
+    [Fact]
+    public void RefusedConnectRetriesWithinTheDeadline()
+    {
+        var app = App("active");
+        app.Pages(Array.Empty<ControlEvent>());
+        app.EventPages.Add(() => throw new PipeClientException("refused", PipeConnectFailure.Busy));
+        app.Pages(new[] { StatusEvent(11, Worker, "completed") });
+        var outcome = Command("--target", Worker.ToString(), "--until", "completed", "--timeout", "5")
+            .Wait(app.Environment);
+        Assert.Equal(SessionWaitOutcome.Matched(Worker, AgentStatus.Completed), outcome);
+        Assert.Equal(new[] { TimeSpan.FromSeconds(EventStreamState.FirstRetryDelay) }, app.Sleeps);
+    }
+
+    [Fact]
+    public void MissingSocketFailsAtOnce()
+    {
+        var app = App("active");
+        app.Pages(Array.Empty<ControlEvent>());
+        app.EventPages.Add(() => throw new PipeClientException("no pipe", PipeConnectFailure.Missing));
+        Assert.Throws<PipeClientException>(
+            () => Command("--target", Worker.ToString(), "--until", "completed").Wait(app.Environment));
     }
 
     [Fact]

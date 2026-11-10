@@ -1874,7 +1874,7 @@ internal static class SessionCommands
                 // guarantees `!Wait`, so its `wait` is null — identical to opening non-wait, and the floating
                 // `--size-percent` is carried through the single source instead of a duplicated ControlArgs.
                 var opened = env.Send(pipeName, MakeRequest());
-                if (!opened.Ok || opened.Result?.Id is not { } id)
+                if (!opened.Response.Ok || opened.Response.Result?.Id is not { } id)
                 {
                     ClientOutput.PrintResponse(env, opened, Options.Json);
                     return 1;
@@ -1884,14 +1884,15 @@ internal static class SessionCommands
                 // change during the run can't make the poll miss the session.
                 while (true)
                 {
-                    var res = env.Send(pipeName, new ControlRequest
+                    var reply = env.Send(pipeName, new ControlRequest
                     {
                         Cmd = WireCommand.SessionOverlayResult,
                         Target = id,
                     });
+                    var res = reply.Response;
                     if (res.Ok)
                     {
-                        if (Options.Json) ClientOutput.PrintResponse(env, res, json: true);
+                        if (Options.Json) ClientOutput.PrintResponse(env, reply, json: true);
                         // a successful result must carry the status; its absence is a protocol violation, not success.
                         if (res.Result?.ExitCode is not { } code)
                         {
@@ -1905,7 +1906,7 @@ internal static class SessionCommands
                         env.Sleep(TimeSpan.FromSeconds(0.1));
                         continue;
                     }
-                    ClientOutput.PrintResponse(env, res, Options.Json);
+                    ClientOutput.PrintResponse(env, reply, Options.Json);
                     return 1;
                 }
             }

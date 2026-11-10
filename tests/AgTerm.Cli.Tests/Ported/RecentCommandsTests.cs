@@ -13,7 +13,7 @@ public class RecentCommandsTests
         Agtermctl.ParseAsRoot(argv).MakeRequest();
 
     private static string Format(ControlResult result) =>
-        ClientOutput.FormatResponse(new ControlResponse { Ok = true, Result = result }, json: false);
+        ClientOutput.FormatResponse(new ControlResponse { Ok = true, Result = result });
 
     private static ControlRecentItem Item(string id, string kind, string title, string? subtitle,
                                           params string[] sessionIds) => new()

@@ -528,11 +528,11 @@ public class HudCommandsTests
         var exit = Agtermctl.Run(new[] { "session", "hud", "wait", "--socket", "isolated" }, new CliEnvironment
         {
             Out = output, Error = new StringWriter(), GetEnv = _ => null,
-            Send = (_, request) =>
+            Send = TestReply.Replying((_, request) =>
             {
                 sent.Add(request);
                 return new ControlResponse { Ok = true, Result = new ControlResult { Id = "SESSION" } };
-            },
+            }),
         });
         Assert.Equal(0, exit);
         Assert.Equal(WireCommand.SessionHudOpen, Assert.Single(sent).Cmd);
@@ -549,11 +549,11 @@ public class HudCommandsTests
         var exit = Agtermctl.Run(new[] { "session", "hud", "--file", missing, "--socket", "isolated" }, new CliEnvironment
         {
             Out = new StringWriter(), Error = error, GetEnv = _ => null,
-            Send = (_, request) =>
+            Send = TestReply.Replying((_, request) =>
             {
                 sent.Add(request);
                 return new ControlResponse { Ok = true };
-            },
+            }),
         });
         Assert.Equal(64, exit);
         Assert.Empty(sent);

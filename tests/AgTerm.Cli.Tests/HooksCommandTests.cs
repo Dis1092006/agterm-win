@@ -55,14 +55,14 @@ public sealed class HooksCommandTests
             Ok = true,
             Result = new ControlResult { Hooks = new ControlHooks { Path = "p", Diagnostics = [], Hooks = [] } },
         };
-        Assert.Equal("hooks: p\n  (no hooks)", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("hooks: p\n  (no hooks)", ClientOutput.FormatResponse(response));
     }
 
     [Fact]
     public void A_reload_prints_ok_or_the_diagnostic_count()
     {
         string Reload(int count) => ClientOutput.FormatResponse(
-            new ControlResponse { Ok = true, Result = new ControlResult { Count = count } }, json: false);
+            new ControlResponse { Ok = true, Result = new ControlResult { Count = count } });
         Assert.Equal("ok", Reload(0));
         Assert.Equal("2 diagnostic(s)", Reload(2));
     }

@@ -1,4 +1,5 @@
 using AgTerm.Cli;
+using AgTerm.ControlServer;
 using AgTerm.Core.Model;
 using AgTerm.Core.Protocol;
 using Xunit;
@@ -8,7 +9,7 @@ namespace AgTerm.Cli.Tests.Ported;
 
 // Port of agtermctlKitTests/MessageCommandsTests.swift (upstream b0839692, #847). The Swift
 // MessageReadDependencies (send / sleep / now) map onto CliEnvironment (Send / Sleep / Now), and
-// SocketReply.line onto ControlJson.Serialize of the response.
+// SocketReply onto ControlReply, whose line in these fakes is ControlJson.Serialize of the response.
 public class MessageCommandsTests
 {
     private const string SessionId = "AAAA1111-0000-4000-8000-000000000001";
@@ -20,9 +21,9 @@ public class MessageCommandsTests
 
     private sealed class FakeApp
     {
-        private readonly List<ControlResponse> _replies;
+        private readonly List<ControlReply> _replies;
 
-        public FakeApp(params ControlResponse[] replies) => _replies = replies.ToList();
+        public FakeApp(params ControlReply[] replies) => _replies = replies.ToList();
 
         public List<ControlRequest> Requests { get; } = new();
         public List<TimeSpan> Sleeps { get; } = new();
@@ -40,9 +41,9 @@ public class MessageCommandsTests
             Send = (_, request) =>
             {
                 Requests.Add(request);
-                var response = _replies[0];
+                var reply = _replies[0];
                 if (_replies.Count > 1) _replies.RemoveAt(0);
-                return response;
+                return reply;
             },
             Sleep = delay =>
             {
@@ -70,10 +71,10 @@ public class MessageCommandsTests
     private static BusMessage Message(Guid id, string body, string? from = null) =>
         new() { Id = id, From = from, To = $"{SessionId}:{PaneId}", Ts = 1, Body = body };
 
-    private static ControlResponse Reply(ControlResult? result, bool ok = true, string? error = null) =>
-        new() { Ok = ok, Result = result, Error = error };
+    private static ControlReply Reply(ControlResult? result, bool ok = true, string? error = null) =>
+        new ControlResponse { Ok = ok, Result = result, Error = error }.AsReply();
 
-    private static string Line(ControlResponse response) => ControlJson.Serialize(response);
+    private static string Line(ControlReply reply) => reply.Line;
 
     private static Func<string, string?> Env(Dictionary<string, string> variables) => variables.GetValueOrDefault;
 
@@ -250,6 +251,16 @@ public class MessageCommandsTests
     }
 
     [Fact]
+    public void JsonPrintsAFieldTheClientDoesNotModel()
+    {
+        const string line = """{"ok":true,"result":{"messages":[],"remaining":0,"fromTheFuture":1}}""";
+        var reply = new ControlReply(ControlJson.Deserialize<ControlResponse>(line)!, line);
+        Assert.Equal(new MessageOutput(Stdout: line + "\n"), MessageCommands.Send.Output(reply, json: true));
+        Assert.Equal(new MessageOutput(Stdout: line + "\n"), Parse<MessageCommands.Read>("read", "--json").Output(reply));
+        Assert.Equal(new MessageOutput(Stdout: line + "\n"), MessageCommands.Ack.Output(reply, json: true));
+    }
+
+    [Fact]
     public void ReadAckSendsAckAndPrintsWhenTheAppConfirmsIt()
     {
         var read = Parse<MessageCommands.Read>("read", "--ack");
@@ -300,7 +311,7 @@ public class MessageCommandsTests
         var outcome = read.ReadMail(read.MakeRequest(PaneEnv), app.Environment);
 
         Assert.False(outcome.TimedOut);
-        Assert.Equal(new[] { First }, outcome.Reply!.Result?.Messages?.Select(m => m.Id));
+        Assert.Equal(new[] { First }, outcome.Reply!.Response.Result?.Messages?.Select(m => m.Id));
         Assert.Equal(3, app.Requests.Count);
         Assert.All(app.Requests, request =>
         {

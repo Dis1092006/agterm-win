@@ -37,12 +37,12 @@ internal static class ModalRunner
     {
         var pipe = options.PipeName(env.GetEnv);
         var opened = env.Send(pipe, open);
-        if (!opened.Ok)
+        if (!opened.Response.Ok)
         {
             ClientOutput.PrintResponse(env, opened, options.Json);
             return 1;
         }
-        if (opened.Result?.Id is not { } id)
+        if (opened.Response.Result?.Id is not { } id)
         {
             env.Error.WriteLine($"error: {family.Name}.open result missing id");
             return 1;
@@ -56,7 +56,7 @@ internal static class ModalRunner
 
         for (var pendingPolls = 0; ; pendingPolls++)
         {
-            ControlResponse polled;
+            AgTerm.ControlServer.ControlReply polled;
             try
             {
                 // no window: the id is global, so a frontmost change cannot make the poll miss it
@@ -67,13 +67,13 @@ internal static class ModalRunner
                 CancelBestEffort(env, pipe, family, id);
                 throw;
             }
-            if (!polled.Ok)
+            if (!polled.Response.Ok)
             {
                 // the server no longer has the dialog, so there is nothing to cancel
                 ClientOutput.PrintResponse(env, polled, options.Json);
                 return 1;
             }
-            if (polled.Result is not { } payload || family.Read(payload) is not { } outcome)
+            if (polled.Response.Result is not { } payload || family.Read(payload) is not { } outcome)
             {
                 env.Error.WriteLine($"error: {family.Name}.result missing result");
                 CancelBestEffort(env, pipe, family, id);
@@ -90,13 +90,13 @@ internal static class ModalRunner
 
     public static int PrintResult(CliEnvironment env, IConnectionOptions options, ModalFamily family, ControlRequest request)
     {
-        var response = env.Send(options.PipeName(env.GetEnv), request);
-        if (!response.Ok)
+        var reply = env.Send(options.PipeName(env.GetEnv), request);
+        if (!reply.Response.Ok)
         {
-            ClientOutput.PrintResponse(env, response, options.Json);
+            ClientOutput.PrintResponse(env, reply, options.Json);
             return 1;
         }
-        if (response.Result is not { } payload || family.Read(payload) is not { } outcome)
+        if (reply.Response.Result is not { } payload || family.Read(payload) is not { } outcome)
         {
             env.Error.WriteLine($"error: {family.Name}.result missing result");
             return 1;

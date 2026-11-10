@@ -106,6 +106,6 @@ public class WorkspaceIconCommandsTests
     {
         var response = new ControlResponse { Ok = true, Result = new ControlResult { Icons = new[] { "A", "B" } } };
 
-        Assert.Equal("A\nB", ClientOutput.FormatResponse(response, json: false));
+        Assert.Equal("A\nB", ClientOutput.FormatResponse(response));
     }
 }
