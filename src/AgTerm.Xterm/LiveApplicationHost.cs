@@ -1666,12 +1666,30 @@ public sealed partial class LiveApplicationHost : IDisposable
         var resolution = ResolveOpenWindow(request.Target);
         if (resolution.Error is not null)
             return resolution.Error;
-        await _windowController!.ResizeWindowAsync(
-            resolution.WindowId!.Value,
+        var windowId = resolution.WindowId!.Value;
+        var size = await _windowController!.ResizeWindowAsync(
+            windowId,
             width,
             height,
             cancellationToken).ConfigureAwait(false);
-        return OkWindowId(resolution.WindowId.Value);
+        if (size is null)
+        {
+            return new ControlResponse
+            {
+                Ok = false,
+                Error = "window not open — window.select it first",
+            };
+        }
+        return new ControlResponse
+        {
+            Ok = true,
+            Result = new ControlResult
+            {
+                Id = windowId.ToString("D").ToUpperInvariant(),
+                Width = size.Width,
+                Height = size.Height,
+            },
+        };
     }
 
     private async Task<ControlResponse> MoveWindowAsync(

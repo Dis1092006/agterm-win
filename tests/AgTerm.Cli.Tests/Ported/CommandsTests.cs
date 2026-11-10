@@ -2519,6 +2519,16 @@ public class CommandsTests
     }
 
     [Fact]
+    public void WindowResizeHelpSaysItPrintsTheAppliedSize()
+    {
+        var resize = WindowCommands.Build(new CommandBindings()).Subcommands.Single(c => c.Name == "resize");
+        Assert.Equal(
+            "Resize a window (frame size in points).\n\n"
+            + "Prints the applied width and height as W H after clamping to the window minimum and display bounds.",
+            resize.Description);
+    }
+
+    [Fact]
     public void WindowMoveWithDisplay()
     {
         var expected = new ControlRequest

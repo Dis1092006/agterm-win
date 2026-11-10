@@ -228,17 +228,16 @@ public partial class App : Application, ILiveWindowController
             () => Task.FromResult(DisplayArea.FindAll().Count),
             cancellationToken);
 
-    public Task ResizeWindowAsync(
+    public Task<LiveWindowSize?> ResizeWindowAsync(
         Guid windowId,
         int width,
         int height,
         CancellationToken cancellationToken) =>
-        RunOnUiAsync(() =>
-        {
-            if (_windows.TryGetValue(windowId, out var window))
-                window.ResizeWindow(width, height);
-            return Task.CompletedTask;
-        }, cancellationToken);
+        RunOnUiAsync(
+            () => Task.FromResult<LiveWindowSize?>(_windows.TryGetValue(windowId, out var window)
+                ? window.ResizeWindow(width, height)
+                : null),
+            cancellationToken);
 
     public Task<LiveWindowMoveResult> MoveWindowAsync(
         Guid windowId,

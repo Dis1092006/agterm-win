@@ -235,7 +235,10 @@ internal static class WindowCommands
 
     private static System.CommandLine.Command BuildResize(CommandBindings bindings)
     {
-        var cmd = new System.CommandLine.Command("resize", "Resize a window (frame size in points).");
+        // the abstract plus the upstream discussion, so `--help` carries the same guidance.
+        var cmd = new System.CommandLine.Command("resize",
+            "Resize a window (frame size in points).\n\n"
+            + "Prints the applied width and height as W H after clamping to the window minimum and display bounds.");
         var id = OptionalIdArgument();
         var width = new Option<int>("--width")
         {

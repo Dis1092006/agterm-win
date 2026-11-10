@@ -99,7 +99,7 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 ## 6. Navigation, windows, sidebar
 
 - `window.go --to next|prev`, actions `previous_window` and `next_window` (no chord) #591. Port: the command `window.go` is done (`window go`); the actions are not.
-- `window.minimize on|off|toggle`, `window new --minimized`, `minimized` in `window list` #294. `window resize` returns the size it applied #566. Port: not done.
+- `window.minimize on|off|toggle`, `window new --minimized`, `minimized` in `window list` #294. `window resize` returns the size it applied #566. Port: the resize echo is done in agterm-win (`width` and `height` in the result, `W H` in the CLI); minimize is not done.
 - `workspace.go --to next|prev`, actions `previous_workspace`, `next_workspace`, `toggle_workspace_collapse` (no chord) #436. Port: the command `workspace.go` is done (`workspace go`); the actions are not.
 - Focus as a set of workspaces: `workspace.filter`, `workspace focus add`, the action `toggle_workspace_filter` #297. Port: done in agterm-win A5.
 - Flagged view layout: `sidebar.flagged-layout flat|tree|plain|toggle`, the setting `flaggedViewLayout` #621, #718. Port: done (B5a).

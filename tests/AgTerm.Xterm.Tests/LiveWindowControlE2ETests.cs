@@ -1024,12 +1024,26 @@ public sealed class LiveWindowControlE2ETests : IDisposable
 
         Assert.True(resize.Ok, resize.Error);
         Assert.True(move.Ok, move.Error);
+        Assert.Equal(firstId.ToString("D").ToUpperInvariant(), resize.Result!.Id);
+        Assert.Equal(900, resize.Result.Width);
+        Assert.Equal(700, resize.Result.Height);
         Assert.Equal(new[] { (firstId, 900, 700) }, windows.ResizeRequests);
         Assert.Equal(new[] { (firstId, -40, 50, (int?)1) }, windows.MoveRequests);
         var listed = client.Send(new ControlRequest { Cmd = Command.WindowList });
         Assert.Equal(
             new ControlWindowFrame { X = -40, Y = 50, Width = 900, Height = 700, Display = 1 },
             listed.Result!.Windows![0].Geometry);
+
+        windows.ResizeLimit = (1200, 800);
+        var clamped = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowResize,
+            Target = firstId.ToString("D"),
+            Args = new ControlArgs { Width = 3000, Height = 3000 },
+        });
+        Assert.True(clamped.Ok, clamped.Error);
+        Assert.Equal(1200, clamped.Result!.Width);
+        Assert.Equal(800, clamped.Result.Height);
 
         var invalidDisplay = client.Send(new ControlRequest
         {
@@ -1048,6 +1062,16 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         });
         Assert.False(closed.Ok);
         Assert.Equal("window not open — window.select it first", closed.Error);
+
+        windows.Presentations.Remove(firstId);
+        var unregistered = client.Send(new ControlRequest
+        {
+            Cmd = Command.WindowResize,
+            Target = firstId.ToString("D"),
+            Args = new ControlArgs { Width = 800, Height = 600 },
+        });
+        Assert.False(unregistered.Ok);
+        Assert.Equal("window not open — window.select it first", unregistered.Error);
 
         var invalidResize = client.Send(new ControlRequest
         {
@@ -1116,7 +1140,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Contains("Task ActivateWindowAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task CloseWindowAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task<LiveWindowPresentation?> CaptureWindowAsync(", app, StringComparison.Ordinal);
-        Assert.Contains("Task ResizeWindowAsync(", app, StringComparison.Ordinal);
+        Assert.Contains("Task<LiveWindowSize?> ResizeWindowAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task<LiveWindowMoveResult> MoveWindowAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task ToggleZoomAsync(", app, StringComparison.Ordinal);
         Assert.Contains("Task ToggleFullscreenAsync(", app, StringComparison.Ordinal);
@@ -1128,6 +1152,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         Assert.Contains("_closeCoordinator.ShouldCancelClose();", mainWindow, StringComparison.Ordinal);
         Assert.Contains("return _closedCompletion.Task;", mainWindow, StringComparison.Ordinal);
         Assert.Contains("CloseFailedOpenAsync", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("internal LiveWindowSize ResizeWindow(", mainWindow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2419,6 +2444,7 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public List<Guid> FullscreenRequests { get; } = new();
         public Dictionary<Guid, LiveWindowPresentation> Presentations { get; } = new();
         public int DisplayCount { get; set; } = 1;
+        public (int Width, int Height)? ResizeLimit { get; set; }
         public Exception? OpenError { get; set; }
         public Exception? ActivateError { get; set; }
         public Func<Guid, Task>? Activated { get; set; }
@@ -2458,19 +2484,22 @@ public sealed class LiveWindowControlE2ETests : IDisposable
         public Task<int> GetDisplayCountAsync(CancellationToken cancellationToken) =>
             Task.FromResult(DisplayCount);
 
-        public Task ResizeWindowAsync(
+        public Task<LiveWindowSize?> ResizeWindowAsync(
             Guid windowId,
             int width,
             int height,
             CancellationToken cancellationToken)
         {
             ResizeRequests.Add((windowId, width, height));
-            var presentation = Presentations[windowId];
+            if (!Presentations.TryGetValue(windowId, out var presentation))
+                return Task.FromResult<LiveWindowSize?>(null);
+            if (ResizeLimit is { } limit)
+                (width, height) = (Math.Min(width, limit.Width), Math.Min(height, limit.Height));
             Presentations[windowId] = presentation with
             {
                 Geometry = presentation.Geometry with { Width = width, Height = height },
             };
-            return Task.CompletedTask;
+            return Task.FromResult<LiveWindowSize?>(new LiveWindowSize(width, height));
         }
 
         public Task<LiveWindowMoveResult> MoveWindowAsync(

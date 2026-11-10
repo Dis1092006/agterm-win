@@ -2540,12 +2540,12 @@ public sealed class LivePhase5E2ETests
         public Task<int> GetDisplayCountAsync(CancellationToken cancellationToken) =>
             Task.FromResult(1);
 
-        public Task ResizeWindowAsync(
+        public Task<LiveWindowSize?> ResizeWindowAsync(
             Guid windowId,
             int width,
             int height,
             CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+            Task.FromResult<LiveWindowSize?>(null);
 
         public Task<LiveWindowMoveResult> MoveWindowAsync(
             Guid windowId,

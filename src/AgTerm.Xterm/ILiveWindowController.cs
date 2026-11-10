@@ -9,6 +9,9 @@ public sealed record LiveWindowPresentation(
 
 public sealed record LiveWindowMoveResult(bool Applied, int DisplayCount);
 
+/// <summary>The frame size a resize applied, in integer points, read back after the clamp.</summary>
+public sealed record LiveWindowSize(int Width, int Height);
+
 public interface ILiveWindowController
 {
     Task OpenWindowAsync(Guid windowId, CancellationToken cancellationToken);
@@ -23,7 +26,8 @@ public interface ILiveWindowController
 
     Task<int> GetDisplayCountAsync(CancellationToken cancellationToken);
 
-    Task ResizeWindowAsync(
+    /// <summary>Returns the applied size, or null when no window is registered for the id.</summary>
+    Task<LiveWindowSize?> ResizeWindowAsync(
         Guid windowId,
         int width,
         int height,

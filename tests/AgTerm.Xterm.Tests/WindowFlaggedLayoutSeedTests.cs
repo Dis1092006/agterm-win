@@ -50,7 +50,7 @@ public sealed class WindowFlaggedLayoutSeedTests : IDisposable
         public Task CloseWindowAsync(Guid id, CancellationToken ct) => Task.CompletedTask;
         public Task<LiveWindowPresentation?> CaptureWindowAsync(Guid id, CancellationToken ct) => Task.FromResult<LiveWindowPresentation?>(null);
         public Task<int> GetDisplayCountAsync(CancellationToken ct) => Task.FromResult(1);
-        public Task ResizeWindowAsync(Guid id, int width, int height, CancellationToken ct) => Task.CompletedTask;
+        public Task<LiveWindowSize?> ResizeWindowAsync(Guid id, int width, int height, CancellationToken ct) => Task.FromResult<LiveWindowSize?>(null);
         public Task<LiveWindowMoveResult> MoveWindowAsync(Guid id, int x, int y, int? display, CancellationToken ct) => Task.FromResult(new LiveWindowMoveResult(true, 1));
         public Task ToggleZoomAsync(Guid id, CancellationToken ct) => Task.CompletedTask;
         public Task ToggleFullscreenAsync(Guid id, CancellationToken ct) => Task.CompletedTask;

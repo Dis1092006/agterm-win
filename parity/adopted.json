@@ -93,7 +93,9 @@
     { "name": "rejected", "upstream": "b0839692" },
     { "name": "messages", "upstream": "b0839692" },
     { "name": "remaining", "upstream": "b0839692" },
-    { "name": "acked", "upstream": "b0839692" }
+    { "name": "acked", "upstream": "b0839692" },
+    { "name": "width", "upstream": "d5a7fc2d" },
+    { "name": "height", "upstream": "d5a7fc2d" }
   ],
   "tree": [
     { "name": "pickPending", "upstream": "6b6323ed" },

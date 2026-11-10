@@ -39,6 +39,14 @@ public sealed record ControlResult
     [JsonPropertyName("id")]
     public string? Id { get; init; }
 
+    /// <summary>Applied window frame width in integer points, echoed by window.resize.</summary>
+    [JsonPropertyName("width")]
+    public int? Width { get; init; }
+
+    /// <summary>Applied window frame height in integer points, echoed by window.resize.</summary>
+    [JsonPropertyName("height")]
+    public int? Height { get; init; }
+
     /// <summary>The whole workspace tree for the tree command.</summary>
     [JsonPropertyName("tree")]
     public ControlTree? Tree { get; init; }

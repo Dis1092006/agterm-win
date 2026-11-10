@@ -195,8 +195,8 @@ public sealed class LiveMessagesControlTests : IDisposable
         public Task<LiveWindowPresentation?> CaptureWindowAsync(
             Guid windowId, CancellationToken cancellationToken) => Task.FromResult<LiveWindowPresentation?>(null);
         public Task<int> GetDisplayCountAsync(CancellationToken cancellationToken) => Task.FromResult(1);
-        public Task ResizeWindowAsync(
-            Guid windowId, int width, int height, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<LiveWindowSize?> ResizeWindowAsync(
+            Guid windowId, int width, int height, CancellationToken cancellationToken) => Task.FromResult<LiveWindowSize?>(null);
         public Task<LiveWindowMoveResult> MoveWindowAsync(
             Guid windowId, int x, int y, int? display, CancellationToken cancellationToken) =>
             Task.FromResult(new LiveWindowMoveResult(true, 1));

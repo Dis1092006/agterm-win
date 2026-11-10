@@ -97,6 +97,11 @@ internal static class ClientOutput
             // the bare column, scriptable as a command substitution; a second field belongs under --json.
             return cursor.Column.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
+        if (response.Result?.Width is { } width && response.Result.Height is { } height)
+        {
+            // window.resize echoes the applied (clamped) frame size.
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{width} {height}");
+        }
         if (response.Result?.Ratio is { } ratio)
         {
             // session.resize echoes the applied (clamped) left-pane fraction, scriptable as a bare number.

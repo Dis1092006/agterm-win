@@ -842,7 +842,8 @@ All are read-only projections of GUI state.
 - `window resize <id> --width W --height H` — frame size in logical points. Wire: `window.resize`. The
   window must be open. The size is
   clamped into `[320×240, the display's work area]`, so an oversized or under-min request is
-  bounded to fit rather than applied verbatim.
+  bounded to fit rather than applied verbatim. Prints the applied width and height as `W H`; JSON reports
+  `result.width` and `result.height`, rounded to integer points like `window list` geometry.
 - `window move <id> --x X --y Y [--display N]` — top-left position in logical points, relative to the full
   bounds of display `N` (default the window's current display; y measured from the display top). Wire:
   `window.move`. The window must be open. The
