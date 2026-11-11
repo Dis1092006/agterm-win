@@ -77,6 +77,14 @@ public sealed class HtmlOverlay(HtmlSource source, Guid? id = null)
 
     public HtmlReloadTarget ReloadTarget { get; set; } = HtmlReloadTarget.Original;
 
+    /// <summary>Names what the page shows from what the app loaded, never from the page's title,
+    /// which the page writes and could dress as a prompt: the file shown.</summary>
+    public string Identity => Source switch
+    {
+        HtmlSource.File file => System.IO.Path.GetFileName(Current?.Page ?? file.Path),
+        _ => "",
+    };
+
     /// <summary>Why a file page with grant root grantRoot cannot open, or null when it can
     /// (upstream HtmlOverlay.grantError). On Windows a drive or share root counts as "/", home is the
     /// user profile, and components compare case-insensitively.</summary>
