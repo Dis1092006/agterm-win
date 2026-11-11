@@ -36,6 +36,8 @@ public sealed partial class HtmlOverlayView : UserControl
         _close = new StripButton("\uE711", "Close", "htmlOverlay.close", () => Raise(CloseRequested));
         foreach (var button in new[] { _back, _forward, _reload }) LeadingButtons.Children.Add(button.Element);
         foreach (var button in new[] { _browser, _explorer, _hide, _close }) TrailingButtons.Children.Add(button.Element);
+        // the buttons handle their own presses, so this sees only the strip's empty area and its label
+        Strip.PointerPressed += (_, _) => StripPressed?.Invoke();
         SizeChanged += (_, _) => PlacePanel();
         // the identity gives up width last: the title's column shrinks first
         Label.SizeChanged += (_, e) => IdentityText.MaxWidth = e.NewSize.Width;
@@ -49,6 +51,9 @@ public sealed partial class HtmlOverlayView : UserControl
     public event Action<Guid>? HideRequested;
 
     public event Action<Guid>? CloseRequested;
+
+    /// <summary>A press on the strip outside its buttons.</summary>
+    public event Action? StripPressed;
 
     /// <summary>Whether the strip offers Hide. It follows the title bar's overlay button, which is the
     /// way back to a hidden page.</summary>

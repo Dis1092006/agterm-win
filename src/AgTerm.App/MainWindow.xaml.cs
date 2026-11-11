@@ -1950,6 +1950,7 @@ public sealed partial class MainWindow : Window
             ObserveTaskFault(host.StoreCoordinator.MutateAsync(store => store.CloseHtmlOverlay(id)), "HTML page close failed");
             FocusActiveTerminal();
         };
+        HtmlOverlayPanel.StripPressed += FocusActiveTerminal;
     }
 
     /// <summary>Shows the selected session's page, unless the dashboard or a zoomed pane covers the slot.
