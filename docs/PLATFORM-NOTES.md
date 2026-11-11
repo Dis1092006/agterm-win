@@ -921,7 +921,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The command palette lists Toggle Overlays only while the selected session has an overlay, shown or hidden. Upstream lists it always and disables it.
   - Close Session (Alt+W) skips a hidden overlay and closes the next thing in front of the user. The close confirmation adds that the hidden overlays close with the session.
   - Opening the keymap or hooks editor while the session's overlay is hidden plays the default notification sound, where upstream beeps.
-  - Upstream's title bar button and the Hide button on HTML pages are not ported. The port has no HTML page overlays.
+  - Upstream's title bar button and the Hide button on HTML pages are not ported. The port does not draw HTML pages yet.
 - Overlay sizes in points: `--width PT` and `--height PT` on `session overlay open` and `session overlay resize`, and the session node fields `overlayWidth` and `overlayHeight` (upstream `9bbb3408`, #798). The args `width` and `height` exist at the pin, for `session.hud`; the node fields are in `parity/adopted.json`.
   - A point is a CSS pixel of the terminal page. The page draws a point axis as `min(N px, 80%)` of the panes area, and the core reads back the same size from the session area the page last measured. With no measure yet, `overlayWidth` and `overlayHeight` are absent.
   - The size is the area inside the panel's 1 px border, which is the area the program gets. Upstream subtracts the page strip of an HTML overlay; the port has no HTML overlays, so nothing is subtracted, and the `--height` help leaves out upstream's sentence about the strip.
@@ -935,6 +935,14 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Windows moves a minimized window to (-32000, -32000). `window list` reports the frame it had before it was minimized, which is the frame it comes back to.
   - Upstream waits 50 ms before it minimizes a new window, because AppKit shows it a second time on the next main-queue turn. The port opens the window and waits until it is ready, so it minimizes at once.
   - The headless host answers `window management is not available in the headless host`, as for the other window commands.
+- HTML page overlays, first part: `session overlay open --html FILE` with `--cwd`, `--navigation` and `--js`, the commands `session.overlay.reload` and `session.overlay.navigate`, the args `html`, `current`, `navigation` and `javascript`, the result field `pageID`, and the session node field `htmlOverlays` (upstream `11fe64eb`, #659). The names are in `parity/adopted.json`. The core keeps the page, and the protocol, the CLI and the headless host take it. The live app does not draw pages yet.
+  - The live app answers `--html` with `html overlays are not supported yet`. This error string is the port's own. The headless host opens the page in the store.
+  - The grant check is upstream's, on Windows paths. A path is absolute when `Path.IsPathFullyQualified` says so. A drive root or a share root counts as `/`, and the user profile counts as the home directory. Path components compare without case.
+  - The port has only the session-wide overlay slot, so `--pane left|right` on `reload` and `navigate` answers `no overlay`.
+  - `navigate` needs the web view that shows the page. The headless host has none, so it answers `html overlay not realized`.
+  - `navigate finder` reveals the file in Explorer. The wire value stays `finder`, and the CLI help says Explorer. The error `show in Finder requires a file page` is upstream's string.
+  - A page has no program, so closing it records no exit code. `session overlay result` over a page answers `no overlay result: the slot holds an html page`.
+  - Until the port has `--url`, the CLI says `provide exactly one of COMMAND or --html` where upstream says `provide exactly one of COMMAND, --html or --url`.
 
 ## Windows-only extensions
 

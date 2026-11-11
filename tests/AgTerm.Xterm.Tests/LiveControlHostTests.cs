@@ -311,6 +311,38 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
+    public void The_live_app_refuses_an_html_page_until_it_renders_pages()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-html-").FullName;
+        try
+        {
+            var host = new LiveControlHost(new LiveControlHostOptions
+            {
+                StateDir = stateDir,
+                ConfigDir = stateDir,
+                PipeName = "agterm-html-" + Guid.NewGuid().ToString("N"),
+                DefaultShell = Cmd,
+                OpenSurface = (_, _) => Task.FromResult<IHeadlessSurface>(new FakeSurface()),
+            });
+            using (host)
+            {
+                host.Start();
+                var client = new ControlPipeClient(host.PipeName);
+                var response = client.Send(new ControlRequest
+                {
+                    Cmd = Command.SessionOverlayOpen,
+                    Args = new ControlArgs { Html = Path.Combine(stateDir, "r.html"), Cwd = stateDir },
+                });
+                Assert.Equal(OverlayHtmlError.Unsupported, response.Error);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public void Configured_base_font_size_reaches_new_surface_options()
     {
         var stateDir = Directory.CreateTempSubdirectory("agterm-fontsize-").FullName;

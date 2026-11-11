@@ -2079,6 +2079,8 @@ public sealed partial class LiveApplicationHost : IDisposable
         or Command.SessionOverlayHide
         or Command.SessionOverlayShow
         or Command.SessionOverlayToggle
+        or Command.SessionOverlayReload
+        or Command.SessionOverlayNavigate
         or Command.SessionBackground
         or Command.SessionText
         or Command.FontInc

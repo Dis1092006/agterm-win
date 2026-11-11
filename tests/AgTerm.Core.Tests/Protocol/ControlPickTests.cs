@@ -93,7 +93,7 @@ public class ControlPickTests
             Ask = ControlAskResult.Pending(),
             Cursor = new ControlCursor { Column = 0 },
             App = new ControlAppIdentity { Version = "1.0", Commit = "abc" },
-            Installed = new ControlAppIdentity { Version = "1.0" }, Undoable = true,
+            Installed = new ControlAppIdentity { Version = "1.0" }, PageId = "P", Undoable = true,
             Recent = Array.Empty<ControlRecentItem>(),
             RecentOpen = new ControlRecentOpen
             {

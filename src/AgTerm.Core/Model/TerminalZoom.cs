@@ -52,7 +52,7 @@ public static class TerminalZoomSurfaces
             !(session.Surface is null && session.SplitSurface is not null && session.SplitFocused),
         TerminalZoomSurface.Split => session.HasSplit || session.SplitSurface is not null,
         TerminalZoomSurface.Scratch => session.ScratchActive || session.ScratchSurface is not null,
-        TerminalZoomSurface.Overlay => session.OverlayVisible,
+        TerminalZoomSurface.Overlay => session.ProgramOverlayVisible,
         _ => throw new ArgumentOutOfRangeException(nameof(surface)),
     };
 
@@ -65,7 +65,7 @@ public static class TerminalZoomSurfaces
         TerminalZoomSurface.Split =>
             !session.OverlayVisible && !session.ScratchActive && session.SplitFocused,
         TerminalZoomSurface.Scratch => !session.OverlayVisible && session.ScratchActive,
-        TerminalZoomSurface.Overlay => session.OverlayVisible,
+        TerminalZoomSurface.Overlay => session.ProgramOverlayVisible,
         _ => throw new ArgumentOutOfRangeException(nameof(surface)),
     };
 
@@ -77,7 +77,7 @@ public static class TerminalZoomSurfaces
         TerminalZoomSurface.Split =>
             !session.OverlayVisible && !session.ScratchActive && (session.IsSplit || session.SplitFocused),
         TerminalZoomSurface.Scratch => !session.OverlayVisible && session.ScratchActive,
-        TerminalZoomSurface.Overlay => session.OverlayVisible,
+        TerminalZoomSurface.Overlay => session.ProgramOverlayVisible,
         _ => throw new ArgumentOutOfRangeException(nameof(surface)),
     };
 }
@@ -167,6 +167,8 @@ public sealed class TerminalZoomController
     public static TerminalZoomTarget? ResolveTarget(AppStore store, bool quickTerminalVisible)
     {
         if (store.ActiveSession is not { } session) return null;
+        // a page covers the terminals without being one, so it leaves nothing to zoom
+        if (session.HtmlOverlayVisible) return null;
         var surface = TerminalZoomSurfaces.AllCases.FirstOrDefault(s => s.IsActive(session),
             TerminalZoomSurface.Primary);
         return new TerminalZoomTarget.Session(session.Id, surface);

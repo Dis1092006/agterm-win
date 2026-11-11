@@ -29,6 +29,7 @@ public class TreeNodeTests
         Unseen = 2, FontSize = 13, SplitFontSize = 14, ScratchFontSize = 15,
         Surfaces = new[] { new ControlSurfaceNode { Id = "surface:x:left", Kind = "left", Active = true, Visible = true } },
         Realized = true,
+        HtmlOverlays = [new ControlHtmlOverlayNode { File = "/w/a.html", State = "loaded", Id = "P" }],
     };
 
     [Fact]

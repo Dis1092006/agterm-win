@@ -136,6 +136,10 @@ public sealed record ControlResult
     [JsonPropertyName("installed")]
     public ControlAppIdentity? Installed { get; init; }
 
+    /// <summary>session.overlay.open --html: the id of the opened page.</summary>
+    [JsonPropertyName("pageID")]
+    public string? PageId { get; init; }
+
     /// <summary>recent.list payload: the recently closed entries, newest first.</summary>
     [JsonPropertyName("recent")]
     public ControlRecentItem[]? Recent { get; init; }
@@ -243,6 +247,29 @@ public static class OverlayPointError
 public static class PaneOverlayError
 {
     public const string InvalidPane = "session.overlay: --pane must be left or right";
+}
+
+/// <summary>Error strings for a page in the overlay slot (upstream OverlayHtmlError, 11fe64eb).
+/// Only the file-page cases the port has taken are here.</summary>
+public static class OverlayHtmlError
+{
+    public const string CommandAndHtml = "session.overlay.open takes a command or --html, not both";
+    public const string WaitWithHtml = "session.overlay.open: --wait cannot be combined with --html";
+    public const string NavigationWithoutPage = "session.overlay.open: --navigation requires --html or --url";
+    public const string JavascriptWithoutPage = "session.overlay.open: --js requires --html or --url";
+    public const string NoOverlay = "no overlay";
+    public const string NotHtml = "the overlay is not an html page";
+    public const string Navigation = "session.overlay.navigate requires back, forward, browser or finder";
+    public const string FinderRequiresFile = "show in Finder requires a file page";
+    public const string NotRealized = "html overlay not realized";
+    public const string NoBrowser = "no default web browser to open the page in";
+    public const string NoResult = "no overlay result: the slot holds an html page";
+
+    /// <summary>The live app's answer to --html until it renders pages. Windows-only.</summary>
+    public const string Unsupported = "html overlays are not supported yet";
+
+    public static string NoHistory(HtmlNavigation navigation) =>
+        $"no page to go {(navigation == HtmlNavigation.Forward ? "forward" : "back")} to";
 }
 
 /// <summary>

@@ -18,6 +18,8 @@ public class LiveApplicationHostRoutingTests
     [InlineData(Command.SessionOverlayHide)]
     [InlineData(Command.SessionOverlayShow)]
     [InlineData(Command.SessionOverlayToggle)]
+    [InlineData(Command.SessionOverlayReload)]
+    [InlineData(Command.SessionOverlayNavigate)]
     public void OverlayVisibilityCommandsRouteByTheirSessionTarget(Command command)
     {
         Assert.True(LiveApplicationHost.UsesSingleSessionTarget(command));
