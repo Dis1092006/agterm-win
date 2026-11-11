@@ -943,6 +943,11 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - `navigate finder` reveals the file in Explorer. The wire value stays `finder`, and the CLI help says Explorer. The error `show in Finder requires a file page` is upstream's string.
   - A page has no program, so closing it records no exit code. `session overlay result` over a page answers `no overlay result: the slot holds an html page`.
   - Until the port has `--url`, the CLI says `provide exactly one of COMMAND or --html` where upstream says `provide exactly one of COMMAND, --html or --url`.
+- HTML page overlays, the page engine: one WebView2 per page, the load, the navigation policy, the theme, reload, navigate and the prompt before a web link opens in the browser, as upstream's `HtmlOverlayRegistry` (`c63e5158`). The live app does not show it yet and still refuses `--html`.
+  - Upstream loads a granted file with read access to the grant. WebView2 has no such grant for a `file:` URL, so the port maps the grant directory to a virtual host, `agterm-page-<id>.example`, and loads the file from it. Each page has its own host, so one page cannot read files another page was granted. A page link to a raw `file:` URL is cancelled.
+  - WebView2 runs the theme script before the document has a root element and, with page scripts off, runs no callback that could wait for one. Upstream prepends a style element; the port adds a constructed stylesheet to `document.adoptedStyleSheets`. The rules and their zero specificity are the same.
+  - WebView2 names a page without a `<title>` by its address. The port reports no title then, as upstream does.
+  - WebView2 tells the host nothing when a page calls `window.close()`, so a page cannot close its overlay. Upstream closes it.
 
 ## Windows-only extensions
 
