@@ -31,7 +31,9 @@ public sealed class HtmlOverlayPageLiveTests : IAsyncLifetime
         _store = new AppStore(persistence: new PersistenceStore(Path.Combine(_dir, "state")),
                               stateDirectory: Path.Combine(_dir, "state"));
         _session = _store.AddSession(_store.AddWorkspace("work").Id, _dir)!;
-        _registry = new HtmlOverlayRegistry(_store, _browser, _ => new HtmlOverlayTheme("#102030", "#e0e0e0", dark: true));
+        _registry = new HtmlOverlayRegistry(new DirectHtmlPageStore(_store), _browser,
+                                            _ => new HtmlOverlayTheme("#102030", "#e0e0e0", dark: true));
+        _store.HtmlOverlayReleased = _registry.Release;
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
@@ -113,7 +115,7 @@ public sealed class HtmlOverlayPageLiveTests : IAsyncLifetime
         var (off, offView) = await OpenAsync("script.html");
         Assert.Equal("A", off.Current?.Title);
 
-        await OnUi(() => _registry.Reload(_session.Id, HtmlReloadTarget.Current));
+        await OnUi(() => _registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
         await WaitAsync(() => _completions >= 2, "reload");
         Assert.Equal(HtmlLoadState.Loaded, off.LoadState);
         Assert.Equal("\"A\"", await EvalAsync(offView, "document.title"));

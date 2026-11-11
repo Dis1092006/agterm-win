@@ -924,7 +924,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Upstream's title bar button and the Hide button on HTML pages are not ported. The port does not draw HTML pages yet.
 - Overlay sizes in points: `--width PT` and `--height PT` on `session overlay open` and `session overlay resize`, and the session node fields `overlayWidth` and `overlayHeight` (upstream `9bbb3408`, #798). The args `width` and `height` exist at the pin, for `session.hud`; the node fields are in `parity/adopted.json`.
   - A point is a CSS pixel of the terminal page. The page draws a point axis as `min(N px, 80%)` of the panes area, and the core reads back the same size from the session area the page last measured. With no measure yet, `overlayWidth` and `overlayHeight` are absent.
-  - The size is the area inside the panel's 1 px border, which is the area the program gets. Upstream subtracts the page strip of an HTML overlay; the port has no HTML overlays, so nothing is subtracted, and the `--height` help leaves out upstream's sentence about the strip.
+  - The size is the area inside the panel's 1 px border, which is the area the program gets. For an HTML page the size leaves out the page strip and the rule under it, 29 points, as upstream does; a chromeless page has no strip. The `--height` help leaves out upstream's sentence about the strip until the live app shows pages.
   - The port has no remote overlays, so upstream's error for an overlay shown on another Mac does not exist here.
 - `window.resize` answers with the size it applied: the result fields `width` and `height` (upstream `d5a7fc2d`, #566), in `parity/adopted.json`. The CLI prints them as `W H`. The window reads its frame back after the resize and converts it to points the way `window list` geometry does. The clamp is the port's own, `[320×240, the display's work area]`. A window that closes between the target check and the resize answers `window not open — window.select it first`, as upstream does.
 - `window.minimize` with `mode`, the arg `minimized` on `window.new`, and the window node field `minimized` (upstream `28cad2c1`, #294), in `parity/adopted.json`. `agtermctl window minimize [id] [on|off|toggle]` and `window new --minimized` follow upstream's arguments and error strings.
@@ -948,6 +948,8 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - WebView2 runs the theme script before the document has a root element and, with page scripts off, runs no callback that could wait for one. Upstream prepends a style element; the port adds a constructed stylesheet to `document.adoptedStyleSheets`. The rules and their zero specificity are the same.
   - WebView2 names a page without a `<title>` by its address. The port reports no title then, as upstream does.
   - WebView2 tells the host nothing when a page calls `window.close()`, so a page cannot close its overlay. Upstream closes it.
+  - Upstream's view watches the page's reload revision in the model. The port's store raises an event when a page takes a reload, and the live host passes a copy of the page to the UI thread, because the store changes its own copy under its lock on another thread. The page's web view reports its load state and page back through the store coordinator, in order.
+  - The live host runs `session.overlay.navigate` in the app's web view and waits up to 10 seconds for it. A page with no web view, or one that does not answer in time, answers `html overlay not realized`.
 
 ## Windows-only extensions
 

@@ -246,13 +246,13 @@ public sealed class Session
     /// Cleared on open and close, never persisted.</summary>
     public OverlayPointSize OverlayPoints { get; set; }
 
-    /// <summary>A floating overlay's size in points in the session area the page last reported: the
-    /// read-back of --width/--height and of --size-percent alike. Null for a full overlay, a HUD, no
-    /// overlay, and before the page has laid the session out.</summary>
+    /// <summary>A floating program or page's content size in points in the session area the page last
+    /// reported: the read-back of --width/--height and of --size-percent alike. Null for a full
+    /// overlay, a HUD, no overlay, and before the page has laid the session out.</summary>
     public (double Width, double Height)? OverlayContentSize =>
         OverlayActive && OverlaySizePercent is { } percent
                       && HudMetrics?.Session is { Width: > 0, Height: > 0 } area
-            ? OverlayPointSize.PanelSize((area.Width, area.Height), percent, OverlayPoints)
+            ? OverlayPointSize.ContentSize((area.Width, area.Height), percent, OverlayPoints, HtmlOverlay?.Chrome ?? 0)
             : null;
 
     /// <summary>Whether a FULL-coverage overlay is up: active with no size percent.</summary>

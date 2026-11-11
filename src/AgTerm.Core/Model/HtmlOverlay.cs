@@ -48,6 +48,10 @@ public sealed record HtmlPageInfo(string Page, string? Title, bool CanGoBack, bo
 /// reports into it by Id. Never persisted.</summary>
 public sealed class HtmlOverlay(HtmlSource source, Guid? id = null)
 {
+    /// <summary>The identity strip's height in points; ChromeHeight adds the rule under it.</summary>
+    public const double StripHeight = 28;
+    public const double ChromeHeight = StripHeight + 1;
+
     public Guid Id { get; } = id ?? Guid.NewGuid();
 
     public HtmlSource Source { get; } = source;
@@ -59,6 +63,9 @@ public sealed class HtmlOverlay(HtmlSource source, Guid? id = null)
     public bool Javascript { get; set; }
 
     public bool Chromeless { get; init; }
+
+    /// <summary>What the panel draws above the page: the strip and its rule, none for a chromeless page.</summary>
+    public double Chrome => Chromeless ? 0 : ChromeHeight;
 
     public bool Persistent { get; init; }
 
@@ -76,6 +83,22 @@ public sealed class HtmlOverlay(HtmlSource source, Guid? id = null)
     public int ReloadRevision { get; set; }
 
     public HtmlReloadTarget ReloadTarget { get; set; } = HtmlReloadTarget.Original;
+
+    /// <summary>A separate page with the same id and values, for code that reads the page off the
+    /// thread that changes it.</summary>
+    public HtmlOverlay Copy() => new(Source, Id)
+    {
+        Navigation = Navigation,
+        Javascript = Javascript,
+        Chromeless = Chromeless,
+        Persistent = Persistent,
+        Browse = Browse,
+        LoadState = LoadState,
+        LoadError = LoadError,
+        Current = Current,
+        ReloadRevision = ReloadRevision,
+        ReloadTarget = ReloadTarget,
+    };
 
     /// <summary>Names what the page shows from what the app loaded, never from the page's title,
     /// which the page writes and could dress as a prompt: the file shown.</summary>

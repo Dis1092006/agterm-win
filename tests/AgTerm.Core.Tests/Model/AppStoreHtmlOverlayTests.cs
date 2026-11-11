@@ -168,6 +168,20 @@ public class AppStoreHtmlOverlayTests : IDisposable
     }
 
     [Fact]
+    public void ReloadTellsTheAppWhichPageToReload()
+    {
+        var reloaded = new List<HtmlOverlay>();
+        _store.HtmlOverlayReloaded = reloaded.Add;
+
+        Assert.NotNull(_store.ReloadHtmlOverlay(_session.Id, null));
+        var page = OpenPage();
+        Assert.Null(_store.ReloadHtmlOverlay(_session.Id, null, HtmlReloadTarget.Current));
+
+        Assert.Same(page, Assert.Single(reloaded));
+        Assert.Equal(1, page.ReloadRevision);
+    }
+
+    [Fact]
     public void SlotFindsThePageByIdUntilItCloses()
     {
         var page = OpenPage();

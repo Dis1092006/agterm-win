@@ -263,8 +263,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         Host.Actions.StatusReset = _notificationSettings.EffectiveStatusReset;
         // the app has no web view for a page yet
         Host.Actions.HtmlOverlaysSupported = false;
+        Host.Actions.HtmlOverlayNavigator = NavigateHtmlOverlay;
         Host.Actions.CloseGraceUndoEnabled = _notificationSettings.CloseGraceUndoEnabled ?? true;
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);
+        HtmlPages = new LiveHtmlPageStore(_storeCoordinator, options.Log);
         _coordinator = new LiveSurfaceCoordinator(
             Host,
             _scopeFactory,
@@ -327,6 +329,9 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         {
             Store.SetAutoFollowDispatcher(DispatchAutoFollow);
             Store.AutoFollowed += sessionId => AutoFollowed?.Invoke(sessionId);
+            Store.HtmlOverlayReleased = id => HtmlOverlayReleased?.Invoke(id);
+            // a copy: the store keeps changing its own page under the gate
+            Store.HtmlOverlayReloaded = page => HtmlOverlayReloaded?.Invoke(page.Copy());
             ApplyAutoFollowSettings(options.NotificationSettings);
         });
     }
@@ -355,6 +360,36 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     public bool ZoomActive => Volatile.Read(ref _zoomActive) != 0;
 
     public ILiveStoreCoordinator StoreCoordinator => _storeCoordinator;
+
+    /// <summary>Where the app's page web views report into the store.</summary>
+    public IHtmlPageStore HtmlPages { get; }
+
+    /// <summary>Runs a control API navigate in the app's web view for a page id, on the UI thread;
+    /// it answers null or the wire error. Without it every navigate is not realized.</summary>
+    public Func<Guid, HtmlNavigation, Task<string?>>? HtmlOverlayNavigator { get; set; }
+
+    /// <summary>How long a navigate waits for the app's web view before it answers not realized.</summary>
+    internal TimeSpan HtmlNavigateBudget { get; set; } = TimeSpan.FromSeconds(10);
+
+    // runs under the store gate on a control thread; the UI thread never takes the gate, so waiting
+    // here for the web view cannot deadlock
+    private string? NavigateHtmlOverlay(Guid id, HtmlNavigation navigation)
+    {
+        if (HtmlOverlayNavigator is not { } navigator) return OverlayHtmlError.NotRealized;
+        try
+        {
+            return navigator(id, navigation).WaitAsync(HtmlNavigateBudget).GetAwaiter().GetResult();
+        }
+        catch (TimeoutException)
+        {
+            return OverlayHtmlError.NotRealized;
+        }
+        catch (Exception ex)
+        {
+            _options.Log?.Invoke($"Html overlay navigate failed: {ex}");
+            return OverlayHtmlError.NotRealized;
+        }
+    }
 
     /// <summary>Replace renderers bound to this window's old page without replacing its store or pipe.</summary>
     public Task ReloadSurfacesAsync(CancellationToken cancellationToken = default) =>
@@ -725,6 +760,12 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
     public event Action<Guid>? AutoFollowed;
 
     public event Action<string>? StatusNotificationRequested;
+
+    /// <summary>A page left its slot for good; raised under the store gate.</summary>
+    public event Action<Guid>? HtmlOverlayReleased;
+
+    /// <summary>A page took a reload, with a copy of its new value; raised under the store gate.</summary>
+    public event Action<HtmlOverlay>? HtmlOverlayReloaded;
 
     public void SetNotificationSettings(AppSettings settings)
     {

@@ -38,7 +38,8 @@ public sealed record LiveSelectionSnapshot(
     SplitAxis? SplitAxis = null,
     bool OverlayActive = false,
     int? OverlayWidth = null,
-    int? OverlayHeight = null)
+    int? OverlayHeight = null,
+    HtmlOverlay? HtmlOverlay = null)
 {
     public TerminalLayout ToTerminalLayout(long generation)
     {
@@ -446,7 +447,9 @@ public sealed class LiveStoreCoordinator : ILiveStoreCoordinator
             SplitAxis: selectedSession?.SplitAxis,
             OverlayActive: selectedSession?.OverlayActive ?? false,
             OverlayWidth: selectedSession?.OverlayPoints.Width,
-            OverlayHeight: selectedSession?.OverlayPoints.Height);
+            OverlayHeight: selectedSession?.OverlayPoints.Height,
+            // a copy: the store changes its own page off the UI thread
+            HtmlOverlay: selectedSession?.HtmlOverlayActive == true ? selectedSession.HtmlOverlay!.Copy() : null);
     }
 
     private bool QuickTerminalShown() =>

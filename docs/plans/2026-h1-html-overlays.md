@@ -21,6 +21,8 @@ Upstream v0.36.0 can show a local HTML file in the overlay slot instead of a pro
 
 H1b is two PRs. H1b-1 is the page engine with a scripted web view and a live WebView2 under test, and no UI: `HtmlOverlayPage`, `HtmlOverlayRegistry` and the `IHtmlPageView` seam in `AgTerm.Xterm`, `HtmlNavigationPolicy` and `HtmlOverlayTheme` in the core. H1b-2 puts the page in the window, adds the strip, focus and Alt+W, and turns `--html` on in the live app.
 
+H1b-2 is two PRs too. H1b-2a has no UI: the overlay size leaves out the strip, the store announces a reload, the page reports through a store seam (`IHtmlPageStore`) and keeps its own copy for the strip, the selection snapshot carries a copy of the page, and the live host gives the app the release and reload events, the page store and a navigate hook. `--html` stays off. H1b-2b draws the page, the strip and the browser prompt in the window, wires focus, Alt+W and the theme, and turns `--html` on.
+
 - A WebView2 over the session area shows the file page, full or floating, with the overlay's background color.
 - A file page with a grant loads through a virtual host mapped to the grant directory. A page without a grant loads the file text, so it reads no other file.
 - `--js` turns page scripts on. The theme stylesheet and the `--agterm-*` variables are injected either way.
