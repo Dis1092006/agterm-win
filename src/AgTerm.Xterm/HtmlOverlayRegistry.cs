@@ -5,11 +5,12 @@ namespace AgTerm.Xterm;
 /// <summary>
 /// Owns the web view of every page open in one store's slots, keyed by the page's id, so a page
 /// survives session switches and the undoable close (upstream HtmlOverlayRegistry). It drops a page
-/// only when the store releases it. All members run on the UI thread.
+/// only when the store releases it: the owner wires the store's release to Release. All members run on
+/// the UI thread.
 /// </summary>
 public sealed class HtmlOverlayRegistry
 {
-    private readonly AppStore _store;
+    private readonly IHtmlPageStore _pageStore;
     private readonly IHtmlBrowser _browser;
     private readonly Func<string?, HtmlOverlayTheme> _theme;
     // a page is here from the moment it is asked for, while its web view is still being made
@@ -18,12 +19,11 @@ public sealed class HtmlOverlayRegistry
 
     /// <param name="theme">The terminal theme as a page's default style, given the overlay's own
     /// background color.</param>
-    public HtmlOverlayRegistry(AppStore store, IHtmlBrowser browser, Func<string?, HtmlOverlayTheme> theme)
+    public HtmlOverlayRegistry(IHtmlPageStore pageStore, IHtmlBrowser browser, Func<string?, HtmlOverlayTheme> theme)
     {
-        _store = store;
+        _pageStore = pageStore;
         _browser = browser;
         _theme = theme;
-        store.HtmlOverlayReleased = Release;
     }
 
     /// <summary>The live page for overlay, making its web view and loading it on first use. A page
@@ -44,7 +44,7 @@ public sealed class HtmlOverlayRegistry
         try
         {
             var view = await createView();
-            var page = new HtmlOverlayPage(overlay, _store, view, _browser, _theme(backgroundColor), backgroundColor);
+            var page = new HtmlOverlayPage(overlay, _pageStore, view, _browser, _theme(backgroundColor), backgroundColor);
             if (!_realizing.TryGetValue(overlay.Id, out var current) || current != done.Task)
             {
                 page.Close();
@@ -80,13 +80,16 @@ public sealed class HtmlOverlayRegistry
 
     /// <summary>Asks the store for a reload of the session's page, then reloads a page already shown
     /// at once, even with no host to push the new revision.</summary>
-    public HtmlOverlayCommandFailure? Reload(Guid sessionId, HtmlReloadTarget target)
+    public HtmlOverlayCommandFailure? Reload(AppStore store, Guid sessionId, HtmlReloadTarget target)
     {
-        if (_store.ReloadHtmlOverlay(sessionId, pane: null, target) is { } failure) return failure;
-        if (_store.SessionWithId(sessionId)?.HtmlOverlay is { } overlay && _pages.TryGetValue(overlay.Id, out var page))
-            page.Apply(overlay);
+        if (store.ReloadHtmlOverlay(sessionId, pane: null, target) is { } failure) return failure;
+        if (store.SessionWithId(sessionId)?.HtmlOverlay is { } overlay) Apply(overlay);
         return null;
     }
+
+    /// <summary>Gives a live page the model's latest value; it reloads when the revision moved. The
+    /// live app passes a copy, since the store changes its own off the UI thread.</summary>
+    public void Apply(HtmlOverlay overlay) => Existing(overlay.Id)?.Apply(overlay);
 
     /// <summary>Gives every page the current theme.</summary>
     public async Task RefreshThemesAsync()

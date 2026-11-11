@@ -8,11 +8,12 @@ namespace AgTerm.Xterm;
 /// <summary>
 /// One page in an overlay slot and its web view (upstream HtmlOverlayPage, c63e5158, file sources
 /// only). It loads the page, keeps navigation inside the grant, and reports load state, address,
-/// title and history into the store by the page's id.
+/// title and history into the store by the page's id. It keeps its own copy of what it reported,
+/// for the strip on the UI thread, which never reads the store.
 /// </summary>
 public sealed class HtmlOverlayPage
 {
-    private readonly AppStore _store;
+    private readonly IHtmlPageStore _store;
     private readonly IHtmlBrowser _browser;
     private HtmlOverlay _overlay;
     private HtmlOverlayTheme _theme;
@@ -33,7 +34,7 @@ public sealed class HtmlOverlayPage
     // the file the last allowed main-frame navigation went to, to name a missing file when it fails
     private string? _navigatedFile;
 
-    public HtmlOverlayPage(HtmlOverlay overlay, AppStore store, IHtmlPageView view, IHtmlBrowser browser,
+    public HtmlOverlayPage(HtmlOverlay overlay, IHtmlPageStore store, IHtmlPageView view, IHtmlBrowser browser,
                            HtmlOverlayTheme theme, string? backgroundColor)
     {
         _overlay = overlay;
@@ -61,6 +62,16 @@ public sealed class HtmlOverlayPage
 
     public bool IsClosed { get; private set; }
 
+    public HtmlLoadState LoadState { get; private set; } = HtmlLoadState.Loading;
+
+    public string? LoadError { get; private set; }
+
+    /// <summary>The page shown, its title and its history; null until the first commit.</summary>
+    public HtmlPageInfo? Current { get; private set; }
+
+    /// <summary>Raised when LoadState, LoadError or Current change.</summary>
+    public event Action? Changed;
+
     /// <summary>The virtual host a page with a grant is served from. Each page has its own, so pages
     /// share no origin; .example never resolves on a network.</summary>
     public static string VirtualHost(Guid id) => $"agterm-page-{id:N}.example";
@@ -87,6 +98,8 @@ public sealed class HtmlOverlayPage
         _overlay = overlay;
         if (IsClosed || overlay.ReloadRevision == _appliedRevision) return;
         _appliedRevision = overlay.ReloadRevision;
+        // the store reset its own copy when it took the reload
+        Mirror(HtmlLoadState.Loading, null, overlay.ReloadTarget == HtmlReloadTarget.Current ? Current : null);
         if (overlay.ReloadTarget == HtmlReloadTarget.Current) ReloadShown();
         else LoadOriginal();
     }
@@ -233,7 +246,7 @@ public sealed class HtmlOverlayPage
         if (args.Cancel || args.Target != HtmlNavigationTarget.MainFrame) return;
         _loadPending = true;
         _navigatedFile = file;
-        _store.SetHtmlLoadState(Id, HtmlLoadState.Loading, null);
+        SetLoadState(HtmlLoadState.Loading, null);
     }
 
     // the policy judges a URL on the page's host as the file it serves; a raw file: URL would leave
@@ -274,7 +287,7 @@ public sealed class HtmlOverlayPage
         if (completed.IsSuccess)
         {
             _loadPending = false;
-            _store.SetHtmlLoadState(Id, HtmlLoadState.Loaded, null);
+            SetLoadState(HtmlLoadState.Loaded, null);
             ReportPage();
             return;
         }
@@ -297,7 +310,7 @@ public sealed class HtmlOverlayPage
     private void Fail(string message)
     {
         _loadPending = false;
-        _store.SetHtmlLoadState(Id, HtmlLoadState.Failed, message);
+        SetLoadState(HtmlLoadState.Failed, message);
     }
 
     private string PagePath()
@@ -311,7 +324,24 @@ public sealed class HtmlOverlayPage
     private void ReportPage()
     {
         if (IsClosed || View.Source is not { } source) return;
-        _store.SetHtmlPage(Id, new HtmlPageInfo(PagePath(), Title(View.DocumentTitle, source), View.CanGoBack, View.CanGoForward));
+        var info = new HtmlPageInfo(PagePath(), Title(View.DocumentTitle, source), View.CanGoBack, View.CanGoForward);
+        _store.SetPage(Id, info);
+        Mirror(LoadState, LoadError, info);
+    }
+
+    private void SetLoadState(HtmlLoadState state, string? error)
+    {
+        _store.SetLoadState(Id, state, error);
+        Mirror(state, error, Current);
+    }
+
+    private void Mirror(HtmlLoadState state, string? error, HtmlPageInfo? current)
+    {
+        if (state == LoadState && error == LoadError && Equals(current, Current)) return;
+        LoadState = state;
+        LoadError = error;
+        Current = current;
+        Changed?.Invoke();
     }
 
     // WebView2 names a page without a title by its address less the scheme; upstream reports none

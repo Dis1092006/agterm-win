@@ -10,6 +10,10 @@ public sealed partial class AppStore
     /// (upstream HtmlOverlayReleases.onRelease).</summary>
     public Action<Guid>? HtmlOverlayReleased { get; set; }
 
+    /// <summary>Told the page each time a reload of it is asked for, so the app's web view loads it
+    /// again; upstream's view observes the page's revision instead.</summary>
+    public Action<HtmlOverlay>? HtmlOverlayReloaded { get; set; }
+
     /// <summary>Opens a page in the session-wide slot with the slot rules of OpenOverlay: a HUD yields,
     /// an occupied slot refuses. NOT persisted.</summary>
     public HtmlOverlayOpenFailure? OpenHtmlOverlay(Guid sessionId, HtmlOverlay overlay, int? sizePercent,
@@ -44,6 +48,7 @@ public sealed partial class AppStore
         page.LoadState = HtmlLoadState.Loading;
         page.LoadError = null;
         if (target == HtmlReloadTarget.Original) page.Current = null;
+        HtmlOverlayReloaded?.Invoke(page);
         return null;
     }
 

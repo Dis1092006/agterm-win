@@ -7,7 +7,7 @@ namespace AgTerm.ControlServer.Tests;
 
 // session.overlay.open --html and session.overlay.reload|navigate in the headless host (upstream
 // 11fe64eb, ControlServerHtmlOverlayTests.swift). The headless host keeps the page in the store but
-// has no web view, so navigate answers "html overlay not realized".
+// has no web view, so navigate answers "html overlay not realized" until an app gives it one.
 public sealed class HeadlessHtmlOverlayTests : IDisposable
 {
     private readonly string _stateDir;
@@ -212,6 +212,47 @@ public sealed class HeadlessHtmlOverlayTests : IDisposable
         await OpenPage(id);
         Assert.Equal(OverlayHtmlError.NotRealized,
                      (await Send(Command.SessionOverlayNavigate, id, new ControlArgs { To = "back" })).Error);
+    }
+
+    [Fact]
+    public async Task NavigateAsksTheAppsWebViewByThePageId()
+    {
+        var id = await SelectedSession();
+        await OpenPage(id);
+        var asked = new List<(Guid Page, HtmlNavigation Navigation)>();
+        string? answer = null;
+        _host.Actions.HtmlOverlayNavigator = (page, navigation) =>
+        {
+            asked.Add((page, navigation));
+            return answer;
+        };
+
+        var done = await Send(Command.SessionOverlayNavigate, id, new ControlArgs { To = "forward" });
+        answer = OverlayHtmlError.NoHistory(HtmlNavigation.Back);
+        var refused = await Send(Command.SessionOverlayNavigate, id, new ControlArgs { To = "back" });
+
+        Assert.True(done.Ok, done.Error);
+        Assert.Equal(id, done.Result!.Id);
+        Assert.Equal(answer, refused.Error);
+        var page = StoreSession(id).HtmlOverlay!.Id;
+        Assert.Equal([(page, HtmlNavigation.Forward), (page, HtmlNavigation.Back)], asked);
+    }
+
+    [Fact]
+    public async Task NavigateWithoutAPageNeverAsksTheApp()
+    {
+        var asked = 0;
+        _host.Actions.HtmlOverlayNavigator = (_, _) =>
+        {
+            asked += 1;
+            return null;
+        };
+        var id = await SelectedSession();
+
+        var response = await Send(Command.SessionOverlayNavigate, id, new ControlArgs { To = "back" });
+
+        Assert.Equal(OverlayHtmlError.NoOverlay, response.Error);
+        Assert.Equal(0, asked);
     }
 
     [Fact]

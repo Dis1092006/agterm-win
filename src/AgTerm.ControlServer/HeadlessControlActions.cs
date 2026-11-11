@@ -2018,11 +2018,19 @@ public sealed partial class HeadlessControlActions : IControlActions
                 ? Err(failure.Message())
                 : OkId(id));
 
-    // there is no web view to step or to open in a browser
+    /// <summary>Runs a history or hand-off action on page id in the app's web view and answers its
+    /// error, or null when it ran. Null without an app: there is no web view to step or to open in a
+    /// browser.</summary>
+    public Func<Guid, HtmlNavigation, string?>? HtmlOverlayNavigator { get; set; }
+
     public ControlResponse NavigateSessionOverlay(string? target, string? window, OverlayPane? pane,
                                                   HtmlNavigation navigation) =>
         ResolveSession(target, window, (store, id) =>
-            Err(store.HtmlOverlayCommandFailure(id, pane)?.Message() ?? OverlayHtmlError.NotRealized));
+        {
+            if (store.HtmlOverlayCommandFailure(id, pane) is { } failure) return Err(failure.Message());
+            if (HtmlOverlayNavigator is not { } navigator) return Err(OverlayHtmlError.NotRealized);
+            return navigator(store.SessionWithId(id)!.HtmlOverlay!.Id, navigation) is { } error ? Err(error) : OkId(id);
+        });
 
     public ControlResponse CloseSessionOverlay(string? target, string? window)
     {

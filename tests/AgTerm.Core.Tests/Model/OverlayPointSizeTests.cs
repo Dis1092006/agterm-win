@@ -3,8 +3,8 @@ using AgTerm.Core.Protocol;
 
 namespace AgTerm.Core.Tests.Model;
 
-// A floating overlay sized in points (upstream 9bbb3408, #798). The port has no pages, so there is
-// no title strip on top of the content, and no overlays shown on another Mac.
+// A floating overlay sized in points (upstream 9bbb3408, #798), with a page's strip on top of its
+// content (c63e5158). The port has no overlays shown on another Mac.
 public class OverlayPointSizeTests : IDisposable
 {
     private static readonly (double Width, double Height) Bounds = (1_000, 800);
@@ -51,6 +51,44 @@ public class OverlayPointSizeTests : IDisposable
         var size = OverlayPointSize.PanelSize(Bounds, 95, new OverlayPointSize(Height: 100));
 
         Assert.Equal(950, size.Width);
+    }
+
+    // upstream c63e5158: a page's strip comes on top of a point height, and the cap applies after it
+    [Fact]
+    public void Chrome_adds_to_a_point_height_before_the_cap()
+    {
+        Assert.Equal((600, 269), OverlayPointSize.PanelSize(Bounds, 60, new OverlayPointSize(Height: 240), 29));
+        Assert.Equal((600, 640), OverlayPointSize.PanelSize(Bounds, 60, new OverlayPointSize(Height: 630), 29));
+        Assert.Equal((600, 480), OverlayPointSize.PanelSize(Bounds, 60, default, 29));
+    }
+
+    [Fact]
+    public void Content_size_takes_the_chrome_off_the_panel()
+    {
+        Assert.Equal((600, 240), OverlayPointSize.ContentSize(Bounds, 60, new OverlayPointSize(Height: 240), 29));
+        Assert.Equal((600, 451), OverlayPointSize.ContentSize(Bounds, 60, default, 29));
+        Assert.Equal((10, 0), OverlayPointSize.ContentSize((10, 10), 100, default, 29));
+    }
+
+    [Fact]
+    public void A_page_draws_its_strip_and_rule_as_chrome()
+    {
+        Assert.Equal(28, HtmlOverlay.StripHeight);
+        Assert.Equal(29, HtmlOverlay.ChromeHeight);
+        Assert.Equal(29, new HtmlOverlay(new HtmlSource.File("C:\\a.html", null)).Chrome);
+        Assert.Equal(0, new HtmlOverlay(new HtmlSource.File("C:\\a.html", null)) { Chromeless = true }.Chrome);
+    }
+
+    [Fact]
+    public void Tree_reports_a_pages_content_under_its_strip()
+    {
+        LayOut();
+        Assert.Null(_store.OpenHtmlOverlay(_session.Id, new HtmlOverlay(new HtmlSource.File("C:\\a.html", null)), 50));
+
+        var node = Node();
+
+        Assert.Equal(500, node.OverlayWidth);
+        Assert.Equal(371, node.OverlayHeight);
     }
 
     [Fact]

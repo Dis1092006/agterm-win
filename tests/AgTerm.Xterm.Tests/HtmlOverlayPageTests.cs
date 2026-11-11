@@ -26,11 +26,12 @@ public sealed class HtmlOverlayPageTests : IDisposable
         _store = new AppStore(persistence: new PersistenceStore(Path.Combine(_dir, "state")),
                               stateDirectory: Path.Combine(_dir, "state"));
         _session = _store.AddSession(_store.AddWorkspace("work").Id, _dir)!;
-        _registry = new HtmlOverlayRegistry(_store, _browser, background =>
+        _registry = new HtmlOverlayRegistry(new DirectHtmlPageStore(_store), _browser, background =>
         {
             _themeAsks.Add(background);
             return _theme;
         });
+        _store.HtmlOverlayReleased = _registry.Release;
     }
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
@@ -263,7 +264,7 @@ public sealed class HtmlOverlayPageTests : IDisposable
         Assert.Equal("web content process terminated", overlay.LoadError);
 
         view.Calls.Clear();
-        Assert.Null(_registry.Reload(_session.Id, HtmlReloadTarget.Current));
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
         Assert.Equal(["navigate " + Url(overlay, "a.html")], view.Calls);
     }
 
@@ -274,12 +275,12 @@ public sealed class HtmlOverlayPageTests : IDisposable
         view.Load(Url(overlay, "b.html"), Url(overlay, "b.html"), "B");
         view.Calls.Clear();
 
-        Assert.Null(_registry.Reload(_session.Id, HtmlReloadTarget.Current));
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
         Assert.Equal(["reload"], view.Calls);
         Assert.Equal(HtmlLoadState.Loading, overlay.LoadState);
 
         view.Calls.Clear();
-        Assert.Null(_registry.Reload(_session.Id, HtmlReloadTarget.Original));
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Original));
         Assert.Equal(["navigate " + Url(overlay, "a.html")], view.Calls);
         Assert.Null(overlay.Current);
     }
@@ -290,7 +291,7 @@ public sealed class HtmlOverlayPageTests : IDisposable
         var overlay = Open(grant: _pages);
         var (_, view) = await Realize(overlay);
         view.Calls.Clear();
-        Assert.Null(_registry.Reload(_session.Id, HtmlReloadTarget.Current));
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
         Assert.Equal(["navigate " + Url(overlay, "a.html")], view.Calls);
 
         Assert.True(_store.CloseOverlay(_session.Id));
@@ -300,16 +301,58 @@ public sealed class HtmlOverlayPageTests : IDisposable
         textView.Commit("about:blank", "A");
         textView.Complete();
         textView.Calls.Clear();
-        Assert.Null(_registry.Reload(_session.Id, HtmlReloadTarget.Current));
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
         Assert.Equal(["text <title>A</title><a href=\"b.html\">b</a>"], textView.Calls);
     }
 
     [Fact]
     public async Task AReloadOfASessionWithoutAPageIsRefused()
     {
-        Assert.Equal(HtmlOverlayCommandFailure.NoOverlay, _registry.Reload(_session.Id, HtmlReloadTarget.Current));
-        Assert.Equal(HtmlOverlayCommandFailure.UnknownSession, _registry.Reload(Guid.NewGuid(), HtmlReloadTarget.Current));
+        Assert.Equal(HtmlOverlayCommandFailure.NoOverlay, _registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
+        Assert.Equal(HtmlOverlayCommandFailure.UnknownSession, _registry.Reload(_store, Guid.NewGuid(), HtmlReloadTarget.Current));
         await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task ThePageKeepsWhatItReportsForItsStrip()
+    {
+        var overlay = Open(grant: _pages);
+        var (page, view) = await Realize(overlay);
+        var changes = 0;
+        page.Changed += () => changes += 1;
+        Assert.Equal(HtmlLoadState.Loading, page.LoadState);
+
+        view.Load(Url(overlay, "a.html"), Url(overlay, "a.html"), "A");
+        Assert.Equal(HtmlLoadState.Loaded, page.LoadState);
+        Assert.Equal(new HtmlPageInfo(PagePath("a.html"), "A", false, false), page.Current);
+        Assert.NotEqual(0, changes);
+
+        changes = 0;
+        view.Crash();
+        Assert.Equal(HtmlLoadState.Failed, page.LoadState);
+        Assert.Equal("web content process terminated", page.LoadError);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public async Task AReloadAppliedFromACopyLoadsAgainAndShowsLoadingAtOnce()
+    {
+        var (overlay, page, view) = await Loaded();
+        view.Crash();
+        Assert.Null(_store.ReloadHtmlOverlay(_session.Id, null));
+        var changes = 0;
+        page.Changed += () => changes += 1;
+        view.Calls.Clear();
+
+        _registry.Apply(overlay.Copy());
+        _registry.Apply(overlay.Copy());
+        _registry.Apply(new HtmlOverlay(overlay.Source) { ReloadRevision = 5 });
+
+        Assert.Equal(["navigate " + Url(overlay, "a.html")], view.Calls);
+        Assert.Equal(HtmlLoadState.Loading, page.LoadState);
+        Assert.Null(page.LoadError);
+        Assert.Null(page.Current);
+        Assert.Equal(1, changes);
     }
 
     [Fact]
