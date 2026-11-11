@@ -265,9 +265,6 @@ public static class OverlayHtmlError
     public const string NoBrowser = "no default web browser to open the page in";
     public const string NoResult = "no overlay result: the slot holds an html page";
 
-    /// <summary>The live app's answer to --html until it renders pages. Windows-only.</summary>
-    public const string Unsupported = "html overlays are not supported yet";
-
     public static string NoHistory(HtmlNavigation navigation) =>
         $"no page to go {(navigation == HtmlNavigation.Forward ? "forward" : "back")} to";
 }

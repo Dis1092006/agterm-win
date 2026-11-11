@@ -1980,8 +1980,6 @@ public sealed partial class HeadlessControlActions : IControlActions
     public ControlResponse OpenSessionOverlay(string? target, string? window,
                                               ControlSessionOverlayOpenOptions options)
     {
-        if (options.Page is not null && !HtmlOverlaysSupported)
-            return Err(OverlayHtmlError.Unsupported);
         return ResolveSession(target, window, (store, id) =>
         {
             // a hidden overlay still holds the slot; name it so the caller knows to show or close it
@@ -2007,9 +2005,6 @@ public sealed partial class HeadlessControlActions : IControlActions
             return OkId(id);
         });
     }
-
-    /// <summary>Whether session.overlay.open takes --html. The live app clears it until it renders pages.</summary>
-    public bool HtmlOverlaysSupported { get; set; } = true;
 
     public ControlResponse ReloadSessionOverlay(string? target, string? window, OverlayPane? pane, bool current) =>
         ResolveSession(target, window, (store, id) =>

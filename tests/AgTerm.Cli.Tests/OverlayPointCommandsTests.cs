@@ -83,8 +83,7 @@ public class OverlayPointCommandsTests
         const string width = "Panel content width in points, in place of --size-percent's width (at most 80% of the session).";
         Assert.Contains(width, open);
         Assert.Contains(width, resize);
-        // the port has no pages, so upstream's clause about a page's title strip is left out
-        const string height = "Panel content height in points, in place of --size-percent's height (at most 80% of the session).";
+        const string height = "Panel content height in points, in place of --size-percent's height (at most 80% of the session); a page's title strip is added on top.";
         Assert.Contains(height, open);
         Assert.Contains(height, resize);
         Assert.Contains("Resize an open overlay: floating at a percent or in points, or back to full-pane.", resize);

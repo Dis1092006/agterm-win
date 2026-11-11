@@ -254,17 +254,4 @@ public sealed class HeadlessHtmlOverlayTests : IDisposable
         Assert.Equal(OverlayHtmlError.NoOverlay, response.Error);
         Assert.Equal(0, asked);
     }
-
-    [Fact]
-    public async Task AHostWithoutPagesRefusesHtml()
-    {
-        _host.Actions.HtmlOverlaysSupported = false;
-        var id = await SelectedSession();
-
-        var response = await OpenPage(id);
-
-        Assert.Equal(OverlayHtmlError.Unsupported, response.Error);
-        Assert.False(StoreSession(id).OverlayActive);
-        Assert.True((await Send(Command.SessionOverlayOpen, id, new ControlArgs { Command = "cat" })).Ok);
-    }
 }

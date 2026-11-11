@@ -2248,7 +2248,6 @@ internal static class SessionCommands
         return cmd;
     }
 
-    // upstream's height help adds "a page's title strip is added on top"; the port does not draw pages yet
     private static Option<int?> OverlayWidthOption() => new("--width")
     {
         Description = "Panel content width in points, in place of --size-percent's width (at most 80% of the session).",
@@ -2256,7 +2255,7 @@ internal static class SessionCommands
 
     private static Option<int?> OverlayHeightOption() => new("--height")
     {
-        Description = "Panel content height in points, in place of --size-percent's height (at most 80% of the session).",
+        Description = "Panel content height in points, in place of --size-percent's height (at most 80% of the session); a page's title strip is added on top.",
     };
 
     private static System.CommandLine.Command BuildOverlayClose(CommandBindings bindings)

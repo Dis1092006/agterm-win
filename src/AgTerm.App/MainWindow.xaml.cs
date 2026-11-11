@@ -106,6 +106,11 @@ public sealed partial class MainWindow : Window
     private (Guid SessionId, string AskId, AskDraft Draft)? _pendingAskDraft; // UI-thread confined
     private bool _askDraftWriterRunning; // UI-thread confined
     private TerminalHudPlacement? _presentedHud; // UI-thread confined
+    // the pages of the window's overlay slots; null until the host is up
+    private HtmlOverlayRegistry? _htmlPages; // UI-thread confined
+    private Task<CoreWebView2Environment>? _htmlPageEnvironment; // UI-thread confined
+    private HtmlOverlay? _shownHtmlOverlay; // UI-thread confined
+    private readonly HashSet<Guid> _wiredHtmlPages = []; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private KeymapEditOverlay? _keymapEditOverlay;
@@ -919,6 +924,7 @@ public sealed partial class MainWindow : Window
         _host = host;
         _hostReady.TrySetResult(host);
         RefreshUiAutoFollowSuppression();
+        WireHtmlOverlays(host);
         host.AutoFollowed += sessionId => DispatcherQueue.TryEnqueue(() =>
             ObserveTaskFault(RevealAutoFollowedAsync(sessionId), "Auto-follow pane reveal failed"));
         host.StoreCoordinator.SelectionSnapshotChanged += snapshot =>
@@ -930,6 +936,13 @@ public sealed partial class MainWindow : Window
 
                 var previousSelection = _selection;
                 _selection = snapshot;
+                // every snapshot carries a fresh copy of the page, so a change to nothing but the page
+                // leaves the rest of the window as it is
+                if ((snapshot with { HtmlOverlay = null }) == (previousSelection with { HtmlOverlay = null }))
+                {
+                    PresentHtmlOverlay(snapshot);
+                    return;
+                }
                 ObserveTaskFault(ApplyQuickInputOwnershipAsync(snapshot.QuickHoldsKey), "Quick input ownership failed");
                 RefreshTitleBarActions(_settings);
                 // upstream cancels a switch when the dashboard takes the keyboard
@@ -942,6 +955,7 @@ public sealed partial class MainWindow : Window
                 SubmitSearchPresentation(previousSelection, snapshot);
                 PresentTerminalAsk(snapshot.TerminalAsk);
                 PresentHud(snapshot.Hud);
+                PresentHtmlOverlay(snapshot);
             });
         };
 
@@ -1885,6 +1899,144 @@ public sealed partial class MainWindow : Window
         return true;
     }
 
+    // MARK: - HTML overlay pages
+
+    private void WireHtmlOverlays(LiveControlHost host)
+    {
+        var registry = new HtmlOverlayRegistry(host.HtmlPages, new AppHtmlBrowser(() => Content?.XamlRoot, _contentDialogs),
+            background => HtmlPageTheme.From(_rendererSettings, background));
+        _htmlPages = registry;
+        host.HtmlOverlayReleased += id => DispatcherQueue.TryEnqueue(() => ReleaseHtmlPage(id));
+        // the reload event, not the snapshot, gives a page its new revision: a snapshot taken before
+        // the reload can arrive after it and would load the old target again
+        host.HtmlOverlayReloaded += page => DispatcherQueue.TryEnqueue(() => registry.Apply(page));
+        host.HtmlOverlayNavigator = (id, navigation) =>
+        {
+            var done = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!DispatcherQueue.TryEnqueue(() =>
+                {
+                    try { done.SetResult(registry.Navigate(id, navigation)); }
+                    catch (Exception e) { done.SetException(e); }
+                }))
+                done.SetResult(OverlayHtmlError.NotRealized);
+            return done.Task;
+        };
+        // a strip click hands the keys back to the terminal: the page takes them only when clicked
+        HtmlOverlayPanel.NavigateRequested += (id, navigation) =>
+        {
+            registry.Navigate(id, navigation);
+            FocusActiveTerminal();
+        };
+        HtmlOverlayPanel.ReloadRequested += id =>
+        {
+            ObserveTaskFault(host.StoreCoordinator.MutateAsync(store =>
+            {
+                if (store.HtmlOverlaySlot(id) is { } session)
+                    store.ReloadHtmlOverlay(session.Id, pane: null, HtmlReloadTarget.Current);
+            }), "HTML page reload failed");
+            FocusActiveTerminal();
+        };
+        HtmlOverlayPanel.HideRequested += id =>
+        {
+            ObserveTaskFault(host.StoreCoordinator.MutateAsync(store =>
+            {
+                if (store.HtmlOverlaySlot(id) is { } session)
+                    store.SetOverlaysHidden(session.Id, pane: null, hidden: true);
+            }), "HTML page hide failed");
+            FocusActiveTerminal();
+        };
+        HtmlOverlayPanel.CloseRequested += id =>
+        {
+            ObserveTaskFault(host.StoreCoordinator.MutateAsync(store => store.CloseHtmlOverlay(id)), "HTML page close failed");
+            FocusActiveTerminal();
+        };
+    }
+
+    /// <summary>Shows the selected session's page, unless the dashboard or a zoomed pane covers the slot.
+    /// The page never takes the keyboard by itself; a click in it does.</summary>
+    private void PresentHtmlOverlay(LiveSelectionSnapshot snapshot)
+    {
+        if (_htmlPages is not { } registry) return;
+        var focused = HtmlOverlayPanel.HoldsFocus(FocusedElement());
+        var previous = HtmlOverlayPanel.ShownPage;
+        var overlay = snapshot.HtmlOverlay is { } page && snapshot.OverlayVisible && !snapshot.DashboardOpen
+                      && snapshot.ZoomPaneId is null
+            ? page
+            : null;
+        _shownHtmlOverlay = overlay;
+        if (previous is { } old && old != overlay?.Id) registry.Existing(old)?.SetOnScreen(false);
+        if (overlay is null)
+        {
+            HtmlOverlayPanel.Conceal();
+        }
+        else
+        {
+            var live = registry.Existing(overlay.Id);
+            HtmlOverlayPanel.Present(overlay.Id, HtmlStrip(overlay, live),
+                HtmlPageTheme.From(_rendererSettings, snapshot.OverlayBackgroundColor), snapshot.OverlaySizePercent,
+                new OverlayPointSize(snapshot.OverlayWidth, snapshot.OverlayHeight), overlay.Chrome);
+            if (live is not null)
+                live.SetOnScreen(true);
+            else
+                ObserveTaskFault(RealizeHtmlPageAsync(registry, overlay, snapshot.OverlayBackgroundColor),
+                    "HTML page failed to open");
+        }
+        if (focused && previous != overlay?.Id) FocusActiveTerminal();
+    }
+
+    private async Task RealizeHtmlPageAsync(HtmlOverlayRegistry registry, HtmlOverlay overlay, string? background)
+    {
+        var page = await registry.RealizeAsync(overlay, async () =>
+        {
+            _htmlPageEnvironment ??= CoreWebView2Environment.CreateWithOptionsAsync(
+                string.Empty, WebViewProfile.Directory(), new CoreWebView2EnvironmentOptions()).AsTask();
+            var environment = await _htmlPageEnvironment;
+            var control = HtmlOverlayPanel.AddControl(overlay.Id, HtmlPageTheme.From(_rendererSettings, background));
+            try
+            {
+                return await WinRtHtmlPageView.CreateAsync(control, environment, overlay.Id);
+            }
+            catch
+            {
+                HtmlOverlayPanel.RemoveControl(overlay.Id);
+                throw;
+            }
+        }, background);
+        if (page.IsClosed)
+        {
+            HtmlOverlayPanel.RemoveControl(page.Id);
+            return;
+        }
+        if (!_wiredHtmlPages.Add(page.Id)) return;
+        page.Changed += () =>
+        {
+            if (_shownHtmlOverlay is { } shown && shown.Id == page.Id && HtmlOverlayPanel.ShownPage == page.Id)
+                HtmlOverlayPanel.Update(HtmlStrip(shown, page));
+        };
+        var onScreen = HtmlOverlayPanel.ShownPage == page.Id;
+        page.SetOnScreen(onScreen);
+        if (onScreen && _shownHtmlOverlay is { } current && current.Id == page.Id)
+            HtmlOverlayPanel.Update(HtmlStrip(current, page));
+    }
+
+    private void ReleaseHtmlPage(Guid id)
+    {
+        var focused = HtmlOverlayPanel.HoldsFocus(FocusedElement());
+        _htmlPages?.Release(id);
+        _wiredHtmlPages.Remove(id);
+        HtmlOverlayPanel.RemoveControl(id);
+        if (HtmlOverlayPanel.ShownPage == id) HtmlOverlayPanel.Conceal();
+        if (focused && !HtmlOverlayPanel.HoldsFocus(FocusedElement())) FocusActiveTerminal();
+    }
+
+    // the live page's report is newer than the snapshot's copy of the overlay
+    private static HtmlOverlayStrip HtmlStrip(HtmlOverlay overlay, HtmlOverlayPage? page) => page is null
+        ? HtmlOverlayStrip.From(overlay, overlay.LoadState, overlay.LoadError, overlay.Current)
+        : HtmlOverlayStrip.From(overlay, page.LoadState, page.LoadError, page.Current);
+
+    private object? FocusedElement() =>
+        Content?.XamlRoot is { } root ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) : null;
+
     private void PresentHud(TerminalHudPlacement? placement)
     {
         // the store republishes the snapshot for search, focus and layout changes that leave the panel as it is
@@ -2085,9 +2237,8 @@ public sealed partial class MainWindow : Window
             SwitcherOverlay.Hide();
     }
 
-    private bool IsTerminalFocused() =>
-        Content?.XamlRoot is { } root &&
-        Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) is WebView2;
+    // a page in the overlay slot is a WebView2 too, and the terminal's keys are not its keys
+    private bool IsTerminalFocused() => ReferenceEquals(FocusedElement(), TerminalView);
 
     private static bool IsKeyDown(VirtualKey key) =>
         Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(key)
@@ -3348,6 +3499,7 @@ public sealed partial class MainWindow : Window
         var showScratch = !settings.IsInterfaceElementHidden(InterfaceElement.Scratch);
         var showSplit = !settings.IsInterfaceElementHidden(InterfaceElement.Split);
         var showOverlay = !settings.IsInterfaceElementHidden(InterfaceElement.OverlayToggle);
+        HtmlOverlayPanel.HideShown = showOverlay;
         var showDashboard = !settings.IsInterfaceElementHidden(InterfaceElement.Dashboard);
         var showQuick = !settings.IsInterfaceElementHidden(InterfaceElement.QuickTerminal);
         var showCustom = !settings.IsInterfaceElementHidden(InterfaceElement.CustomCommands);
@@ -3735,6 +3887,9 @@ public sealed partial class MainWindow : Window
         OnSwitcherChanged();
         RefreshActivationShield();
         _rendererSettings = presentation.RendererSettings;
+        PresentHtmlOverlay(_selection);
+        if (_htmlPages is { } pages)
+            await pages.RefreshThemesAsync();
     }
 
     /// <summary>Changes only what the window shows. The palette preview calls this directly, so the

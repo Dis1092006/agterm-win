@@ -261,8 +261,6 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         Host.Actions.ThemeUpdateRequested += update => ThemeUpdateRequested?.Invoke(update);
         Host.Actions.FlaggedLayoutChangeRequested += layout => FlaggedLayoutChangeRequested?.Invoke(layout);
         Host.Actions.StatusReset = _notificationSettings.EffectiveStatusReset;
-        // the app has no web view for a page yet
-        Host.Actions.HtmlOverlaysSupported = false;
         Host.Actions.HtmlOverlayNavigator = NavigateHtmlOverlay;
         Host.Actions.CloseGraceUndoEnabled = _notificationSettings.CloseGraceUndoEnabled ?? true;
         _storeCoordinator = new LiveStoreCoordinator(Host, options.IsUiThread, ReconcileSurfacesLocked);

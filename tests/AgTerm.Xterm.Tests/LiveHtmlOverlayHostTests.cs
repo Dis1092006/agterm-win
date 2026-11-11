@@ -46,9 +46,15 @@ public sealed class LiveHtmlOverlayHostTests : IDisposable
     }
 
     [Fact]
-    public void TheAppStillRefusesHtml()
+    public void TheAppOpensHtml()
     {
-        _host.Host.RunLocked(() => Assert.False(_host.Host.Actions.HtmlOverlaysSupported));
+        ControlResponse? response = null;
+        _host.Host.RunLocked(() => response = _host.Host.Actions.OpenSessionOverlay("active", null,
+            new ControlSessionOverlayOpenOptions("", null, false, null, null,
+                Page: new HtmlSource.File(Path.Combine(_dir, "r.html"), null))));
+
+        Assert.True(response!.Ok, response.Error);
+        _host.Host.RunLocked(() => Assert.NotNull(_host.Host.Store.ActiveSession!.HtmlOverlay));
     }
 
     [Fact]

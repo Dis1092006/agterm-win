@@ -311,7 +311,7 @@ public sealed class LiveControlHostTests : IDisposable
     }
 
     [Fact]
-    public void The_live_app_refuses_an_html_page_until_it_renders_pages()
+    public void The_live_app_opens_an_html_page()
     {
         var stateDir = Directory.CreateTempSubdirectory("agterm-html-").FullName;
         try
@@ -333,7 +333,8 @@ public sealed class LiveControlHostTests : IDisposable
                     Cmd = Command.SessionOverlayOpen,
                     Args = new ControlArgs { Html = Path.Combine(stateDir, "r.html"), Cwd = stateDir },
                 });
-                Assert.Equal(OverlayHtmlError.Unsupported, response.Error);
+                Assert.True(response.Ok, response.Error);
+                Assert.NotNull(response.Result?.PageId);
             }
         }
         finally
