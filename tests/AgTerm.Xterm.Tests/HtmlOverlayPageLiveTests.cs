@@ -151,7 +151,8 @@ public sealed class HtmlOverlayPageLiveTests : IAsyncLifetime
         var (overlay, view) = await OpenAsync("a.html");
 
         await EvalAsync(view, "document.getElementById('b').click()");
-        await WaitAsync(() => overlay.Current?.Title == "B" && overlay.Current.CanGoBack, "page b");
+        await WaitAsync(() => overlay.Current?.Title == "B" && overlay.Current.CanGoBack
+                              && overlay.LoadState == HtmlLoadState.Loaded, "page b");
         Assert.Equal(new HtmlPageInfo(Path.Combine(_pages, "b.html"), "B", true, false), overlay.Current);
         Assert.Equal(HtmlLoadState.Loaded, overlay.LoadState);
 
