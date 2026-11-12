@@ -111,6 +111,8 @@ public sealed partial class MainWindow : Window
     private Task<CoreWebView2Environment>? _htmlPageEnvironment; // UI-thread confined
     private HtmlOverlay? _shownHtmlOverlay; // UI-thread confined
     private readonly HashSet<Guid> _wiredHtmlPages = []; // UI-thread confined
+    private readonly Dictionary<Guid, WinRtHtmlPageView> _htmlPageViews = []; // UI-thread confined
+    private HtmlPageKeyboardHook? _pageKeyboard; // UI-thread confined
     private LiveControlHost? _host;
     private SidebarController? _sidebar;
     private KeymapEditOverlay? _keymapEditOverlay;
@@ -345,6 +347,7 @@ public sealed partial class MainWindow : Window
             _appWindow.Changed -= OnAppWindowChanged;
             Activated -= OnWindowActivated;
             _activationClickReleaseTimer.Stop();
+            _pageKeyboard?.Dispose();
             _uiSettings.ColorValuesChanged -= OnSystemColorValuesChanged;
             _uiSettings.AdvancedEffectsEnabledChanged -= OnAdvancedEffectsEnabledChanged;
             PaletteOverlay.SelectionChanged -= OnPaletteSelectionChanged;
@@ -639,6 +642,7 @@ public sealed partial class MainWindow : Window
         // the Ctrl release may land in another window, so a switch never outlives the focus
         if (!_windowIsActive)
             _switcher.Cancel();
+        RefreshPageKeyboard();
         if (args.WindowActivationState == WindowActivationState.Deactivated)
             return;
         PaletteOverlay.NoteActivation();
@@ -1951,7 +1955,58 @@ public sealed partial class MainWindow : Window
             FocusActiveTerminal();
         };
         HtmlOverlayPanel.StripPressed += FocusActiveTerminal;
+        _pageKeyboard = new HtmlPageKeyboardHook(WinRT.Interop.WindowNative.GetWindowHandle(this), IsPageAppChord,
+            () => _switcher.IsActive, OnPageKey);
+        HtmlOverlayPanel.PageFocusChanged += () => DispatcherQueue.TryEnqueue(RefreshPageKeyboard);
     }
+
+    /// <summary>The page's keys reach the window only through the hook, and only while a page has them.</summary>
+    private void RefreshPageKeyboard()
+    {
+        if (_pageKeyboard is not { } hook) return;
+        if (_windowIsActive && HtmlOverlayPanel.HoldsFocus(FocusedElement()))
+            hook.Install();
+        else
+            hook.Uninstall();
+    }
+
+    // runs inside the hook: the same built-in chords the window takes outside the terminal, no custom commands
+    private bool IsPageAppChord(PhysicalChord physical)
+    {
+        if (AskOverlay.IsOpen || KeybindingsOverlay.IsOpen || _hotkeyStates.Active is not { } state) return false;
+        return SettingsShortcuts.Opens(state.Keymap, physical)
+               || (state.Router.Handle(physical) is { } action && _commandRouter?.CanExecute(action) == true);
+    }
+
+    // runs inside the hook, so the work waits for the dispatcher
+    private void OnPageKey(HtmlPageKey key) => DispatcherQueue.TryEnqueue(() =>
+    {
+        switch (key.Command)
+        {
+            case HtmlPageKeyCommand.Chord when key.Chord is { } chord:
+                HandleChord(chord);
+                break;
+            case HtmlPageKeyCommand.SwitcherTab:
+                HandleSwitcherKey(SessionSwitcherKey.Tab);
+                break;
+            case HtmlPageKeyCommand.SwitcherReverseTab:
+                HandleSwitcherKey(SessionSwitcherKey.ReverseTab);
+                break;
+            case HtmlPageKeyCommand.SwitcherEscape:
+                HandleSwitcherKey(SessionSwitcherKey.Escape);
+                break;
+            case HtmlPageKeyCommand.SwitcherControlReleased:
+                HandleSwitcherKey(SessionSwitcherKey.ControlReleased);
+                break;
+            case HtmlPageKeyCommand.KeyboardShortcuts:
+                NoteUserActivity();
+                ObserveTaskFault(ToggleKeybindingsAsync(), "Keyboard shortcuts failed");
+                break;
+        }
+        if (!key.PageInput) return;
+        NoteUserActivity();
+        if (HtmlOverlayPanel.ShownPage is { } id && _htmlPageViews.TryGetValue(id, out var view)) view.NoteKeyInput();
+    });
 
     /// <summary>Shows the selected session's page, unless the dashboard or a zoomed pane covers the slot.
     /// The page never takes the keyboard by itself; a click in it does.</summary>
@@ -1995,7 +2050,9 @@ public sealed partial class MainWindow : Window
             var control = HtmlOverlayPanel.AddControl(overlay.Id, HtmlPageTheme.From(_rendererSettings, background));
             try
             {
-                return await WinRtHtmlPageView.CreateAsync(control, environment, overlay.Id);
+                var view = await WinRtHtmlPageView.CreateAsync(control, environment, overlay.Id);
+                _htmlPageViews[overlay.Id] = view;
+                return view;
             }
             catch
             {
@@ -2005,6 +2062,7 @@ public sealed partial class MainWindow : Window
         }, background);
         if (page.IsClosed)
         {
+            _htmlPageViews.Remove(page.Id);
             HtmlOverlayPanel.RemoveControl(page.Id);
             return;
         }
@@ -2025,9 +2083,11 @@ public sealed partial class MainWindow : Window
         var focused = HtmlOverlayPanel.HoldsFocus(FocusedElement());
         _htmlPages?.Release(id);
         _wiredHtmlPages.Remove(id);
+        _htmlPageViews.Remove(id);
         HtmlOverlayPanel.RemoveControl(id);
         if (HtmlOverlayPanel.ShownPage == id) HtmlOverlayPanel.Conceal();
         if (focused && !HtmlOverlayPanel.HoldsFocus(FocusedElement())) FocusActiveTerminal();
+        RefreshPageKeyboard();
     }
 
     // the live page's report is newer than the snapshot's copy of the overlay

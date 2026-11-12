@@ -42,7 +42,7 @@ public sealed class WinRtHtmlPageView : IHtmlPageView
         _core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
         _core.DownloadStarting += (_, e) => e.Cancel = true;
         // the control marks its pointer events handled once it passes them to the page; script cannot
-        // raise these, and the page's keys go to the browser process where the app cannot see them
+        // raise these. The page's keys go to the browser process: the window's keyboard hook reports them.
         control.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => UserInput?.Invoke()), true);
     }
 
@@ -62,6 +62,9 @@ public sealed class WinRtHtmlPageView : IHtmlPageView
     public event Action? PageChanged;
     public event Action? ProcessFailed;
     public event Action? UserInput;
+
+    /// <summary>A key the user typed into the page, seen by the window's keyboard hook.</summary>
+    public void NoteKeyInput() => UserInput?.Invoke();
 
     public bool CanGoBack => _core.CanGoBack;
 

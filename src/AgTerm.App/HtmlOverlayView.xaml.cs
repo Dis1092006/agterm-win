@@ -53,6 +53,9 @@ public sealed partial class HtmlOverlayView : UserControl
     /// <summary>A press on the strip outside its buttons.</summary>
     public event Action? StripPressed;
 
+    /// <summary>A page control took or lost the keyboard focus.</summary>
+    public event Action? PageFocusChanged;
+
     /// <summary>Whether the strip offers Hide. It follows the title bar's overlay button, which is the
     /// way back to a hidden page.</summary>
     public bool HideShown
@@ -73,6 +76,8 @@ public sealed partial class HtmlOverlayView : UserControl
             Visibility = id == ShownPage ? Visibility.Visible : Visibility.Collapsed,
         };
         AutomationProperties.SetAutomationId(control, "htmlOverlay.page");
+        control.GotFocus += (_, _) => PageFocusChanged?.Invoke();
+        control.LostFocus += (_, _) => PageFocusChanged?.Invoke();
         _controls[id] = control;
         PageHost.Children.Add(control);
         return control;
