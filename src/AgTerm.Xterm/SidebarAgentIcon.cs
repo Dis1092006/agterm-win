@@ -35,7 +35,8 @@ public static class SidebarAgentIcon
         SessionAgent.Claude => ClaudePath,
         SessionAgent.Copilot => CopilotPath,
         SessionAgent.Codex => CodexPath,
-        _ => "",
+        // an empty figure: x:Bind cannot convert "" to Path.Data
+        _ => "M0,0",
     };
 
     public static string? ToolTip(SessionAgent? agent) => agent switch

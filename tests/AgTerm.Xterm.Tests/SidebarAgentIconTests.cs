@@ -20,7 +20,7 @@ public sealed class SidebarAgentIconTests
     }
 
     [Fact]
-    public void Distinct_geometries_distinguish_all_three_agents_and_null_is_empty()
+    public void Distinct_geometries_distinguish_all_three_agents_and_null_draws_nothing()
     {
         var paths = new[]
         {
@@ -29,7 +29,9 @@ public sealed class SidebarAgentIconTests
             SidebarAgentIcon.PathData(SessionAgent.Codex),
         };
         Assert.Equal(3, paths.Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal("", SidebarAgentIcon.PathData(null));
+        // x:Bind converts the string to Path.Data, and an empty string fails that conversion
+        // with E_INVALIDARG and crashes the app on its first session row without an agent
+        Assert.Equal("M0,0", SidebarAgentIcon.PathData(null));
         Assert.Null(SidebarAgentIcon.ToolTip(null));
         Assert.False(SidebarAgentIcon.IsShown(SidebarRowKind.Session, null, new AppSettings()));
     }
