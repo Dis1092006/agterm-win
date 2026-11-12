@@ -1844,7 +1844,30 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 Host.Store.NotifySidebar();
             }
         }));
+        surface.Pane.AgentChanged += _ => Task.Run(() => Host.RunLocked(() => SyncPaneAgentLocked(sessionId, surface)));
+        if (surface.Pane.CurrentAgent is not null)
+        {
+            Task.Run(() => Host.RunLocked(() => SyncPaneAgentLocked(sessionId, surface)));
+        }
         _ = ClosePaneOnExitAsync(sessionId, surface);
+    }
+
+    private void SyncPaneAgentLocked(Guid sessionId, XtermPaneSurface surface)
+    {
+        var live = Host.Store.SessionWithId(sessionId);
+        var agent = surface.Pane.CurrentAgent;
+        if (OwnsMainPane(live, surface))
+        {
+            if (live!.Agent == agent) return;
+            live.Agent = agent;
+            Host.Store.NotifySidebar();
+        }
+        else if (OwnsSplitPane(live, surface))
+        {
+            if (live!.SplitAgent == agent) return;
+            live.SplitAgent = agent;
+            Host.Store.NotifySidebar();
+        }
     }
 
     /// <summary>upstream onFontSizeChange → store.setFontSize: only the pane in the main slot saves

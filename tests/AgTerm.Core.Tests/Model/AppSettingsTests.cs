@@ -353,7 +353,7 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(
             ["sidebarToggle", "workspaceName", "sessionName", "windowName", "sessionContext", "recentSessions",
              "scratch", "split", "overlayToggle", "dashboard", "quickTerminal", "customCommands", "newWorkspace", "newSession", "flaggedView", "focusFilter", "workspaceAddSession",
-             "workspaceIcons", "sessionIcons", "sessionFlags"],
+             "workspaceIcons", "sessionIcons", "sessionFlags", "agentIcons"],
             Enum.GetValues<InterfaceElement>().Select(e => e.RawValue()));
     }
 
@@ -365,6 +365,17 @@ public class AppSettingsTests : IDisposable
 
         Assert.True(settings.IsInterfaceElementHidden(InterfaceElement.SessionFlags));
         Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.SessionIcons));
+    }
+
+    // Windows-only: the agent icon before a session name hides on its own.
+    [Fact]
+    public void Agent_icons_hide_independently_of_the_session_icons()
+    {
+        var settings = new AppSettings { HiddenInterfaceElements = ["agentIcons"] };
+
+        Assert.True(settings.IsInterfaceElementHidden(InterfaceElement.AgentIcons));
+        Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.SessionIcons));
+        Assert.False(settings.IsInterfaceElementHidden(InterfaceElement.SessionFlags));
     }
 
     // upstream 91332589 (#865): the row icons are shown by default and hide independently

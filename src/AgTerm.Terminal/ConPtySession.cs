@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
+using AgTerm.Core.Model;
 using Microsoft.Win32.SafeHandles;
 
 namespace AgTerm.Terminal;
@@ -66,6 +67,7 @@ public sealed class ConPtySession : IDisposable
     private readonly IntPtr _console;
     private readonly IntPtr _process;
     private readonly PaneDescendants? _descendants;
+    private readonly PaneAgentMonitor? _agentMonitor;
     private int _consoleClosed;
     private int _disposed;
     private bool _processClosed;
@@ -78,6 +80,28 @@ public sealed class ConPtySession : IDisposable
         _process = process;
         _input = input;
         _descendants = descendants;
+        if (descendants is not null)
+        {
+            _agentMonitor = new PaneAgentMonitor(ProbeAgent, agent => AgentChanged?.Invoke(agent));
+        }
+    }
+
+    /// <summary>The agent CLI currently running on this pane's console, or null when none is active.</summary>
+    public SessionAgent? CurrentAgent => _agentMonitor?.Current;
+
+    /// <summary>Raised when <see cref="CurrentAgent"/> transitions to a different value.</summary>
+    public event Action<SessionAgent?>? AgentChanged;
+
+    private (SessionAgent Agent, SafeWaitHandle ProcessHandle)? ProbeAgent()
+    {
+        if (_descendants is null) return null;
+        long? paneConsoleHost;
+        lock (_processGate)
+        {
+            if (_processClosed || Volatile.Read(ref _consoleClosed) != 0) return null;
+            paneConsoleHost = _descendants.QueryConsoleHostOf(_process);
+        }
+        return _descendants.TryOpenActiveAgent(paneConsoleHost);
     }
 
     /// <summary>Task that completes with the child's exit code.</summary>
@@ -188,6 +212,7 @@ public sealed class ConPtySession : IDisposable
             var session = new ConPtySession(console, processInfo.Process, input, descendants);
             session.StartReader(ourOutputRead, info.OnOutput);
             session.StartExitWatcher();
+            session._agentMonitor?.NotifyActivity();
             return session;
         }
         finally
@@ -214,6 +239,7 @@ public sealed class ConPtySession : IDisposable
                 {
                     var read = stream.Read(buffer, 0, buffer.Length);
                     if (read <= 0) break;
+                    _agentMonitor?.NotifyActivity();
                     if (onOutput is null) continue;
                     var chunk = new byte[read];
                     Array.Copy(buffer, chunk, read);
@@ -269,6 +295,7 @@ public sealed class ConPtySession : IDisposable
             {
                 _input.Write(data, 0, data.Length);
                 _input.Flush();
+                _agentMonitor?.NotifyActivity();
             }
             catch (IOException)
             {
@@ -290,15 +317,18 @@ public sealed class ConPtySession : IDisposable
 
     private void CloseConsoleOnce()
     {
+        var stopAgentMonitor = false;
         lock (_processGate)
         {
             if (Volatile.Read(ref _consoleClosed) != 0) return;
             Volatile.Write(ref _consoleClosed, 1);
+            stopAgentMonitor = true;
             // before the close: the sweep needs the child's handle and the list of processes
             // attached now, which get CTRL_CLOSE from conhost
             if (_processClosed) _descendants?.Abandon();
             else _descendants?.BeginClose(_process);
         }
+        if (stopAgentMonitor) _agentMonitor?.Dispose();
         // outside the lock: ClosePseudoConsole can wait for conhost
         ConPtyNative.ClosePseudoConsole(_console);
     }
@@ -332,6 +362,7 @@ public sealed class ConPtySession : IDisposable
         // ClosePseudoConsole that waits for conhost both return
         _outputRead?.Dispose();
         CloseConsoleOnce();
+        _agentMonitor?.Dispose();
         _input.Dispose();
         lock (_processGate)
         {

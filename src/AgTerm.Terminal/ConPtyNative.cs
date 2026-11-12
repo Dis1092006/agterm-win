@@ -188,6 +188,10 @@ internal static class ConPtyNative
         IntPtr sourceProcess, IntPtr sourceHandle, IntPtr targetProcess, out IntPtr targetHandle,
         uint access, bool inheritHandle, uint options);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern bool GetProcessTimes(
+        IntPtr process, out long creationTime, out long exitTime, out long kernelTime, out long userTime);
+
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     internal static extern bool QueryFullProcessImageNameW(
         IntPtr process, uint flags, char[] name, ref int size);

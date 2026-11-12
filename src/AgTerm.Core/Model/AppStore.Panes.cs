@@ -170,6 +170,7 @@ public sealed partial class AppStore
         session.SplitSurface = null;
         session.SplitCwd = null;
         session.SplitTitle = null;
+        session.SplitAgent = null;
         session.InitialSplitCwd = null;
         // the right pane is gone, so its restore-command override describes nothing: drop both the
         // persisted pin and any payload still armed for this launch (a fresh split must be a plain shell).
@@ -234,6 +235,7 @@ public sealed partial class AppStore
         // the split's (null clears it) — likewise foregroundCommand.
         session.CurrentCwd = session.SplitCwd ?? session.InitialSplitCwd ?? session.CurrentCwd;
         session.OscTitle = session.SplitTitle;
+        session.Agent = session.SplitAgent;
         session.ForegroundCommand = session.SplitForegroundCommand;
         // the restore-command override follows the survivor into the main slot the same way, BOTH
         // halves: the persisted pin and any payload still armed for this launch.
@@ -241,6 +243,7 @@ public sealed partial class AppStore
         session.PendingRestoreCommand = session.PendingSplitRestoreCommand;
         session.SplitCwd = null;
         session.SplitTitle = null;
+        session.SplitAgent = null;
         session.InitialSplitCwd = null;
         session.SplitForegroundCommand = null;
         session.SplitRestoreCommand = null;
@@ -318,6 +321,7 @@ public sealed partial class AppStore
         session.SwapPaneIdentities();
 
         (session.OscTitle, session.SplitTitle) = (session.SplitTitle, session.OscTitle);
+        (session.Agent, session.SplitAgent) = (session.SplitAgent, session.Agent);
         (session.ForegroundCommand, session.SplitForegroundCommand) =
             (session.SplitForegroundCommand, session.ForegroundCommand);
         (session.RestoreCommand, session.SplitRestoreCommand) =

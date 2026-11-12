@@ -65,7 +65,14 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
 
     public bool IsSession => _row.Kind == SidebarRowKind.Session;
 
-    public string Label => _row.Label;
+    public string Label => SidebarAgentIcon.FormatLabel(_row, _mode, _settings.EffectiveFlaggedViewLayout, _settings);
+
+    public Visibility AgentIconVisibility =>
+        SidebarAgentIcon.IsShown(Kind, _row.Agent, _settings) ? Visibility.Visible : Visibility.Collapsed;
+
+    public string AgentIconData => SidebarAgentIcon.PathData(_row.Agent);
+
+    public string? AgentIconToolTip => SidebarAgentIcon.ToolTip(_row.Agent);
 
     public double FontSize =>
         AppSettings.ClampSidebarFontSize(_settings.SidebarFontSize ?? AppSettings.DefaultSidebarFontSize);
@@ -401,6 +408,7 @@ public sealed class SidebarRowViewModel : INotifyPropertyChanged
             LoadImage();
         }
         Raise(nameof(Label), nameof(Chevron), nameof(LabelWeight),
+              nameof(AgentIconVisibility), nameof(AgentIconData), nameof(AgentIconToolTip),
               nameof(WorkspaceGlyph), nameof(WorkspaceGlyphVisibility), nameof(GridIconVisibility),
               nameof(WorkspaceImage), nameof(WorkspaceImageVisibility), nameof(SessionIconVisibility), nameof(ContentMargin),
               nameof(FontSize), nameof(RowHeight), nameof(TitleBandHeight),

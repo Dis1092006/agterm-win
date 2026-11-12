@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using AgTerm.Core.Model;
+using Microsoft.Win32.SafeHandles;
 
 namespace AgTerm.Terminal;
 
@@ -259,6 +261,75 @@ internal sealed class PaneDescendants
         }
     }
 
+    internal long? QueryConsoleHostOf(IntPtr process) => SafeQuery(process);
+
+    internal (SessionAgent Agent, SafeWaitHandle ProcessHandle)? TryOpenActiveAgent(long? paneConsoleHost)
+    {
+        var pids = ListMembers();
+        if (pids.Count == 0) return null;
+
+        List<(PaneAgent.Candidate Candidate, IntPtr Handle)>? matches = null;
+        try
+        {
+            foreach (var pid in pids)
+            {
+                var handle = ConPtyNative.OpenProcess(
+                    ConPtyNative.ProcessQueryLimitedInformation | ConPtyNative.Synchronize, false, pid);
+                if (handle == IntPtr.Zero) continue;
+                if (!IsInJob(handle) || ConPtyNative.WaitForSingleObject(handle, 0) == 0)
+                {
+                    ConPtyNative.CloseHandle(handle);
+                    continue;
+                }
+                if (PaneAgent.ClassifyImage(QueryImagePath(handle)) is not { } agent)
+                {
+                    ConPtyNative.CloseHandle(handle);
+                    continue;
+                }
+                ConPtyNative.GetProcessTimes(handle, out var creationTime, out _, out _, out _);
+                matches ??= [];
+                matches.Add((new PaneAgent.Candidate(pid, creationTime, SafeQuery(handle), agent), handle));
+            }
+
+            if (matches is null || matches.Count == 0) return null;
+            var picked = PaneAgent.Pick(matches.Select(m => m.Candidate), paneConsoleHost);
+            if (picked is not { } winner) return null;
+
+            IntPtr winnerHandle = IntPtr.Zero;
+            for (var i = 0; i < matches.Count; i++)
+            {
+                if (winnerHandle == IntPtr.Zero && matches[i].Candidate.Pid == winner.Pid)
+                {
+                    winnerHandle = matches[i].Handle;
+                    matches[i] = (matches[i].Candidate, IntPtr.Zero);
+                }
+            }
+            return winnerHandle != IntPtr.Zero
+                ? (winner.Agent, new SafeWaitHandle(winnerHandle, ownsHandle: true))
+                : null;
+        }
+        finally
+        {
+            if (matches is not null)
+            {
+                foreach (var (_, handle) in matches)
+                {
+                    if (handle != IntPtr.Zero) ConPtyNative.CloseHandle(handle);
+                }
+            }
+        }
+    }
+
+    private bool IsInJob(IntPtr handle)
+    {
+        lock (_jobGate)
+        {
+            return Volatile.Read(ref _released) == 0
+                && ConPtyNative.IsProcessInJob(handle, _job, out var inJob)
+                && inJob;
+        }
+    }
+
     /// <summary>Opens a listed pid once and keeps the handle, so the pid cannot be reused while the
     /// sweep runs. A process that is not in the job (its pid was reused) is skipped.</summary>
     private bool TryOpenMember(int pid, out IntPtr handle)
@@ -268,7 +339,7 @@ internal sealed class PaneDescendants
             ConPtyNative.ProcessTerminate | ConPtyNative.ProcessQueryLimitedInformation
             | ConPtyNative.Synchronize, false, pid);
         if (handle == IntPtr.Zero) return false;
-        if (!ConPtyNative.IsProcessInJob(handle, _job, out var inJob) || !inJob)
+        if (!IsInJob(handle))
         {
             ConPtyNative.CloseHandle(handle);
             handle = IntPtr.Zero;
@@ -280,44 +351,52 @@ internal sealed class PaneDescendants
 
     private List<int> ListMembers()
     {
-        var capacity = 64;
-        while (true)
+        lock (_jobGate)
         {
-            var length = 8 + capacity * IntPtr.Size;
-            var buffer = Marshal.AllocHGlobal(length);
-            try
+            if (Volatile.Read(ref _released) != 0) return [];
+            var capacity = 64;
+            while (true)
             {
-                if (ConPtyNative.QueryInformationJobObject(
-                        _job, ConPtyNative.JobObjectBasicProcessIdList, buffer, length, out _))
+                var length = 8 + capacity * IntPtr.Size;
+                var buffer = Marshal.AllocHGlobal(length);
+                try
                 {
-                    var count = Marshal.ReadInt32(buffer, 4);
-                    var pids = new List<int>(count);
-                    for (var i = 0; i < count; i++)
-                        pids.Add((int)Marshal.ReadIntPtr(buffer, 8 + i * IntPtr.Size));
-                    return pids;
+                    if (ConPtyNative.QueryInformationJobObject(
+                            _job, ConPtyNative.JobObjectBasicProcessIdList, buffer, length, out _))
+                    {
+                        var count = Marshal.ReadInt32(buffer, 4);
+                        var pids = new List<int>(count);
+                        for (var i = 0; i < count; i++)
+                            pids.Add((int)Marshal.ReadIntPtr(buffer, 8 + i * IntPtr.Size));
+                        return pids;
+                    }
+                    if (Marshal.GetLastWin32Error() != ConPtyNative.ErrorMoreData || capacity >= 65536)
+                        return [];
+                    capacity *= 4;
                 }
-                if (Marshal.GetLastWin32Error() != ConPtyNative.ErrorMoreData || capacity >= 65536)
-                    return [];
-                capacity *= 4;
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
             }
         }
+    }
+
+    private static string? QueryImagePath(IntPtr process)
+    {
+        var name = new char[32768];
+        var size = name.Length;
+        return ConPtyNative.QueryFullProcessImageNameW(process, 0, name, ref size)
+            ? new string(name, 0, size)
+            : null;
     }
 
     /// <summary>True for a console-subsystem image, false for any other, null if unknown.</summary>
     private static bool? IsConsoleSubsystem(IntPtr process)
     {
-        var name = new char[32768];
-        var size = name.Length;
-        if (!ConPtyNative.QueryFullProcessImageNameW(process, 0, name, ref size)) return null;
-        return ReadSubsystem(new string(name, 0, size)) switch
-        {
-            null => null,
-            var subsystem => subsystem == ImageSubsystemConsole,
-        };
+        return QueryImagePath(process) is { } path && ReadSubsystem(path) is { } subsystem
+            ? subsystem == ImageSubsystemConsole
+            : null;
     }
 
     private const int ImageSubsystemConsole = 3;
