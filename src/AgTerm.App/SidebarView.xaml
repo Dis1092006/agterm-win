@@ -231,6 +231,26 @@
                                    Margin="0,0,6,0"
                                    VerticalAlignment="Center"
                                    Visibility="{x:Bind WorkspaceImageVisibility, Mode=OneWay}" />
+                            <!-- Windows-only: the detected agent CLI icon before a session's name -->
+                            <Path Data="{x:Bind AgentIconData, Mode=OneWay}"
+                                  local:SidebarRowBrushes.Foreground="{x:Bind IconForeground, Mode=OneWay}"
+                                  StrokeThickness="1.2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"
+                                  Width="14" Height="14"
+                                  Margin="0,0,5,0"
+                                  VerticalAlignment="Center"
+                                  ToolTipService.ToolTip="{x:Bind AgentIconToolTip, Mode=OneWay}"
+                                  AutomationProperties.Name="{x:Bind AgentIconToolTip, Mode=OneWay}"
+                                  AutomationProperties.AccessibilityView="Raw"
+                                  Visibility="{x:Bind AgentIconVisibility, Mode=OneWay}">
+                                <Path.Style>
+                                    <Style TargetType="Path">
+                                        <Setter Property="Stroke" Value="{StaticResource SidebarSecondaryBrush}" />
+                                    </Style>
+                                </Path.Style>
+                            </Path>
                             <!-- the block of the label style -->
                             <Border Grid.Column="1"
                                     Background="{x:Bind LabelBlockBackground, Mode=OneWay}"

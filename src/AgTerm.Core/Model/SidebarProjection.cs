@@ -41,6 +41,11 @@ public sealed record SidebarRow(SidebarRowKind Kind, Guid Id, string Label)
 
     // session rows: the caller-set info line, drawn under the name when the display setting allows it
     public SessionInfo? Info { get; init; }
+
+    // session rows (Windows-only): the agent CLI running in the focused pane, and whether the label
+    // comes from a manual rename
+    public SessionAgent? Agent { get; init; }
+    public bool HasCustomName { get; init; }
 }
 
 /// <summary>
@@ -137,6 +142,8 @@ public static class SidebarProjection
             Unseen = session.UnseenCount,
             Tint = session.Tint,
             Info = session.Info,
+            Agent = session.FocusedAgent,
+            HasCustomName = Session.TrimmedOrNull(session.CustomName) is not null,
         };
 
     // stage 3 (a theme per session) changes only this: the session's own theme first
