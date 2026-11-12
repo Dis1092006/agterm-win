@@ -53,6 +53,11 @@ public class TerminalLinkOpenerTests
     [InlineData(@"C:\Program Files\x status pending", @"C:\Program Files\x")]
     [InlineData(@"C:\\Program Files\\x status pending", @"C:\Program Files\x")]
     [InlineData(@"C:\Program Files\x title: pending", @"C:\Program Files\x")]
+    [InlineData(@"C:\git\Connect.Gateway\docs\2026-11-12-load-test-run-commands-design.md. Решения, которые я принял сам", @"C:\git\Connect.Gateway\docs\2026-11-12-load-test-run-commands-design.md")]
+    [InlineData(@"C:\Program Files\x, next item", @"C:\Program Files\x")]
+    [InlineData(@"C:\Program Files\x); next item", @"C:\Program Files\x")]
+    [InlineData(@"C:\Program Files (x86) status", @"C:\Program Files (x86)")]
+    [InlineData(@"C:\Program Files\report.md.", @"C:\Program Files\report.md")]
     public void Unquoted_paths_reveal_the_longest_existing_candidate(string target, string existing)
     {
         var started = new List<ProcessStartInfo>();
