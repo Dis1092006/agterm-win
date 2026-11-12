@@ -1019,6 +1019,7 @@ Commands and fields that upstream does not have. `parity/windows-only.json` list
   - A workspace row keeps upstream's parts: `workspace.tint` and `workspace.new` refuse `flag` with upstream's `invalid tint placement: <parts> (icon,name)`, and the CLI with upstream's `--on must list icon and/or name, comma-separated`. A saved workspace tint that lists `flag` loads without it, and a tint left with only `flag` falls back to the icon.
   - Without a tint the flag takes the row's text color. A tint that shows on the flag colors it with the inks the icon takes. A tint on only the flag of an unflagged session shows nothing until the session is flagged.
   - `parity/windows-only.json` lists commands and fields, not enum values, so the `flag` part and `sessionFlags` have no entry there.
+- Dynamic OSC palette mutations are ignored, while queries still reply. Upstream lets a program change a pane's dynamic colors with OSC 4/10/11/12 (and reset them with OSC 104/110/111/112). On Windows, Copilot CLI's default `github` theme answers xterm.js's `CSI ? 997 n` light/dark report by sending `OSC 11` and `OSC 10` on startup, replacing the global or workspace theme until the user re-applies the theme in `agterm-win`. `openPane` intercepts OSC 4/10/11/12/104/110/111/112: `?` color queries still reply from the pane's active theme (and `CSI ? 996 n` / `DECSET 2031` keep reporting light or dark), while color-setting and color-reset payloads are dropped so the pane keeps its `agterm-win` theme.
 
 ## Command palette: app commands
 

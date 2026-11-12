@@ -3647,6 +3647,32 @@ function openPane(paneId, opts) {
       data: oversized ? "" : data, oversized, focused: terminalHasKeyboardFocus(paneId) });
   }
 
+  // OSC 4 / 10 / 11 / 12 and 104 / 110 / 111 / 112: keep query replies ("?"), drop color mutations.
+  // Programs like Copilot CLI otherwise overwrite the window or workspace theme with OSC 11/10 on startup.
+  term.parser.registerOscHandler(4, (data) => {
+    const parts = data.split(";");
+    const queries = [];
+    for (let i = 0; i + 1 < parts.length; i += 2) {
+      if (/^\d+$/.test(parts[i]) && parts[i + 1] === "?")
+        queries.push(parts[i], "?");
+    }
+    if (queries.length > 0)
+      term._core._inputHandler.setOrReportIndexedColor(queries.join(";"));
+    return true;
+  });
+  for (const [id, offset] of [[10, 0], [11, 1], [12, 2]]) {
+    term.parser.registerOscHandler(id, (data) => {
+      const parts = data.split(";");
+      for (let i = 0; i < parts.length && offset + i < 3; i++) {
+        if (parts[i] === "?")
+          term._core._inputHandler._setOrReportSpecialColor("?", offset + i);
+      }
+      return true;
+    });
+  }
+  for (const id of [104, 110, 111, 112])
+    term.parser.registerOscHandler(id, () => true);
+
   // OSC 7777 — integration.ps1's private readline marker:
   // "agterm-readline=1[;paste=shift-insert|ctrl-v]" before PSReadLine reads a line,
   // "agterm-readline=0" once it returns. Any other payload changes nothing.
