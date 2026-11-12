@@ -246,6 +246,47 @@ public sealed class LiveSidebarE2ETests : IDisposable
         }
         Assert.Contains("survived-restart", text);
     }
+
+    [Fact]
+    public void Live_pane_agent_projects_into_sidebar_rows_and_clears_on_exit()
+    {
+        var copilotBinary = Path.Combine(_stateDir, "copilot.exe");
+        File.Copy(Path.Combine(Environment.SystemDirectory, "PING.EXE"), copilotBinary);
+
+        var sessionId = Guid.Parse(CtlOk("session", "new").Trim());
+        var snapshots = new EventRecorder<SidebarSnapshot>();
+        using var storeCoordinator = new LiveStoreCoordinator(
+            _host.Host,
+            isUiThread: () => false,
+            scheduler: (work, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                work();
+                return Task.CompletedTask;
+            });
+        using var controller = new SidebarController(storeCoordinator, runOnUi: work => work());
+        controller.SnapshotChanged += snapshots.Add;
+        controller.Start();
+
+        SessionAgent? LatestAgent() =>
+            snapshots.MaxBy(s => s.Generation)?.Rows.SingleOrDefault(r => r.Id == sessionId)?.Agent;
+
+        CtlOk("session", "type", "--target", sessionId.ToString("D"), $"\"{copilotBinary}\" -n 2 127.0.0.1\n");
+
+        var deadline = Environment.TickCount64 + 15000;
+        while (Environment.TickCount64 < deadline && LatestAgent() != SessionAgent.Copilot)
+        {
+            Thread.Sleep(25);
+        }
+        Assert.Equal(SessionAgent.Copilot, LatestAgent());
+
+        deadline = Environment.TickCount64 + 15000;
+        while (Environment.TickCount64 < deadline && LatestAgent() is not null)
+        {
+            Thread.Sleep(25);
+        }
+        Assert.Null(LatestAgent());
+    }
 }
 
 internal static class LiveControlHostTestExtensions

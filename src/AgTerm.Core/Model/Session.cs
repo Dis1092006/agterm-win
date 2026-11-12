@@ -78,6 +78,10 @@ public sealed class Session
     public string? SplitCwd { get; set; }
     public string? SplitTitle { get; set; }
 
+    /// <summary>The live agent CLI running in the primary or split pane. Ephemeral.</summary>
+    public SessionAgent? Agent { get; set; }
+    public SessionAgent? SplitAgent { get; set; }
+
     /// <summary>Count of unseen terminal notifications while the session wasn't focused. Ephemeral.</summary>
     public int UnseenCount { get; set; }
 
@@ -449,6 +453,9 @@ public sealed class Session
     }
 
     private string? FocusedOscTitle => SplitFocused && SplitSurface is not null ? SplitTitle : OscTitle;
+
+    /// <summary>The running agent CLI of the focused pane, following SplitFocused and SplitSurface.</summary>
+    public SessionAgent? FocusedAgent => SplitFocused && SplitSurface is not null ? SplitAgent : Agent;
 
     /// <summary>
     /// The detail line shown after the workspace name (palette, switcher, title bar): the focused

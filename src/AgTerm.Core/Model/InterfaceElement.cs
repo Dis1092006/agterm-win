@@ -31,6 +31,8 @@ public enum InterfaceElement
     SessionIcons,
     // Windows-only: the flag glyph on a flagged session row
     SessionFlags,
+    // Windows-only: the detected agent CLI icon before a session's name
+    AgentIcons,
 }
 
 public static class InterfaceElementExtensions

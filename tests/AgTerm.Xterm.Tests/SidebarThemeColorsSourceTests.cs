@@ -20,7 +20,7 @@ public sealed class SidebarThemeColorsSourceTests
         Assert.Contains("<Grid ColumnSpacing=\"6\" Margin=\"{x:Bind ContentMargin, Mode=OneWay}\" Height=\"{x:Bind TitleBandHeight, Mode=OneWay}\"", xaml, StringComparison.Ordinal);
         Assert.True(Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind RowForeground, Mode=OneWay}\"") >= 3,
             "the chevron and the other untinted glyphs take the theme foreground");
-        Assert.Equal(3, Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind IconForeground, Mode=OneWay}\""));
+        Assert.Equal(4, Count(xaml, "local:SidebarRowBrushes.Foreground=\"{x:Bind IconForeground, Mode=OneWay}\""));
         Assert.DoesNotContain("Stroke=\"{ThemeResource TextFillColorSecondaryBrush}\"", xaml, StringComparison.Ordinal);
     }
 

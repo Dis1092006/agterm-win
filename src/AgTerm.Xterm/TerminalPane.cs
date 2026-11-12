@@ -65,6 +65,7 @@ public sealed class TerminalPane : IDisposable
         terminal.Resized += pty.Resize;
         terminal.TitleChanged += t => TitleChanged?.Invoke(t);
         terminal.CwdChanged += c => CwdChanged?.Invoke(c);
+        pty.AgentChanged += a => AgentChanged?.Invoke(a);
     }
 
     /// <summary>The shared page hosting this pane's renderer (show/close address it by pane id).</summary>
@@ -84,6 +85,12 @@ public sealed class TerminalPane : IDisposable
 
     /// <summary>OSC 7 / OSC 9;9, parsed → Session.CurrentCwd (host wires it).</summary>
     public event Action<string>? CwdChanged;
+
+    /// <summary>The agent CLI currently running on this pane's console (host wires it).</summary>
+    public SessionAgent? CurrentAgent => Pty.CurrentAgent;
+
+    /// <summary>Live agent CLI detection → Session.Agent / SplitAgent (host wires it).</summary>
+    public event Action<SessionAgent?>? AgentChanged;
 
     /// <summary>Open a renderer pane on the (already booted) shared page, then spawn the child at
     /// the pane's fitted size. Must run on the WebView2 UI thread.</summary>
