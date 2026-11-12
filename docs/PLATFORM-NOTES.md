@@ -943,6 +943,8 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Until the port has `--url`, the CLI says `provide exactly one of COMMAND or --html` where upstream says `provide exactly one of COMMAND, --html or --url`.
 - HTML page overlays, the page engine: one WebView2 per page, the load, the navigation policy, the theme, reload, navigate and the prompt before a web link opens in the browser, as upstream's `HtmlOverlayRegistry` (`c63e5158`).
   - Upstream loads a granted file with read access to the grant. WebView2 has no such grant for a `file:` URL, so the port maps the grant directory to a virtual host, `agterm-page-<id>.example`, and loads the file from it. Each page has its own host, so one page cannot read files another page was granted. A page link to a raw `file:` URL is cancelled.
+  - Chromium sends a link it cannot resolve, such as a relative link on a page loaded without a grant, to `about:blank#blocked`. Upstream's policy allows any `about:` page, so the page would turn blank. The port cancels that address, and the click does nothing.
+  - A page link that climbs above the grant directory, such as `../outside.html` in the grant's top folder, stops at the root of the page's host, because URL rules drop a `..` at the root. So it opens that name inside the grant, or shows the failure view when there is no such file. Upstream sees the path leave the grant and cancels the link. The page still reads nothing outside the grant: WebView2 serves only files under the mapped directory.
   - WebView2 runs the theme script before the document has a root element and, with page scripts off, runs no callback that could wait for one. Upstream prepends a style element; the port adds a constructed stylesheet to `document.adoptedStyleSheets`. The rules and their zero specificity are the same.
   - WebView2 names a page without a `<title>` by its address. The port reports no title then, as upstream does.
   - WebView2 tells the host nothing when a page calls `window.close()`, so a page cannot close its overlay. Upstream closes it.
@@ -953,7 +955,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The page does not take the keyboard when it shows. A click in the page gives it the keys, and a click on the strip or on the terminal gives them back. Upstream makes the page first responder when it shows. While the page has the keys, the app's chords do not work, because WebView2 handles the keys in its own process. Close the page with the strip, or click the terminal first and press Alt+W.
   - Open in Browser hands the page to the shell, so a file page opens in the app registered for `.html` files. Upstream opens it in the default web browser.
   - The strip cuts a long file name at its end. Upstream cuts it in the middle.
-  - A floating panel has rounded corners, but the page inside is not clipped by them, and the panel has no shadow.
+  - A floating panel has rounded corners and no shadow. Upstream draws a shadow.
 
 ## Windows-only extensions
 

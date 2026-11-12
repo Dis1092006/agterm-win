@@ -110,4 +110,27 @@ public sealed class HtmlOverlayStripTests
 
         Assert.Equal(new HtmlOverlayTheme("#f0f0f0", "#e0e0e0", dark: false, Palette), theme);
     }
+
+    [Fact]
+    public void ALabelThatFitsKeepsItsWidths()
+    {
+        Assert.Equal((100, 0), HtmlOverlayStrip.LabelWidths(500, 100, title: null, separator: 20, titleMinimum: 16));
+        Assert.Equal((100, 80), HtmlOverlayStrip.LabelWidths(500, 100, title: 80, separator: 20, titleMinimum: 16));
+    }
+
+    [Fact]
+    public void TheTitleGivesUpWidthBeforeTheIdentity()
+    {
+        Assert.Equal((100, 30), HtmlOverlayStrip.LabelWidths(150, 100, title: 80, separator: 20, titleMinimum: 16));
+        // the title keeps room for its ellipsis, so the dot never ends the label
+        Assert.Equal((114, 16), HtmlOverlayStrip.LabelWidths(150, 400, title: 80, separator: 20, titleMinimum: 16));
+        Assert.Equal((150, 0), HtmlOverlayStrip.LabelWidths(150, 400, title: null, separator: 20, titleMinimum: 16));
+    }
+
+    [Fact]
+    public void ALabelNeverTakesMoreThanItsWidth()
+    {
+        Assert.Equal((0, 0), HtmlOverlayStrip.LabelWidths(10, 400, title: 80, separator: 20, titleMinimum: 16));
+        Assert.Equal((0, 0), HtmlOverlayStrip.LabelWidths(0, 400, title: null, separator: 20, titleMinimum: 16));
+    }
 }

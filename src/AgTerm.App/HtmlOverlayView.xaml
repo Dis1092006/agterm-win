@@ -2,6 +2,7 @@
     x:Class="AgTerm.App.HtmlOverlayView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AgTerm.App"
     Visibility="Collapsed"
     IsTabStop="False">
     <!-- upstream HtmlOverlayView: the identity strip, a rule, then the page with the failure view over
@@ -23,23 +24,17 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel x:Name="LeadingButtons" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" />
                     <Grid x:Name="Label" Grid.Column="1" VerticalAlignment="Center">
-                        <Grid HorizontalAlignment="Center" ColumnSpacing="6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                        <local:HtmlStripLabelPanel Spacing="6">
                             <TextBlock x:Name="IdentityText"
                                        FontSize="12"
                                        TextTrimming="CharacterEllipsis"
                                        AutomationProperties.AutomationId="htmlOverlay.identity" />
-                            <TextBlock x:Name="TitleDot" Grid.Column="1" FontSize="12" Text="·" />
+                            <TextBlock x:Name="TitleDot" FontSize="12" Text="·" />
                             <TextBlock x:Name="TitleText"
-                                       Grid.Column="2"
                                        FontSize="12"
                                        TextTrimming="CharacterEllipsis"
                                        AutomationProperties.AutomationId="htmlOverlay.title" />
-                        </Grid>
+                        </local:HtmlStripLabelPanel>
                     </Grid>
                     <StackPanel x:Name="TrailingButtons" Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" />
                 </Grid>

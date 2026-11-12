@@ -78,6 +78,8 @@ public sealed class HtmlOverlayPage
 
     private HtmlSource.File Source => (HtmlSource.File)_overlay.Source;
 
+    private const string BlockedUrl = "about:blank#blocked";
+
     // a page without a grant is loaded from its text: it sits at about:blank and cannot navigate, so
     // the file it came from is both the current page and what the user is looking at
     private bool TextLoaded => Source.GrantRoot is null;
@@ -265,6 +267,9 @@ public sealed class HtmlOverlayPage
         // a URL System.Uri cannot hold (a long data: page) is nothing the policy would allow
         if (!Uri.TryCreate(args.Url, UriKind.Absolute, out var url)) return HtmlNavigationDecision.Cancel;
         shown = url.AbsoluteUri;
+        // Chromium sends a link it cannot resolve, like a relative one on a page without a base, here;
+        // upstream's about: rule would show it as an empty page
+        if (url.AbsoluteUri == BlockedUrl) return HtmlNavigationDecision.Cancel;
         if (args.Target != HtmlNavigationTarget.NewWindow && url.Scheme == Uri.UriSchemeFile)
             return HtmlNavigationDecision.Cancel;
         if (args.Target != HtmlNavigationTarget.NewWindow && FileOnHost(url) is { } path)

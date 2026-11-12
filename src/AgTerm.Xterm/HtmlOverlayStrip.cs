@@ -28,4 +28,16 @@ public sealed record HtmlOverlayStrip(bool Shown, bool Navigation, bool CanGoBac
         var (width, height) = OverlayPointSize.PanelSize(bounds, percent, points, chrome);
         return ((bounds.Width - width) / 2, (bounds.Height - height) / 2, width, height);
     }
+
+    /// <summary>The widths the identity and the title get in a label of the given width, from their
+    /// natural widths. The title gives up width first (upstream layoutPriority) but keeps its minimum,
+    /// room for an ellipsis, while the identity is cut. The separator is the dot with its spacing.</summary>
+    public static (double Identity, double Title) LabelWidths(
+        double available, double identity, double? title, double separator, double titleMinimum)
+    {
+        if (title is not { } natural) return (Math.Clamp(identity, 0, Math.Max(0, available)), 0);
+        var reserve = separator + Math.Min(natural, titleMinimum);
+        var identityWidth = Math.Min(identity, Math.Max(0, available - reserve));
+        return (identityWidth, Math.Min(natural, Math.Max(0, available - identityWidth - separator)));
+    }
 }

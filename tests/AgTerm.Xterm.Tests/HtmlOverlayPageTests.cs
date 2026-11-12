@@ -212,6 +212,7 @@ public sealed class HtmlOverlayPageTests : IDisposable
 
         Assert.True(view.Start(new Uri(PagePath("b.html")).AbsoluteUri, user: true));
         Assert.True(view.Start(Url(overlay, "b.html")), "a page without a grant has no host");
+        Assert.True(view.Start("about:blank#blocked", user: true), "Chromium's address for a link it cannot resolve");
         Assert.Empty(_browser.Prompts);
     }
 

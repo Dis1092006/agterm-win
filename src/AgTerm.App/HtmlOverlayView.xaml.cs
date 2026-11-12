@@ -39,8 +39,6 @@ public sealed partial class HtmlOverlayView : UserControl
         // the buttons handle their own presses, so this sees only the strip's empty area and its label
         Strip.PointerPressed += (_, _) => StripPressed?.Invoke();
         SizeChanged += (_, _) => PlacePanel();
-        // the identity gives up width last: the title's column shrinks first
-        Label.SizeChanged += (_, e) => IdentityText.MaxWidth = e.NewSize.Width;
     }
 
     /// <summary>A strip button asked for a history or hand-off action on the shown page.</summary>
