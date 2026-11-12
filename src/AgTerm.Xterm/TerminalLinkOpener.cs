@@ -25,7 +25,7 @@ public sealed class TerminalLinkOpener
         var tryPrefixes = allowPathFallback && target.Length >= 3
             && char.IsAsciiLetter(target[0]) && target[1] == ':' && target[2] is '/' or '\\';
         var validated = false;
-        var end = target.Length;
+        var end = tryPrefixes ? TrimFallbackEnd(target, target.Length) : target.Length;
         while (end >= 3)
         {
             if (LinkPolicy.ActionFor(target[..end]) is HudLinkAction.Reveal reveal)
@@ -44,7 +44,46 @@ public sealed class TerminalLinkOpener
                 end--;
             while (end >= 3 && char.IsWhiteSpace(target[end - 1]))
                 end--;
+            end = TrimFallbackEnd(target, end);
         }
         return validated ? new LiveFailureNotice("Path not found", $"Path not found: {target}") : null;
+    }
+
+    private static int TrimFallbackEnd(string target, int end)
+    {
+        int openParens = 0, closeParens = 0, openBrackets = 0, closeBrackets = 0;
+        for (var i = 0; i < end; i++)
+        {
+            switch (target[i])
+            {
+                case '(': openParens++; break;
+                case ')': closeParens++; break;
+                case '[': openBrackets++; break;
+                case ']': closeBrackets++; break;
+            }
+        }
+        while (end > 3)
+        {
+            var last = target[end - 1];
+            if (char.IsWhiteSpace(last) || last is ',' or '.' or ';' or '!' or '?')
+            {
+                end--;
+            }
+            else if (last == ')' && closeParens > openParens)
+            {
+                closeParens--;
+                end--;
+            }
+            else if (last == ']' && closeBrackets > openBrackets)
+            {
+                closeBrackets--;
+                end--;
+            }
+            else
+            {
+                break;
+            }
+        }
+        return end;
     }
 }

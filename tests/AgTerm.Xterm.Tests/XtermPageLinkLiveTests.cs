@@ -76,6 +76,13 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
     [InlineData(@"C:\Program Files\x   title: extra", @"C:\Program Files\x")]
     [InlineData("C:\\Program Files\\x\ttitle: extra", @"C:\Program Files\x")]
     [InlineData("'C:\\my  files\\report.txt' extra", @"C:\my  files\report.txt")]
+    [InlineData(@"Документ готов к чтению: C:\git\github\envasetechnologies\Connect.Gateway\docs\superpowers\specs\2026-11-12-load-test-run-commands-design.md. Решения, которые я принял сам, стоит проверить в первую очередь:", @"C:\git\github\envasetechnologies\Connect.Gateway\docs\superpowers\specs\2026-11-12-load-test-run-commands-design.md")]
+    [InlineData(@"См. файл C:\my files\report.txt в репозитории", @"C:\my files\report.txt")]
+    [InlineData(@"Путь C:\my files\report.txt, детали ниже", @"C:\my files\report.txt")]
+    [InlineData(@"Ошибка в C:\my files\report.cs:42:10 при сборке", @"C:\my files\report.cs")]
+    [InlineData(@"См. (C:\Program Files (x86)\app.exe). Далее", @"C:\Program Files (x86)\app.exe")]
+    [InlineData(@"См. [C:\my files\report.txt]: готово", @"C:\my files\report.txt")]
+    [InlineData(@"Диск C:\ заполнен", @"C:\")]
     public async Task The_provider_detects_urls_and_drive_paths(string text, string expected)
     {
         var (_, view) = await BootAsync(text);
@@ -87,6 +94,20 @@ public class XtermPageLinkLiveTests(WebView2Fixture webView, Xunit.Abstractions.
             })()
             """);
         Assert.Equal(new[] { expected }, JsonSerializer.Deserialize<string[]>(result));
+    }
+
+    [Fact]
+    public async Task Multiple_unquoted_drive_paths_in_prose_are_detected_separately()
+    {
+        var (_, view) = await BootAsync(@"Compare C:\my files\one.md and C:\other dir\two.md now");
+        var result = await EvalAsync(view, """
+            (() => {
+              let found;
+              panes.get('links').linkProvider.provideLinks(1, links => found = links.map(link => link.text));
+              return found;
+            })()
+            """);
+        Assert.Equal(new[] { @"C:\my files\one.md", @"C:\other dir\two.md" }, JsonSerializer.Deserialize<string[]>(result));
     }
 
     [Fact]

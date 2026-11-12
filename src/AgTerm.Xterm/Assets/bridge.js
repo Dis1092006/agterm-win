@@ -3038,6 +3038,33 @@ function activateTerminalLink(paneId, ev, target, allowPathFallback = false) {
 // trailing-punctuation rule. The host rejects schemes outside the open/reveal allowlist.
 const TERMINAL_URL_RE = /(https?:\/\/|mailto:|ftp:\/\/|file:|ssh:|git:\/\/|ssh:\/\/|tel:|magnet:|ipfs:\/\/|ipns:\/\/|gemini:\/\/|gopher:\/\/|news:)(?:\[[0-9a-fA-F:]+\](?::[0-9]+)?|[\p{L}\p{N}_\-.~:/?#@!$&*+,;=%]+(?:[([][\p{L}\p{N}_]*[)\]])?)+/gu;
 const TERMINAL_DRIVE_RE = /(?<![\p{L}\p{N}_\\/:])[A-Za-z]:[\\/]/gu;
+const TERMINAL_UNQUOTED_PATH_END_RE = / {2,}|["'`<>|?*:\t\r\n]|[.,;!?](?=\s|$)/u;
+
+function trimUnquotedPathEnd(text, start, end) {
+  let openParens = 0, closeParens = 0, openBrackets = 0, closeBrackets = 0;
+  for (let i = start; i < end; i++) {
+    const ch = text[i];
+    if (ch === "(") openParens++;
+    else if (ch === ")") closeParens++;
+    else if (ch === "[") openBrackets++;
+    else if (ch === "]") closeBrackets++;
+  }
+  while (end > start + 3) {
+    const last = text[end - 1];
+    if (/[\s,.;:!?]/u.test(last)) {
+      end--;
+    } else if (last === ")" && closeParens > openParens) {
+      closeParens--;
+      end--;
+    } else if (last === "]" && closeBrackets > openBrackets) {
+      closeBrackets--;
+      end--;
+    } else {
+      break;
+    }
+  }
+  return end;
+}
 
 function terminalLinkMatches(text) {
   const matches = [];
@@ -3059,11 +3086,19 @@ function terminalLinkMatches(text) {
       end = text.indexOf(quote, start);
       if (end < 0) continue;
     } else {
-      const rest = text.slice(start);
-      const boundary = rest.search(/ {2,}|["'`<>|?*\t\r\n]/u);
-      end = boundary < 0 ? text.length : start + boundary;
-      while (end > start && /[\s,.;]/u.test(text[end - 1])) end--;
-      if (text[end - 1] === ")" && !text.slice(start, end).includes("(")) end--;
+      const rest = text.slice(start + 3);
+      const boundary = rest.search(TERMINAL_UNQUOTED_PATH_END_RE);
+      end = boundary < 0 ? text.length : start + 3 + boundary;
+      for (const link of matches) {
+        if (link.start >= start + 3 && link.start < end) end = link.start;
+      }
+      const lastSep = Math.max(
+        text.lastIndexOf("\\", end - 1),
+        text.lastIndexOf("/", end - 1),
+      );
+      const leafSpace = text.slice(lastSep + 1, end).search(/\s/u);
+      if (leafSpace >= 0) end = lastSep + 1 + leafSpace;
+      end = trimUnquotedPathEnd(text, start, end);
     }
     if (end > start + 2)
       matches.push({ start, end, text: text.slice(start, end), allowPathFallback: !quoted });
