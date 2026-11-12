@@ -39,6 +39,17 @@ public abstract record HtmlSource
     /// <summary>A local HTML file. GrantRoot is the directory the page may read, or null for no
     /// file access beyond the file itself.</summary>
     public sealed record File(string Path, string? GrantRoot) : HtmlSource;
+
+    /// <summary>The web origin of an http or https URL as a user compares it: the lowercase scheme
+    /// and host, and the port only when it is not the scheme's default; null for any other URL.</summary>
+    public static string? Origin(Uri url)
+    {
+        var scheme = url.Scheme.ToLowerInvariant();
+        if (scheme is not ("http" or "https") || string.IsNullOrEmpty(url.Host)) return null;
+        var host = url.Host.ToLowerInvariant();
+        if (host.Contains(':') && !host.StartsWith('[')) host = $"[{host}]";
+        return url.IsDefaultPort ? $"{scheme}://{host}" : $"{scheme}://{host}:{url.Port}";
+    }
 }
 
 /// <summary>What the web view shows now: the page address, its title and its history.</summary>
@@ -102,9 +113,15 @@ public sealed class HtmlOverlay(HtmlSource source, Guid? id = null)
 
     /// <summary>Names what the page shows from what the app loaded, never from the page's title,
     /// which the page writes and could dress as a prompt: the file shown.</summary>
-    public string Identity => Source switch
+    public string Identity => IdentityAt(Current);
+
+    /// <summary>Identity for current, the page a live web view reports.</summary>
+    public string IdentityAt(HtmlPageInfo? current) => System.IO.Path.GetFileName(PageAt(current));
+
+    /// <summary>The full path or address of current, or the source before the first report.</summary>
+    public string PageAt(HtmlPageInfo? current) => Source switch
     {
-        HtmlSource.File file => System.IO.Path.GetFileName(Current?.Page ?? file.Path),
+        HtmlSource.File file => current?.Page ?? file.Path,
         _ => "",
     };
 

@@ -101,6 +101,18 @@ public sealed class HtmlOverlayPageLiveTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ALinkOnAPageWithoutAGrantGoesNowhere()
+    {
+        var (overlay, view) = await OpenAsync("a.html", grant: false);
+
+        await EvalAsync(view, "document.getElementById('b').click()");
+        await Task.Delay(500);
+
+        Assert.Equal("\"a\"", await EvalAsync(view, "document.querySelector('p')?.textContent ?? location.href"));
+        Assert.Equal(new HtmlPageInfo(Path.Combine(_pages, "a.html"), "A", false, false), overlay.Current);
+    }
+
+    [Fact]
     public async Task APageWithoutATitleReportsNone()
     {
         var (overlay, _) = await OpenAsync("plain.html");

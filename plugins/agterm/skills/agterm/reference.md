@@ -711,8 +711,9 @@ All are read-only projections of GUI state.
   if none ran, `no overlay result: the slot holds an html page` over a page.
 - `session overlay open --html FILE [--cwd DIR] [--navigation] [--js] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--target] [--window W]`
   — show a local HTML file in the overlay slot instead of running a program. Wire: `session.overlay.open`
-  with `html` (and `navigation`, `javascript`). **The agterm-win app does not draw pages yet: it answers
-  `html overlays are not supported yet`.** The protocol, the CLI and the headless host take pages already.
+  with `html` (and `navigation`, `javascript`). The page shows over the session, full or floating, with a
+  strip that names the file. It does not take the keyboard until the user clicks it, and while it has the
+  keyboard the app's shortcuts do not reach the app.
   agtermctl makes `FILE` and `--cwd` absolute against the caller's directory. `--cwd DIR` grants the page
   read access inside `DIR`; it must contain `FILE` and must not be a drive root or the user profile.
   Without `--cwd` the page has no file access. `--js` lets the page run its own JavaScript (off by
@@ -737,7 +738,7 @@ All are read-only projections of GUI state.
   the page's history, open it in the default browser, or reveal its current file in Explorer (`finder`,
   file pages only). Wire: `session.overlay.navigate` (`to`). Errors as `reload`, plus
   `session.overlay.navigate requires back, forward, browser or finder` and `html overlay not realized`
-  while no web view shows the page (always, until the app draws pages).
+  while no web view shows the page (the page has not been shown yet).
 
 - `session hud [open] <message>|--file FILE [--markdown] [--font-size PT] [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID] [--target] [--window W]`
   — post a PASSIVE message panel over the session and return its id. Wire: `session.hud.open`.

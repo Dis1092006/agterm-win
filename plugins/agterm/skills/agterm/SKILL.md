@@ -393,9 +393,8 @@ omitted when expanded).
   command runs through `%COMSPEC% /c`, so cmd.exe resolves it on PATH.
 - `overlay open --html FILE [--cwd DIR] [--navigation] [--js]` · `overlay reload [--current]` ·
   `overlay navigate back|forward|browser|finder` — show a local HTML file in the overlay slot instead of a
-  program, reload it, or step its history. The agterm-win app does not draw pages yet and answers
-  `html overlays are not supported yet`; reference.md owns the rules (`--cwd` grant, `pageID`,
-  `htmlOverlays` on `tree`).
+  program, reload it, or step its history. The page does not take the keyboard until the user clicks it;
+  reference.md owns the rules (`--cwd` grant, `pageID`, `htmlOverlays` on `tree`).
 
 - `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·

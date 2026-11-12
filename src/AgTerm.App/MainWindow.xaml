@@ -396,6 +396,7 @@
             <SplitView.Content>
                 <Grid x:Name="TerminalContent">
                     <WebView2 x:Name="TerminalView" />
+                    <local:HtmlOverlayView x:Name="HtmlOverlayPanel" />
                     <Border x:Name="ActivationShield"
                             Background="Transparent"
                             Visibility="Collapsed"

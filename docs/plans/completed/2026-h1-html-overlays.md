@@ -15,7 +15,7 @@ Upstream v0.36.0 can show a local HTML file in the overlay slot instead of a pro
 - `tree` reports `overlay: true` and an `htmlOverlays` list with the page node: `file`, `cwd`, `state`, `error`, `page`, `title`, `canGoBack`, `canGoForward`, `navigation`, `javascript`, `chromeless`, `persistent`, `browse`, `id` and `hidden`, in upstream's key order and omission rules.
 - A page has no terminal surface, exit status or zoom target. Close, session close, workspace close and the end of an undoable close release the page exactly once.
 - CLI `agtermctl session overlay open --html FILE [--cwd DIR] [--navigation] [--js]`, `session overlay reload [--current]` and `session overlay navigate STEP`. The CLI makes `--html` and a page's `--cwd` absolute against the caller's directory. `--block` with `--html` is refused: it needs the page bridge.
-- The live app answers `--html` with `html overlays are not supported yet`.
+- The live app answers `--html` with `html overlays are not supported yet` until H1b-2b.
 
 ## H1b: the page in the live app
 
@@ -29,4 +29,4 @@ H1b-2 is two PRs too. H1b-2a has no UI: the overlay size leaves out the strip, t
 - Navigation follows upstream's file policy: a file inside the grant loads in place, everything else is cancelled, and a user-activated web link opens in the default browser.
 - The load state, current page, title and history reach the store, so `tree` reports them. Reload and navigate drive the web view. `finder` reveals the file in Explorer.
 - `--navigation` adds back, forward, reload, open in browser and show in Explorer buttons over the page.
-- Keyboard focus goes to the page while it covers the session. Close Session (Alt+W) closes the page.
+- The page takes the keyboard only when the user clicks it; a click on the strip or the terminal gives the keys back. While the page has the keys, the app's chords do not work. Close Session (Alt+W) from the terminal closes the page.
