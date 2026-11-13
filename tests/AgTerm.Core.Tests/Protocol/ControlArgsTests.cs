@@ -22,7 +22,7 @@ public class ControlArgsTests
                 Choices = new[] { new ControlAskChoice { Id = "a", Label = "A", Subtitle = "s" } },                 Multiple = true, Checked = ["a"], Other = "s",
                 Window = "s", Width = 3, Height = 3, SidebarWidth = 300.5, X = 3, Y = 3, Display = 3,
         Status = "s", Blink = true, AutoReset = true, Sound = "s", Light = "s", Dark = "s",
-        Close = true, FontSize = 12.5, AutoSize = true, Mru = true, Html = "s", Current = true, Navigation = true, Javascript = true, Value = "s",
+        Close = true, FontSize = 12.5, AutoSize = true, Mru = true, Html = "s", Current = true, Navigation = true, Url = "s", Javascript = true, Value = "s",
         Recipients = ["a"], Identity = "s", Ack = true, Ids = ["a"],
     };
 

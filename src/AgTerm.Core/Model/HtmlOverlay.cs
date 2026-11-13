@@ -40,10 +40,24 @@ public abstract record HtmlSource
     /// file access beyond the file itself.</summary>
     public sealed record File(string Path, string? GrantRoot) : HtmlSource;
 
+    /// <summary>A web page, kept to its origin by the navigation policy. Address keeps the text it
+    /// was given in OriginalString, which the tree reports.</summary>
+    public sealed record Url(Uri Address) : HtmlSource;
+
+    /// <summary>Parses --url: an absolute http or https URL with a host, null for anything else
+    /// (upstream HtmlSource.webURL).</summary>
+    public static Uri? WebUrl(string text) =>
+        Uri.TryCreate(text, UriKind.Absolute, out var url) && Origin(url) is not null ? url : null;
+
+    /// <summary>Whether two URLs have the same web origin: scheme, host and effective port.</summary>
+    public static bool SameOrigin(Uri left, Uri right) =>
+        Origin(left) is { } origin && origin == Origin(right);
+
     /// <summary>The web origin of an http or https URL as a user compares it: the lowercase scheme
     /// and host, and the port only when it is not the scheme's default; null for any other URL.</summary>
     public static string? Origin(Uri url)
     {
+        if (!url.IsAbsoluteUri) return null;
         var scheme = url.Scheme.ToLowerInvariant();
         if (scheme is not ("http" or "https") || string.IsNullOrEmpty(url.Host)) return null;
         var host = url.Host.ToLowerInvariant();
@@ -112,16 +126,25 @@ public sealed class HtmlOverlay(HtmlSource source, Guid? id = null)
     };
 
     /// <summary>Names what the page shows from what the app loaded, never from the page's title,
-    /// which the page writes and could dress as a prompt: the file shown.</summary>
+    /// which the page writes and could dress as a prompt: the file shown, the origin a URL page is
+    /// kept to, or for a browsing page the origin of the document it shows now.</summary>
     public string Identity => IdentityAt(Current);
 
     /// <summary>Identity for current, the page a live web view reports.</summary>
-    public string IdentityAt(HtmlPageInfo? current) => System.IO.Path.GetFileName(PageAt(current));
+    public string IdentityAt(HtmlPageInfo? current)
+    {
+        if (Source is not HtmlSource.Url url) return System.IO.Path.GetFileName(PageAt(current));
+        var shown = Browse && current is not null
+            ? (Uri.TryCreate(current.Page, UriKind.Absolute, out var page) ? HtmlSource.Origin(page) : null) ?? current.Page
+            : null;
+        return shown ?? HtmlSource.Origin(url.Address) ?? url.Address.OriginalString;
+    }
 
     /// <summary>The full path or address of current, or the source before the first report.</summary>
     public string PageAt(HtmlPageInfo? current) => Source switch
     {
         HtmlSource.File file => current?.Page ?? file.Path,
+        HtmlSource.Url url => current?.Page ?? url.Address.OriginalString,
         _ => "",
     };
 

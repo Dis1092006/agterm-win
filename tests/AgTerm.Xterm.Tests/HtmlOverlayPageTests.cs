@@ -520,4 +520,144 @@ public sealed class HtmlOverlayPageTests : IDisposable
         Assert.False(view.Subscribed);
         Assert.Equal(current, overlay.Current);
     }
+
+    private const string Site = "http://localhost:5173";
+
+    private HtmlOverlay OpenUrl(string address = Site + "/app")
+    {
+        var overlay = new HtmlOverlay(new HtmlSource.Url(HtmlSource.WebUrl(address)!));
+        Assert.Null(_store.OpenHtmlOverlay(_session.Id, overlay, sizePercent: null));
+        return overlay;
+    }
+
+    private async Task<(HtmlOverlay Overlay, HtmlOverlayPage Page, FakeHtmlPageView View)> LoadedUrl()
+    {
+        var overlay = OpenUrl();
+        var (page, view) = await Realize(overlay);
+        view.Load(Site + "/app", Site + "/app", "App");
+        Assert.Equal(HtmlLoadState.Loaded, overlay.LoadState);
+        return (overlay, page, view);
+    }
+
+    [Fact]
+    public async Task AUrlPageLoadsItsAddressWithTheVariablesOnlyAndNoHost()
+    {
+        var overlay = OpenUrl();
+        var (_, view) = await Realize(overlay);
+
+        Assert.False(view.Javascript);
+        Assert.Empty(view.Mapped);
+        Assert.Equal([_theme.Script(themed: false)], view.DocumentScripts);
+        Assert.Equal(["navigate " + Site + "/app"], view.Calls);
+    }
+
+    [Fact]
+    public async Task AUrlPageReportsTheAddressShown()
+    {
+        var (overlay, _, view) = await LoadedUrl();
+        Assert.Equal(new HtmlPageInfo(Site + "/app", "App", false, false), overlay.Current);
+
+        view.CanGoBack = true;
+        view.Load(Site + "/docs?q=1", Site + "/docs?q=1", "Docs");
+        Assert.Equal(new HtmlPageInfo(Site + "/docs?q=1", "Docs", true, false), overlay.Current);
+
+        view.Commit("about:blank", null);
+        Assert.Equal(Site + "/app", overlay.Current?.Page);
+    }
+
+    [Fact]
+    public async Task AUrlPageStaysOnItsOriginAndAsksBeforeLeavingIt()
+    {
+        var (overlay, _, view) = await LoadedUrl();
+
+        Assert.False(view.Start("https://example.com/embed", HtmlNavigationTarget.Subframe));
+        Assert.True(view.Start(new Uri(PagePath("a.html")).AbsoluteUri, user: true));
+        Assert.True(view.Start("https://example.com/"));
+        Assert.Empty(_browser.Prompts);
+        Assert.True(view.Start("https://example.com/", user: true));
+        Assert.Equal([new Uri("https://example.com/")], _browser.Prompts);
+        Assert.Equal(HtmlLoadState.Loaded, overlay.LoadState);
+
+        Assert.False(view.Start("http://LOCALHOST:5173/other"));
+        Assert.Equal(HtmlLoadState.Loading, overlay.LoadState);
+    }
+
+    [Fact]
+    public async Task AUrlPageRedirectedOffItsOriginFails()
+    {
+        var overlay = OpenUrl();
+        var (_, view) = await Realize(overlay);
+        Assert.False(view.Start(Site + "/app", user: true));
+
+        Assert.True(view.Start("https://example.com/login"));
+        Assert.Equal(HtmlLoadState.Failed, overlay.LoadState);
+        Assert.Equal("navigation blocked: https://example.com/login", overlay.LoadError);
+    }
+
+    [Fact]
+    public async Task AUrlPageThatCannotLoadReportsTheStatus()
+    {
+        var overlay = OpenUrl();
+        var (_, view) = await Realize(overlay);
+        Assert.False(view.Start(Site + "/app", user: true));
+        view.Complete(success: false, error: "ConnectionAborted");
+
+        Assert.Equal(HtmlLoadState.Failed, overlay.LoadState);
+        Assert.Equal("page load failed: ConnectionAborted", overlay.LoadError);
+    }
+
+    [Fact]
+    public async Task AUrlPageReloadsWhatItShowsOnceADocumentCommitted()
+    {
+        var overlay = OpenUrl();
+        var (_, view) = await Realize(overlay);
+        view.Calls.Clear();
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
+        Assert.Equal(["navigate " + Site + "/app"], view.Calls);
+
+        view.Load(Site + "/app", Site + "/app", "App");
+        view.Load(Site + "/b", Site + "/b", "B");
+        view.Calls.Clear();
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Current));
+        Assert.Null(_registry.Reload(_store, _session.Id, HtmlReloadTarget.Original));
+        Assert.Equal(["reload", "navigate " + Site + "/app"], view.Calls);
+    }
+
+    [Fact]
+    public async Task AThemeChangeGivesAUrlPageNewVariablesWithoutAReload()
+    {
+        var (_, page, view) = await LoadedUrl();
+        view.Calls.Clear();
+
+        var changed = new HtmlOverlayTheme("#000000", "#102030", dark: true);
+        await page.ApplyThemeAsync(changed);
+
+        Assert.Equal(changed.Script(themed: false), view.DocumentScripts[^1]);
+        Assert.Empty(view.Calls);
+    }
+
+    [Fact]
+    public async Task OpenInBrowserOpensTheWebAddressShown()
+    {
+        var overlay = OpenUrl();
+        var (_, view) = await Realize(overlay);
+        Assert.Null(_registry.Navigate(overlay.Id, HtmlNavigation.Browser));
+
+        view.Load(Site + "/b", Site + "/b", "B");
+        Assert.Null(_registry.Navigate(overlay.Id, HtmlNavigation.Browser));
+        view.Commit("about:blank", null);
+        Assert.Null(_registry.Navigate(overlay.Id, HtmlNavigation.Browser));
+
+        Assert.Equal([new Uri(Site + "/app"), new Uri(Site + "/b"), new Uri(Site + "/app")], _browser.Opened);
+        Assert.Empty(_browser.Prompts);
+    }
+
+    [Fact]
+    public async Task FinderRefusesAUrlPage()
+    {
+        var (overlay, _, _) = await LoadedUrl();
+
+        Assert.Equal(OverlayHtmlError.FinderRequiresFile, _registry.Navigate(overlay.Id, HtmlNavigation.Finder));
+        Assert.Empty(_browser.Revealed);
+    }
 }

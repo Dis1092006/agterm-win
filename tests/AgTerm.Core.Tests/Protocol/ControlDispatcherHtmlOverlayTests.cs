@@ -55,6 +55,54 @@ public class ControlDispatcherHtmlOverlayTests
         Assert.False(call.Options.Javascript);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(true)]
+    public async Task OpenRoutesAUrlPageAsGiven(bool? javascript)
+    {
+        var (_, actions) = await Post(Command.SessionOverlayOpen, new ControlArgs
+        {
+            Url = "HTTP://LocalHost:5173/app", SizePercent = 60, Navigation = true, Javascript = javascript,
+        });
+
+        var call = Assert.IsType<MockControlActions.Call.OverlayOpen>(Assert.Single(actions.Calls));
+        var page = Assert.IsType<HtmlSource.Url>(call.Options.Page);
+        Assert.Equal("HTTP://LocalHost:5173/app", page.Address.OriginalString);
+        Assert.Equal("", call.Options.Command);
+        Assert.Null(call.Options.Cwd);
+        Assert.Equal(60, call.Options.SizePercent);
+        Assert.True(call.Options.Navigation);
+        Assert.Equal(javascript == true, call.Options.Javascript);
+    }
+
+    [Theory]
+    [InlineData(File, null, null, false, OverlayHtmlError.HtmlAndUrl)]
+    [InlineData(null, "cat", null, false, OverlayHtmlError.CommandAndUrl)]
+    [InlineData(null, null, null, true, OverlayHtmlError.WaitWithUrl)]
+    [InlineData(null, null, @"C:\work", false, OverlayHtmlError.CwdWithUrl)]
+    public Task AUrlPageRefusesWhatAPageCannotTake(string? html, string? command, string? cwd, bool wait, string error) =>
+        ExpectError(Command.SessionOverlayOpen,
+                    new ControlArgs { Url = "http://localhost:5173/", Html = html, Command = command, Cwd = cwd, Wait = wait,
+                                      Color = "bad" },
+                    error);
+
+    [Theory]
+    [InlineData("ftp://example.com/")]
+    [InlineData("localhost:5173")]
+    [InlineData(@"C:\work\r.html")]
+    public Task AUrlMustBeAbsoluteHttp(string url) =>
+        ExpectError(Command.SessionOverlayOpen, new ControlArgs { Url = url, Color = "bad" }, OverlayHtmlError.InvalidUrl);
+
+    [Fact]
+    public void TheUrlErrorsAreUpstreamText()
+    {
+        Assert.Equal("session.overlay.open takes --html or --url, not both", OverlayHtmlError.HtmlAndUrl);
+        Assert.Equal("session.overlay.open takes a command or --url, not both", OverlayHtmlError.CommandAndUrl);
+        Assert.Equal("session.overlay.open: --wait cannot be combined with --url", OverlayHtmlError.WaitWithUrl);
+        Assert.Equal("session.overlay.open: --cwd cannot be combined with --url", OverlayHtmlError.CwdWithUrl);
+        Assert.Equal("session.overlay.open: --url must be an absolute http or https URL", OverlayHtmlError.InvalidUrl);
+    }
+
     [Fact]
     public async Task AProgramCarriesNoPage()
     {
@@ -157,9 +205,10 @@ public class ControlDispatcherHtmlOverlayTests
     public void TheArgsUseUpstreamKeys()
     {
         var args = ControlJson.Deserialize<ControlArgs>(
-            "{\"html\":\"C:\\\\r.html\",\"current\":true,\"navigation\":true,\"javascript\":true}")!;
+            "{\"html\":\"C:\\\\r.html\",\"url\":\"http://a/\",\"current\":true,\"navigation\":true,\"javascript\":true}")!;
 
         Assert.Equal(@"C:\r.html", args.Html);
+        Assert.Equal("http://a/", args.Url);
         Assert.True(args.Current);
         Assert.True(args.Navigation);
         Assert.True(args.Javascript);

@@ -94,6 +94,22 @@ public sealed class HeadlessHtmlOverlayTests : IDisposable
     }
 
     [Fact]
+    public async Task AUrlPageShowsInTheTreeAsGiven()
+    {
+        var id = await SelectedSession();
+        var response = await Send(Command.SessionOverlayOpen, id, new ControlArgs { Url = "http://LocalHost:5173" });
+        Assert.True(response.Ok, response.Error);
+
+        var node = (await Send(Command.Tree, null)).Result!.Tree!
+            .Workspaces.SelectMany(w => w.Sessions).Single(s => s.Id == id);
+
+        var page = Assert.Single(node.HtmlOverlays!);
+        Assert.Equal("http://LocalHost:5173", page.Url);
+        Assert.Null(page.File);
+        Assert.Null(page.Cwd);
+    }
+
+    [Fact]
     public async Task AnOccupiedSlotRefusesAPage()
     {
         var id = await SelectedSession();

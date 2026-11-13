@@ -2047,7 +2047,8 @@ public sealed partial class MainWindow : Window
             _htmlPageEnvironment ??= CoreWebView2Environment.CreateWithOptionsAsync(
                 string.Empty, WebViewProfile.Directory(), new CoreWebView2EnvironmentOptions()).AsTask();
             var environment = await _htmlPageEnvironment;
-            var control = HtmlOverlayPanel.AddControl(overlay.Id, HtmlPageTheme.From(_rendererSettings, background));
+            var control = HtmlOverlayPanel.AddControl(overlay.Id, HtmlPageTheme.From(_rendererSettings, background),
+                                                      opaque: overlay.Source is HtmlSource.Url);
             try
             {
                 var view = await WinRtHtmlPageView.CreateAsync(control, environment, overlay.Id);

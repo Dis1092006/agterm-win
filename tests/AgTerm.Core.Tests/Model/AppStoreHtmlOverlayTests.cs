@@ -291,6 +291,18 @@ public class AppStoreHtmlOverlayTests : IDisposable
     }
 
     [Fact]
+    public void TheTreeReportsAUrlPageAsGiven()
+    {
+        var page = OpenPage(new HtmlOverlay(new HtmlSource.Url(HtmlSource.WebUrl("HTTP://LocalHost:5173")!)));
+
+        var json = ControlJson.Serialize(Assert.Single(Node().HtmlOverlays!));
+
+        Assert.Equal("{\"url\":\"HTTP://LocalHost:5173\",\"state\":\"loading\"," +
+                     "\"javascript\":false,\"chromeless\":false,\"persistent\":false,\"browse\":false," +
+                     $"\"id\":\"{page.Id.ToString("D").ToUpperInvariant()}\"}}", json);
+    }
+
+    [Fact]
     public void TheTreeOmitsHtmlOverlaysWithoutAPage()
     {
         Assert.True(_store.OpenOverlay(_session.Id, "htop"));

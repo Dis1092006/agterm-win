@@ -18,6 +18,7 @@ namespace AgTerm.App;
 public sealed partial class HtmlOverlayView : UserControl
 {
     private readonly Dictionary<Guid, WebView2> _controls = [];
+    private readonly HashSet<Guid> _opaque = [];
     private readonly StripButton _back, _forward, _reload, _browser, _explorer, _hide, _close;
     private int? _sizePercent;
     private OverlayPointSize _points;
@@ -67,14 +68,17 @@ public sealed partial class HtmlOverlayView : UserControl
     /// <summary>The page on screen, or null while the panel is hidden.</summary>
     public Guid? ShownPage { get; private set; }
 
-    /// <summary>A new control for page id, in the panel and in the tree, for the page view to take over.</summary>
-    public WebView2 AddControl(Guid id, HtmlOverlayTheme theme)
+    /// <summary>A new control for page id, in the panel and in the tree, for the page view to take over.
+    /// A web page keeps the browser's opaque canvas: a web app styled against it would lose its
+    /// background on the theme's.</summary>
+    public WebView2 AddControl(Guid id, HtmlOverlayTheme theme, bool opaque)
     {
         var control = new WebView2
         {
-            DefaultBackgroundColor = Parse(theme.Background),
+            DefaultBackgroundColor = opaque ? Colors.White : Parse(theme.Background),
             Visibility = id == ShownPage ? Visibility.Visible : Visibility.Collapsed,
         };
+        if (opaque) _opaque.Add(id);
         AutomationProperties.SetAutomationId(control, "htmlOverlay.page");
         control.GotFocus += (_, _) => PageFocusChanged?.Invoke();
         control.LostFocus += (_, _) => PageFocusChanged?.Invoke();
@@ -85,6 +89,7 @@ public sealed partial class HtmlOverlayView : UserControl
 
     public void RemoveControl(Guid id)
     {
+        _opaque.Remove(id);
         if (_controls.Remove(id, out var control)) PageHost.Children.Remove(control);
     }
 
@@ -123,7 +128,7 @@ public sealed partial class HtmlOverlayView : UserControl
         var navigation = strip.Navigation ? Visibility.Visible : Visibility.Collapsed;
         LeadingButtons.Visibility = navigation;
         _browser.Element.Visibility = navigation;
-        _explorer.Element.Visibility = navigation;
+        _explorer.Element.Visibility = strip.Explorer ? Visibility.Visible : Visibility.Collapsed;
         _back.Enabled = strip.CanGoBack;
         _forward.Enabled = strip.CanGoForward;
         IdentityText.Text = strip.Identity;
@@ -154,7 +159,8 @@ public sealed partial class HtmlOverlayView : UserControl
         FailureTitle.Foreground = text;
         FailureError.Foreground = text;
         foreach (var button in new[] { _back, _forward, _reload, _browser, _explorer, _hide, _close }) button.Tint = foreground;
-        if (ShownPage is { } id && _controls.TryGetValue(id, out var control)) control.DefaultBackgroundColor = background;
+        if (ShownPage is { } id && !_opaque.Contains(id) && _controls.TryGetValue(id, out var control))
+            control.DefaultBackgroundColor = background;
     }
 
     private void PlacePanel()

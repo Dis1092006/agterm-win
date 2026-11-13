@@ -8,14 +8,16 @@ namespace AgTerm.Xterm;
 /// page's own report, which is newer than the overlay copy in the snapshot.
 /// </summary>
 /// <param name="Shown">Whether the strip is drawn; a chromeless page has none.</param>
-/// <param name="Navigation">Whether back, forward, reload, browser and Explorer show; close always does.</param>
-/// <param name="Identity">The file shown, named by the app. The title is the page's own text and stays apart.</param>
-/// <param name="IdentityTip">The full path of the page shown.</param>
-public sealed record HtmlOverlayStrip(bool Shown, bool Navigation, bool CanGoBack, bool CanGoForward,
+/// <param name="Navigation">Whether back, forward, reload and browser show; close always does.</param>
+/// <param name="Explorer">Whether Show in Explorer shows: with navigation, on a file page only.</param>
+/// <param name="Identity">The file or web origin shown, named by the app. The title is the page's own text and stays apart.</param>
+/// <param name="IdentityTip">The full path or address of the page shown.</param>
+public sealed record HtmlOverlayStrip(bool Shown, bool Navigation, bool Explorer, bool CanGoBack, bool CanGoForward,
                                       string Identity, string IdentityTip, string? Title, bool Failed, string? Error)
 {
     public static HtmlOverlayStrip From(HtmlOverlay overlay, HtmlLoadState state, string? error, HtmlPageInfo? current) =>
-        new(!overlay.Chromeless, overlay.Navigation, current?.CanGoBack == true, current?.CanGoForward == true,
+        new(!overlay.Chromeless, overlay.Navigation, overlay.Navigation && overlay.Source is HtmlSource.File,
+            current?.CanGoBack == true, current?.CanGoForward == true,
             overlay.IdentityAt(current), overlay.PageAt(current), current?.Title,
             state == HtmlLoadState.Failed, error);
 

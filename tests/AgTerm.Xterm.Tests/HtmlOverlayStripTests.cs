@@ -44,6 +44,22 @@ public sealed class HtmlOverlayStripTests
         var strip = HtmlOverlayStrip.From(Overlay(), HtmlLoadState.Loaded, null, null);
 
         Assert.False(strip.Navigation);
+        Assert.False(strip.Explorer);
+    }
+
+    [Fact]
+    public void AWebPageNamesItsOriginAndHasNoExplorerButton()
+    {
+        var overlay = new HtmlOverlay(new HtmlSource.Url(HtmlSource.WebUrl("http://localhost:5173/app")!)) { Navigation = true };
+        var shown = new HtmlPageInfo("http://localhost:5173/docs", "Docs", CanGoBack: true, CanGoForward: false);
+
+        var strip = HtmlOverlayStrip.From(overlay, HtmlLoadState.Loaded, null, shown);
+
+        Assert.True(strip.Navigation);
+        Assert.False(strip.Explorer);
+        Assert.Equal("http://localhost:5173", strip.Identity);
+        Assert.Equal("http://localhost:5173/docs", strip.IdentityTip);
+        Assert.True(HtmlOverlayStrip.From(Overlay(navigation: true), HtmlLoadState.Loaded, null, null).Explorer);
     }
 
     [Fact]

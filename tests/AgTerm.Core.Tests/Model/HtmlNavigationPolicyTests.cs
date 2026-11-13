@@ -37,6 +37,38 @@ public class HtmlNavigationPolicyTests
         Assert.Equal(decision, HtmlNavigationPolicy.Decide(action, page));
     }
 
+    [Theory]
+    [InlineData("http://localhost:5173/about", HtmlNavigationTarget.MainFrame, false, HtmlNavigationDecision.Allow)]
+    [InlineData("http://LOCALHOST:5173/", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.Allow)]
+    [InlineData("http://localhost:5174/", HtmlNavigationTarget.MainFrame, false, HtmlNavigationDecision.Cancel)]
+    [InlineData("http://localhost:5174/", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.OpenExternal)]
+    [InlineData("https://localhost:5173/", HtmlNavigationTarget.MainFrame, false, HtmlNavigationDecision.Cancel)]
+    [InlineData("https://example.com/", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.OpenExternal)]
+    [InlineData("https://example.com/", HtmlNavigationTarget.MainFrame, false, HtmlNavigationDecision.Cancel)]
+    [InlineData("https://example.com/embed", HtmlNavigationTarget.Subframe, false, HtmlNavigationDecision.Allow)]
+    [InlineData("http://localhost:5173/", HtmlNavigationTarget.NewWindow, true, HtmlNavigationDecision.OpenExternal)]
+    [InlineData("http://localhost:5173/", HtmlNavigationTarget.NewWindow, false, HtmlNavigationDecision.Cancel)]
+    [InlineData("about:blank", HtmlNavigationTarget.MainFrame, false, HtmlNavigationDecision.Allow)]
+    [InlineData("about:srcdoc", HtmlNavigationTarget.Subframe, false, HtmlNavigationDecision.Allow)]
+    [InlineData("file:///C:/tmp/a/report.html", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.Cancel)]
+    [InlineData("file:///C:/tmp/a/report.html", HtmlNavigationTarget.Subframe, false, HtmlNavigationDecision.Cancel)]
+    [InlineData("mailto:a@example.com", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.Cancel)]
+    public void AUrlPageStaysOnItsOrigin(string url, HtmlNavigationTarget target, bool userActivated,
+                                         HtmlNavigationDecision decision)
+    {
+        var page = new HtmlOverlay(new HtmlSource.Url(new Uri("http://localhost:5173/")));
+        var action = new HtmlNavigationAction(new Uri(url), target, userActivated);
+        Assert.Equal(decision, HtmlNavigationPolicy.Decide(action, page));
+    }
+
+    [Fact]
+    public void AChromelessUrlPageKeepsItsFramesOnItsOrigin()
+    {
+        var page = new HtmlOverlay(new HtmlSource.Url(new Uri("http://localhost:5173/"))) { Chromeless = true };
+        var action = new HtmlNavigationAction(new Uri("https://example.com/embed"), HtmlNavigationTarget.Subframe, false);
+        Assert.Equal(HtmlNavigationDecision.Cancel, HtmlNavigationPolicy.Decide(action, page));
+    }
+
     [Fact]
     public void TheSchemeIsMatchedWhateverItsCase()
     {
