@@ -900,13 +900,15 @@ public sealed partial class ControlDispatcher
             case Command.SessionOverlayOpen:
             {
                 var html = request.Args?.Html;
+                var url = request.Args?.Url;
                 var command = request.Args?.Command ?? "";
-                if (html is null)
+                if (html is null && url is null)
                 {
                     if (request.Args?.Navigation == true) return Err(OverlayHtmlError.NavigationWithoutPage);
                     if (request.Args?.Javascript == true) return Err(OverlayHtmlError.JavascriptWithoutPage);
                     if (command.Length == 0) return Err("session.overlay.open requires a command");
                 }
+                if (html is not null && url is not null) return Err(OverlayHtmlError.HtmlAndUrl);
                 HtmlSource? page = null;
                 if (html is not null)
                 {
@@ -916,6 +918,14 @@ public sealed partial class ControlDispatcher
                     if (HtmlOverlay.GrantError(html, request.Args?.Cwd, home) is { } grantError)
                         return Err("session.overlay.open: " + grantError);
                     page = new HtmlSource.File(html, request.Args?.Cwd);
+                }
+                if (url is not null)
+                {
+                    if (command.Length > 0) return Err(OverlayHtmlError.CommandAndUrl);
+                    if (request.Args?.Wait == true) return Err(OverlayHtmlError.WaitWithUrl);
+                    if (request.Args?.Cwd is not null) return Err(OverlayHtmlError.CwdWithUrl);
+                    if (HtmlSource.WebUrl(url) is not { } address) return Err(OverlayHtmlError.InvalidUrl);
+                    page = new HtmlSource.Url(address);
                 }
                 if (request.Args?.Color is { } color && !WatermarkConfig.IsValidColorHex(color))
                     return Err($"invalid color: {color} (#rrggbb)");

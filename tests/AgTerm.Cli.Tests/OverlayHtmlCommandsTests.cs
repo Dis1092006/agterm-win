@@ -61,6 +61,19 @@ public class OverlayHtmlCommandsTests
     }
 
     [Fact]
+    public void OpenSendsAUrlAsTyped()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionOverlayOpen, Target = "s",
+                Args = new ControlArgs { Url = "HTTP://LocalHost:5173/app", Navigation = true, Javascript = true },
+            },
+            Request("session", "overlay", "open", "--url", "HTTP://LocalHost:5173/app", "--navigation", "--js",
+                    "--target", "s"));
+    }
+
+    [Fact]
     public void AProgramKeepsItsCwdAsTyped()
     {
         CanonicalJson.AssertEqual(
@@ -73,10 +86,14 @@ public class OverlayHtmlCommandsTests
     }
 
     [Theory]
-    [InlineData("provide exactly one of COMMAND or --html", "session", "overlay", "open")]
-    [InlineData("provide exactly one of COMMAND or --html", "session", "overlay", "open", "htop", "--html", "r.html")]
+    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open")]
+    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open", "htop", "--html", "r.html")]
+    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open", "htop", "--url", "http://a/")]
+    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open", "--html", "r.html", "--url", "http://a/")]
     [InlineData("a page cannot be combined with --wait or --block", "session", "overlay", "open", "--html", "r.html", "--wait")]
     [InlineData("a page cannot be combined with --wait or --block", "session", "overlay", "open", "--html", "r.html", "--block")]
+    [InlineData("a page cannot be combined with --wait or --block", "session", "overlay", "open", "--url", "http://a/", "--wait")]
+    [InlineData("--cwd cannot be combined with --url", "session", "overlay", "open", "--url", "http://a/", "--cwd", ".")]
     [InlineData("--navigation requires --html or --url", "session", "overlay", "open", "htop", "--navigation")]
     [InlineData("--js requires --html or --url", "session", "overlay", "open", "htop", "--js")]
     public void OpenRefusesAMismatchedPage(string message, params string[] argv) =>
@@ -128,7 +145,10 @@ public class OverlayHtmlCommandsTests
     {
         var open = Help("session", "overlay", "open");
         Assert.Contains("Show this local HTML file instead of running COMMAND.", open, StringComparison.Ordinal);
-        Assert.Contains("let the page run its own JavaScript (off by default)", open, StringComparison.Ordinal);
+        Assert.Contains("Show this http or https URL instead of running COMMAND; links to its own origin load in place. "
+                        + "localhost means the PC running agterm.", open, StringComparison.Ordinal);
+        Assert.Contains("showing a page with --html or --url.", open, StringComparison.Ordinal);
+        Assert.Contains("With --html or --url, let the page run its own JavaScript (off by default)", open, StringComparison.Ordinal);
         Assert.Contains("Without --cwd, the page has no file access.", open, StringComparison.Ordinal);
         Assert.Contains("--current the page shown now", Help("session", "overlay", "reload"), StringComparison.Ordinal);
         Assert.Contains("reveal its current file in Explorer", Help("session", "overlay", "navigate"), StringComparison.Ordinal);

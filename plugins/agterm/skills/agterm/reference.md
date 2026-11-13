@@ -147,7 +147,7 @@ to restore the exact size of a percent-only panel), `overlayWidth`/`overlayHeigh
 content size in points as last laid out, after `--width`/`--height` and their cap; omitted for a full
 overlay, a HUD, or a session not laid out yet), `hiddenOverlays` (the hidden overlay slots, `["session"]` on agterm-win;
 omitted when none is hidden; the read side of `session overlay hide`), `htmlOverlays` (the page in the
-overlay slot, see `session overlay open --html`; omitted when none), `hud` (the open HUD message
+overlay slot, see `session overlay open --html` and `--url`; omitted when none), `hud` (the open HUD message
 panel, see `session hud`; omitted when none),
 `ask` (`{id, pane}` of a pending terminal-style question on this session, see `ask`; omitted when none;
 a gui-style question is reported by the top-level `askPending` instead), `scratch` (scratch shown),
@@ -730,6 +730,21 @@ All are read-only projections of GUI state.
   `html file must be an absolute path`, `cwd must be an absolute path`,
   `cwd must not be / or the home directory`, `cwd must be a directory containing the html file` or
   `html file is outside cwd`.
+- `session overlay open --url URL [--navigation] [--js] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--target] [--window W]`
+  — show a web page in the overlay slot instead of running a program. Wire: `session.overlay.open` with
+  `url` (and `navigation`, `javascript`). `URL` must be an absolute `http` or `https` URL and is sent as
+  typed; `localhost` is the PC running agterm-win. The strip names the page's origin, and the page keeps
+  its own white background. A link to the same origin loads in place; a click on a link to another site
+  asks the user, then opens it in the default browser; a page's own redirect to another site fails the
+  load with `navigation blocked: <url>`. `--navigation` adds the back, forward, reload and open in browser
+  buttons (open in browser takes the address shown). It takes no `COMMAND`, `--wait`, `--block` or `--cwd`.
+  Everything else is as for `--html`: the result, the slot, `reload`, `navigate`, and `htmlOverlays` on
+  `tree`, where the page shows as `url` (as typed) instead of `file` and `cwd`. `navigate finder` fails
+  on a web page: it has no file to show. Errors: `session.overlay.open takes --html or --url, not both`,
+  `session.overlay.open takes a command or --url, not both`,
+  `session.overlay.open: --wait cannot be combined with --url`,
+  `session.overlay.open: --cwd cannot be combined with --url` and
+  `session.overlay.open: --url must be an absolute http or https URL`.
 - `session overlay reload [--current] [--pane left|right] [--target] [--window W]` — reload the page in the
   overlay slot: the file it opened with, or with `--current` the page shown now. Wire:
   `session.overlay.reload` (`current`). Returns the session id. Errors `no overlay` when the slot is empty

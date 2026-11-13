@@ -64,8 +64,8 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 
 ## 3. HTML overlays (WebView)
 
-- `session overlay open --html FILE | --url URL` in the session, floating and pane slots #659. Port: `--html` in the session slot, full and floating, in the core, the protocol, the CLI, the headless host and the live app. `--url` and pane slots: not done.
-- Flags: `--js`, `--navigation`, `--cwd DIR` (file access), `--chromeless` #678, `--persistent` (shared cookies, localStorage and IndexedDB) #689, `--browse` (navigation to other sites) #708, `--block` #672. Port: `--js`, `--navigation` and `--cwd` are taken with `--html`; the rest is not done.
+- `session overlay open --html FILE | --url URL` in the session, floating and pane slots #659. Port: `--html` and `--url` in the session slot, full and floating, in the core, the protocol, the CLI, the headless host and the live app. Pane slots: not done.
+- Flags: `--js`, `--navigation`, `--cwd DIR` (file access), `--chromeless` #678, `--persistent` (shared cookies, localStorage and IndexedDB) #689, `--browse` (navigation to other sites) #708, `--block` #672. Port: `--js` and `--navigation` are taken with `--html` and `--url`, `--cwd` with `--html`; the rest is not done.
 - `session.overlay.reload`, `session.overlay.navigate back|forward|browser|finder` #663, `session.overlay.submit`, `session overlay result --page ID`. Port: reload and navigate are taken; submit and `--page` are not done.
 - Bridge to the control API: `data-agterm="<cmd>"` without JS, `agterm.request(cmd, {target, args})` with `--js`. Commands without a target act on their own session, window or pane. Streaming commands are refused #672. Port: not done.
 - `window.close()` on a `--js` page closes the overlay with the result `dismissed` #704. Port: not done.

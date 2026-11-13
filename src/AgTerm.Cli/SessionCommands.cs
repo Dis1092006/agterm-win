@@ -1828,6 +1828,7 @@ internal static class SessionCommands
         {
             public string? Command { get; init; }
             public string? Html { get; init; }
+            public string? Url { get; init; }
             public bool Navigation { get; init; }
             public bool Javascript { get; init; }
             public string? Cwd { get; init; }
@@ -1848,14 +1849,16 @@ internal static class SessionCommands
             {
                 if (Block && Wait)
                     throw new CliValidationException("--block cannot be combined with --wait");
-                if ((Command is null) == (Html is null))
-                    throw new CliValidationException("provide exactly one of COMMAND or --html");
+                if (new[] { Command, Html, Url }.Count(value => value is not null) != 1)
+                    throw new CliValidationException("provide exactly one of COMMAND, --html or --url");
                 if (Command is null && (Wait || Block))
                     throw new CliValidationException("a page cannot be combined with --wait or --block");
                 if (Navigation && Command is not null)
                     throw new CliValidationException("--navigation requires --html or --url");
                 if (Javascript && Command is not null)
                     throw new CliValidationException("--js requires --html or --url");
+                if (Url is not null && Cwd is not null)
+                    throw new CliValidationException("--cwd cannot be combined with --url");
                 if (BackgroundColor is { } backgroundColor && !WatermarkConfig.IsValidColorHex(backgroundColor))
                     throw new CliValidationException("background-color must be a #rrggbb hex value");
                 ValidateSizePercent(SizePercent);
@@ -1878,6 +1881,7 @@ internal static class SessionCommands
                     Color = BackgroundColor,
                     Html = Html is null ? null : Path.GetFullPath(Html),
                     Navigation = Navigation ? true : null,
+                    Url = Url,
                     Javascript = Javascript ? true : null,
                 }),
             };
@@ -2167,23 +2171,28 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildOverlayOpen(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("open",
-            "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html.");
+            "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html or --url.");
         var command = new Argument<string?>("command")
         {
-            Description = "Program to run in the overlay (e.g. revdiff); omit with --html.",
+            Description = "Program to run in the overlay (e.g. revdiff); omit with --html or --url.",
             Arity = ArgumentArity.ZeroOrOne,
         };
         var html = new Option<string?>("--html")
         {
             Description = "Show this local HTML file instead of running COMMAND.",
         };
+        var url = new Option<string?>("--url")
+        {
+            Description = "Show this http or https URL instead of running COMMAND; links to its own origin load in place. "
+                + "localhost means the PC running agterm.",
+        };
         var navigation = new Option<bool>("--navigation")
         {
-            Description = "With --html, add back, forward, reload, open in browser, and Show in Explorer buttons.",
+            Description = "With --html or --url, add back, forward, reload and open in browser buttons, and Show in Explorer for a file.",
         };
         var javascript = new Option<bool>("--js")
         {
-            Description = "With --html, let the page run its own JavaScript (off by default).",
+            Description = "With --html or --url, let the page run its own JavaScript (off by default).",
         };
         var cwd = new Option<string?>("--cwd")
         {
@@ -2216,6 +2225,7 @@ internal static class SessionCommands
         var options = new ClientOptions.Binder();
         cmd.Arguments.Add(command);
         cmd.Options.Add(html);
+        cmd.Options.Add(url);
         cmd.Options.Add(navigation);
         cmd.Options.Add(javascript);
         cmd.Options.Add(cwd);
@@ -2232,6 +2242,7 @@ internal static class SessionCommands
         {
             Command = result.GetValue(command),
             Html = result.GetValue(html),
+            Url = result.GetValue(url),
             Navigation = result.GetValue(navigation),
             Javascript = result.GetValue(javascript),
             Cwd = result.GetValue(cwd),

@@ -6,8 +6,9 @@ using AgTerm.Core.Protocol;
 namespace AgTerm.Xterm;
 
 /// <summary>
-/// One page in an overlay slot and its web view (upstream HtmlOverlayPage, c63e5158, file sources
-/// only). It loads the page, keeps navigation inside the grant, and reports load state, address,
+/// One page in an overlay slot and its web view (upstream HtmlOverlayPage, c63e5158, file and web
+/// sources). It loads the page, keeps navigation inside the grant or the web page's origin, and
+/// reports load state, address,
 /// title and history into the store by the page's id. It keeps its own copy of what it reported,
 /// for the strip on the UI thread, which never reads the store.
 /// </summary>
@@ -76,20 +77,23 @@ public sealed class HtmlOverlayPage
     /// share no origin; .example never resolves on a network.</summary>
     public static string VirtualHost(Guid id) => $"agterm-page-{id:N}.example";
 
-    private HtmlSource.File Source => (HtmlSource.File)_overlay.Source;
+    private HtmlSource.File? FileSource => _overlay.Source as HtmlSource.File;
 
     private const string BlockedUrl = "about:blank#blocked";
 
     // a page without a grant is loaded from its text: it sits at about:blank and cannot navigate, so
     // the file it came from is both the current page and what the user is looking at
-    private bool TextLoaded => Source.GrantRoot is null;
+    private bool TextLoaded => FileSource is { GrantRoot: null };
+
+    // a web page is styled against its own look: it gets the theme's variables, never its colors
+    private bool Themed => FileSource is not null;
 
     /// <summary>Configures the view and loads the page.</summary>
     public async Task StartAsync()
     {
         View.Configure(_overlay.Javascript);
-        if (Source.GrantRoot is { } grant) View.MapVirtualHost(VirtualHost(Id), grant);
-        await View.SetDocumentScriptAsync(_theme.Script(themed: true));
+        if (FileSource?.GrantRoot is { } grant) View.MapVirtualHost(VirtualHost(Id), grant);
+        await View.SetDocumentScriptAsync(_theme.Script(Themed));
         if (IsClosed) return;
         LoadOriginal();
     }
@@ -119,11 +123,11 @@ public sealed class HtmlOverlayPage
                 View.GoForward();
                 break;
             case HtmlNavigation.Browser:
-                // a file page opens its own file, never one it navigated to
-                if (!_browser.Open(new Uri(Source.Path))) return OverlayHtmlError.NoBrowser;
+                if (!_browser.Open(BrowserUrl())) return OverlayHtmlError.NoBrowser;
                 break;
             case HtmlNavigation.Finder:
-                _browser.Reveal(PagePath());
+                if (FileSource is null) return OverlayHtmlError.FinderRequiresFile;
+                _browser.Reveal(PageAddress());
                 break;
         }
         return null;
@@ -137,14 +141,15 @@ public sealed class HtmlOverlayPage
         if (!onScreen) EndPrompt();
     }
 
-    /// <summary>Gives later loads a changed theme and reloads what the page shows. Nothing runs in the
-    /// live document: script the app runs there counts as the user's input.</summary>
+    /// <summary>Gives later loads a changed theme and reloads what a file page shows; a web page keeps
+    /// its state and takes the new variables at its next load. Nothing runs in the live document:
+    /// script the app runs there counts as the user's input.</summary>
     public async Task ApplyThemeAsync(HtmlOverlayTheme theme)
     {
         if (IsClosed || theme.Equals(_theme)) return;
         _theme = theme;
-        await View.SetDocumentScriptAsync(theme.Script(themed: true));
-        if (IsClosed) return;
+        await View.SetDocumentScriptAsync(theme.Script(Themed));
+        if (IsClosed || !Themed) return;
         ReloadShown();
     }
 
@@ -180,13 +185,20 @@ public sealed class HtmlOverlayPage
     private void LoadOriginal()
     {
         _loadPending = true;
-        var path = Source.Path;
+        if (_overlay.Source is HtmlSource.Url web)
+        {
+            _textLoadExpected = false;
+            View.Navigate(web.Address.AbsoluteUri);
+            return;
+        }
+        var source = FileSource!;
+        var path = source.Path;
         if (ReadFailure(path) is { } failure)
         {
             Fail(failure);
             return;
         }
-        if (Source.GrantRoot is { } grant)
+        if (source.GrantRoot is { } grant)
         {
             _textLoadExpected = false;
             View.Navigate(PageUrl(grant, path));
@@ -229,7 +241,7 @@ public sealed class HtmlOverlayPage
     /// <summary>The file a URL on this page's host names, or null for any other URL.</summary>
     private string? FileOnHost(Uri url)
     {
-        if (Source.GrantRoot is not { } grant || !url.IsAbsoluteUri || url.Scheme != Uri.UriSchemeHttps
+        if (FileSource?.GrantRoot is not { } grant || !url.IsAbsoluteUri || url.Scheme != Uri.UriSchemeHttps
             || !string.Equals(url.Host, VirtualHost(Id), StringComparison.OrdinalIgnoreCase))
             return null;
         var relative = Uri.UnescapeDataString(url.AbsolutePath.TrimStart('/'))
@@ -261,7 +273,7 @@ public sealed class HtmlOverlayPage
             && args.Url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
         {
             _textLoadExpected = false;
-            file = Source.Path;
+            file = FileSource?.Path;
             return HtmlNavigationDecision.Allow;
         }
         // a URL System.Uri cannot hold (a long data: page) is nothing the policy would allow
@@ -318,18 +330,33 @@ public sealed class HtmlOverlayPage
         SetLoadState(HtmlLoadState.Failed, message);
     }
 
-    private string PagePath()
+    // the page shown: a file by its path, a web page by the address the view reports
+    private string PageAddress()
     {
-        if (TextLoaded) return Source.Path;
-        if (View.Source is { } source && Uri.TryCreate(source, UriKind.Absolute, out var url) && FileOnHost(url) is { } file)
-            return file;
-        return Source.Path;
+        if (_overlay.Source is HtmlSource.Url web)
+        {
+            return Shown() is { } shown && shown.Scheme != "about" ? View.Source! : web.Address.OriginalString;
+        }
+        var path = FileSource!.Path;
+        if (TextLoaded) return path;
+        return Shown() is { } url && FileOnHost(url) is { } file ? file : path;
     }
+
+    private Uri? Shown() => View.Source is { } source && Uri.TryCreate(source, UriKind.Absolute, out var url) ? url : null;
+
+    // a file page opens its own file, never one it navigated to; a web page opens the web address shown
+    private Uri BrowserUrl() => _overlay.Source switch
+    {
+        HtmlSource.Url web => Shown() is { } url && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps)
+            ? url
+            : web.Address,
+        _ => new Uri(FileSource!.Path),
+    };
 
     private void ReportPage()
     {
         if (IsClosed || View.Source is not { } source) return;
-        var info = new HtmlPageInfo(PagePath(), Title(View.DocumentTitle, source), View.CanGoBack, View.CanGoForward);
+        var info = new HtmlPageInfo(PageAddress(),  Title(View.DocumentTitle, source), View.CanGoBack, View.CanGoForward);
         _store.SetPage(Id, info);
         Mirror(LoadState, LoadError, info);
     }

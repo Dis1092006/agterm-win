@@ -250,11 +250,16 @@ public static class PaneOverlayError
 }
 
 /// <summary>Error strings for a page in the overlay slot (upstream OverlayHtmlError, 11fe64eb).
-/// Only the file-page cases the port has taken are here.</summary>
+/// Only the file and URL page cases the port has taken are here.</summary>
 public static class OverlayHtmlError
 {
     public const string CommandAndHtml = "session.overlay.open takes a command or --html, not both";
     public const string WaitWithHtml = "session.overlay.open: --wait cannot be combined with --html";
+    public const string HtmlAndUrl = "session.overlay.open takes --html or --url, not both";
+    public const string CommandAndUrl = "session.overlay.open takes a command or --url, not both";
+    public const string WaitWithUrl = "session.overlay.open: --wait cannot be combined with --url";
+    public const string CwdWithUrl = "session.overlay.open: --cwd cannot be combined with --url";
+    public const string InvalidUrl = "session.overlay.open: --url must be an absolute http or https URL";
     public const string NavigationWithoutPage = "session.overlay.open: --navigation requires --html or --url";
     public const string JavascriptWithoutPage = "session.overlay.open: --js requires --html or --url";
     public const string NoOverlay = "no overlay";

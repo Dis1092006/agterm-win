@@ -387,6 +387,10 @@ public sealed record ControlArgs
     [JsonPropertyName("navigation")]
     public bool? Navigation { get; init; }
 
+    /// <summary>session.overlay.open: an absolute http or https URL to show instead of a command.</summary>
+    [JsonPropertyName("url")]
+    public string? Url { get; init; }
+
     /// <summary>session.overlay.open: let a page run its own JavaScript (the CLI flag is --js).</summary>
     [JsonPropertyName("javascript")]
     public bool? Javascript { get; init; }
