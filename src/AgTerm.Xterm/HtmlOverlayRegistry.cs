@@ -78,6 +78,13 @@ public sealed class HtmlOverlayRegistry
     public string? Navigate(Guid id, HtmlNavigation navigation) =>
         _pages.TryGetValue(id, out var page) ? page.Navigate(navigation) : Core.Protocol.OverlayHtmlError.NotRealized;
 
+    /// <summary>The strip's Copy Link; it has no control command, as upstream: the socket never writes
+    /// the clipboard, and a script reads the page from the tree.</summary>
+    public void CopyLink(Guid id)
+    {
+        if (_pages.TryGetValue(id, out var page)) page.CopyLink();
+    }
+
     /// <summary>Asks the store for a reload of the session's page, then reloads a page already shown
     /// at once, even with no host to push the new revision.</summary>
     public HtmlOverlayCommandFailure? Reload(AppStore store, Guid sessionId, HtmlReloadTarget target)

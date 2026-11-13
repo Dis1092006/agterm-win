@@ -45,10 +45,13 @@ public sealed class HtmlOverlayStripTests
 
         Assert.False(strip.Navigation);
         Assert.False(strip.Explorer);
+        Assert.False(strip.CopyLink);
+        var web = new HtmlOverlay(new HtmlSource.Url(HtmlSource.WebUrl("http://localhost:5173/app")!));
+        Assert.False(HtmlOverlayStrip.From(web, HtmlLoadState.Loaded, null, null).CopyLink);
     }
 
     [Fact]
-    public void AWebPageNamesItsOriginAndHasNoExplorerButton()
+    public void AWebPageNamesItsOriginAndOffersCopyLinkInsteadOfExplorer()
     {
         var overlay = new HtmlOverlay(new HtmlSource.Url(HtmlSource.WebUrl("http://localhost:5173/app")!)) { Navigation = true };
         var shown = new HtmlPageInfo("http://localhost:5173/docs", "Docs", CanGoBack: true, CanGoForward: false);
@@ -57,9 +60,12 @@ public sealed class HtmlOverlayStripTests
 
         Assert.True(strip.Navigation);
         Assert.False(strip.Explorer);
+        Assert.True(strip.CopyLink);
         Assert.Equal("http://localhost:5173", strip.Identity);
         Assert.Equal("http://localhost:5173/docs", strip.IdentityTip);
-        Assert.True(HtmlOverlayStrip.From(Overlay(navigation: true), HtmlLoadState.Loaded, null, null).Explorer);
+        var file = HtmlOverlayStrip.From(Overlay(navigation: true), HtmlLoadState.Loaded, null, null);
+        Assert.True(file.Explorer);
+        Assert.False(file.CopyLink);
     }
 
     [Fact]

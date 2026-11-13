@@ -1931,6 +1931,11 @@ public sealed partial class MainWindow : Window
             registry.Navigate(id, navigation);
             FocusActiveTerminal();
         };
+        HtmlOverlayPanel.CopyLinkRequested += id =>
+        {
+            registry.CopyLink(id);
+            FocusActiveTerminal();
+        };
         HtmlOverlayPanel.ReloadRequested += id =>
         {
             ObserveTaskFault(host.StoreCoordinator.MutateAsync(store =>

@@ -4,11 +4,13 @@ using AgTerm.Core.Model;
 using AgTerm.Xterm;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace AgTerm.App;
 
 /// <summary>IHtmlBrowser for the window (upstream SystemBrowser and SystemHtmlSharing): the prompt is a
-/// ContentDialog in the window's dialog queue, URLs go to the shell and files to Explorer.</summary>
+/// ContentDialog in the window's dialog queue, URLs go to the shell, files to Explorer and links to the
+/// clipboard.</summary>
 public sealed class AppHtmlBrowser(Func<XamlRoot?> root, ContentDialogCoordinator dialogs) : IHtmlBrowser
 {
     public Action? Confirm(Uri url, Action<bool> done)
@@ -71,4 +73,18 @@ public sealed class AppHtmlBrowser(Func<XamlRoot?> root, ContentDialogCoordinato
 
     public void Reveal(string path) =>
         Process.Start(WindowsExplorer.StartInfo(HudLinkPolicy.ExplorerSelectArguments(path)))?.Dispose();
+
+    public void Copy(string text)
+    {
+        try
+        {
+            var package = new DataPackage { RequestedOperation = DataPackageOperation.Copy };
+            package.SetText(text);
+            Clipboard.SetContent(package);
+        }
+        catch (Exception)
+        {
+            // a clipboard another process holds open copies nothing, as a terminal copy does
+        }
+    }
 }
