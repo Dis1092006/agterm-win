@@ -712,8 +712,9 @@ All are read-only projections of GUI state.
 - `session overlay open --html FILE [--cwd DIR] [--navigation] [--js] [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--target] [--window W]`
   — show a local HTML file in the overlay slot instead of running a program. Wire: `session.overlay.open`
   with `html` (and `navigation`, `javascript`). The page shows over the session, full or floating, with a
-  strip that names the file. It does not take the keyboard until the user clicks it, and while it has the
-  keyboard the app's shortcuts do not reach the app.
+  strip that names the file. It does not take the keyboard until the user clicks it. While it has the
+  keyboard, the app's built-in shortcuts, the Ctrl+Tab switcher and Ctrl+Shift+F1 still work; custom
+  keymap commands do not.
   agtermctl makes `FILE` and `--cwd` absolute against the caller's directory. `--cwd DIR` grants the page
   read access inside `DIR`; it must contain `FILE` and must not be a drive root or the user profile.
   Without `--cwd` the page has no file access. `--js` lets the page run its own JavaScript (off by
