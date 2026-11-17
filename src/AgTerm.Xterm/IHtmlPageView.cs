@@ -83,8 +83,8 @@ public interface IHtmlPageView
     event Action? UserInput;
 }
 
-/// <summary>Hands a page's URLs to the user's web browser and its files to Explorer (upstream
-/// HtmlBrowser and HtmlSharing).</summary>
+/// <summary>Hands a page's URLs to the user's web browser or the clipboard and its files to Explorer
+/// (upstream HtmlBrowser and HtmlSharing).</summary>
 public interface IHtmlBrowser
 {
     /// <summary>Puts a nonblocking prompt up, calls done once with the answer, and returns what
@@ -96,4 +96,7 @@ public interface IHtmlBrowser
 
     /// <summary>Shows the file in Explorer.</summary>
     void Reveal(string path);
+
+    /// <summary>Puts text on the clipboard.</summary>
+    void Copy(string text);
 }

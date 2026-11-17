@@ -736,8 +736,9 @@ All are read-only projections of GUI state.
   typed; `localhost` is the PC running agterm-win. The strip names the page's origin, and the page keeps
   its own white background. A link to the same origin loads in place; a click on a link to another site
   asks the user, then opens it in the default browser; a page's own redirect to another site fails the
-  load with `navigation blocked: <url>`. `--navigation` adds the back, forward, reload and open in browser
-  buttons (open in browser takes the address shown). It takes no `COMMAND`, `--wait`, `--block` or `--cwd`.
+  load with `navigation blocked: <url>`. `--navigation` adds the back, forward, reload, open in browser and
+  copy link buttons (both take the address shown; copy link is a button only, with no command: read the
+  address from `page` in `htmlOverlays` on `tree`). It takes no `COMMAND`, `--wait`, `--block` or `--cwd`.
   Everything else is as for `--html`: the result, the slot, `reload`, `navigate`, and `htmlOverlays` on
   `tree`, where the page shows as `url` (as typed) instead of `file` and `cwd`. `navigate finder` fails
   on a web page: it has no file to show. Errors: `session.overlay.open takes --html or --url, not both`,

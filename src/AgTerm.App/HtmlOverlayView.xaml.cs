@@ -19,7 +19,7 @@ public sealed partial class HtmlOverlayView : UserControl
 {
     private readonly Dictionary<Guid, WebView2> _controls = [];
     private readonly HashSet<Guid> _opaque = [];
-    private readonly StripButton _back, _forward, _reload, _browser, _explorer, _hide, _close;
+    private readonly StripButton _back, _forward, _reload, _browser, _explorer, _copy, _hide, _close;
     private int? _sizePercent;
     private OverlayPointSize _points;
     private double _chrome;
@@ -32,11 +32,12 @@ public sealed partial class HtmlOverlayView : UserControl
         _reload = new StripButton("\uE72C", "Reload", "htmlOverlay.reload", () => Raise(ReloadRequested));
         _browser = new StripButton("\uE774", "Open in Browser", "htmlOverlay.browser", () => Navigate(HtmlNavigation.Browser));
         _explorer = new StripButton("\uE838", "Show in Explorer", "htmlOverlay.finder", () => Navigate(HtmlNavigation.Finder));
+        _copy = new StripButton("\uE71B", "Copy Link", "htmlOverlay.copy", () => Raise(CopyLinkRequested));
         _hide = new StripButton("\uE738", "Hide", "htmlOverlay.hide", () => Raise(HideRequested));
         _hide.Element.Visibility = Visibility.Collapsed;
         _close = new StripButton("\uE711", "Close", "htmlOverlay.close", () => Raise(CloseRequested));
         foreach (var button in new[] { _back, _forward, _reload }) LeadingButtons.Children.Add(button.Element);
-        foreach (var button in new[] { _browser, _explorer, _hide, _close }) TrailingButtons.Children.Add(button.Element);
+        foreach (var button in new[] { _browser, _explorer, _copy, _hide, _close }) TrailingButtons.Children.Add(button.Element);
         // the buttons handle their own presses, so this sees only the strip's empty area and its label
         Strip.PointerPressed += (_, _) => StripPressed?.Invoke();
         SizeChanged += (_, _) => PlacePanel();
@@ -46,6 +47,8 @@ public sealed partial class HtmlOverlayView : UserControl
     public event Action<Guid, HtmlNavigation>? NavigateRequested;
 
     public event Action<Guid>? ReloadRequested;
+
+    public event Action<Guid>? CopyLinkRequested;
 
     public event Action<Guid>? HideRequested;
 
@@ -129,6 +132,7 @@ public sealed partial class HtmlOverlayView : UserControl
         LeadingButtons.Visibility = navigation;
         _browser.Element.Visibility = navigation;
         _explorer.Element.Visibility = strip.Explorer ? Visibility.Visible : Visibility.Collapsed;
+        _copy.Element.Visibility = strip.CopyLink ? Visibility.Visible : Visibility.Collapsed;
         _back.Enabled = strip.CanGoBack;
         _forward.Enabled = strip.CanGoForward;
         IdentityText.Text = strip.Identity;
@@ -158,7 +162,7 @@ public sealed partial class HtmlOverlayView : UserControl
         FailureIcon.Foreground = text;
         FailureTitle.Foreground = text;
         FailureError.Foreground = text;
-        foreach (var button in new[] { _back, _forward, _reload, _browser, _explorer, _hide, _close }) button.Tint = foreground;
+        foreach (var button in new[] { _back, _forward, _reload, _browser, _explorer, _copy, _hide, _close }) button.Tint = foreground;
         if (ShownPage is { } id && !_opaque.Contains(id) && _controls.TryGetValue(id, out var control))
             control.DefaultBackgroundColor = background;
     }

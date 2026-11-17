@@ -659,5 +659,31 @@ public sealed class HtmlOverlayPageTests : IDisposable
 
         Assert.Equal(OverlayHtmlError.FinderRequiresFile, _registry.Navigate(overlay.Id, HtmlNavigation.Finder));
         Assert.Empty(_browser.Revealed);
+        Assert.Empty(_browser.Copied);
+    }
+
+    [Fact]
+    public async Task CopyLinkCopiesTheWebAddressShownWithQueryAndFragment()
+    {
+        var (overlay, _, view) = await LoadedUrl();
+        view.Load(Site + "/b?q=1#part", Site + "/b?q=1#part", "B");
+        _registry.CopyLink(overlay.Id);
+        view.Commit("about:blank", null);
+        _registry.CopyLink(overlay.Id);
+
+        Assert.Equal([Site + "/b?q=1#part", Site + "/app"], _browser.Copied);
+        Assert.Empty(_browser.Opened);
+    }
+
+    [Fact]
+    public async Task CopyLinkCopiesTheAddressAsTypedWhileTheFirstLoadIsPending()
+    {
+        const string typed = "http://LocalHost:5173/report?q=1#section";
+        var overlay = OpenUrl(typed);
+        await Realize(overlay);
+
+        _registry.CopyLink(overlay.Id);
+
+        Assert.Equal([typed], _browser.Copied);
     }
 }

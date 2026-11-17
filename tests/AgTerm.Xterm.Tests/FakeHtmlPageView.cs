@@ -108,4 +108,8 @@ internal sealed class FakeHtmlBrowser : IHtmlBrowser
     }
 
     public void Reveal(string path) => Revealed.Add(path);
+
+    public List<string> Copied { get; } = [];
+
+    public void Copy(string text) => Copied.Add(text);
 }

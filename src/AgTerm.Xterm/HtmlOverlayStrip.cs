@@ -10,13 +10,15 @@ namespace AgTerm.Xterm;
 /// <param name="Shown">Whether the strip is drawn; a chromeless page has none.</param>
 /// <param name="Navigation">Whether back, forward, reload and browser show; close always does.</param>
 /// <param name="Explorer">Whether Show in Explorer shows: with navigation, on a file page only.</param>
+/// <param name="CopyLink">Whether Copy Link shows: with navigation, on a web page only.</param>
 /// <param name="Identity">The file or web origin shown, named by the app. The title is the page's own text and stays apart.</param>
 /// <param name="IdentityTip">The full path or address of the page shown.</param>
-public sealed record HtmlOverlayStrip(bool Shown, bool Navigation, bool Explorer, bool CanGoBack, bool CanGoForward,
+public sealed record HtmlOverlayStrip(bool Shown, bool Navigation, bool Explorer, bool CopyLink, bool CanGoBack, bool CanGoForward,
                                       string Identity, string IdentityTip, string? Title, bool Failed, string? Error)
 {
     public static HtmlOverlayStrip From(HtmlOverlay overlay, HtmlLoadState state, string? error, HtmlPageInfo? current) =>
         new(!overlay.Chromeless, overlay.Navigation, overlay.Navigation && overlay.Source is HtmlSource.File,
+            overlay.Navigation && overlay.Source is HtmlSource.Url,
             current?.CanGoBack == true, current?.CanGoForward == true,
             overlay.IdentityAt(current), overlay.PageAt(current), current?.Title,
             state == HtmlLoadState.Failed, error);

@@ -133,6 +133,14 @@ public sealed class HtmlOverlayPage
         return null;
     }
 
+    /// <summary>Puts the address Open in Browser takes on the clipboard: a web address as the view or
+    /// the user wrote it, a file as its file URL.</summary>
+    public void CopyLink()
+    {
+        var url = BrowserUrl();
+        _browser.Copy(url.IsFile ? url.AbsoluteUri : url.OriginalString);
+    }
+
     /// <summary>Takes whether the page is shown; a page out of sight asks nothing, and its pending
     /// prompt goes with it.</summary>
     public void SetOnScreen(bool onScreen)
