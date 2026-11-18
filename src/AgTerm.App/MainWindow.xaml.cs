@@ -986,6 +986,8 @@ public sealed partial class MainWindow : Window
             ObserveTaskFault(ApplyLiveThemeWithFailureAsync(change), "Theme apply failed");
         host.FlaggedLayoutChangeRequested += layout =>
             ObserveTaskFault(SaveFlaggedLayoutWithFailureAsync(layout), "Flagged layout save failed");
+        host.HtmlZoomChangeRequested += zoom =>
+            ObserveTaskFault(SaveHtmlZoomWithFailureAsync(zoom), "Html zoom save failed");
         host.AttentionRequested += () => ObserveTaskFault(
             ((App)Application.Current).RequestTaskbarAttentionAsync(_windowId), "Taskbar attention failed");
         host.NotificationRequested += notification => DispatcherQueue.TryEnqueue(() =>
@@ -1910,6 +1912,8 @@ public sealed partial class MainWindow : Window
         var registry = new HtmlOverlayRegistry(host.HtmlPages, new AppHtmlBrowser(() => Content?.XamlRoot, _contentDialogs),
             background => HtmlPageTheme.From(_rendererSettings, background));
         _htmlPages = registry;
+        // a page made before the next settings apply opens at the saved zoom
+        ObserveTaskFault(registry.SetZoomAsync(_settings.EffectiveHtmlOverlayZoom), "Html zoom apply failed");
         host.HtmlOverlayReleased += id => DispatcherQueue.TryEnqueue(() => ReleaseHtmlPage(id));
         // the reload event, not the snapshot, gives a page its new revision: a snapshot taken before
         // the reload can arrive after it and would load the old target again
@@ -3489,6 +3493,22 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task SaveHtmlZoomWithFailureAsync(double zoom)
+    {
+        try
+        {
+            await _applicationHost.Settings.UpdateCurrentAsync(
+                settings => settings with { HtmlOverlayZoom = zoom == 1 ? null : zoom }, SettingsApplyKind.Command);
+        }
+        catch (Exception ex)
+        {
+            QueueFailureNotice(new LiveFailureNotice(
+                "Page zoom could not be saved",
+                ex.GetBaseException().Message));
+            throw;
+        }
+    }
+
     private async Task ApplySystemAppearanceAsync()
     {
         await _themeApplyGate.WaitAsync();
@@ -3956,7 +3976,10 @@ public sealed partial class MainWindow : Window
         _rendererSettings = presentation.RendererSettings;
         PresentHtmlOverlay(_selection);
         if (_htmlPages is { } pages)
+        {
             await pages.RefreshThemesAsync();
+            await pages.SetZoomAsync(settings.EffectiveHtmlOverlayZoom);
+        }
     }
 
     /// <summary>Changes only what the window shows. The palette preview calls this directly, so the

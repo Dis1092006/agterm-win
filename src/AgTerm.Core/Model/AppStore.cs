@@ -309,7 +309,8 @@ public sealed partial class AppStore
                                    Func<string?>? dashboardFontMode = null,
                                    Func<string?>? pickPending = null,
                                    Func<string?>? askPending = null,
-                                   Func<Session, bool>? realized = null)
+                                   Func<Session, bool>? realized = null,
+                                   double? htmlZoom = null)
     {
         var activeId = SelectedSessionId;
         var activeWorkspaceId = activeId is { } id ? WorkspaceForSession(id)?.Id : null;
@@ -351,7 +352,7 @@ public sealed partial class AppStore
                     OverlaySizePercent = session.OverlayActive ? session.OverlaySizePercent : null,
             OverlayWidth = session.OverlayContentSize?.Width,
             OverlayHeight = session.OverlayContentSize?.Height,
-                    HtmlOverlays = HtmlOverlayNodes(session),
+                    HtmlOverlays = HtmlOverlayNodes(session, htmlZoom),
                     HiddenOverlays = session.HiddenOverlayNames is { Count: > 0 } hidden ? [.. hidden] : null,
                     Hud = HudNode(session),
                     Ask = session.AskPending is { } ask

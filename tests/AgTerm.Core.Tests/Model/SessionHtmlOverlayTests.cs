@@ -77,6 +77,64 @@ public class SessionHtmlOverlayTests
         Assert.False(TerminalZoomSurface.Primary.IsActive(session));
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(StatusPane.Left, true)]
+    [InlineData(StatusPane.Right, true)]
+    [InlineData(StatusPane.Scratch, false)]
+    public void ASessionWidePageHidesBothSplitTerminals(StatusPane? pane, bool hidden)
+    {
+        var (_, session) = WithPage();
+        session.HasSplit = true;
+        session.IsSplit = true;
+
+        Assert.Equal(hidden, session.HtmlHidesTerminal(pane));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ASessionWidePageHidesTheScratchOnlyWhileItIsShown(bool shown)
+    {
+        var (_, session) = WithPage();
+        session.ScratchActive = shown;
+
+        Assert.Equal(shown, session.HtmlHidesTerminal(StatusPane.Scratch));
+    }
+
+    [Fact]
+    public void NoPageHidesNoTerminal()
+    {
+        var store = AppStoreFixtures.MakeStore();
+        var session = store.AddSession(store.AddWorkspace("work").Id, "/tmp")!;
+        session.HasSplit = true;
+        session.ScratchActive = true;
+
+        Assert.All(new StatusPane?[] { null, StatusPane.Left, StatusPane.Right, StatusPane.Scratch },
+            pane => Assert.False(session.HtmlHidesTerminal(pane)));
+        Assert.Null(session.TopmostHtmlOverlay);
+    }
+
+    [Fact]
+    public void AHiddenPageHidesNoTerminalThoughItStillCoversTheSlot()
+    {
+        var (_, session) = WithPage(hidden: true);
+
+        Assert.False(session.HtmlHidesTerminal(null));
+        Assert.False(session.HtmlHidesTerminal(StatusPane.Left));
+        Assert.True(session.HtmlCovers(null));
+        Assert.Null(session.TopmostHtmlOverlay);
+    }
+
+    [Fact]
+    public void AShownPageIsTheTopmostPage()
+    {
+        var (_, session) = WithPage();
+        session.ScratchActive = true;
+
+        Assert.Same(session.HtmlOverlay, session.TopmostHtmlOverlay);
+    }
+
     [Fact]
     public void AHiddenPageLeavesThePaneTheZoomTarget()
     {

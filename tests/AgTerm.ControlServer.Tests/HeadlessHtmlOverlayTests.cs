@@ -270,4 +270,71 @@ public sealed class HeadlessHtmlOverlayTests : IDisposable
         Assert.Equal(OverlayHtmlError.NoOverlay, response.Error);
         Assert.Equal(0, asked);
     }
+
+    private async Task<double?> TreeZoom(string id) =>
+        Assert.Single((await Send(Command.Tree, null)).Result!.Tree!
+            .Workspaces.SelectMany(w => w.Sessions).Single(s => s.Id == id).HtmlOverlays!).Zoom;
+
+    // upstream #670: a pane under a page zooms the page, one zoom for every page, kept in the settings
+    [Fact]
+    public async Task FontOverAPageStepsThePageZoomAndAsksTheHostToSaveIt()
+    {
+        var requested = new List<double>();
+        _host.Actions.HtmlZoomChangeRequested += requested.Add;
+        var id = await SelectedSession();
+        await OpenPage(id);
+        Assert.Equal(1, await TreeZoom(id));
+
+        var bigger = await Send(Command.FontInc, id);
+        await Send(Command.FontInc, id, new ControlArgs { Pane = "left" });
+
+        Assert.True(bigger.Ok, bigger.Error);
+        Assert.Equal(id, bigger.Result!.Id);
+        Assert.Equal(1.25, await TreeZoom(id));
+        await Send(Command.FontDec, id);
+        await Send(Command.FontReset, id);
+        await Send(Command.FontReset, id);
+        Assert.Equal([1.15, 1.25, 1.15, 1], requested);
+        Assert.Equal(1, await TreeZoom(id));
+    }
+
+    [Fact]
+    public async Task FontUnderAPageKeepsThePaneErrors()
+    {
+        var id = await SelectedSession();
+        await OpenPage(id);
+
+        Assert.Equal("session has no split pane", (await Send(Command.FontInc, id, new ControlArgs { Pane = "right" })).Error);
+        Assert.Equal("session has no scratch terminal", (await Send(Command.FontInc, id, new ControlArgs { Pane = "scratch" })).Error);
+        Assert.Equal(1, await TreeZoom(id));
+    }
+
+    [Fact]
+    public async Task AHiddenPageLeavesFontToTheTerminal()
+    {
+        var requested = new List<double>();
+        _host.Actions.HtmlZoomChangeRequested += requested.Add;
+        var id = await SelectedSession();
+        await OpenPage(id);
+        await Send(Command.SessionOverlayHide, id);
+
+        await Send(Command.FontInc, id);
+
+        Assert.Empty(requested);
+        Assert.Equal(1, await TreeZoom(id));
+    }
+
+    [Fact]
+    public async Task TheSettingsSetThePageZoom()
+    {
+        var store = new SettingsStore(_stateDir);
+        store.Save(new AppSettings { HtmlOverlayZoom = 1.5 });
+        _host.RunLocked(() => _host.Actions.ApplySettings(store.ReadStrict(), _stateDir));
+        var id = await SelectedSession();
+        await OpenPage(id);
+
+        Assert.Equal(1.5, await TreeZoom(id));
+        await Send(Command.FontInc, id);
+        Assert.Equal(1.75, await TreeZoom(id));
+    }
 }

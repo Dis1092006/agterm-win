@@ -41,6 +41,10 @@ public interface IHtmlPageView
     /// the page's own scripts and whether or not page scripts are on.</summary>
     Task SetDocumentScriptAsync(string script);
 
+    /// <summary>Runs script in the document shown, as the dev tools do: with no user activation, and
+    /// whether or not page scripts are on.</summary>
+    Task EvaluateAsync(string script);
+
     void Navigate(string url);
 
     void NavigateToString(string html);

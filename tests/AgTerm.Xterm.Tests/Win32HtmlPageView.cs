@@ -79,6 +79,10 @@ public sealed class Win32HtmlPageView : IHtmlPageView
         _scriptId = await _core.AddScriptToExecuteOnDocumentCreatedAsync(script);
     }
 
+    public Task EvaluateAsync(string script) =>
+        _core.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
+            System.Text.Json.JsonSerializer.Serialize(new { expression = script, userGesture = false }));
+
     public void Navigate(string url) => _core.Navigate(url);
 
     public void NavigateToString(string html) => _core.NavigateToString(html);

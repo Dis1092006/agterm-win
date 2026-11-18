@@ -260,6 +260,7 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
         }
         Host.Actions.ThemeUpdateRequested += update => ThemeUpdateRequested?.Invoke(update);
         Host.Actions.FlaggedLayoutChangeRequested += layout => FlaggedLayoutChangeRequested?.Invoke(layout);
+        Host.Actions.HtmlZoomChangeRequested += zoom => HtmlZoomChangeRequested?.Invoke(zoom);
         Host.Actions.StatusReset = _notificationSettings.EffectiveStatusReset;
         Host.Actions.HtmlOverlayNavigator = NavigateHtmlOverlay;
         Host.Actions.CloseGraceUndoEnabled = _notificationSettings.CloseGraceUndoEnabled ?? true;
@@ -481,13 +482,34 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                         && store.SessionWithId(selectedId) is { SplitFocused: true, SplitSurface: not null }
                             ? "right"
                             : null;
-                    Host.Actions.Font(null, null, pane, action);
+                    Host.Actions.Font(null, null, pane, action, overPage: false);
                     return;
                 }
                 var surface = SurfaceWithPaneToken(store, sourcePaneId) ?? store.ActiveSession?.ActiveSurface;
+                if (PageOverChord(store, sourcePaneId))
+                {
+                    Host.Actions.StepHtmlZoom(action);
+                    return;
+                }
                 (surface as IHeadlessSurface)?.PerformBindingAction(action);
             },
             cancellationToken);
+
+    // upstream htmlPageOwnsKeys: a chord from the page, or with no terminal focused, goes to the
+    // selected session's shown page. The port's page takes keys only once clicked, so a chord from a
+    // terminal the page hides goes to the page too.
+    private static bool PageOverChord(AppStore store, string? paneToken)
+    {
+        foreach (var session in store.Workspaces.SelectMany(workspace => workspace.Sessions))
+        {
+            if (paneToken is null) break;
+            if (session.Surface?.PaneToken == paneToken) return session.HtmlHidesTerminal(null);
+            if (session.SplitSurface?.PaneToken == paneToken) return session.HtmlHidesTerminal(StatusPane.Right);
+            if (session.ScratchSurface?.PaneToken == paneToken) return session.HtmlHidesTerminal(StatusPane.Scratch);
+            if (session.OverlaySurface?.PaneToken == paneToken) return false;
+        }
+        return store.ActiveSession?.TopmostHtmlOverlay is not null;
+    }
 
     private static ITerminalSurface? SurfaceWithPaneToken(AppStore store, string? paneToken)
     {
@@ -764,6 +786,10 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
 
     /// <summary>A page took a reload, with a copy of its new value; raised under the store gate.</summary>
     public event Action<HtmlOverlay>? HtmlOverlayReloaded;
+
+    /// <summary>A font action stepped the page zoom (upstream #670), for the owner to save; raised
+    /// under the store gate.</summary>
+    public event Action<double>? HtmlZoomChangeRequested;
 
     public void SetNotificationSettings(AppSettings settings)
     {

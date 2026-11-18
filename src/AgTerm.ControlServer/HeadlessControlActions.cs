@@ -525,7 +525,8 @@ public sealed partial class HeadlessControlActions : IControlActions
                 dashboardFontMode: () => Dashboard.IsOpen ? FontModeWire(Dashboard.FontMode) : null,
                 pickPending: () => Pick.PendingId,
                 askPending: () => Pick.PendingAsk?.Id,
-                realized: session => session.Surface is IHeadlessSurface { IsRealized: true });
+                realized: session => session.Surface is IHeadlessSurface { IsRealized: true },
+                htmlZoom: HtmlZoom);
             return new ControlResponse { Ok = true, Result = new ControlResult { Tree = tree } };
         });
     }
@@ -1594,7 +1595,12 @@ public sealed partial class HeadlessControlActions : IControlActions
 
     // MARK: - surface I/O (font / type / copy / paste / selectall / search / text)
 
-    public ControlResponse Font(string? target, string? window, string? pane, string action)
+    public ControlResponse Font(string? target, string? window, string? pane, string action) =>
+        Font(target, window, pane, action, overPage: true);
+
+    /// <param name="overPage">Whether a pane a page hides zooms the page; the dashboard chord passes
+    /// false, since upstream gives the page no keys while the dashboard is open.</param>
+    public ControlResponse Font(string? target, string? window, string? pane, string action, bool overPage)
     {
         return ResolveSession(target, window, (store, id) =>
         {
@@ -1618,6 +1624,13 @@ public sealed partial class HeadlessControlActions : IControlActions
                     break;
                 default:
                     return Err($"invalid pane: {pane}");
+            }
+            // after the pane checks, so a missing pane keeps its error, and before the realized one,
+            // since a page zooms without its terminal (upstream #670)
+            if (overPage && session.HtmlHidesTerminal(pane == "scratch" ? StatusPane.Scratch : pane == "right" ? StatusPane.Right : null))
+            {
+                StepHtmlZoom(action);
+                return OkId(id);
             }
             var member = DashboardMemberFor(id, session, chosen);
             // upstream: a dashboard member carries dashboardFontOverride, and a font change on it
@@ -2183,6 +2196,19 @@ public sealed partial class HeadlessControlActions : IControlActions
     /// app persists it through the shared settings, and the fan-out sets it on every window.</summary>
     public event Action<FlaggedViewLayout>? FlaggedLayoutChangeRequested;
 
+    /// <summary>A font command over a page moved the page zoom every HTML overlay shares (fired under the
+    /// dispatch gate). The live app persists it through the shared settings and applies it to the pages.</summary>
+    public event Action<double>? HtmlZoomChangeRequested;
+
+    /// <summary>The page zoom of every HTML overlay, mirrored from the settings; the tree reports it.</summary>
+    public double HtmlZoom
+    {
+        get => Volatile.Read(ref _htmlZoom);
+        private set => Volatile.Write(ref _htmlZoom, value);
+    }
+
+    private double _htmlZoom = 1;
+
     /// <summary>The keymap.conf the actions load; ApplySettings can move it to a new config directory.</summary>
     public string KeymapPath => Volatile.Read(ref _keymap).Path;
 
@@ -2204,6 +2230,7 @@ public sealed partial class HeadlessControlActions : IControlActions
         _store.AttentionIncludesActive = settings.EffectiveAttentionIncludesActive;
         _store.AttentionNavigationAcrossWindows = settings.EffectiveAttentionNavigationAcrossWindows;
         _store.FlaggedLayout = settings.EffectiveFlaggedViewLayout;
+        HtmlZoom = settings.EffectiveHtmlOverlayZoom;
         Theme.Light = settings.Theme;
         Theme.Dark = settings.FollowSystemAppearance == true ? settings.DarkTheme : null;
         var keymap = new KeymapStore(settings.ConfigDirectory ?? defaultConfigDirectory);
@@ -2390,6 +2417,16 @@ public sealed partial class HeadlessControlActions : IControlActions
         };
         _store.SetSidebarMode(want); // no-op + no save when unchanged (idempotent)
         return Ok();
+    }
+
+    /// <summary>Moves the page zoom every HTML overlay shares by a font binding action and asks the host
+    /// to save it; an action that leaves the zoom where it is asks nothing. Call under the dispatch gate.</summary>
+    public void StepHtmlZoom(string action)
+    {
+        if (AgTerm.Core.Model.HtmlZoom.Applying(action, HtmlZoom) is not { } zoom || zoom == HtmlZoom)
+            return;
+        HtmlZoom = zoom;
+        HtmlZoomChangeRequested?.Invoke(zoom);
     }
 
     /// <summary>sidebar.flagged-layout (upstream 902cd853): set or toggle the app-wide flagged view layout and

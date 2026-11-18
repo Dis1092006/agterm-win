@@ -303,6 +303,24 @@ public class AppStoreHtmlOverlayTests : IDisposable
     }
 
     [Fact]
+    public void TheTreeOmitsTheZoomWhenTheHostGivesNone()
+    {
+        OpenPage();
+
+        Assert.Null(Assert.Single(Node().HtmlOverlays!).Zoom);
+    }
+
+    [Fact]
+    public void TheTreeReportsTheZoomTheHostGives()
+    {
+        var page = OpenPage();
+
+        var json = ControlJson.Serialize(_store.ControlTree(htmlZoom: 1.25));
+
+        Assert.Contains($"\"browse\":false,\"zoom\":1.25,\"id\":\"{page.Id.ToString("D").ToUpperInvariant()}\"", json);
+    }
+
+    [Fact]
     public void TheTreeOmitsHtmlOverlaysWithoutAPage()
     {
         Assert.True(_store.OpenOverlay(_session.Id, "htop"));

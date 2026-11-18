@@ -149,6 +149,70 @@ public sealed class HtmlOverlayPageLiveTests : IAsyncLifetime
             "getComputedStyle(document.documentElement).colorScheme"));
     }
 
+    private const string RootZoom = "getComputedStyle(document.documentElement).zoom";
+
+    [Fact]
+    public async Task APageOpensAtThePageZoomWithItsScriptOff()
+    {
+        await _webView.RunAsync(_ => _registry.SetZoomAsync(1.25));
+        var (_, view) = await OpenAsync("a.html");
+
+        Assert.Equal("\"1.25\"", await EvalAsync(view, RootZoom));
+    }
+
+    [Fact]
+    public async Task AZoomChangeReachesTheShownPageAndKeepsItsState()
+    {
+        var (_, view) = await OpenAsync("a.html", javascript: true);
+        Assert.Equal("\"1\"", await EvalAsync(view, RootZoom));
+        await EvalAsync(view, "window.mark = 7");
+
+        await _webView.RunAsync(_ => _registry.SetZoomAsync(1.5));
+        Assert.Equal("\"1.5\"", await EvalAsync(view, RootZoom));
+        Assert.Equal("7", await EvalAsync(view, "window.mark"));
+        Assert.Equal(1, _completions);
+
+        await _webView.RunAsync(_ => _registry.SetZoomAsync(1));
+        Assert.Equal("\"1\"", await EvalAsync(view, RootZoom));
+    }
+
+    [Fact]
+    public async Task TheZoomGivesThePageNoUserActivation()
+    {
+        var (_, view) = await OpenAsync("a.html", javascript: true);
+
+        await _webView.RunAsync(_ => _registry.SetZoomAsync(2));
+
+        // ExecuteScriptAsync itself activates the page, so the flag is read through the protocol first
+        Assert.Equal("false", await _webView.RunAsync(async _ =>
+        {
+            var reply = await view.Core.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
+                "{\"expression\":\"navigator.userActivation.hasBeenActive\",\"returnByValue\":true}");
+            return System.Text.Json.JsonDocument.Parse(reply).RootElement
+                         .GetProperty("result").GetProperty("value").GetRawText();
+        }));
+        Assert.Equal("\"2\"", await EvalAsync(view, RootZoom));
+    }
+
+    [Fact]
+    public async Task AFrameInsideThePageIsNotZoomedTwice()
+    {
+        Write("framed.html", "<title>F</title><iframe id=\"f\" src=\"b.html\"></iframe>");
+        await _webView.RunAsync(_ => _registry.SetZoomAsync(1.25));
+        var (_, view) = await OpenAsync("framed.html");
+
+        var frame = "document.getElementById('f').contentDocument";
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (await EvalAsync(view, $"{frame}?.querySelector('p')?.textContent ?? null") != "\"b\"")
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("frame load");
+            await Task.Delay(20);
+        }
+
+        Assert.Equal("\"1.25\"", await EvalAsync(view, RootZoom));
+        Assert.Equal("\"1\"", await EvalAsync(view, $"getComputedStyle({frame}.documentElement).zoom"));
+    }
+
     [Fact]
     public async Task TheGrantServesItsFolderAndNothingAbove()
     {

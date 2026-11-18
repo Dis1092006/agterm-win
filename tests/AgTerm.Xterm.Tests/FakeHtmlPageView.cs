@@ -36,6 +36,14 @@ internal sealed class FakeHtmlPageView : IHtmlPageView
         return Task.CompletedTask;
     }
 
+    public List<string> Evaluated { get; } = [];
+
+    public Task EvaluateAsync(string script)
+    {
+        Evaluated.Add(script);
+        return Task.CompletedTask;
+    }
+
     public void Navigate(string url) => Calls.Add("navigate " + url);
 
     public void NavigateToString(string html) => Calls.Add("text " + html);
