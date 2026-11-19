@@ -300,6 +300,15 @@ public sealed class Session
     /// <summary>Whether the slot pane scopes holds a page. The port has only the session-wide slot.</summary>
     public bool HtmlCovers(OverlayPane? pane) => pane is null && HtmlOverlayActive;
 
+    /// <summary>Whether a page covers the terminal a --pane font command addresses: the session-wide
+    /// page covers both split panes and a shown scratch. The port has no pane pages.</summary>
+    public bool HtmlHidesTerminal(StatusPane? pane) =>
+        pane == StatusPane.Scratch ? HtmlOverlayVisible && ScratchActive : HtmlOverlayVisible;
+
+    /// <summary>The page that takes the keyboard when focus returns to this session; null when a
+    /// terminal is on top. The port has only the session-wide page, which sits above everything.</summary>
+    public HtmlOverlay? TopmostHtmlOverlay => HtmlOverlayVisible ? HtmlOverlay : null;
+
     /// <summary>The tree's hiddenOverlays: the hidden slots by name.</summary>
     public IReadOnlyList<string> HiddenOverlayNames =>
         OverlayActive && OverlayHidden ? ["session"] : [];

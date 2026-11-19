@@ -508,6 +508,69 @@ public sealed class HtmlOverlayPageTests : IDisposable
         Assert.Equal(_theme.Script(themed: true), view.DocumentScripts[^1]);
     }
 
+    // upstream #670: one page zoom for every page, kept by the registry
+    [Fact]
+    public async Task ANewPageOpensAtTheRegistryZoom()
+    {
+        await _registry.SetZoomAsync(1.25);
+        var (_, view) = await Realize(Open(grant: _pages));
+
+        Assert.Equal(1.25, _registry.Zoom);
+        Assert.Equal([_theme.Script(themed: true) + "\n" + HtmlZoom.Script(1.25)], view.DocumentScripts);
+        Assert.Empty(view.Evaluated);
+    }
+
+    [Fact]
+    public async Task AZoomChangeReachesALivePageWithoutAReload()
+    {
+        var (_, _, view) = await Loaded();
+        view.Calls.Clear();
+
+        await _registry.SetZoomAsync(1.5);
+        Assert.Equal(_theme.Script(themed: true) + "\n" + HtmlZoom.Script(1.5), view.DocumentScripts[^1]);
+        Assert.Equal([HtmlZoom.Script(1.5)], view.Evaluated);
+
+        await _registry.SetZoomAsync(1);
+        Assert.Equal(_theme.Script(themed: true), view.DocumentScripts[^1]);
+        Assert.Equal([HtmlZoom.Script(1.5), HtmlZoom.Script(1)], view.Evaluated);
+        Assert.Empty(view.Calls);
+    }
+
+    [Fact]
+    public async Task AnUnchangedZoomRunsNothing()
+    {
+        var (_, _, view) = await Loaded();
+
+        await _registry.SetZoomAsync(1);
+
+        Assert.Single(view.DocumentScripts);
+        Assert.Empty(view.Evaluated);
+    }
+
+    [Fact]
+    public async Task AThemeChangeKeepsTheZoom()
+    {
+        var (_, page, view) = await Loaded();
+        await _registry.SetZoomAsync(1.25);
+
+        var changed = new HtmlOverlayTheme("#000000", "#102030", dark: true);
+        await page.ApplyThemeAsync(changed);
+
+        Assert.Equal(changed.Script(themed: true) + "\n" + HtmlZoom.Script(1.25), view.DocumentScripts[^1]);
+    }
+
+    [Fact]
+    public async Task AClosedPageIsNotZoomed()
+    {
+        var (_, page, view) = await Loaded();
+        page.Close();
+
+        await page.ApplyZoomAsync(2);
+
+        Assert.Single(view.DocumentScripts);
+        Assert.Empty(view.Evaluated);
+    }
+
     [Fact]
     public async Task AClosedPageReportsNothingMore()
     {

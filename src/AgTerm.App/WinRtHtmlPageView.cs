@@ -96,6 +96,11 @@ public sealed class WinRtHtmlPageView : IHtmlPageView
         _scriptId = await _core.AddScriptToExecuteOnDocumentCreatedAsync(script);
     }
 
+    // ExecuteScriptAsync would count as a user gesture; the protocol call gives none
+    public Task EvaluateAsync(string script) =>
+        _core.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
+            System.Text.Json.JsonSerializer.Serialize(new { expression = script, userGesture = false })).AsTask();
+
     public void Navigate(string url) => _core.Navigate(url);
 
     public void NavigateToString(string html) => _core.NavigateToString(html);

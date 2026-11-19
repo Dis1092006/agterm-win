@@ -135,6 +135,119 @@ public sealed class LiveFontChordTests
         }
     }
 
+    // upstream #670: a chord over a page zooms the page. The port's page takes keys only once
+    // clicked, so a chord from a terminal the page hides zooms it too.
+    [Fact]
+    public async Task Chord_over_a_shown_page_steps_the_page_zoom()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-font-chord-page-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            var panes = Attach(host, scratchActive: false, overlayActive: false);
+            var zooms = new List<double>();
+            host.HtmlZoomChangeRequested += zooms.Add;
+            OpenPage(host);
+
+            await host.PerformFontActionAsync("increase_font_size:1");
+            await host.PerformFontActionAsync("increase_font_size:1", sourcePaneId: "main");
+            await host.PerformFontActionAsync("decrease_font_size:1", sourcePaneId: "split");
+
+            Assert.Equal([1.15, 1.25, 1.15], zooms);
+            Assert.Empty(panes.Main.BindingActions);
+            Assert.Empty(panes.Split.BindingActions);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    // the session-wide page covers the scratch only while the scratch is shown
+    [Fact]
+    public async Task Chord_from_a_hidden_scratch_under_a_page_changes_the_scratch()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-font-chord-page-scratch-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            var panes = Attach(host, scratchActive: false, overlayActive: false);
+            var zooms = new List<double>();
+            host.HtmlZoomChangeRequested += zooms.Add;
+            OpenPage(host);
+
+            await host.PerformFontActionAsync("increase_font_size:1", sourcePaneId: "scratch");
+
+            Assert.Equal(["increase_font_size:1"], panes.Scratch.BindingActions);
+            Assert.Empty(zooms);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task Chord_with_the_page_hidden_changes_the_terminal()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-font-chord-page-hidden-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            var panes = Attach(host, scratchActive: false, overlayActive: false);
+            var zooms = new List<double>();
+            host.HtmlZoomChangeRequested += zooms.Add;
+            OpenPage(host);
+            host.Host.RunLocked(() => host.Host.Store.ActiveSession!.OverlayHidden = true);
+
+            await host.PerformFontActionAsync("increase_font_size:1");
+
+            Assert.Equal(["increase_font_size:1"], panes.Main.BindingActions);
+            Assert.Empty(zooms);
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    // upstream resizeFont gives the page no keys while the dashboard is open: the chord resizes the tile
+    [Fact]
+    public async Task Chord_on_the_dashboard_resizes_the_tile_under_a_page()
+    {
+        var stateDir = Directory.CreateTempSubdirectory("agterm-live-font-chord-page-dashboard-").FullName;
+        try
+        {
+            using var host = CreateHost(stateDir);
+            Attach(host, scratchActive: false, overlayActive: false);
+            var zooms = new List<double>();
+            host.HtmlZoomChangeRequested += zooms.Add;
+            OpenPage(host);
+            Guid id = default;
+            host.Host.RunLocked(() =>
+            {
+                id = host.Host.Store.ActiveSession!.Id;
+                var open = host.Host.Actions.SetDashboard([id.ToString("D")], window: null, close: false,
+                    new DashboardFontMode.Fixed(11), mru: false);
+                Assert.True(open.Ok, open.Error);
+            });
+
+            await host.PerformFontActionAsync("increase_font_size:1");
+
+            Assert.Empty(zooms);
+            host.Host.RunLocked(() => Assert.Equal(12,
+                host.Host.Actions.Dashboard.CellFontSizes[new DashboardMember(id, TerminalZoomSurface.Primary)]));
+        }
+        finally
+        {
+            try { Directory.Delete(stateDir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    private static void OpenPage(LiveControlHost host) => host.Host.RunLocked(() =>
+        Assert.Null(host.Host.Store.OpenHtmlOverlay(host.Host.Store.ActiveSession!.Id,
+            new HtmlOverlay(new HtmlSource.File(@"C:\pages\a.html", null)), sizePercent: null)));
+
     private sealed record Panes(FakeSurface Main, FakeSurface Split, FakeSurface Scratch, FakeSurface Overlay);
 
     private static Panes Attach(LiveControlHost host, bool scratchActive, bool overlayActive)

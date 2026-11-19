@@ -35,13 +35,16 @@ public sealed class HtmlOverlayPage
     // the file the last allowed main-frame navigation went to, to name a missing file when it fails
     private string? _navigatedFile;
 
+    private double _zoom;
+
     public HtmlOverlayPage(HtmlOverlay overlay, IHtmlPageStore store, IHtmlPageView view, IHtmlBrowser browser,
-                           HtmlOverlayTheme theme, string? backgroundColor)
+                           HtmlOverlayTheme theme, string? backgroundColor, double zoom = 1)
     {
         _overlay = overlay;
         _store = store;
         _browser = browser;
         _theme = theme;
+        _zoom = zoom;
         _appliedRevision = overlay.ReloadRevision;
         Id = overlay.Id;
         View = view;
@@ -93,10 +96,14 @@ public sealed class HtmlOverlayPage
     {
         View.Configure(_overlay.Javascript);
         if (FileSource?.GrantRoot is { } grant) View.MapVirtualHost(VirtualHost(Id), grant);
-        await View.SetDocumentScriptAsync(_theme.Script(Themed));
+        await View.SetDocumentScriptAsync(DocumentScript());
         if (IsClosed) return;
         LoadOriginal();
     }
+
+    // the theme, then the zoom, which at actual size adds nothing
+    private string DocumentScript() =>
+        _zoom == 1 ? _theme.Script(Themed) : _theme.Script(Themed) + "\n" + HtmlZoom.Script(_zoom);
 
     /// <summary>Takes the model's latest value and reloads when its revision moved.</summary>
     public void Apply(HtmlOverlay overlay)
@@ -156,9 +163,20 @@ public sealed class HtmlOverlayPage
     {
         if (IsClosed || theme.Equals(_theme)) return;
         _theme = theme;
-        await View.SetDocumentScriptAsync(theme.Script(Themed));
+        await View.SetDocumentScriptAsync(DocumentScript());
         if (IsClosed || !Themed) return;
         ReloadShown();
+    }
+
+    /// <summary>Gives later loads the page zoom and sets it on the document shown, keeping its state.
+    /// The script runs through the dev tools protocol, which gives the page no user activation.</summary>
+    public async Task ApplyZoomAsync(double zoom)
+    {
+        if (IsClosed || zoom == _zoom) return;
+        _zoom = zoom;
+        await View.SetDocumentScriptAsync(DocumentScript());
+        if (IsClosed) return;
+        await View.EvaluateAsync(HtmlZoom.Script(zoom));
     }
 
     public void Close()

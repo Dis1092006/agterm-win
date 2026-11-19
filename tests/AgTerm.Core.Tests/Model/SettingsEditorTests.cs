@@ -16,8 +16,9 @@ public sealed class SettingsEditorTests : IDisposable
     {
         Assert.Equal(["General", "Appearance", "Interface", "Notifications", "Agent Status", "Key Mapping"],
             SettingsEditor.Tabs);
-        // shownInterfaceElements has no row of its own: the hiddenInterfaceElements control edits both lists
-        var deferred = new[] { "compactToolbar", "shownInterfaceElements" };
+        // shownInterfaceElements has no row of its own: the hiddenInterfaceElements control edits both lists;
+        // htmlOverlayZoom has no row upstream either: the font keys and commands over a page step it
+        var deferred = new[] { "compactToolbar", "shownInterfaceElements", "htmlOverlayZoom" };
         var fields = typeof(AppSettings).GetProperties()
             .Select(property => property.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonPropertyNameAttribute), false)
                 .OfType<System.Text.Json.Serialization.JsonPropertyNameAttribute>().SingleOrDefault()?.Name)

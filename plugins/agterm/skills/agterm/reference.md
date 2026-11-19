@@ -723,7 +723,7 @@ All are read-only projections of GUI state.
   own id. A page holds the slot like a program: `overlay open` over it fails with `overlay already open`,
   `overlay close` releases it, `overlay hide` hides it. It shows on `tree` as `htmlOverlays` (`file`,
   `cwd`, `state` = `loading`|`loaded`|`failed`, `error`, `title`, `page`, `canGoBack`/`canGoForward`,
-  `navigation`, `javascript`, `hidden`, `id`). Errors: `session.overlay.open takes a command or --html, not both`,
+  `navigation`, `javascript`, `hidden`, `id`, `zoom` = the page zoom, see `font`). Errors: `session.overlay.open takes a command or --html, not both`,
   `session.overlay.open: --wait cannot be combined with --html`,
   `session.overlay.open: --navigation requires --html or --url`,
   `session.overlay.open: --js requires --html or --url`, and `session.overlay.open: ` followed by
@@ -1331,6 +1331,12 @@ resulting size back from
 `tree` — `fontSize` (main), `splitFontSize`, `scratchFontSize`, each in points and omitted when that pane
 isn't realized.
 
+A pane under an HTML overlay (the session-wide one covers both split panes and a shown scratch) zooms
+the page instead of the terminal, from the command and from the chords: one page zoom shared by every
+HTML overlay, kept across launches as the setting `htmlOverlayZoom`, read back as `htmlOverlays[].zoom`
+(1 = actual size, 0.5 to 3). A hidden page leaves the terminal font to the chords and the command. A chord
+on the dashboard changes the tile font.
+
 ## keymap
 
 `agtermctl keymap reload` — re-read and apply `keymap.conf`; returns `result.count` = the number of
@@ -1513,8 +1519,10 @@ Fields this reference names: `fontFamily`, `fontSize`, `theme`,
 `darkTheme`, `followSystemAppearance`, `backgroundOpacity`, `backgroundBlur`, `notificationsEnabled`,
 `notificationBadgeEnabled`, `notificationSoundName`, `blockedStatusSoundName`, `dockBounce`, the
 `active`/`blocked`/`completed` `StatusColorHex` and `StatusShape` fields, `configDirectory`,
-`restoreRunningCommand`, `resumeAgentSessions`, `newSessionDirectory`, `closeGraceUndoEnabled` and `statusReset`. An omitted field keeps its
+`restoreRunningCommand`, `resumeAgentSessions`, `newSessionDirectory`, `closeGraceUndoEnabled`, `statusReset` and `htmlOverlayZoom`. An omitted field keeps its
 default.
+
+`htmlOverlayZoom` is the page zoom of every HTML overlay (0.5 to 3; absent, `null` or out-of-range values read as 1 or the nearest bound). The font chords and `font` over a page step it and save it, and `config reload` applies an edited value to the open pages.
 
 `statusReset` (`firstKey` | `enter` | `never`, default `firstKey`; absent or unknown reads as `firstKey`) decides when a key typed in the pane that owns a `blocked` or `completed` status clears it: on the first key, on Enter only (a `blocked` status also clears on an interrupt), or never. `session type` follows it too. An `active` status clears only on an interrupt in every mode. Settings > Agent Status has the same choice, and `config reload` applies it.
 

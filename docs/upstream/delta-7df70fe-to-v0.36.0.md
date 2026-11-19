@@ -69,10 +69,10 @@ From v0.17.0 the pin already has: arrows in chords (#291), status glyph shapes (
 - `session.overlay.reload`, `session.overlay.navigate back|forward|browser|finder` #663, `session.overlay.submit`, `session overlay result --page ID`. Port: reload and navigate are taken, and so is the strip's Copy Link from #663; submit and `--page` are not done.
 - Bridge to the control API: `data-agterm="<cmd>"` without JS, `agterm.request(cmd, {target, args})` with `--js`. Commands without a target act on their own session, window or pane. Streaming commands are refused #672. Port: not done.
 - `window.close()` on a `--js` page closes the overlay with the result `dismissed` #704. Port: not done.
-- Page zoom with Cmd+/Cmd-/Cmd+0 and `font inc|dec|reset`, one value for the app: the setting `htmlOverlayZoom` #670. Port: not done.
+- Page zoom with Cmd+/Cmd-/Cmd+0 and `font inc|dec|reset`, one value for the app: the setting `htmlOverlayZoom` #670. Port: done, with Alt++/Alt+-/Alt+0.
 - `browser.clear`, `browser.links [browser|overlay]`, the setting `linkOpenMode`: a link from the terminal opens in the browser or in an overlay #708. Port: not done.
 - The page gets the terminal theme through CSS variables. Port: not done.
-- In `tree`: `htmlOverlays[]` with `id`, `page`, `zoom`, `persistent`, `browse`. In the reply: `pageID`, `pageOutcome`. Port: `htmlOverlays[]` without `zoom` and `pageID` are taken; `pageOutcome` is not done.
+- In `tree`: `htmlOverlays[]` with `id`, `page`, `zoom`, `persistent`, `browse`. In the reply: `pageID`, `pageOutcome`. Port: `htmlOverlays[]` with `zoom`, and `pageID`, are taken; `persistent`, `browse` and `pageOutcome` are not done.
 
 **Windows:** WebView2 is already in `AgTerm.Xterm`.
 

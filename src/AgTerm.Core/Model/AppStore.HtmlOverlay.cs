@@ -74,8 +74,9 @@ public sealed partial class AppStore
     /// <summary>Closes page id wherever its slot now is.</summary>
     public bool CloseHtmlOverlay(Guid id) => HtmlOverlaySlot(id) is { } session && CloseOverlay(session.Id);
 
-    /// <summary>The tree's htmlOverlays for session: its page as the web view last reported it.</summary>
-    private static ControlHtmlOverlayNode[]? HtmlOverlayNodes(Session session)
+    /// <summary>The tree's htmlOverlays for session: its page as the web view last reported it, with
+    /// the page zoom the host gives.</summary>
+    private static ControlHtmlOverlayNode[]? HtmlOverlayNodes(Session session, double? zoom)
     {
         if (!session.HtmlOverlayActive || session.HtmlOverlay is not { } page) return null;
         string? file = null, cwd = null, url = null;
@@ -106,6 +107,7 @@ public sealed partial class AppStore
                 Chromeless = page.Chromeless,
                 Persistent = page.Persistent,
                 Browse = page.Browse,
+                Zoom = zoom,
                 Id = page.Id.ToString("D").ToUpperInvariant(),
                 Hidden = session.OverlayHidden ? true : null,
             },

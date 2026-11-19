@@ -44,7 +44,8 @@ public sealed class HtmlOverlayRegistry
         try
         {
             var view = await createView();
-            var page = new HtmlOverlayPage(overlay, _pageStore, view, _browser, _theme(backgroundColor), backgroundColor);
+            var page = new HtmlOverlayPage(overlay, _pageStore, view, _browser, _theme(backgroundColor), backgroundColor,
+                                           Zoom);
             if (!_realizing.TryGetValue(overlay.Id, out var current) || current != done.Task)
             {
                 page.Close();
@@ -97,6 +98,18 @@ public sealed class HtmlOverlayRegistry
     /// <summary>Gives a live page the model's latest value; it reloads when the revision moved. The
     /// live app passes a copy, since the store changes its own off the UI thread.</summary>
     public void Apply(HtmlOverlay overlay) => Existing(overlay.Id)?.Apply(overlay);
+
+    /// <summary>The page zoom every page shows (upstream #670); 1 is actual size.</summary>
+    public double Zoom { get; private set; } = 1;
+
+    /// <summary>Takes a new page zoom and gives it to every page, which keeps its state.</summary>
+    public async Task SetZoomAsync(double zoom)
+    {
+        if (zoom == Zoom) return;
+        Zoom = zoom;
+        foreach (var page in _pages.Values.ToList())
+            await page.ApplyZoomAsync(zoom);
+    }
 
     /// <summary>Gives every page the current theme.</summary>
     public async Task RefreshThemesAsync()

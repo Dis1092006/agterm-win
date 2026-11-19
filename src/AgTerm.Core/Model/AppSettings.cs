@@ -80,6 +80,10 @@ public sealed record AppSettings
     /// <summary>The raw FlaggedViewLayout for the flagged sidebar view; null means flat. Resolved by
     /// EffectiveFlaggedViewLayout.</summary>
     [JsonPropertyName("flaggedViewLayout")] public string? FlaggedViewLayout { get; init; }
+    /// <summary>The page zoom every HTML overlay shares; null means actual size. Resolved by
+    /// EffectiveHtmlOverlayZoom; it has no Settings row, the font keys and commands over a page step it.</summary>
+    [JsonPropertyName("htmlOverlayZoom"), JsonConverter(typeof(Protocol.FiniteDoubleConverter))]
+    public double? HtmlOverlayZoom { get; init; }
     // Windows-only (parity/windows-only.json): "row" or "label"; absent or unknown means off
     [JsonPropertyName("sidebarThemeStyle")] public string? SidebarThemeStyle { get; init; }
 
@@ -116,6 +120,15 @@ public sealed record AppSettings
     /// <summary>The explicit flaggedViewLayout when it is a known raw value, else flat.</summary>
     [JsonIgnore] public Model.FlaggedViewLayout EffectiveFlaggedViewLayout =>
         FlaggedViewLayouts.FromRaw(FlaggedViewLayout) ?? Model.FlaggedViewLayout.Flat;
+
+    [JsonIgnore] public double EffectiveHtmlOverlayZoom => HtmlZoom.Resolve(HtmlOverlayZoom);
+
+    /// <summary>These settings with the page zoom moved by a font binding action, actual size stored as
+    /// absent; null for an action that is not a font action.</summary>
+    public AppSettings? SteppingHtmlOverlayZoom(string action) =>
+        HtmlZoom.Applying(action, EffectiveHtmlOverlayZoom) is { } zoom
+            ? this with { HtmlOverlayZoom = zoom == 1 ? null : zoom }
+            : null;
 
     /// <summary>A value is matched exactly, like upstream's enum decode of other settings.</summary>
     public CopyOnSelectMode EffectiveCopyOnSelect() => CopyOnSelect switch
@@ -191,6 +204,7 @@ public sealed record AppSettings
         CopyOnSelect == other.CopyOnSelect && StatusReset == other.StatusReset &&
         SessionInfoDisplay == other.SessionInfoDisplay &&
         FlaggedViewLayout == other.FlaggedViewLayout &&
+        HtmlOverlayZoom == other.HtmlOverlayZoom &&
         AttentionIncludesActive == other.AttentionIncludesActive &&
         AttentionNavigationAcrossWindows == other.AttentionNavigationAcrossWindows &&
         ResumeAgentSessions == other.ResumeAgentSessions &&

@@ -960,6 +960,10 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - Open in Browser hands the page to the shell, so a file page opens in the app registered for `.html` files. Upstream opens it in the default web browser.
   - The strip cuts a long file name at its end. Upstream cuts it in the middle.
   - A floating panel has rounded corners and no shadow. Upstream draws a shadow.
+- HTML page zoom: a font chord or `font inc|dec|reset` on a pane under a shown page steps one page zoom shared by every page, saved as the setting `htmlOverlayZoom` and reported as `htmlOverlays[].zoom` (upstream `02c5e4e4`, #670, as `c63e5158`). The steps, the 0.5…3 range, the stored `null` at 1 and the `font` command's checks are upstream's. The setting and the node field are not in `parity/*.json`, which tracks neither.
+  - Upstream sets the web view's `pageZoom`. The WinUI WebView2 control has no page zoom of its own, so the port sets CSS `zoom` on `:root` through a constructed stylesheet. A page gets it in the script that runs when its document is created; a shown page gets it at once through the DevTools protocol (`Runtime.evaluate`), without a reload. `ExecuteScriptAsync` would mark the page as activated by the user, so a page could open a popup or start audio after a zoom chord; the DevTools call does not. A frame inside the page is not zoomed again, because it scales with the top document.
+  - The page takes the keys only when it is clicked, and a click on its strip gives them to the terminal under it (see "HTML page overlays in the window" above). So a chord from a terminal that a shown page covers zooms the page too, as upstream's chord does when the page has the keys. A chord from a hidden scratch under a page still changes the scratch font, because the session-wide page does not cover a hidden scratch.
+  - A font chord on the dashboard changes the tile font, even when the session has a page, as upstream's dashboard chord does. The `font` command has no dashboard exception, as upstream.
 
 ## Windows-only extensions
 
