@@ -149,6 +149,32 @@ public sealed class LiveHtmlOverlayHostTests : IDisposable
         Assert.Equal(OverlayHtmlError.NotRealized, Navigate(HtmlNavigation.Back).Error);
     }
 
+    [Fact]
+    public async Task AClickedPictureOpensOverItsPanesSessionOrIsLeftToTheCaller()
+    {
+        var path = Path.Combine(_dir, "dot.png");
+        File.WriteAllBytes(path, Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="));
+        var session = Guid.Empty;
+        _host.Host.RunLocked(() =>
+        {
+            var active = _host.Host.Store.ActiveSession!;
+            active.Surface = new FakeSurface();
+            session = active.Id;
+        });
+
+        Assert.False(await _host.ShowImageLinkAsync("unknown", path));
+        Assert.False(await _host.ShowImageLinkAsync("fake", Path.Combine(_dir, "missing.png")));
+        Assert.True(await _host.ShowImageLinkAsync("fake", path));
+        _host.Host.RunLocked(() =>
+        {
+            var shown = _host.Host.Store.SessionWithId(session)!;
+            Assert.Equal(new HtmlSource.Image(path), shown.HtmlOverlay!.Source);
+            Assert.Equal(ImagePage.BasePercent, shown.OverlaySizePercent);
+        });
+        Assert.False(await _host.ShowImageLinkAsync("fake", path));
+    }
+
     private sealed class FakeSurface : IHeadlessSurface
     {
         public string? PaneToken => "fake";

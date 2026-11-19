@@ -81,4 +81,16 @@ public class LinkPolicyTests
     [InlineData(@"C:\logs\x.")]
     public void Unsafe_or_unsupported_targets_are_ignored(string? target) =>
         Assert.Null(LinkPolicy.ActionFor(target));
+
+    [Theory]
+    [InlineData(@"C:\pics\a.png", true)]
+    [InlineData(@"C:\pics\a.JPG", true)]
+    [InlineData(@"C:\pics\a.jpeg", true)]
+    [InlineData(@"C:\pics\a.gif", true)]
+    [InlineData(@"C:\pics\a.webp", true)]
+    [InlineData(@"C:\pics\a.svg", false)]
+    [InlineData(@"C:\pics\a.png.txt", false)]
+    [InlineData(@"C:\pics\png", false)]
+    public void Picture_paths_are_told_by_their_extension(string path, bool expected) =>
+        Assert.Equal(expected, LinkPolicy.IsImagePath(path));
 }

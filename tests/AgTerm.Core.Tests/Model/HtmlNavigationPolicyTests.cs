@@ -37,6 +37,21 @@ public class HtmlNavigationPolicyTests
         Assert.Equal(decision, HtmlNavigationPolicy.Decide(action, page));
     }
 
+    // upstream's .image case: the page loads its own text and goes nowhere else
+    [Theory]
+    [InlineData("file:///C:/tmp/shot.png", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.Cancel)]
+    [InlineData("https://example.com/", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.Cancel)]
+    [InlineData("https://example.com/", HtmlNavigationTarget.Subframe, false, HtmlNavigationDecision.Cancel)]
+    [InlineData("https://example.com/", HtmlNavigationTarget.NewWindow, true, HtmlNavigationDecision.OpenExternal)]
+    [InlineData("about:blank", HtmlNavigationTarget.MainFrame, false, HtmlNavigationDecision.Allow)]
+    public void AnImagePageNavigatesNowhere(string url, HtmlNavigationTarget target, bool userActivated,
+                                            HtmlNavigationDecision decision)
+    {
+        var page = new HtmlOverlay(new HtmlSource.Image(@"C:\tmp\shot.png"));
+        var action = new HtmlNavigationAction(new Uri(url), target, userActivated);
+        Assert.Equal(decision, HtmlNavigationPolicy.Decide(action, page));
+    }
+
     [Theory]
     [InlineData("http://localhost:5173/about", HtmlNavigationTarget.MainFrame, false, HtmlNavigationDecision.Allow)]
     [InlineData("http://LOCALHOST:5173/", HtmlNavigationTarget.MainFrame, true, HtmlNavigationDecision.Allow)]

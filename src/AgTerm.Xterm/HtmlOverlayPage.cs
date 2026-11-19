@@ -7,7 +7,7 @@ namespace AgTerm.Xterm;
 
 /// <summary>
 /// One page in an overlay slot and its web view (upstream HtmlOverlayPage, c63e5158, file and web
-/// sources). It loads the page, keeps navigation inside the grant or the web page's origin, and
+/// sources, and the picture source of #844). It loads the page, keeps navigation inside the grant or the web page's origin, and
 /// reports load state, address,
 /// title and history into the store by the page's id. It keeps its own copy of what it reported,
 /// for the strip on the UI thread, which never reads the store.
@@ -37,14 +37,21 @@ public sealed class HtmlOverlayPage
 
     private double _zoom;
 
+    private readonly Func<string, Task<(ImageProbe? Probe, string? Failure)>> _readImage;
+    // a picture is read off the UI thread; a result is applied only while this still counts the load
+    // that started it, so a close or a newer reload drops a slow read's late result
+    private int _imageLoad;
+
     public HtmlOverlayPage(HtmlOverlay overlay, IHtmlPageStore store, IHtmlPageView view, IHtmlBrowser browser,
-                           HtmlOverlayTheme theme, string? backgroundColor, double zoom = 1)
+                           HtmlOverlayTheme theme, string? backgroundColor, double zoom = 1,
+                           Func<string, Task<(ImageProbe? Probe, string? Failure)>>? readImage = null)
     {
         _overlay = overlay;
         _store = store;
         _browser = browser;
         _theme = theme;
         _zoom = zoom;
+        _readImage = readImage ?? ReadImage;
         _appliedRevision = overlay.ReloadRevision;
         Id = overlay.Id;
         View = view;
@@ -80,13 +87,23 @@ public sealed class HtmlOverlayPage
     /// share no origin; .example never resolves on a network.</summary>
     public static string VirtualHost(Guid id) => $"agterm-page-{id:N}.example";
 
+    /// <summary>The host a picture page's bytes are served from, apart from any folder grant.</summary>
+    public static string ImageHost(Guid id) => $"agterm-image-{id:N}.example";
+
+    /// <summary>Reads and checks a picture on the thread pool.</summary>
+    public static Task<(ImageProbe? Probe, string? Failure)> ReadImage(string path) =>
+        Task.Run(() => (ImageProbe.Load(path, out var failure), failure));
+
+    /// <summary>The picture read in flight, or a done task.</summary>
+    public Task ImageRead { get; private set; } = Task.CompletedTask;
+
     private HtmlSource.File? FileSource => _overlay.Source as HtmlSource.File;
 
     private const string BlockedUrl = "about:blank#blocked";
 
-    // a page without a grant is loaded from its text: it sits at about:blank and cannot navigate, so
-    // the file it came from is both the current page and what the user is looking at
-    private bool TextLoaded => FileSource is { GrantRoot: null };
+    // a page without a grant and a picture are loaded from text: they sit at about:blank and cannot
+    // navigate, so the file they came from is both the current page and what the user is looking at
+    private bool TextLoaded => FileSource is { GrantRoot: null } || _overlay.Source is HtmlSource.Image;
 
     // a web page is styled against its own look: it gets the theme's variables, never its colors
     private bool Themed => FileSource is not null;
@@ -183,6 +200,7 @@ public sealed class HtmlOverlayPage
     {
         if (IsClosed) return;
         IsClosed = true;
+        _imageLoad += 1;
         EndPrompt();
         View.NavigationStarting -= OnNavigationStarting;
         View.ContentLoading -= OnContentLoading;
@@ -217,6 +235,12 @@ public sealed class HtmlOverlayPage
             View.Navigate(web.Address.AbsoluteUri);
             return;
         }
+        if (_overlay.Source is HtmlSource.Image image)
+        {
+            _textLoadExpected = false;
+            ImageRead = LoadImageAsync(image.Path);
+            return;
+        }
         var source = FileSource!;
         var path = source.Path;
         if (ReadFailure(path) is { } failure)
@@ -241,6 +265,23 @@ public sealed class HtmlOverlayPage
             _textLoadExpected = false;
             Fail(e.Message);
         }
+    }
+
+    // the bytes are served from the page's own host rather than written into it as a data: URL, since
+    // a web view takes at most 2 MB of text; each load asks a new address, so no cached copy is shown
+    private async Task LoadImageAsync(string path)
+    {
+        var load = ++_imageLoad;
+        var (probe, failure) = await _readImage(path);
+        if (IsClosed || load != _imageLoad) return;
+        if (probe is null)
+        {
+            Fail(failure ?? "unreadable image: " + path);
+            return;
+        }
+        View.ServeImage(ImageHost(Id), probe.Bytes, probe.MimeType);
+        _textLoadExpected = true;
+        View.NavigateToString(ImagePage.Html($"https://{ImageHost(Id)}/image?{load}"));
     }
 
     private static string? ReadFailure(string path)
@@ -363,6 +404,7 @@ public sealed class HtmlOverlayPage
         {
             return Shown() is { } shown && shown.Scheme != "about" ? View.Source! : web.Address.OriginalString;
         }
+        if (_overlay.Source is HtmlSource.Image image) return image.Path;
         var path = FileSource!.Path;
         if (TextLoaded) return path;
         return Shown() is { } url && FileOnHost(url) is { } file ? file : path;
@@ -376,6 +418,7 @@ public sealed class HtmlOverlayPage
         HtmlSource.Url web => Shown() is { } url && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps)
             ? url
             : web.Address,
+        HtmlSource.Image image => new Uri(image.Path),
         _ => new Uri(FileSource!.Path),
     };
 

@@ -112,6 +112,22 @@ public sealed partial class ControlDispatcher
     private static string? CanonicalSurfacePane(string? raw) =>
         raw is null ? null : StatusPanes.Wire(StatusPanes.FromControlName(raw)!.Value);
 
+    /// <summary>The picture page --image names, or why it cannot open (upstream imageContent, #844).
+    /// The port has no --chromeless, --persistent or --browse, so the error names flags it never sees.</summary>
+    private static HtmlSource.Image? ImageContent(string path, ControlArgs? args, out string error)
+    {
+        error = "";
+        if (args?.Cwd is not null || args?.Wait == true || args?.Navigation == true || args?.Javascript == true)
+            error = OverlayHtmlError.ImageOptions;
+        else if (!Path.IsPathFullyQualified(path))
+            error = OverlayHtmlError.ImageNotAbsolute;
+        else if (!LinkPolicy.IsImagePath(Path.GetFullPath(path)))
+            error = OverlayHtmlError.ImageType;
+        else
+            return new HtmlSource.Image(Path.GetFullPath(path));
+        return null;
+    }
+
     private const string InvalidPickItem = "invalid request: pick item requires id and label";
 
     /// <summary>Port of upstream ControlDispatcher+Pick: host-free validation in upstream's order,
@@ -902,14 +918,20 @@ public sealed partial class ControlDispatcher
                 var html = request.Args?.Html;
                 var url = request.Args?.Url;
                 var command = request.Args?.Command ?? "";
-                if (html is null && url is null)
+                HtmlSource? page = null;
+                if (request.Args?.Image is { } image)
+                {
+                    if (command.Length > 0 || html is not null || url is not null) return Err(OverlayHtmlError.OneSource);
+                    if (ImageContent(image, request.Args, out var imageError) is not { } picture) return Err(imageError);
+                    page = picture;
+                }
+                else if (html is null && url is null)
                 {
                     if (request.Args?.Navigation == true) return Err(OverlayHtmlError.NavigationWithoutPage);
                     if (request.Args?.Javascript == true) return Err(OverlayHtmlError.JavascriptWithoutPage);
                     if (command.Length == 0) return Err("session.overlay.open requires a command");
                 }
                 if (html is not null && url is not null) return Err(OverlayHtmlError.HtmlAndUrl);
-                HtmlSource? page = null;
                 if (html is not null)
                 {
                     if (command.Length > 0) return Err(OverlayHtmlError.CommandAndHtml);

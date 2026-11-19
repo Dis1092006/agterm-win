@@ -6,6 +6,16 @@ public static class LinkPolicy
 {
     private static readonly IReadOnlySet<string> LocalHosts = HostNames(["localhost", Environment.MachineName]);
 
+    /// <summary>The picture extensions an image page shows, lowercase and without the dot (upstream
+    /// LinkPolicy.imageExtensions, #844).</summary>
+    public static readonly IReadOnlySet<string> ImageExtensions =
+        new HashSet<string>(["png", "jpg", "jpeg", "gif", "webp"], StringComparer.Ordinal);
+
+    /// <summary>Whether a clicked local path is shown as a picture instead of revealed: its extension is
+    /// one of <see cref="ImageExtensions"/>, in any case.</summary>
+    public static bool IsImagePath(string path) =>
+        ImageExtensions.Contains(Path.GetExtension(path).TrimStart('.').ToLowerInvariant());
+
     public static HudLinkAction? ActionFor(string? target, IEnumerable<string>? localHosts = null)
     {
         if (string.IsNullOrEmpty(target))

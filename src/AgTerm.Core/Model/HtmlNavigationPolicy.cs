@@ -35,6 +35,8 @@ public static class HtmlNavigationPolicy
                 if (HtmlSource.SameOrigin(action.Url, url.Address) || overlay.Browse) return HtmlNavigationDecision.Allow;
                 if (action.Target == HtmlNavigationTarget.Subframe && !overlay.Chromeless) return HtmlNavigationDecision.Allow;
                 return action.UserActivated ? HtmlNavigationDecision.OpenExternal : HtmlNavigationDecision.Cancel;
+            case HtmlSource.Image:
+                return HtmlNavigationDecision.Cancel;
             default:
                 return HtmlNavigationDecision.Cancel;
         }

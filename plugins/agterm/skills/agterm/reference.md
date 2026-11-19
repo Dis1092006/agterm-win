@@ -147,7 +147,7 @@ to restore the exact size of a percent-only panel), `overlayWidth`/`overlayHeigh
 content size in points as last laid out, after `--width`/`--height` and their cap; omitted for a full
 overlay, a HUD, or a session not laid out yet), `hiddenOverlays` (the hidden overlay slots, `["session"]` on agterm-win;
 omitted when none is hidden; the read side of `session overlay hide`), `htmlOverlays` (the page in the
-overlay slot, see `session overlay open --html` and `--url`; omitted when none), `hud` (the open HUD message
+overlay slot, see `session overlay open --html`, `--url` and `--image`; omitted when none), `hud` (the open HUD message
 panel, see `session hud`; omitted when none),
 `ask` (`{id, pane}` of a pending terminal-style question on this session, see `ask`; omitted when none;
 a gui-style question is reported by the top-level `askPending` instead), `scratch` (scratch shown),
@@ -746,6 +746,25 @@ All are read-only projections of GUI state.
   `session.overlay.open: --wait cannot be combined with --url`,
   `session.overlay.open: --cwd cannot be combined with --url` and
   `session.overlay.open: --url must be an absolute http or https URL`.
+- `session overlay open --image FILE [--size-percent N [--width PT] [--height PT]] [--background-color #rrggbb] [--follow] [--target] [--window W]`
+  — show a png, jpg, gif or webp picture in the overlay slot. A user's Ctrl+click on the picture's path
+  opens the same page. Wire: `session.overlay.open` with `image`. agtermctl makes `FILE` absolute against the caller's
+  directory. Without a size the panel takes the picture's shape: its natural size on this display, scaled
+  up to 240 points wide when narrower and down to fit 80% of the session when larger, the picture filling
+  it. A later resize replaces that size. The page embeds the file: no script, no other file access. It
+  takes no `COMMAND`, `--html`, `--url`, `--wait`, `--block`, `--navigation`, `--js` or `--cwd`. The file
+  is read when the command runs, so one on slow or network storage holds the reply until it is read.
+  Everything else is as for `--html`: the result, the slot, `reload` (which reads the file again) and
+  `htmlOverlays` on `tree`, where the page shows as `image` (the absolute path) instead of `file` and
+  `cwd`. The strip has no Show in Explorer button, and `navigate finder` fails on an image page: it has
+  no file page to show. Errors:
+  `session.overlay.open takes one of a command, --html, --url or --image`,
+  `session.overlay.open: --image takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse`,
+  `session.overlay.open: --image must be an absolute path`,
+  `session.overlay.open: --image must be a png, jpg, jpeg, gif or webp file`, and `session.overlay.open: `
+  followed by `unreadable image: <path>` (not a regular readable file),
+  `not a png, jpg, gif or webp image: <path>` (the contents, whatever the name) or
+  `image too large (over 64 MB): <path>` / `image too large (over 100 megapixels): <path>`.
 - `session overlay reload [--current] [--pane left|right] [--target] [--window W]` — reload the page in the
   overlay slot: the file it opened with, or with `--current` the page shown now. Wire:
   `session.overlay.reload` (`current`). Returns the session id. Errors `no overlay` when the slot is empty

@@ -86,10 +86,10 @@ public class OverlayHtmlCommandsTests
     }
 
     [Theory]
-    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open")]
-    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open", "htop", "--html", "r.html")]
-    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open", "htop", "--url", "http://a/")]
-    [InlineData("provide exactly one of COMMAND, --html or --url", "session", "overlay", "open", "--html", "r.html", "--url", "http://a/")]
+    [InlineData("provide exactly one of COMMAND, --html, --url or --image", "session", "overlay", "open")]
+    [InlineData("provide exactly one of COMMAND, --html, --url or --image", "session", "overlay", "open", "htop", "--html", "r.html")]
+    [InlineData("provide exactly one of COMMAND, --html, --url or --image", "session", "overlay", "open", "htop", "--url", "http://a/")]
+    [InlineData("provide exactly one of COMMAND, --html, --url or --image", "session", "overlay", "open", "--html", "r.html", "--url", "http://a/")]
     [InlineData("a page cannot be combined with --wait or --block", "session", "overlay", "open", "--html", "r.html", "--wait")]
     [InlineData("a page cannot be combined with --wait or --block", "session", "overlay", "open", "--html", "r.html", "--block")]
     [InlineData("a page cannot be combined with --wait or --block", "session", "overlay", "open", "--url", "http://a/", "--wait")]
@@ -98,6 +98,34 @@ public class OverlayHtmlCommandsTests
     [InlineData("--js requires --html or --url", "session", "overlay", "open", "htop", "--js")]
     public void OpenRefusesAMismatchedPage(string message, params string[] argv) =>
         Assert.Equal(message, ValidationMessage(argv));
+
+    private const string ImageFlags = "--image takes no --block, --wait, --navigation, --js or --cwd";
+
+    // upstream openRejectsAMissingOrConflictingContent (#844), without the flags the port does not have
+    [Theory]
+    [InlineData("provide exactly one of COMMAND, --html, --url or --image", "revdiff", "--image", "a.png")]
+    [InlineData("provide exactly one of COMMAND, --html, --url or --image", "--html", "r.html", "--image", "a.png")]
+    [InlineData("provide exactly one of COMMAND, --html, --url or --image", "--url", "http://a/", "--image", "a.png")]
+    [InlineData(ImageFlags, "--image", "a.png", "--block")]
+    [InlineData(ImageFlags, "--image", "a.png", "--wait")]
+    [InlineData(ImageFlags, "--image", "a.png", "--navigation")]
+    [InlineData(ImageFlags, "--image", "a.png", "--js")]
+    [InlineData(ImageFlags, "--image", "a.png", "--cwd", ".")]
+    [InlineData("--width/--height need --size-percent", "--image", "a.png", "--width", "400")]
+    public void AnImageOpenRefusesWhatAPictureCannotTake(string message, params string[] argv) =>
+        Assert.Equal(message, ValidationMessage(["session", "overlay", "open", .. argv]));
+
+    [Fact]
+    public void AnImageOpenSendsTheResolvedPathAndNoPageFlags()
+    {
+        CanonicalJson.AssertEqual(
+            new ControlRequest
+            {
+                Cmd = WireCommand.SessionOverlayOpen, Target = "active",
+                Args = new ControlArgs { Image = Path.GetFullPath(Path.Combine("shots", "a.png")), Follow = true },
+            },
+            Request("session", "overlay", "open", "--image", @"shots\..\shots\a.png", "--follow"));
+    }
 
     [Fact]
     public void ReloadSendsCurrentAndPane()
@@ -147,7 +175,10 @@ public class OverlayHtmlCommandsTests
         Assert.Contains("Show this local HTML file instead of running COMMAND.", open, StringComparison.Ordinal);
         Assert.Contains("Show this http or https URL instead of running COMMAND; links to its own origin load in place. "
                         + "localhost means the PC running agterm.", open, StringComparison.Ordinal);
-        Assert.Contains("showing a page with --html or --url.", open, StringComparison.Ordinal);
+        Assert.Contains("showing a page with --html, --url or --image.", open, StringComparison.Ordinal);
+        Assert.Contains("omit with --html, --url or --image.", open, StringComparison.Ordinal);
+        Assert.Contains("Show this png, jpg, gif or webp picture instead of running COMMAND. Without --size-percent the panel "
+                        + "fits the picture, up to 80% of the session; a larger picture is scaled down.", open, StringComparison.Ordinal);
         Assert.Contains("With --html or --url, let the page run its own JavaScript (off by default)", open, StringComparison.Ordinal);
         Assert.Contains("Without --cwd, the page has no file access.", open, StringComparison.Ordinal);
         Assert.Contains("--current the page shown now", Help("session", "overlay", "reload"), StringComparison.Ordinal);

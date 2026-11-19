@@ -14,7 +14,13 @@ public sealed class TerminalLinkOpener
         _exists = exists ?? (path => File.Exists(path) || Directory.Exists(path));
     }
 
-    public LiveFailureNotice? Open(string target, bool allowPathFallback = false)
+    public LiveFailureNotice? Open(string target, bool allowPathFallback = false) =>
+        OpenAsync(target, allowPathFallback).GetAwaiter().GetResult();
+
+    /// <summary>Opens a terminal link. A picture path that exists goes to showImage first and is
+    /// revealed only when it says false (upstream LinkOpener.image, #844).</summary>
+    public async Task<LiveFailureNotice?> OpenAsync(
+        string target, bool allowPathFallback = false, Func<string, Task<bool>>? showImage = null)
     {
         if (LinkPolicy.ActionFor(target) is HudLinkAction.Open open)
         {
@@ -33,6 +39,9 @@ public sealed class TerminalLinkOpener
                 validated = true;
                 if (_exists(reveal.Path))
                 {
+                    if (showImage is not null && LinkPolicy.IsImagePath(reveal.Path)
+                        && await showImage(reveal.Path).ConfigureAwait(false))
+                        return null;
                     _start(WindowsExplorer.StartInfo(HudLinkPolicy.ExplorerSelectArguments(reveal.Path)));
                     return null;
                 }

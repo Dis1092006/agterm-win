@@ -126,4 +126,63 @@ public class TerminalLinkOpenerTests
         Assert.Throws<InvalidOperationException>(() =>
             new TerminalLinkOpener(_ => throw new InvalidOperationException("launch failed"), _ => true)
                 .Open(@"C:\x.txt"));
+
+    [Theory]
+    [InlineData(@"C:\pics\cat.png", @"C:\pics\cat.png")]
+    [InlineData("file:///C:/pics/cat.JPEG", @"C:\pics\cat.JPEG")]
+    [InlineData(@"C:\pics\cat.webp", @"C:\pics\cat.webp")]
+    public async Task A_shown_picture_is_not_revealed(string target, string path)
+    {
+        var asked = new List<string>();
+        var notice = await new TerminalLinkOpener(_ => Assert.Fail("unexpected launch"), _ => true)
+            .OpenAsync(target, showImage: value => { asked.Add(value); return Task.FromResult(true); });
+
+        Assert.Null(notice);
+        Assert.Equal([path], asked);
+    }
+
+    [Fact]
+    public async Task A_picture_that_is_not_shown_is_revealed()
+    {
+        var started = new List<ProcessStartInfo>();
+        var notice = await new TerminalLinkOpener(started.Add, _ => true)
+            .OpenAsync(@"C:\pics\cat.gif", showImage: _ => Task.FromResult(false));
+
+        Assert.Null(notice);
+        Assert.Equal(AgTerm.Core.Model.HudLinkPolicy.ExplorerSelectArguments(@"C:\pics\cat.gif"), Assert.Single(started).Arguments);
+    }
+
+    [Theory]
+    [InlineData(@"C:\pics\cat.svg")]
+    [InlineData(@"C:\pics\cat.bmp")]
+    [InlineData(@"C:\pics\png")]
+    public async Task Other_files_are_revealed_without_asking(string target)
+    {
+        var started = new List<ProcessStartInfo>();
+        await new TerminalLinkOpener(started.Add, _ => true)
+            .OpenAsync(target, showImage: _ => throw new InvalidOperationException("unexpected show"));
+
+        Assert.Single(started);
+    }
+
+    [Fact]
+    public async Task A_missing_picture_is_not_asked_about()
+    {
+        var notice = await new TerminalLinkOpener(_ => Assert.Fail("unexpected launch"), _ => false)
+            .OpenAsync(@"C:\pics\cat.png", showImage: _ => throw new InvalidOperationException("unexpected show"));
+
+        Assert.Equal(new LiveFailureNotice("Path not found", @"Path not found: C:\pics\cat.png"), notice);
+    }
+
+    [Fact]
+    public async Task The_path_fallback_shows_the_existing_picture()
+    {
+        var asked = new List<string>();
+        var notice = await new TerminalLinkOpener(_ => Assert.Fail("unexpected launch"), path => path == @"C:\pics\cat.png")
+            .OpenAsync(@"C:\pics\cat.png. More text", allowPathFallback: true,
+                showImage: value => { asked.Add(value); return Task.FromResult(true); });
+
+        Assert.Null(notice);
+        Assert.Equal([@"C:\pics\cat.png"], asked);
+    }
 }

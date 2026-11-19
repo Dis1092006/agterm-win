@@ -392,10 +392,15 @@ omitted when expanded).
   `--background-color` gives the overlay pane its own solid color, independent of the session's. The
   command runs through `%COMSPEC% /c`, so cmd.exe resolves it on PATH.
 - `overlay open --html FILE [--cwd DIR] [--navigation] [--js]` · `overlay open --url URL [--navigation] [--js]` ·
-  `overlay reload [--current]` · `overlay navigate back|forward|browser|finder` — show a local HTML file or
-  an http(s) web page in the overlay slot instead of a program, reload it, or step its history. The page
+  `overlay open --image FILE` ·
+  `overlay reload [--current]` · `overlay navigate back|forward|browser|finder` — show a local HTML file,
+  an http(s) web page or a png, jpg, gif or webp picture in the overlay slot instead of a program, reload
+  it, or step its history. The page
   does not take the keyboard until the user clicks it; reference.md owns the rules (`--cwd` grant, which
   links a web page follows, `pageID`, `htmlOverlays` on `tree`).
+  **To display an image inline**, use `--image` with an absolute path: without a size the panel takes the
+  picture's shape and size, up to 80% of the session. The user opens the same view with a Ctrl+click on a
+  picture's path in the terminal, so printing the absolute path of an image you produced is often enough.
 
 - `session hud [open] <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--background-color #rrggbb] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·
   `session hud update <message> [--detail T] [--spinner] [--spinner-style S] [--position P] [--text-color #rrggbb] [--size-percent N] [--sticky] [--no-frame] [--hide-after SECONDS] [--pane P] [--pane-id ID]` ·

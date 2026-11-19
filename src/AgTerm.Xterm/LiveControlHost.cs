@@ -578,6 +578,36 @@ public sealed class LiveControlHost : IDisposable, IAsyncDisposable
                 mru: false),
             cancellationToken);
 
+    /// <summary>Shows a picture path clicked in pane over the pane's session, sized to the picture, and
+    /// says whether it did; the caller reveals the file otherwise (upstream openImageLink, #844). The
+    /// file is read between two turns of the gate, so a slow disk never holds it.</summary>
+    public async Task<bool> ShowImageLinkAsync(string paneId, string path, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(paneId))
+            return false;
+
+        Guid? session = null;
+        await StoreCoordinator.MutateAsync(store =>
+        {
+            var owner = store.Workspaces
+                .SelectMany(workspace => workspace.Sessions)
+                .FirstOrDefault(candidate => candidate.PaneRole(paneId) is not null);
+            if (owner is not null && Host.Actions.CanShowImageLink(owner.Id))
+                session = owner.Id;
+        }, cancellationToken).ConfigureAwait(false);
+        if (session is not { } id)
+            return false;
+
+        var (probe, _) = await HtmlOverlayPage.ReadImage(path).ConfigureAwait(false);
+        if (probe is null)
+            return false;
+
+        var shown = false;
+        await StoreCoordinator.MutateAsync(
+            _ => shown = Host.Actions.OpenImageLink(id, path, probe), cancellationToken).ConfigureAwait(false);
+        return shown;
+    }
+
     public async Task<bool> HighlightDashboardMemberAsync(
         string controlRef,
         CancellationToken cancellationToken = default)
