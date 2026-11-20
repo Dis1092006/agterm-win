@@ -37,6 +37,10 @@ public interface IHtmlPageView
     /// <summary>Serves folder as https://host/ for this web view only.</summary>
     void MapVirtualHost(string host, string folder);
 
+    /// <summary>Answers every request to https://host/ for this web view with bytes of the given
+    /// type; a later call replaces them.</summary>
+    void ServeImage(string host, byte[] bytes, string mimeType);
+
     /// <summary>Replaces the script that runs at the creation of every later document, before
     /// the page's own scripts and whether or not page scripts are on.</summary>
     Task SetDocumentScriptAsync(string script);

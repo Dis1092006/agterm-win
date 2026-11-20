@@ -44,6 +44,10 @@ public abstract record HtmlSource
     /// was given in OriginalString, which the tree reports.</summary>
     public sealed record Url(Uri Address) : HtmlSource;
 
+    /// <summary>A png, jpg, gif or webp picture shown filling its panel (upstream #844). Path is
+    /// absolute and standardized.</summary>
+    public sealed record Image(string Path) : HtmlSource;
+
     /// <summary>Parses --url: an absolute http or https URL with a host, null for anything else
     /// (upstream HtmlSource.webURL).</summary>
     public static Uri? WebUrl(string text) =>
@@ -145,6 +149,7 @@ public sealed class HtmlOverlay(HtmlSource source, Guid? id = null)
     {
         HtmlSource.File file => current?.Page ?? file.Path,
         HtmlSource.Url url => current?.Page ?? url.Address.OriginalString,
+        HtmlSource.Image image => image.Path,
         _ => "",
     };
 

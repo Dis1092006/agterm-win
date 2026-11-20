@@ -93,6 +93,51 @@ public class ControlDispatcherHtmlOverlayTests
     public Task AUrlMustBeAbsoluteHttp(string url) =>
         ExpectError(Command.SessionOverlayOpen, new ControlArgs { Url = url, Color = "bad" }, OverlayHtmlError.InvalidUrl);
 
+    private const string OneSource = "session.overlay.open takes one of a command, --html, --url or --image";
+    private const string ImageOptions =
+        "session.overlay.open: --image takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse";
+    private const string ImageType = "session.overlay.open: --image must be a png, jpg, jpeg, gif or webp file";
+
+    // upstream imageOpenRejectsInvalidInputsBeforeCallingActions (#844); the port has no --chromeless,
+    // --persistent or --browse to refuse
+    public static TheoryData<ControlArgs, string> ImageRejections() => new()
+    {
+        { new ControlArgs { Command = "cat", Image = @"C:\tmp\a.png" }, OneSource },
+        { new ControlArgs { Html = File, Image = @"C:\tmp\a.png" }, OneSource },
+        { new ControlArgs { Url = "http://localhost:5173/", Image = @"C:\tmp\a.png" }, OneSource },
+        { new ControlArgs { Wait = true, Image = @"C:\tmp\a.png" }, ImageOptions },
+        { new ControlArgs { Cwd = @"C:\tmp", Image = @"C:\tmp\a.png" }, ImageOptions },
+        { new ControlArgs { Navigation = true, Image = @"C:\tmp\a.png" }, ImageOptions },
+        { new ControlArgs { Javascript = true, Image = @"C:\tmp\a.png" }, ImageOptions },
+        { new ControlArgs { Image = "a.png" }, "session.overlay.open: --image must be an absolute path" },
+        { new ControlArgs { Image = @"\tmp\a.png" }, "session.overlay.open: --image must be an absolute path" },
+        { new ControlArgs { Image = @"C:\tmp\a.svg" }, ImageType },
+        { new ControlArgs { Image = @"C:\tmp\a" }, ImageType },
+        { new ControlArgs { Width = 400, Image = @"C:\tmp\a.png" }, OverlayPointError.NeedsPercent },
+    };
+
+    [Theory]
+    [MemberData(nameof(ImageRejections))]
+    public Task AnImageOpenRefusesWhatAPictureCannotTake(ControlArgs args, string error) =>
+        ExpectError(Command.SessionOverlayOpen, args, error);
+
+    [Fact]
+    public async Task AnImageOpenRoutesTheStandardizedPathAndItsSize()
+    {
+        var (_, actions) = await Post(Command.SessionOverlayOpen, new ControlArgs
+        {
+            SizePercent = 60, Follow = true, Width = 400, Image = @"C:\tmp\..\tmp\Shot.PNG",
+        });
+
+        Assert.Equal(new MockControlActions.Call[]
+        {
+            new MockControlActions.Call.OverlayOpen("s", null,
+                new ControlSessionOverlayOpenOptions("", Cwd: null, Wait: false, SizePercent: 60,
+                    BackgroundColor: null, Follow: true, Points: new OverlayPointSize(400),
+                    Page: new HtmlSource.Image(@"C:\tmp\Shot.PNG"))),
+        }, actions.Calls);
+    }
+
     [Fact]
     public void TheUrlErrorsAreUpstreamText()
     {

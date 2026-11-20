@@ -792,19 +792,21 @@ public sealed partial class MainWindow : Window
         page.AskFocusChanged += OnPageAskFocusChanged;
         page.AskDraftReceived += OnPageAskDraftReceived;
         page.HudLinkRequested += OnPageHudLinkRequested;
-        page.TerminalLinkRequested += (_, target, allowPathFallback) => ObserveTaskFault(
-            OpenTerminalLinkAsync(target, allowPathFallback), "Open terminal link failed");
+        page.TerminalLinkRequested += (paneId, target, allowPathFallback) => ObserveTaskFault(
+            OpenTerminalLinkAsync(paneId, target, allowPathFallback), "Open terminal link failed");
         page.HudMetricsReceived += OnPageHudMetricsReceived;
         ApplyComposition(_rendererSettings);
         await page.ApplyRendererSettingsAsync(_rendererSettings);
         return page;
     }
 
-    private async Task OpenTerminalLinkAsync(string target, bool allowPathFallback)
+    private async Task OpenTerminalLinkAsync(string paneId, string target, bool allowPathFallback)
     {
         try
         {
-            var notice = await Task.Run(() => new TerminalLinkOpener().Open(target, allowPathFallback));
+            // a picture path shows over the clicked pane's session; a refused one is revealed
+            var notice = await Task.Run(() => new TerminalLinkOpener().OpenAsync(target, allowPathFallback,
+                path => _host is { } host ? host.ShowImageLinkAsync(paneId, path) : Task.FromResult(false)));
             if (notice is not null)
                 QueueFailureNotice(notice);
         }
@@ -1907,11 +1909,36 @@ public sealed partial class MainWindow : Window
 
     // MARK: - HTML overlay pages
 
+    /// <summary>Keeps the host's display scale at this window's, which a picture's natural size is
+    /// measured at (upstream backingScale, #844).</summary>
+    private void TrackDisplayScale(LiveControlHost host)
+    {
+        void Attach(XamlRoot root)
+        {
+            host.Host.Actions.DisplayScale = root.RasterizationScale;
+            root.Changed += (sender, _) => host.Host.Actions.DisplayScale = sender.RasterizationScale;
+        }
+
+        if (Content?.XamlRoot is { } ready)
+        {
+            Attach(ready);
+            return;
+        }
+        void OnLoaded(object sender, RoutedEventArgs args)
+        {
+            RootGrid.Loaded -= OnLoaded;
+            if (Content?.XamlRoot is { } root)
+                Attach(root);
+        }
+        RootGrid.Loaded += OnLoaded;
+    }
+
     private void WireHtmlOverlays(LiveControlHost host)
     {
         var registry = new HtmlOverlayRegistry(host.HtmlPages, new AppHtmlBrowser(() => Content?.XamlRoot, _contentDialogs),
             background => HtmlPageTheme.From(_rendererSettings, background));
         _htmlPages = registry;
+        TrackDisplayScale(host);
         // a page made before the next settings apply opens at the saved zoom
         ObserveTaskFault(registry.SetZoomAsync(_settings.EffectiveHtmlOverlayZoom), "Html zoom apply failed");
         host.HtmlOverlayReleased += id => DispatcherQueue.TryEnqueue(() => ReleaseHtmlPage(id));

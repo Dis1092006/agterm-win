@@ -262,6 +262,11 @@ public static class OverlayHtmlError
     public const string InvalidUrl = "session.overlay.open: --url must be an absolute http or https URL";
     public const string NavigationWithoutPage = "session.overlay.open: --navigation requires --html or --url";
     public const string JavascriptWithoutPage = "session.overlay.open: --js requires --html or --url";
+    public const string OneSource = "session.overlay.open takes one of a command, --html, --url or --image";
+    public const string ImageOptions =
+        "session.overlay.open: --image takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse";
+    public const string ImageNotAbsolute = "session.overlay.open: --image must be an absolute path";
+    public const string ImageType = "session.overlay.open: --image must be a png, jpg, jpeg, gif or webp file";
     public const string NoOverlay = "no overlay";
     public const string NotHtml = "the overlay is not an html page";
     public const string Navigation = "session.overlay.navigate requires back, forward, browser or finder";

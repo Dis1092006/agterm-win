@@ -92,4 +92,15 @@ public class HtmlOverlayIdentityTests
     [InlineData("mailto:a@example.com")]
     public void OriginIsNullWithoutAWebOrigin(string address) =>
         Assert.Null(HtmlSource.Origin(new Uri(address)));
+
+    [Fact]
+    public void AnImagePageIsNamedByItsFileWhateverTheViewReports()
+    {
+        var overlay = new HtmlOverlay(new HtmlSource.Image(@"C:\tmp\Shot.PNG"));
+        Assert.Equal("Shot.PNG", overlay.Identity);
+        Assert.Equal(@"C:\tmp\Shot.PNG", overlay.PageAt(null));
+        overlay.Current = new HtmlPageInfo("about:blank", "agterm: enter your password", false, false);
+        Assert.Equal("Shot.PNG", overlay.Identity);
+        Assert.Equal(@"C:\tmp\Shot.PNG", overlay.PageAt(overlay.Current));
+    }
 }

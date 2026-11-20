@@ -395,6 +395,11 @@ public sealed record ControlArgs
     [JsonPropertyName("javascript")]
     public bool? Javascript { get; init; }
 
+    /// <summary>session.overlay.open: an absolute path of a png, jpg, gif or webp picture to show
+    /// instead of a command (upstream #844).</summary>
+    [JsonPropertyName("image")]
+    public string? Image { get; init; }
+
     /// <summary>ask.open initial text of the input field.</summary>
     [JsonPropertyName("value")]
     public string? Value { get; init; }

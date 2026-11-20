@@ -19,12 +19,17 @@ public sealed class HtmlOverlayRegistry
 
     /// <param name="theme">The terminal theme as a page's default style, given the overlay's own
     /// background color.</param>
-    public HtmlOverlayRegistry(IHtmlPageStore pageStore, IHtmlBrowser browser, Func<string?, HtmlOverlayTheme> theme)
+    /// <param name="readImage">Reads a picture off the UI thread; HtmlOverlayPage.ReadImage without one.</param>
+    public HtmlOverlayRegistry(IHtmlPageStore pageStore, IHtmlBrowser browser, Func<string?, HtmlOverlayTheme> theme,
+                               Func<string, Task<(ImageProbe? Probe, string? Failure)>>? readImage = null)
     {
         _pageStore = pageStore;
         _browser = browser;
         _theme = theme;
+        _readImage = readImage ?? HtmlOverlayPage.ReadImage;
     }
+
+    private readonly Func<string, Task<(ImageProbe? Probe, string? Failure)>> _readImage;
 
     /// <summary>The live page for overlay, making its web view and loading it on first use. A page
     /// released before its web view arrives comes back closed.</summary>
@@ -45,7 +50,7 @@ public sealed class HtmlOverlayRegistry
         {
             var view = await createView();
             var page = new HtmlOverlayPage(overlay, _pageStore, view, _browser, _theme(backgroundColor), backgroundColor,
-                                           Zoom);
+                                           Zoom, _readImage);
             if (!_realizing.TryGetValue(overlay.Id, out var current) || current != done.Task)
             {
                 page.Close();

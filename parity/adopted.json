@@ -82,7 +82,8 @@
     { "name": "current", "upstream": "11fe64eb" },
     { "name": "navigation", "upstream": "11fe64eb" },
     { "name": "url", "upstream": "11fe64eb" },
-    { "name": "javascript", "upstream": "11fe64eb" }
+    { "name": "javascript", "upstream": "11fe64eb" },
+    { "name": "image", "upstream": "4cfb58c8" }
   ],
   "result": [
     { "name": "sidebarWidth", "upstream": "7977f202" },

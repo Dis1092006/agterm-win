@@ -1829,6 +1829,7 @@ internal static class SessionCommands
             public string? Command { get; init; }
             public string? Html { get; init; }
             public string? Url { get; init; }
+            public string? Image { get; init; }
             public bool Navigation { get; init; }
             public bool Javascript { get; init; }
             public string? Cwd { get; init; }
@@ -1849,8 +1850,10 @@ internal static class SessionCommands
             {
                 if (Block && Wait)
                     throw new CliValidationException("--block cannot be combined with --wait");
-                if (new[] { Command, Html, Url }.Count(value => value is not null) != 1)
-                    throw new CliValidationException("provide exactly one of COMMAND, --html or --url");
+                if (new[] { Command, Html, Url, Image }.Count(value => value is not null) != 1)
+                    throw new CliValidationException("provide exactly one of COMMAND, --html, --url or --image");
+                if (Image is not null && (Block || Wait || Navigation || Javascript || Cwd is not null))
+                    throw new CliValidationException("--image takes no --block, --wait, --navigation, --js or --cwd");
                 if (Command is null && (Wait || Block))
                     throw new CliValidationException("a page cannot be combined with --wait or --block");
                 if (Navigation && Command is not null)
@@ -1883,6 +1886,7 @@ internal static class SessionCommands
                     Navigation = Navigation ? true : null,
                     Url = Url,
                     Javascript = Javascript ? true : null,
+                    Image = Image is null ? null : Path.GetFullPath(Image),
                 }),
             };
 
@@ -2171,10 +2175,10 @@ internal static class SessionCommands
     private static System.CommandLine.Command BuildOverlayOpen(CommandBindings bindings)
     {
         var cmd = new System.CommandLine.Command("open",
-            "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html or --url.");
+            "Open an overlay running COMMAND (it closes when COMMAND exits), or showing a page with --html, --url or --image.");
         var command = new Argument<string?>("command")
         {
-            Description = "Program to run in the overlay (e.g. revdiff); omit with --html or --url.",
+            Description = "Program to run in the overlay (e.g. revdiff); omit with --html, --url or --image.",
             Arity = ArgumentArity.ZeroOrOne,
         };
         var html = new Option<string?>("--html")
@@ -2185,6 +2189,11 @@ internal static class SessionCommands
         {
             Description = "Show this http or https URL instead of running COMMAND; links to its own origin load in place. "
                 + "localhost means the PC running agterm.",
+        };
+        var image = new Option<string?>("--image")
+        {
+            Description = "Show this png, jpg, gif or webp picture instead of running COMMAND. Without --size-percent the panel "
+                + "fits the picture, up to 80% of the session; a larger picture is scaled down.",
         };
         var navigation = new Option<bool>("--navigation")
         {
@@ -2226,6 +2235,7 @@ internal static class SessionCommands
         cmd.Arguments.Add(command);
         cmd.Options.Add(html);
         cmd.Options.Add(url);
+        cmd.Options.Add(image);
         cmd.Options.Add(navigation);
         cmd.Options.Add(javascript);
         cmd.Options.Add(cwd);
@@ -2243,6 +2253,7 @@ internal static class SessionCommands
             Command = result.GetValue(command),
             Html = result.GetValue(html),
             Url = result.GetValue(url),
+            Image = result.GetValue(image),
             Navigation = result.GetValue(navigation),
             Javascript = result.GetValue(javascript),
             Cwd = result.GetValue(cwd),

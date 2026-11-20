@@ -113,6 +113,29 @@ public sealed class HtmlOverlayPageLiveTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task APictureIsDrawnFromItsOwnHost()
+    {
+        var path = Path.Combine(_dir, "dot.png");
+        File.WriteAllBytes(path, Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="));
+        var overlay = new HtmlOverlay(new HtmlSource.Image(path));
+        var control = await _webView.CreateWebViewAsync();
+        var view = await _webView.RunAsync(async _ =>
+        {
+            Assert.Null(_store.OpenHtmlOverlay(_session.Id, overlay, sizePercent: ImagePage.BasePercent));
+            var adapter = new Win32HtmlPageView(control);
+            adapter.NavigationCompleted += _ => _completions += 1;
+            await _registry.RealizeAsync(overlay, () => Task.FromResult<IHtmlPageView>(adapter));
+            return adapter;
+        });
+        await WaitAsync(() => _completions >= 1, "first load");
+
+        Assert.Equal(HtmlLoadState.Loaded, overlay.LoadState);
+        Assert.Equal(new HtmlPageInfo(path, null, false, false), overlay.Current);
+        Assert.Equal("1", await EvalAsync(view, "document.querySelector('img').naturalWidth"));
+    }
+
+    [Fact]
     public async Task APageWithoutATitleReportsNone()
     {
         var (overlay, _) = await OpenAsync("plain.html");

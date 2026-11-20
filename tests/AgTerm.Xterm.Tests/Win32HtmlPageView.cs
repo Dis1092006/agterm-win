@@ -73,6 +73,25 @@ public sealed class Win32HtmlPageView : IHtmlPageView
     public void MapVirtualHost(string host, string folder) =>
         _core.SetVirtualHostNameToFolderMapping(host, folder, CoreWebView2HostResourceAccessKind.Allow);
 
+    private (string Host, byte[] Bytes, string MimeType)? _image;
+
+    public void ServeImage(string host, byte[] bytes, string mimeType)
+    {
+        if (_image is null)
+        {
+            _core.AddWebResourceRequestedFilter($"https://{host}/*", CoreWebView2WebResourceContext.All);
+            _core.WebResourceRequested += (_, e) =>
+            {
+                if (_image is not { } image || !Uri.TryCreate(e.Request.Uri, UriKind.Absolute, out var url)
+                    || !string.Equals(url.Host, image.Host, StringComparison.OrdinalIgnoreCase))
+                    return;
+                e.Response = _core.Environment.CreateWebResourceResponse(new MemoryStream(image.Bytes, writable: false),
+                    200, "OK", $"Content-Type: {image.MimeType}\r\nCache-Control: no-store");
+            };
+        }
+        _image = (host, bytes, mimeType);
+    }
+
     public async Task SetDocumentScriptAsync(string script)
     {
         if (_scriptId is not null) _core.RemoveScriptToExecuteOnDocumentCreated(_scriptId);

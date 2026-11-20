@@ -79,7 +79,7 @@ public sealed partial class AppStore
     private static ControlHtmlOverlayNode[]? HtmlOverlayNodes(Session session, double? zoom)
     {
         if (!session.HtmlOverlayActive || session.HtmlOverlay is not { } page) return null;
-        string? file = null, cwd = null, url = null;
+        string? file = null, cwd = null, url = null, image = null;
         switch (page.Source)
         {
             case HtmlSource.File source:
@@ -87,6 +87,9 @@ public sealed partial class AppStore
                 break;
             case HtmlSource.Url source:
                 url = source.Address.OriginalString;
+                break;
+            case HtmlSource.Image source:
+                image = source.Path;
                 break;
         }
         return
@@ -96,6 +99,7 @@ public sealed partial class AppStore
                 File = file,
                 Cwd = cwd,
                 Url = url,
+                Image = image,
                 State = page.LoadState.ToString().ToLowerInvariant(),
                 Error = page.LoadError,
                 Page = page.Current?.Page,

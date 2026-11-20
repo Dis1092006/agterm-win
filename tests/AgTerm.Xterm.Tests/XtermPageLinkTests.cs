@@ -67,7 +67,9 @@ public class XtermPageLinkTests
             directory = directory.Parent;
         var source = File.ReadAllText(Path.Combine(directory!.FullName, "src", "AgTerm.App", "MainWindow.xaml.cs"));
         Assert.Contains("page.TerminalLinkRequested +=", source, StringComparison.Ordinal);
-        Assert.Contains("new TerminalLinkOpener().Open(target, allowPathFallback)", source, StringComparison.Ordinal);
+        Assert.Contains("new TerminalLinkOpener().OpenAsync(target, allowPathFallback,", source, StringComparison.Ordinal);
+        Assert.Contains("host.ShowImageLinkAsync(paneId, path)", source, StringComparison.Ordinal);
+        Assert.Contains("host.Host.Actions.DisplayScale = ", source, StringComparison.Ordinal);
         Assert.Contains("\"Open terminal link failed\"", source, StringComparison.Ordinal);
         Assert.Contains("QueueFailureNotice(notice)", source, StringComparison.Ordinal);
     }

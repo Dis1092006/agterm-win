@@ -30,6 +30,10 @@ internal sealed class FakeHtmlPageView : IHtmlPageView
 
     public void MapVirtualHost(string host, string folder) => Mapped.Add((host, folder));
 
+    public List<(string Host, byte[] Bytes, string MimeType)> Served { get; } = [];
+
+    public void ServeImage(string host, byte[] bytes, string mimeType) => Served.Add((host, bytes, mimeType));
+
     public Task SetDocumentScriptAsync(string script)
     {
         DocumentScripts.Add(script);

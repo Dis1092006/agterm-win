@@ -1998,18 +1998,13 @@ public sealed partial class HeadlessControlActions : IControlActions
             // a hidden overlay still holds the slot; name it so the caller knows to show or close it
             if (store.SessionWithId(id) is { OverlayHidden: true })
                 return Err(OverlayVisibilityError.Hidden);
+            // the control path is synchronous: a file on slow storage stalls the gate while it is read
+            if (options.Page is HtmlSource.Image image)
+                return ImageProbe.Load(image.Path, out var failure) is { } probe
+                    ? OpenImageOverlay(store, id, image.Path, probe, options)
+                    : Err("session.overlay.open: " + failure);
             if (options.Page is { } source)
-            {
-                var page = new HtmlOverlay(source) { Navigation = options.Navigation, Javascript = options.Javascript };
-                if (store.OpenHtmlOverlay(id, page, options.SizePercent, options.Points, options.BackgroundColor)
-                    is { } failure)
-                    return Err(failure.Message());
-                if (options.Follow) store.SelectSession(id);
-                return new ControlResponse
-                {
-                    Ok = true, Result = new ControlResult { Id = Uuid(id), PageId = Uuid(page.Id) },
-                };
-            }
+                return OpenHtmlPage(store, id, source, options);
             if (!store.OpenOverlay(id, options.Command, options.Cwd, options.Wait,
                     options.SizePercent, options.BackgroundColor, options.Points))
                 return Err("overlay already open");
@@ -2018,6 +2013,60 @@ public sealed partial class HeadlessControlActions : IControlActions
             return OkId(id);
         });
     }
+
+    private static ControlResponse OpenHtmlPage(AppStore store, Guid id, HtmlSource source,
+                                                ControlSessionOverlayOpenOptions options)
+    {
+        var page = new HtmlOverlay(source) { Navigation = options.Navigation, Javascript = options.Javascript };
+        if (store.OpenHtmlOverlay(id, page, options.SizePercent, options.Points, options.BackgroundColor)
+            is { } failure)
+            return Err(failure.Message());
+        if (options.Follow) store.SelectSession(id);
+        return new ControlResponse
+        {
+            Ok = true, Result = new ControlResult { Id = Uuid(id), PageId = Uuid(page.Id) },
+        };
+    }
+
+    /// <summary>The pixel density of the screen the window is on, which a picture's natural size is
+    /// measured at. The app keeps it current; 1 without one.</summary>
+    public double DisplayScale
+    {
+        get => Volatile.Read(ref _displayScale);
+        set => Volatile.Write(ref _displayScale, double.IsFinite(value) && value > 0 ? value : 1);
+    }
+
+    private double _displayScale = 1;
+
+    /// <summary>Opens a probed picture. A panel the caller gave no size is sized once to the picture,
+    /// inside the session area at the display scale and page zoom; a later resize replaces it
+    /// (upstream openImageOverlay, #844). It reads nothing, so the control path's synchronous probe and
+    /// a click's off-gate one share it.</summary>
+    private ControlResponse OpenImageOverlay(AppStore store, Guid id, string path, ImageProbe probe,
+                                             ControlSessionOverlayOpenOptions options)
+    {
+        if (store.SessionWithId(id) is { OverlayHidden: true })
+            return Err(OverlayVisibilityError.Hidden);
+        if (options.SizePercent is not null || !options.Points.IsEmpty)
+            return OpenHtmlPage(store, id, new HtmlSource.Image(path), options);
+        var points = ImagePage.Points(probe.Natural(DisplayScale), HtmlZoom, store.SessionWithId(id)?.HudMetrics?.Session);
+        return OpenHtmlPage(store, id, new HtmlSource.Image(path),
+            new ControlSessionOverlayOpenOptions("", null, false, ImagePage.BasePercent, options.BackgroundColor,
+                options.Follow, points));
+    }
+
+    /// <summary>Whether a clicked picture could show over session now: a HUD would be closed for good
+    /// and a zoomed terminal would hide the page, so both refuse it up front (upstream
+    /// canShowLinkOverlay). Called under the gate, before and again after the file is read.</summary>
+    public bool CanShowImageLink(Guid session) =>
+        _store.SessionWithId(session) is { HudActive: false } && Zoom.Target is null;
+
+    /// <summary>Shows a clicked picture probed off the gate over session, sized to the picture, and says
+    /// whether it did; false reveals the file instead (upstream openImageLink). Called under the gate.</summary>
+    public bool OpenImageLink(Guid session, string path, ImageProbe probe) =>
+        CanShowImageLink(session)
+        && OpenImageOverlay(_store, session, path, probe,
+            new ControlSessionOverlayOpenOptions("", null, false, null, null)).Ok;
 
     public ControlResponse ReloadSessionOverlay(string? target, string? window, OverlayPane? pane, bool current) =>
         ResolveSession(target, window, (store, id) =>
