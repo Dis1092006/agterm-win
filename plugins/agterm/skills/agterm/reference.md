@@ -756,8 +756,9 @@ All are read-only projections of GUI state.
   is read when the command runs, so one on slow or network storage holds the reply until it is read.
   Everything else is as for `--html`: the result, the slot, `reload` (which reads the file again) and
   `htmlOverlays` on `tree`, where the page shows as `image` (the absolute path) instead of `file` and
-  `cwd`. The strip has no Show in Explorer button, and `navigate finder` fails on an image page: it has
-  no file page to show. Errors:
+  `cwd`. The page has no navigation, so its strip shows only the file name, Hide and Close.
+  `navigate browser` opens the file in the app registered for its type, and `navigate finder` fails on
+  an image page: it has no file page to show. Errors:
   `session.overlay.open takes one of a command, --html, --url or --image`,
   `session.overlay.open: --image takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse`,
   `session.overlay.open: --image must be an absolute path`,

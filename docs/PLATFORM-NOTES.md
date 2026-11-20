@@ -970,7 +970,7 @@ New commands and fields taken from upstream `ed831ab` (v0.36.0) beyond the pin `
   - The natural size is measured at the window's `RasterizationScale`, the counterpart of upstream's backing scale.
   - The CLI refuses the program and page flags with `--image takes no --block, --wait, --navigation, --js or --cwd`. Upstream's message also names `--chromeless`, `--persistent`, `--browse` and `--companion`, which agtermctl does not have. The wire error `session.overlay.open: --image takes no --wait, --cwd, --navigation, --js, --chromeless, --persistent or --browse` is upstream's string.
   - A Ctrl+click on an existing path with a png, jpg, jpeg, gif or webp extension, typed as a drive path or a `file:` URL, shows the picture over the clicked pane's session, as upstream's Cmd+click does. It reveals the file in Explorer instead when the session shows a HUD, a pane is zoomed, the overlay slot is taken or hidden, the file is not a picture, or the pane is a program overlay or the quick terminal. The file is read off the UI thread and outside the store lock.
-  - The page is transparent, so the panel shows the theme background around the picture, as upstream. The strip shows no Show in Explorer and no Copy Link button; Open in Browser opens the file in the app registered for its type. `navigate finder` answers `show in Finder requires a file page`, as upstream.
+  - The page is transparent, so the panel shows the theme background around the picture, as upstream. An image page has no navigation, so its strip shows only the file name, Hide and Close, as upstream. `navigate browser` opens the file in the app registered for its type. `navigate finder` answers `show in Finder requires a file page`, as upstream.
 
 ## Windows-only extensions
 
